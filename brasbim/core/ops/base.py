@@ -60,6 +60,7 @@ HANDLER_MODULES = (
     "brasbim.core.walls.types",
     "brasbim.core.walls.wall",
     "brasbim.core.walls.connections",
+    "brasbim.core.walls.openings",
 )
 _loaded = False
 

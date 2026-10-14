@@ -10,7 +10,7 @@ from __future__ import annotations
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
-from brasbim.core.walls import connections, params
+from brasbim.core.walls import connections, openings, params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state
 
@@ -105,12 +105,79 @@ def edit_wall(doc: Document, wall, **changes) -> Transaction:
 
 
 def delete_wall(doc: Document, wall) -> Transaction:
-    """Exclui a parede. A cascata (aberturas, preenchimentos, junções; spec §6.4) entra
-    nesta mesma transação, antes do ``wall.delete``."""
+    """Exclui a parede. A cascata (spec §6.4) entra nesta mesma transação, antes do
+    ``wall.delete``: desliga os preenchimentos, exclui as aberturas e as junções.
+
+    Os elementos que preenchiam as aberturas (portas, janelas) continuam no modelo até
+    existirem as operações deles (RF-ELE-05/06).
+    """
     wall = doc.get(_gid(wall), "IfcWall")
-    ops = connections.sync_ops(doc, {wall.GlobalId: None})
+    ops = []
+    for opening in openings.of_wall(wall):
+        ops += _opening_delete_ops(opening)
+    ops += connections.sync_ops(doc, {wall.GlobalId: None})
     ops.append(Op("wall.delete", wall.GlobalId, data=read_state(doc, wall)))
     return Transaction("Excluir parede", ops)
+
+
+# --- aberturas e preenchimentos (spec §6.3) ------------------------------------------
+
+
+def create_opening(doc: Document, wall, distance: float, width: float, height: float,
+                   sill: float = 0.0, kind: str = "OPENING", depth: float | None = None,
+                   side: str = "left") -> Transaction:
+    """Abertura (vão ou nicho) a ``distance`` do início da parede (spec §6.3)."""
+    data = {
+        "wall": doc.get(_gid(wall), "IfcWall").GlobalId,
+        "kind": kind,
+        "distance": float(distance),
+        "width": float(width),
+        "height": float(height),
+        "sill": float(sill),
+        "depth": None if depth is None else float(depth),
+        "side": side,
+    }
+    label = "Criar nicho" if kind == "RECESS" else "Criar abertura"
+    return Transaction(label, [Op("opening.create", guid.new(), data=data)])
+
+
+def edit_opening(doc: Document, opening, **changes) -> Transaction:
+    opening = doc.get(_gid(opening), "IfcOpeningElement")
+    if changes.get("wall") is not None:
+        changes["wall"] = _gid(changes["wall"])
+    unknown = set(changes) - set(openings.STATE_KEYS)
+    if unknown:
+        raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
+    state = openings.read_state(opening)
+    before = {k: state[k] for k in changes}
+    return Transaction("Editar abertura", [Op("opening.edit", opening.GlobalId, before=before,
+                                              after=dict(changes))])
+
+
+def _opening_delete_ops(opening) -> list[Op]:
+    ops = [Op("filling.detach", rel.RelatedBuildingElement.GlobalId,
+              data={"opening": opening.GlobalId}) for rel in opening.HasFillings]
+    ops.append(Op("opening.delete", opening.GlobalId, data=openings.read_state(opening)))
+    return ops
+
+
+def delete_opening(doc: Document, opening) -> Transaction:
+    opening = doc.get(_gid(opening), "IfcOpeningElement")
+    return Transaction("Excluir abertura", _opening_delete_ops(opening))
+
+
+def attach_filling(doc: Document, opening, element) -> Transaction:
+    """Liga uma porta ou janela à abertura (``IfcRelFillsElement``)."""
+    data = {"opening": doc.get(_gid(opening), "IfcOpeningElement").GlobalId}
+    return Transaction("Preencher abertura", [Op("filling.attach", _gid(element), data=data)])
+
+
+def detach_filling(doc: Document, element) -> Transaction:
+    element = doc.get(_gid(element), "IfcElement")
+    ops = [Op("filling.detach", element.GlobalId,
+              data={"opening": rel.RelatingOpeningElement.GlobalId})
+           for rel in element.FillsVoids]
+    return Transaction("Desligar preenchimento", ops)
 
 
 # --- tipos e pavimentos (provisório) -------------------------------------------------

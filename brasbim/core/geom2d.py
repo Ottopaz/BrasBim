@@ -87,6 +87,65 @@ def area(segments: list[Segment]) -> float:
     return abs(signed)
 
 
+def polygon(segments: list[Segment], arc_steps: int = 64) -> list[Point]:
+    """Vértices de um contorno fechado, com os arcos aproximados por cordas."""
+    points: list[Point] = []
+    for seg in segments:
+        points.append(seg.p0)
+        if isinstance(seg, Arc):
+            c, r = circle_through(*seg)
+            a0 = math.atan2(seg.p0[1] - c[1], seg.p0[0] - c[0])
+            am = math.atan2(seg.pm[1] - c[1], seg.pm[0] - c[0])
+            a1 = math.atan2(seg.p1[1] - c[1], seg.p1[0] - c[0])
+            tau = 2 * math.pi
+            sweep = (a1 - a0) % tau
+            if (am - a0) % tau > sweep:
+                sweep -= tau
+            for k in range(1, arc_steps):
+                a = a0 + sweep * k / arc_steps
+                points.append((c[0] + r * math.cos(a), c[1] + r * math.sin(a)))
+    return points
+
+
+def polygon_area(points: list[Point]) -> float:
+    n = len(points)
+    return abs(sum(_cross(points[i], points[(i + 1) % n]) for i in range(n))) / 2
+
+
+def clip_area(points: list[Point], x0: float, x1: float, y0: float, y1: float) -> float:
+    """Área da parte do polígono dentro do retângulo ``[x0, x1] × [y0, y1]``."""
+
+    def clip(pts, inside, cut):
+        out = []
+        for i, cur in enumerate(pts):
+            prev = pts[i - 1]
+            if inside(cur):
+                if not inside(prev):
+                    out.append(cut(prev, cur))
+                out.append(cur)
+            elif inside(prev):
+                out.append(cut(prev, cur))
+        return out
+
+    def at_x(x):
+        return lambda p, q: (x, p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0]))
+
+    def at_y(y):
+        return lambda p, q: (p[0] + (q[0] - p[0]) * (y - p[1]) / (q[1] - p[1]), y)
+
+    pts = list(points)
+    for inside, cut in (
+        (lambda p: p[0] >= x0, at_x(x0)),
+        (lambda p: p[0] <= x1, at_x(x1)),
+        (lambda p: p[1] >= y0, at_y(y0)),
+        (lambda p: p[1] <= y1, at_y(y1)),
+    ):
+        if not pts:
+            return 0.0
+        pts = clip(pts, inside, cut)
+    return polygon_area(pts) if len(pts) >= 3 else 0.0
+
+
 # --- Curvas infinitas e referenciais ----------------------------------------------
 
 

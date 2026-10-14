@@ -16,7 +16,7 @@ import ifcopenshell.util.element
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.walls import connections, joins, params
+from brasbim.core.walls import connections, joins, openings, params
 from brasbim.core.walls import types as wall_types
 
 log = logging.getLogger(__name__)
@@ -190,11 +190,14 @@ def rebuild_wall(doc: Document, wall) -> None:
     usage.OffsetFromReferenceLine = offset
 
     ymin, ymax = params.band(sense, offset, thickness)
+    own = joins.Band(path, ymin, ymax)
     try:
-        segments = profile(doc, wall, joins.Band(path, ymin, ymax))
+        segments = profile(doc, wall, own)
     except ValueError as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
     set_body(doc, wall, segments, h)
+    openings.refresh(doc, wall, own, h)
+    cut = openings.deductions(wall, own, h, segments)
 
     length = path.centerline_length((ymin + ymax) / 2)
     footprint = geom2d.area(segments)
@@ -206,11 +209,11 @@ def rebuild_wall(doc: Document, wall) -> None:
             "Width": thickness,
             "Height": h,
             "GrossFootprintArea": length * thickness,
-            "NetFootprintArea": footprint,
+            "NetFootprintArea": footprint - cut["footprint"],
             "GrossSideArea": length * h,
-            "NetSideArea": length * h,
+            "NetSideArea": length * h - cut["side"],
             "GrossVolume": length * thickness * h,
-            "NetVolume": footprint * h,
+            "NetVolume": footprint * h - cut["volume"],
         },
     )
 

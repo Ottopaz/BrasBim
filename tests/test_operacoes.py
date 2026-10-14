@@ -18,6 +18,10 @@ def _session(m: Model):
     m.commit(cmd.create_arc_wall(m.doc, m.type14, m.terreo, (0, 0), (-2, 2), (0, 4)))
     m.commit(cmd.edit_wall(m.doc, a, base_offset=0.1, common={"IsExternal": True}))
     m.commit(cmd.edit_storey(m.doc, m.superior, elevation=3.0))
+    m.commit(cmd.create_chain(m.doc, m.type14, m.terreo, [(2.5, 0), (2.5, 3), (4, 3)]))
+    tx = m.commit(cmd.create_opening(m.doc, a, 0.5, 0.9, 2.1))
+    m.commit(cmd.edit_opening(m.doc, tx.ops[0].id, distance=3.0))
+    m.commit(cmd.create_opening(m.doc, a, 1.0, 0.6, 0.6, sill=1.0, kind="RECESS", depth=0.05))
     m.commit(cmd.delete_wall(m.doc, a))
 
 

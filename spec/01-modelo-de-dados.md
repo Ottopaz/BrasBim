@@ -49,6 +49,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `wall_type.edit` | `name`, `layers` | parede §5.2 |
 | `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
 | `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |
+| `opening.create` / `.delete` / `.edit` | `wall`, `kind` (`OPENING` \| `RECESS`), `distance`, `width`, `height`, `sill`, `depth`, `side` (`left` \| `right`) | parede §5.2, §6.3 |
+| `filling.attach` / `.detach` | `id` = GlobalId do elemento que preenche; `opening` | parede §5.2, §6.3 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
@@ -59,9 +61,17 @@ Caminho (`path`):
 `ref_line`: `axis` | `left_face` | `right_face`. `top_mode`: `storey` | `fixed`.
 `common`: propriedades de `Pset_WallCommon` que diferem do padrão.
 
+Aberturas: `id` = GlobalId do `IfcOpeningElement`. `distance` vai do início da parede ao
+começo da abertura, ao longo do caminho; `sill` é a base da abertura em relação à base da
+parede; `depth` e `side` (face de entrada) só valem para nicho. *(decisão do projeto)*
+Excluir uma parede gera, na mesma transação e nesta ordem: `filling.detach`,
+`opening.delete`, `path_connection.delete` e `wall.delete` (spec da parede §6.4).
+
 Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam as junções e geram
 estas operações na mesma transação da criação, edição ou exclusão da parede.
 
 ## 5. Pendências
-- `wall.split`, `opening.*`, `filling.*`: próximas etapas.
+- `wall.split`: próxima etapa.
+- Excluir os elementos que preenchem as aberturas (portas, janelas) na cascata depende
+  das operações desses elementos (RF-ELE-05/06).
 - Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.
