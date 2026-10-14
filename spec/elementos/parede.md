@@ -4,8 +4,8 @@ entidade_ifc: IfcWall (PredefinedType via IfcWallType)
 requisito: RF-ELE-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: rascunho
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Parede
@@ -343,5 +343,5 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
 - Paredes de espessura variável, inclinadas, de seção não retangular, perfis compostos
   por partes (`IfcRelAggregates`, `ELEMENTEDWALL`) e parede com topo/base em rampa: V1/V2.
 - Recorte por cobertura (RF-ELE-17, `Clipping`): V1.
-- Pontos de revisão: (a) junção X como `ATPATH`/`ATPATH`; (b) L `ATEND`/`ATEND`;
+- Pontos de revisão, aceitos pelo revisor em 2026‑10‑14: (a) junção X como `ATPATH`/`ATPATH`; (b) L `ATEND`/`ATEND`;
   (c) plano de corte e convenções gráficas frente à NBR 6492; (d) nome do Pset próprio.
