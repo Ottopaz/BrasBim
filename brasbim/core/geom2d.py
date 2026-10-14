@@ -87,6 +87,110 @@ def area(segments: list[Segment]) -> float:
     return abs(signed)
 
 
+# --- Curvas infinitas e referenciais ----------------------------------------------
+
+
+def _unit(v: Point) -> Point:
+    n = math.hypot(v[0], v[1])
+    if n < TOL:
+        raise ValueError("vetor nulo")
+    return (v[0] / n, v[1] / n)
+
+
+@dataclass(frozen=True)
+class StraightLine:
+    """Reta infinita por ``point`` com direção unitária ``direction``."""
+
+    point: Point
+    direction: Point
+
+
+@dataclass(frozen=True)
+class Circle:
+    center: Point
+    radius: float
+
+
+Curve = StraightLine | Circle
+
+
+def line_through(p: Point, q: Point) -> StraightLine:
+    return StraightLine(p, _unit(_sub(q, p)))
+
+
+def intersect(a: Curve, b: Curve) -> list[Point]:
+    """Pontos de interseção de duas curvas (vazio se paralelas ou disjuntas)."""
+    if isinstance(a, Circle) and isinstance(b, StraightLine):
+        a, b = b, a
+    if isinstance(a, StraightLine) and isinstance(b, StraightLine):
+        den = _cross(a.direction, b.direction)
+        if abs(den) < 1e-12:
+            return []
+        t = _cross(_sub(b.point, a.point), b.direction) / den
+        return [(a.point[0] + t * a.direction[0], a.point[1] + t * a.direction[1])]
+    if isinstance(a, StraightLine):
+        d = a.direction
+        w = _sub(b.center, a.point)
+        t = w[0] * d[0] + w[1] * d[1]
+        foot = (a.point[0] + t * d[0], a.point[1] + t * d[1])
+        h = _dist(foot, b.center)
+        if h > b.radius + 1e-9:
+            return []
+        half = math.sqrt(max(0.0, b.radius * b.radius - h * h))
+        if half < 1e-12:
+            return [foot]
+        return [(foot[0] - half * d[0], foot[1] - half * d[1]),
+                (foot[0] + half * d[0], foot[1] + half * d[1])]
+    c0, r0, c1, r1 = a.center, a.radius, b.center, b.radius
+    d = _dist(c0, c1)
+    if d < 1e-12 or d > r0 + r1 + 1e-9 or d < abs(r0 - r1) - 1e-9:
+        return []
+    x = (d * d + r0 * r0 - r1 * r1) / (2 * d)
+    h = math.sqrt(max(0.0, r0 * r0 - x * x))
+    u = ((c1[0] - c0[0]) / d, (c1[1] - c0[1]) / d)
+    base = (c0[0] + x * u[0], c0[1] + x * u[1])
+    if h < 1e-12:
+        return [base]
+    return [(base[0] - h * u[1], base[1] + h * u[0]), (base[0] + h * u[1], base[1] - h * u[0])]
+
+
+def nearest(points: list[Point], ref: Point) -> Point | None:
+    return min(points, key=lambda p: _dist(p, ref)) if points else None
+
+
+@dataclass(frozen=True)
+class Frame:
+    """Referencial local: origem e ângulo do eixo x em relação ao pavimento."""
+
+    origin: Point
+    angle: float
+
+    def vector_to_global(self, v: Point) -> Point:
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        return (c * v[0] - s * v[1], s * v[0] + c * v[1])
+
+    def vector_to_local(self, v: Point) -> Point:
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        return (c * v[0] + s * v[1], -s * v[0] + c * v[1])
+
+    def to_global(self, p: Point) -> Point:
+        v = self.vector_to_global(p)
+        return (self.origin[0] + v[0], self.origin[1] + v[1])
+
+    def to_local(self, p: Point) -> Point:
+        return self.vector_to_local(_sub(p, self.origin))
+
+    def curve_to_global(self, c: Curve) -> Curve:
+        if isinstance(c, StraightLine):
+            return StraightLine(self.to_global(c.point), self.vector_to_global(c.direction))
+        return Circle(self.to_global(c.center), c.radius)
+
+    def curve_to_local(self, c: Curve) -> Curve:
+        if isinstance(c, StraightLine):
+            return StraightLine(self.to_local(c.point), self.vector_to_local(c.direction))
+        return Circle(self.to_local(c.center), c.radius)
+
+
 # --- Caminhos ---------------------------------------------------------------
 
 
@@ -116,11 +220,33 @@ class LinePath:
     def local_end(self) -> Point:
         return (self.length, 0.0)
 
+    # Parametrização local: t = abscissa (0 a ``t_end``); y = afastamento à esquerda.
+
+    @property
+    def t_end(self) -> float:
+        return self.length
+
+    def point(self, y: float, t: float) -> Point:
+        return (t, y)
+
+    def param(self, p: Point) -> float:
+        return p[0]
+
+    def tangent(self, t: float) -> Point:
+        return (1.0, 0.0)
+
+    def offset(self, p: Point) -> float:
+        return p[1]
+
+    def face(self, y: float) -> Curve:
+        return StraightLine((0.0, y), (1.0, 0.0))
+
+    def arc_length(self, t: float) -> float:
+        return t
+
     def local_profile(self, ymin: float, ymax: float) -> list[Segment]:
         """Contorno da faixa ``ymin <= y <= ymax`` ao longo do caminho, anti-horário."""
-        n = self.length
-        a, b, c, d = (0.0, ymin), (n, ymin), (n, ymax), (0.0, ymax)
-        return [Line(a, b), Line(b, c), Line(c, d), Line(d, a)]
+        return band_profile(self, ymin, ymax)
 
     def to_dict(self) -> dict:
         return {"kind": "line", "start": list(self.start), "end": list(self.end)}
@@ -183,14 +309,36 @@ class ArcPath:
     def local_end(self) -> Point:
         return self._local_point(0.0, self.sweep)
 
+    # Parametrização local: t = ângulo percorrido desde o início (0 a ``t_end``).
+
+    @property
+    def t_end(self) -> float:
+        return self.sweep
+
+    def point(self, y: float, t: float) -> Point:
+        return self._local_point(y, t)
+
+    def param(self, p: Point) -> float:
+        """Ângulo de ``p`` em (−π, π]; quem usa ajusta a volta (ver ``_unwrap``)."""
+        if self.ccw:
+            return math.atan2(p[0], self.radius - p[1])
+        return math.atan2(p[0], p[1] + self.radius)
+
+    def tangent(self, t: float) -> Point:
+        return (math.cos(t), math.sin(t)) if self.ccw else (math.cos(t), -math.sin(t))
+
+    def offset(self, p: Point) -> float:
+        r = _dist(p, self.local_center())
+        return self.radius - r if self.ccw else r - self.radius
+
+    def face(self, y: float) -> Curve:
+        return Circle(self.local_center(), self._radius_at(y))
+
+    def arc_length(self, t: float) -> float:
+        return self.radius * t
+
     def local_profile(self, ymin: float, ymax: float) -> list[Segment]:
-        for y in (ymin, ymax):
-            if self._radius_at(y) <= MIN_LENGTH:
-                raise ValueError("raio pequeno demais para a espessura da parede")
-        s = self.sweep
-        a0, am, a1 = (self._local_point(ymin, t) for t in (0.0, s / 2, s))
-        b0, bm, b1 = (self._local_point(ymax, t) for t in (0.0, s / 2, s))
-        return [Arc(a0, am, a1), Line(a1, b1), Arc(b1, bm, b0), Line(b0, a0)]
+        return band_profile(self, ymin, ymax)
 
     def to_dict(self) -> dict:
         return {
@@ -204,6 +352,71 @@ class ArcPath:
 
 
 Path = LinePath | ArcPath
+
+
+def frame(path: Path) -> Frame:
+    """Referencial local do caminho (origem no início, x na tangente inicial)."""
+    return Frame(path.start, path.start_angle)
+
+
+def unwrap(path: Path, t: float, ref: float) -> float:
+    """Para arcos, escolhe a volta de ``t`` mais próxima de ``ref``."""
+    if isinstance(path, LinePath):
+        return t
+    return ref + (t - ref + math.pi) % (2 * math.pi) - math.pi
+
+
+def _cut_param(path: Path, y: float, cut: Curve, ref: float) -> float:
+    """Parâmetro, na face ``y``, do ponto de corte mais próximo da extremidade ``ref``."""
+    p = nearest(intersect(path.face(y), cut), path.point(y, ref))
+    if p is None:
+        raise ValueError("a face da parede não alcança o corte da junção")
+    return unwrap(path, path.param(p), ref)
+
+
+def _piece(path: Path, y: float, t0: float, t1: float) -> Segment:
+    p0, p1 = path.point(y, t0), path.point(y, t1)
+    if isinstance(path, LinePath):
+        return Line(p0, p1)
+    return Arc(p0, path.point(y, (t0 + t1) / 2), p1)
+
+
+def _cap(p: Point, q: Point, cut: Curve | None) -> Segment:
+    """Tampa de ``p`` a ``q`` sobre a curva de corte (reta ou arco)."""
+    if not isinstance(cut, Circle):
+        return Line(p, q)
+    c, r = cut.center, cut.radius
+    m = _unit(_sub(((p[0] + q[0]) / 2, (p[1] + q[1]) / 2), c))
+    return Arc(p, (c[0] + r * m[0], c[1] + r * m[1]), q)
+
+
+def band_profile(path: Path, ymin: float, ymax: float, start_cut: Curve | None = None,
+                 end_cut: Curve | None = None) -> list[Segment]:
+    """Contorno anti-horário da faixa ``ymin <= y <= ymax`` (coordenadas locais).
+
+    Sem corte, as extremidades são retas perpendiculares ao caminho. Com corte (curva em
+    coordenadas locais), cada face vai até a interseção com ele e a tampa segue o corte.
+    """
+    if isinstance(path, ArcPath):
+        for y in (ymin, ymax):
+            if path._radius_at(y) <= MIN_LENGTH:
+                raise ValueError("raio pequeno demais para a espessura da parede")
+    ranges = []
+    for y in (ymin, ymax):
+        t0 = 0.0 if start_cut is None else _cut_param(path, y, start_cut, 0.0)
+        t1 = path.t_end if end_cut is None else _cut_param(path, y, end_cut, path.t_end)
+        if path.arc_length(t1 - t0) <= MIN_LENGTH or (
+            isinstance(path, ArcPath) and t1 - t0 >= 2 * math.pi
+        ):
+            raise ValueError("os cortes das junções se cruzam")
+        ranges.append((t0, t1))
+    (a0, a1), (b0, b1) = ranges
+    return [
+        _piece(path, ymin, a0, a1),
+        _cap(path.point(ymin, a1), path.point(ymax, b1), end_cut),
+        _piece(path, ymax, b1, b0),
+        _cap(path.point(ymax, b0), path.point(ymin, a0), start_cut),
+    ]
 
 
 def path_from_dict(d: dict) -> Path:

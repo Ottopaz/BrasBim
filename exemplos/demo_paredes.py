@@ -3,8 +3,8 @@
 
 Uso: python exemplos/demo_paredes.py [saida.ifc]
 
-Abra o arquivo em qualquer visualizador IFC. As junções L/T/X ainda não estão
-implementadas, então os cantos aparecem sem recorte.
+Abra o arquivo em qualquer visualizador IFC (ou em exemplos/visualizar.py). Os cantos
+saem recortados pelas junções L/T (IfcRelConnectsPathElements).
 """
 
 import sys
@@ -34,20 +34,16 @@ def main(path: str) -> None:
     ], predefined_type="PARTITIONING"))
     alvenaria, drywall = doc.ifc.by_type("IfcWallType")
 
-    # Térreo: retângulo 8 × 5 (face externa como referência, desenhado no sentido horário,
-    # de modo que a parede fique para dentro), uma divisória e uma parede em arco.
-    cantos = [(0, 0), (0, 5), (8, 5), (8, 0)]
-    for a, b in zip(cantos, cantos[1:] + cantos[:1]):
-        history.commit(cmd.create_wall(doc, alvenaria, terreo, a, b, ref_line="left_face"))
-    history.commit(cmd.create_wall(doc, drywall, terreo, (4.5, 0.14), (4.5, 4.86),
-                                   ref_line="axis"))
+    # Térreo: retângulo 8 × 5 (face externa como referência; as paredes ficam para
+    # dentro), uma divisória em T e uma parede em arco.
+    history.commit(cmd.create_rectangle(doc, alvenaria, terreo, (0, 0), (8, 5)))
+    history.commit(cmd.create_wall(doc, drywall, terreo, (4.5, 0), (4.5, 5), ref_line="axis"))
     history.commit(cmd.create_arc_wall(doc, alvenaria, terreo, (8, 1), (9.5, 2.5), (8, 4),
                                        ref_line="axis"))
 
     # Superior: platibanda de 1,10 m sobre o retângulo.
-    for a, b in zip(cantos, cantos[1:] + cantos[:1]):
-        history.commit(cmd.create_wall(doc, alvenaria, superior, a, b, ref_line="left_face",
-                                       top_mode="fixed", fixed_height=1.10))
+    history.commit(cmd.create_rectangle(doc, alvenaria, superior, (0, 0), (8, 5),
+                                        top_mode="fixed", fixed_height=1.10))
 
     doc.save(path)
     print(f"{len(doc.ifc.by_type('IfcWall'))} paredes gravadas em {path}")

@@ -2,11 +2,13 @@
 """Efeitos derivados da parede, recalculados por quem aplica as operações (spec §5.2).
 
 - ``IfcMaterialLayerSetUsage`` (sentido e afastamento, spec §3.2)
-- Representação ``Body`` (spec §2.2, §6.1)
+- Representação ``Body`` (spec §2.2, §6.1), com o recorte das junções (spec §6.2)
 - ``Qto_WallBaseQuantities`` (spec §8)
 """
 
 from __future__ import annotations
+
+import logging
 
 import ifcopenshell.api.pset
 import ifcopenshell.util.element
@@ -14,8 +16,10 @@ import ifcopenshell.util.element
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.walls import params
+from brasbim.core.walls import connections, joins, params
 from brasbim.core.walls import types as wall_types
+
+log = logging.getLogger(__name__)
 
 QTO = "Qto_WallBaseQuantities"
 _ORDER = ("Axis", "Body")
@@ -97,15 +101,74 @@ def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float)
 # --- cálculo -------------------------------------------------------------------
 
 
-def _elevation(doc: Document, storey_id: str) -> float:
+def elevation(doc: Document, storey_id: str) -> float:
     return float(doc.get(storey_id, "IfcBuildingStorey").Elevation or 0.0)
 
 
 def height(doc: Document, state: dict) -> float:
     if state["top_mode"] == "fixed":
         return float(state["fixed_height"])
-    top = _elevation(doc, state["top_storey"]) + state["top_offset"]
-    return top - (_elevation(doc, state["storey"]) + state["base_offset"])
+    top = elevation(doc, state["top_storey"]) + state["top_offset"]
+    return top - (elevation(doc, state["storey"]) + state["base_offset"])
+
+
+def band(doc: Document, state: dict) -> joins.Band:
+    thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
+    sense, offset = params.layer_usage(state["ref_line"], state["flip_layers"], thickness)
+    return joins.Band(geom2d.path_from_dict(state["path"]), *params.band(sense, offset, thickness))
+
+
+def end_cuts(doc: Document, wall, own: joins.Band) -> dict[str, geom2d.Curve]:
+    """Curva de corte (coordenadas do pavimento) de cada extremidade com junção.
+
+    Se mais de uma junção chega à mesma extremidade, vale a primeira em ordem de GlobalId
+    (decisão do projeto); as outras ficam só como relação.
+    """
+    from brasbim.core.walls.wall import read_state  # evita import circular
+
+    cuts: dict[str, geom2d.Curve] = {}
+    for rel in connections.of_wall(wall):
+        if rel.RelatingElement == wall:
+            mine, other, theirs = (rel.RelatingConnectionType, rel.RelatedElement,
+                                   rel.RelatedConnectionType)
+        else:
+            mine, other, theirs = (rel.RelatedConnectionType, rel.RelatingElement,
+                                   rel.RelatingConnectionType)
+        if mine not in joins.ENDS:
+            continue
+        if mine in cuts:
+            log.warning("parede %s: mais de uma junção em %s; %s ignorada no recorte",
+                        wall.GlobalId, mine, rel.GlobalId)
+            continue
+        try:
+            other_band = band(doc, read_state(doc, other))
+        except OpError:
+            continue
+        if theirs == "ATPATH":
+            cut = joins.t_cut(own, mine, other_band)
+        else:
+            cut = joins.l_cuts(own, mine, other_band, theirs)[0]
+        if cut is not None:
+            cuts[mine] = cut
+    return cuts
+
+
+def profile(doc: Document, wall, own: joins.Band) -> list[geom2d.Segment]:
+    """Perfil do corpo em coordenadas locais, com as junções resolvidas.
+
+    Se um corte não for possível (face que não alcança o corte, cortes que se cruzam), a
+    extremidade fica reta e a relação é mantida.
+    """
+    to_local = own.frame.curve_to_local
+    cuts = {end: to_local(c) for end, c in end_cuts(doc, wall, own).items()}
+    attempts = [cuts] + [{e: c} for e, c in cuts.items()] if cuts else []
+    for attempt in attempts:
+        try:
+            return geom2d.band_profile(own.path, own.ymin, own.ymax,
+                                       attempt.get("ATSTART"), attempt.get("ATEND"))
+        except ValueError as e:
+            log.warning("parede %s: recorte de junção não aplicado (%s)", wall.GlobalId, e)
+    return geom2d.band_profile(own.path, own.ymin, own.ymax)
 
 
 def rebuild_wall(doc: Document, wall) -> None:
@@ -128,7 +191,7 @@ def rebuild_wall(doc: Document, wall) -> None:
 
     ymin, ymax = params.band(sense, offset, thickness)
     try:
-        segments = path.local_profile(ymin, ymax)
+        segments = profile(doc, wall, joins.Band(path, ymin, ymax))
     except ValueError as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
     set_body(doc, wall, segments, h)
@@ -183,6 +246,9 @@ def affected_walls(doc: Document, dirty: set[str]) -> list:
                     values.get("PavimentoTopo") == gid
                 ):
                     walls[wall.GlobalId] = wall
+    # O recorte das vizinhas depende da geometria desta parede.
+    for wall in list(walls.values()):
+        walls.update({n.GlobalId: n for n in connections.neighbors(wall)})
     return sorted(walls.values(), key=lambda w: w.GlobalId)
 
 

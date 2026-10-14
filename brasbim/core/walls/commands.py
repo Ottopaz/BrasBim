@@ -10,7 +10,7 @@ from __future__ import annotations
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
-from brasbim.core.walls import params
+from brasbim.core.walls import connections, params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state
 
@@ -40,18 +40,49 @@ def _wall_data(doc: Document, wall_type, storey, path: geom2d.Path, options: dic
     return data
 
 
+# Campos que mudam a detecção de junções.
+_JOIN_KEYS = ("path", "storey", "base_offset", "top_mode", "top_storey", "top_offset",
+              "fixed_height")
+
+
+def _create_walls(doc: Document, label: str, wall_type, storey, paths, options) -> Transaction:
+    """Cria as paredes e as junções detectadas (spec §6.2) numa só transação."""
+    new = {guid.new(): _wall_data(doc, wall_type, storey, p, dict(options)) for p in paths}
+    ops = [Op("wall.create", gid, data=data) for gid, data in new.items()]
+    return Transaction(label, ops + connections.sync_ops(doc, new))
+
+
 def create_wall(doc: Document, wall_type, storey, start, end, **options) -> Transaction:
     """Parede reta de ``start`` a ``end`` (coordenadas do pavimento, em metros)."""
     path = geom2d.LinePath(tuple(start), tuple(end))
-    data = _wall_data(doc, wall_type, storey, path, options)
-    return Transaction("Criar parede", [Op("wall.create", guid.new(), data=data)])
+    return _create_walls(doc, "Criar parede", wall_type, storey, [path], options)
 
 
 def create_arc_wall(doc: Document, wall_type, storey, start, through, end, **options):
     """Parede em arco por 3 pontos: início, um ponto no arco e fim (spec §4)."""
     path = geom2d.arc_through(tuple(start), tuple(through), tuple(end))
-    data = _wall_data(doc, wall_type, storey, path, options)
-    return Transaction("Criar parede em arco", [Op("wall.create", guid.new(), data=data)])
+    return _create_walls(doc, "Criar parede em arco", wall_type, storey, [path], options)
+
+
+def create_chain(doc: Document, wall_type, storey, points, closed: bool = False, **options):
+    """Cadeia de paredes retas pelos ``points`` (spec §4). ``closed`` liga o último ponto
+    ao primeiro. Junções L entre segmentos consecutivos."""
+    points = [tuple(p) for p in points]
+    if closed:
+        points.append(points[0])
+    if len(points) < 2:
+        raise OpError("a cadeia precisa de pelo menos 2 pontos")
+    paths = [geom2d.LinePath(a, b) for a, b in zip(points, points[1:])]
+    return _create_walls(doc, "Criar cadeia de paredes", wall_type, storey, paths, options)
+
+
+def create_rectangle(doc: Document, wall_type, storey, corner, opposite, **options):
+    """4 paredes pelos cantos opostos, percorridas no sentido horário: com a linha de
+    referência na face esquerda (padrão), as paredes ficam dentro do retângulo."""
+    (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
+    points = [(x0, y0), (x0, y1), (x1, y1), (x1, y0), (x0, y0)]
+    paths = [geom2d.LinePath(a, b) for a, b in zip(points, points[1:])]
+    return _create_walls(doc, "Criar retângulo de paredes", wall_type, storey, paths, options)
 
 
 def edit_wall(doc: Document, wall, **changes) -> Transaction:
@@ -67,16 +98,18 @@ def edit_wall(doc: Document, wall, **changes) -> Transaction:
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     before = {k: state[k] for k in changes}
-    return Transaction(
-        "Editar parede", [Op("wall.edit", wall.GlobalId, before=before, after=dict(changes))]
-    )
+    ops = [Op("wall.edit", wall.GlobalId, before=before, after=dict(changes))]
+    if any(k in changes for k in _JOIN_KEYS):
+        ops += connections.sync_ops(doc, {wall.GlobalId: {**state, **changes}})
+    return Transaction("Editar parede", ops)
 
 
 def delete_wall(doc: Document, wall) -> Transaction:
     """Exclui a parede. A cascata (aberturas, preenchimentos, junções; spec §6.4) entra
     nesta mesma transação, antes do ``wall.delete``."""
     wall = doc.get(_gid(wall), "IfcWall")
-    ops = [Op("wall.delete", wall.GlobalId, data=read_state(doc, wall))]
+    ops = connections.sync_ops(doc, {wall.GlobalId: None})
+    ops.append(Op("wall.delete", wall.GlobalId, data=read_state(doc, wall)))
     return Transaction("Excluir parede", ops)
 
 

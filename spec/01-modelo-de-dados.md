@@ -48,6 +48,7 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]` | `create` provisória (RF-TIP-01) |
 | `wall_type.edit` | `name`, `layers` | parede §5.2 |
 | `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
+| `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
@@ -58,6 +59,9 @@ Caminho (`path`):
 `ref_line`: `axis` | `left_face` | `right_face`. `top_mode`: `storey` | `fixed`.
 `common`: propriedades de `Pset_WallCommon` que diferem do padrão.
 
+Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam as junções e geram
+estas operações na mesma transação da criação, edição ou exclusão da parede.
+
 ## 5. Pendências
-- `wall.split`, `path_connection.*`, `opening.*`, `filling.*`: próximas etapas.
+- `wall.split`, `opening.*`, `filling.*`: próximas etapas.
 - Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.

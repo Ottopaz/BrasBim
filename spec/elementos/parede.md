@@ -191,6 +191,15 @@ de outra. *(CG)*
   `RelatedElement` e é recortada na face de A. [IFC-WALL, *Path Connectivity*]
 - Em L: recorte em meia‑esquadria (bissetriz) quando as espessuras são iguais; com
   espessuras diferentes, cada parede é estendida até a face externa da outra. *(CG)*
+  **Detalhamento (aprovado pelo revisor em 2026‑10‑14):** com espessuras iguais, o corte
+  das duas paredes é a reta que liga os dois cantos (interseções das faces), o que vale
+  também para paredes em arco; com espessuras diferentes, a **mais espessa** vai até a
+  face externa da outra e a **mais fina** para na face interna da mais espessa, sem
+  sobreposição. L colinear (faces paralelas): corte perpendicular no nó. No T, a tampa da
+  parede que chega acompanha a face da contínua (em arco, se ela for curva). Se mais de
+  uma junção chega à mesma extremidade, só a primeira (ordem de `GlobalId`) recorta
+  (MVP). Recorte impossível (face que não alcança o corte, cortes que se cruzam): a
+  extremidade fica reta e a relação é mantida.
 - Em X: as paredes não são divididas; no 3D os corpos se sobrepõem; na planta, a de maior
   prioridade é desenhada contínua e a outra é interrompida. *(CG)*
 - **Prioridade por camada** (V1): na junção, a camada de maior `IfcMaterialLayer.Priority`
