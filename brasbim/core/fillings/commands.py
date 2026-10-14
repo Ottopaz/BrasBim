@@ -17,6 +17,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.base import same_value
+from brasbim.core.ops.history import combine
 from brasbim.core.walls import commands as wall_cmd
 from brasbim.core.walls import openings
 
@@ -263,6 +264,27 @@ def edit_door(doc: Document, door, hinges: str | None = None, **changes) -> Tran
         ops.append(Op("door.edit", door.GlobalId, before=before, after=changes))
     label = "Converter e editar porta" if convert else "Editar porta"
     return Transaction(label, ops)
+
+
+def edit_doors(doc: Document, door_list, hinges: str | None = None, **changes) -> Transaction:
+    """Edição em lote (spec/ui 02 §9): o mesmo ``edit_door`` em cada porta, numa
+    transação só (a variante de mão criada para a primeira serve às outras)."""
+    door_list = list(door_list)
+    if len(door_list) == 1:
+        return edit_door(doc, door_list[0], hinges=hinges, **changes)
+    return combine(doc, f"Editar {len(door_list)} portas",
+                   [lambda d=d: edit_door(doc, d, hinges=hinges, **copy.deepcopy(changes))
+                    for d in door_list])
+
+
+def flip_each(doc: Document, door_list, flip) -> Transaction:
+    """``flip_hinges`` ou ``flip_opening`` em cada porta, numa transação só."""
+    door_list = list(door_list)
+    if len(door_list) == 1:
+        return flip(doc, door_list[0])
+    tx = combine(doc, "", [lambda d=d: flip(doc, d) for d in door_list])
+    tx.label = f"{flip(doc, door_list[0]).label} ({len(door_list)} portas)"
+    return tx
 
 
 def flip_hinges(doc: Document, door) -> Transaction:

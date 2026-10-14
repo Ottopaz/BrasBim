@@ -44,7 +44,13 @@ def test_p14_cada_acao_gera_as_operacoes_esperadas(model):
     wall = model.doc.get(tx.ops[0].id)
     edit = cmd.edit_wall(model.doc, wall, fixed_height=3.0, top_mode="fixed")
     assert [op.op for op in edit.ops] == ["wall.edit"]
-    assert edit.ops[0].before == {"fixed_height": 2.8, "top_mode": "storey"}
+    # O pavimento do topo vai junto, para que desfazer volte ao topo no pavimento.
+    assert edit.ops[0].before == {"fixed_height": 2.8, "top_mode": "storey",
+                                  "top_storey": model.superior.GlobalId}
+    assert edit.ops[0].after == {"fixed_height": 3.0, "top_mode": "fixed", "top_storey": None}
+    model.commit(edit)
+    model.history.undo()
+    assert cmd.read_state(model.doc, wall)["top_storey"] == model.superior.GlobalId
     assert [op.op for op in cmd.delete_wall(model.doc, wall).ops] == ["wall.delete"]
 
 

@@ -8,11 +8,15 @@ Os comandos só leem o modelo para montar as operações; quem altera o modelo �
 from __future__ import annotations
 
 import itertools
+import math
 
-from brasbim.core import geom2d, guid
+import ifcopenshell.util.element
+
+from brasbim.core import geom2d, guid, storeys
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
-from brasbim.core.walls import connections, openings, params
+from brasbim.core.ops.history import combine
+from brasbim.core.walls import connections, joins, openings, params, rebuild
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state
 
@@ -99,6 +103,10 @@ def edit_wall(doc: Document, wall, **changes) -> Transaction:
     unknown = set(changes) - set(params.STATE_KEYS)
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
+    if "top_mode" in changes and "top_storey" not in changes:
+        # O pavimento do topo só é gravado no modo "storey"; levá-lo junto permite
+        # desfazer a troca para altura fixa.
+        changes["top_storey"] = state["top_storey"] if changes["top_mode"] == "storey" else None
     before = {k: state[k] for k in changes}
     ops = [Op("wall.edit", wall.GlobalId, before=before, after=dict(changes))]
     if any(k in changes for k in _JOIN_KEYS):
@@ -130,6 +138,181 @@ def split_wall(doc: Document, wall, at) -> Transaction:
     ops += connections.sync_ops(doc, {wall.GlobalId: {**state, "path": first.to_dict()},
                                       new: {**state, "path": second.to_dict()}})
     return Transaction("Dividir parede", ops)
+
+
+def edit_walls(doc: Document, walls, **changes) -> Transaction:
+    """Edição em lote (spec/ui 02 §9): o mesmo ``edit_wall`` em cada parede, numa
+    transação só."""
+    walls = list(walls)
+    if len(walls) == 1:
+        return edit_wall(doc, walls[0], **changes)
+    return combine(doc, f"Editar {len(walls)} paredes",
+                   [lambda w=w: edit_wall(doc, w, **dict(changes)) for w in walls])
+
+
+# --- alças (spec/ui 02 §4) -------------------------------------------------------------
+
+
+def _paths_of_storey(doc: Document, storey_id: str) -> dict[str, geom2d.Path]:
+    out = {}
+    storey = doc.get(storey_id, "IfcBuildingStorey")
+    for wall in ifcopenshell.util.element.get_contained(storey):
+        if wall.is_a("IfcWall"):
+            try:
+                out[wall.GlobalId] = geom2d.path_from_dict(read_state(doc, wall)["path"])
+            except (OpError, ValueError):
+                continue
+    return out
+
+
+def _ends_at(paths: dict[str, geom2d.Path], point, exclude: str) -> list[tuple[str, str]]:
+    """(GlobalId, extremidade) das paredes com uma extremidade em ``point``."""
+    return [(gid, which) for gid, path in sorted(paths.items()) if gid != exclude
+            for which, q in (("start", path.start), ("end", path.end))
+            if math.dist(q, point) <= joins.TOL]
+
+
+def _on_segment(p, a, b) -> bool:
+    """``p`` sobre o segmento ``a``–``b``, longe das extremidades."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length2 = dx * dx + dy * dy
+    t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2
+    foot = (a[0] + t * dx, a[1] + t * dy)
+    margin = joins.TOL / math.sqrt(length2)
+    return margin < t < 1 - margin and math.dist(p, foot) <= joins.TOL
+
+
+def _reshape(doc: Document, label: str, paths: dict[str, geom2d.Path]) -> Transaction:
+    """Troca o caminho das paredes. As aberturas não saem do lugar quando o início da
+    parede se move (a distância ao início é corrigida); abertura que deixaria de caber
+    recusa a ação (spec/ui 02 §4.1)."""
+    changed, wall_ops, opening_ops = {}, [], []
+    for gid, new in paths.items():
+        wall = doc.get(gid, "IfcWall")
+        state = read_state(doc, wall)
+        old = geom2d.path_from_dict(state["path"])
+        future = {**state, "path": new.to_dict()}
+        band, height = rebuild.band(doc, future), rebuild.height(doc, future)
+        keep_place = (isinstance(old, geom2d.LinePath) and isinstance(new, geom2d.LinePath)
+                      and math.dist(old.start, new.start) > 1e-9)
+        for opening in openings.of_wall(wall):
+            o = openings.read_state(opening)
+            distance = o["distance"]
+            if keep_place:
+                p = geom2d.frame(old).to_global((distance, 0.0))
+                distance = geom2d.frame(new).to_local(p)[0]
+            found = openings.problems({**o, "distance": distance}, band, height)
+            if found:
+                raise OpError(f"a abertura {opening.GlobalId} não caberia na parede "
+                              f"{gid}: {'; '.join(found)}")
+            if abs(distance - o["distance"]) > 1e-9:
+                opening_ops.append(Op("opening.edit", opening.GlobalId,
+                                      before={"distance": o["distance"]},
+                                      after={"distance": distance}))
+        wall_ops.append(Op("wall.edit", gid, before={"path": state["path"]},
+                           after={"path": new.to_dict()}))
+        changed[gid] = future
+    return Transaction(label, wall_ops + opening_ops + connections.sync_ops(doc, changed))
+
+
+def _set_end(paths: dict, new: dict, gid: str, which: str, point) -> None:
+    current = new.get(gid, paths[gid])
+    point = (float(point[0]), float(point[1]))
+    start, end = (point, current.end) if which == "start" else (current.start, point)
+    try:
+        new[gid] = geom2d.with_ends(current, start, end)
+    except ValueError as e:
+        raise OpError(f"parede {gid}: {e}") from e
+
+
+def move_wall_end(doc: Document, wall, end: str, point, carry: bool = True) -> Transaction:
+    """Alça de extremidade (spec/ui 02 §4.1): move o início (``end="start"``) ou o fim
+    da parede para ``point``. Com ``carry``, as paredes com extremidade no mesmo ponto
+    vão junto (a junção L se mantém)."""
+    if end not in ("start", "end"):
+        raise OpError(f"extremidade inválida: {end!r}")
+    wall = doc.get(_gid(wall), "IfcWall")
+    state = read_state(doc, wall)
+    paths = _paths_of_storey(doc, state["storey"])
+    path = paths[wall.GlobalId]
+    node = path.start if end == "start" else path.end
+    new: dict[str, geom2d.Path] = {}
+    _set_end(paths, new, wall.GlobalId, end, point)
+    if carry:
+        for gid, which in _ends_at(paths, node, wall.GlobalId):
+            _set_end(paths, new, gid, which, point)
+    return _reshape(doc, "Mover extremidade de parede", new)
+
+
+def _line(path: geom2d.LinePath) -> geom2d.StraightLine:
+    return geom2d.line_through(path.start, path.end)
+
+
+def _crossing(path, line: geom2d.StraightLine, fallback):
+    """Cruzamento da reta de ``path`` com ``line``; ``fallback`` se ``path`` for arco ou
+    paralela."""
+    if not isinstance(path, geom2d.LinePath):
+        return fallback
+    found = geom2d.intersect(_line(path), line)
+    return found[0] if found else fallback
+
+
+def offset_wall(doc: Document, wall, distance: float, carry: bool = True) -> Transaction:
+    """Alça de meio da parede reta (spec/ui 02 §4.2): desloca a parede ``distance`` para
+    a esquerda (negativo: direita), paralela a si mesma. Com ``carry``, as vizinhas em L
+    e em T esticam ou encurtam pela própria direção até a nova linha."""
+    wall = doc.get(_gid(wall), "IfcWall")
+    state = read_state(doc, wall)
+    paths = _paths_of_storey(doc, state["storey"])
+    path = paths[wall.GlobalId]
+    if not isinstance(path, geom2d.LinePath):
+        raise OpError("só a parede reta se desloca pela alça do meio")
+    n = geom2d.frame(path).vector_to_global((0.0, 1.0))
+    shift = geom2d.translation((n[0] * distance, n[1] * distance))
+    if not carry:
+        return _reshape(doc, "Deslocar parede", {wall.GlobalId: geom2d.mapped(path, shift)})
+    line = geom2d.StraightLine(shift(path.start), _line(path).direction)
+    new: dict[str, geom2d.Path] = {}
+    ends = {}
+    for which, node in (("start", path.start), ("end", path.end)):
+        corner = None
+        for gid, other_end in _ends_at(paths, node, wall.GlobalId):  # vizinhas em L
+            q = _crossing(paths[gid], line, None)
+            _set_end(paths, new, gid, other_end, q or shift(node))
+            corner = corner or q
+        if corner is None:  # esta parede chega em T numa parede reta?
+            for gid, other in sorted(paths.items()):
+                if (gid != wall.GlobalId and isinstance(other, geom2d.LinePath)
+                        and _on_segment(node, other.start, other.end)):
+                    corner = _crossing(other, line, None)
+                    break
+        ends[which] = corner or shift(node)
+    for gid, other in sorted(paths.items()):  # vizinhas que chegam em T nesta parede
+        if gid == wall.GlobalId or gid in new:
+            continue
+        for which, q in (("start", other.start), ("end", other.end)):
+            if _on_segment(q, path.start, path.end):
+                _set_end(paths, new, gid, which, _crossing(other, line, shift(q)))
+    _set_end(paths, new, wall.GlobalId, "start", ends["start"])
+    _set_end(paths, new, wall.GlobalId, "end", ends["end"])
+    for gid, p in new.items():
+        old = paths[gid]
+        if isinstance(old, geom2d.LinePath) and math.cos(p.start_angle - old.start_angle) < 0:
+            raise OpError(f"a parede {gid} ficaria invertida")
+    return _reshape(doc, "Deslocar parede", new)
+
+
+def bend_arc_wall(doc: Document, wall, through) -> Transaction:
+    """Alça de meio da parede em arco (spec/ui 02 §4.3): o arco passa por ``through``."""
+    wall = doc.get(_gid(wall), "IfcWall")
+    path = geom2d.path_from_dict(read_state(doc, wall)["path"])
+    if not isinstance(path, geom2d.ArcPath):
+        raise OpError("só a parede em arco muda de curvatura")
+    try:
+        new = geom2d.arc_through(path.start, tuple(through), path.end)
+    except ValueError as e:
+        raise OpError(f"o ponto não forma um arco: {e}") from e
+    return _reshape(doc, "Curvar parede", {wall.GlobalId: new})
 
 
 def delete_wall(doc: Document, wall) -> Transaction:
@@ -237,6 +420,17 @@ def edit_wall_type(doc: Document, wall_type, **changes) -> Transaction:
     )
 
 
+def delete_wall_type(doc: Document, wall_type) -> Transaction:
+    """Exclui um tipo de parede sem uso (spec/ui 02 §8)."""
+    wall_type = doc.get(_gid(wall_type), "IfcWallType")
+    used = ifcopenshell.util.element.get_types(wall_type)
+    if used:
+        raise OpError(f"o tipo {wall_type.Name} é usado por {len(used)} parede(s)")
+    return Transaction("Excluir tipo de parede",
+                       [Op("wall_type.delete", wall_type.GlobalId,
+                           data=wall_types.read(wall_type))])
+
+
 def create_storey(doc: Document, name: str, elevation: float) -> Transaction:
     data = {"name": name, "elevation": float(elevation)}
     return Transaction("Criar pavimento", [Op("storey.create", guid.new(), data=data)])
@@ -249,3 +443,27 @@ def edit_storey(doc: Document, storey, **changes) -> Transaction:
     return Transaction(
         "Editar pavimento", [Op("storey.edit", storey.GlobalId, before=before, after=changes)]
     )
+
+
+def delete_storey(doc: Document, storey) -> Transaction:
+    """Exclui um pavimento vazio (spec/ui 02 §7). Paredes com topo nele passam a altura
+    fixa com a altura atual (parede §5.1), na mesma transação."""
+    storey = doc.get(_gid(storey), "IfcBuildingStorey")
+    if len(doc.storeys()) <= 1:
+        raise OpError("o projeto precisa de pelo menos um pavimento")
+    contained = ifcopenshell.util.element.get_contained(storey)
+    if contained:
+        raise OpError(f"o pavimento {storey.Name} contém {len(contained)} elemento(s)")
+    ops = []
+    for wall in sorted(doc.ifc.by_type("IfcWall"), key=lambda w: w.GlobalId):
+        try:
+            state = read_state(doc, wall)
+        except OpError:
+            continue
+        if state["top_mode"] == "storey" and state["top_storey"] == storey.GlobalId:
+            keys = ("top_mode", "top_storey", "fixed_height")
+            ops.append(Op("wall.edit", wall.GlobalId, before={k: state[k] for k in keys},
+                          after={"top_mode": "fixed", "top_storey": None,
+                                 "fixed_height": rebuild.height(doc, state)}))
+    ops.append(Op("storey.delete", storey.GlobalId, data=storeys.read(storey)))
+    return Transaction("Excluir pavimento", ops)

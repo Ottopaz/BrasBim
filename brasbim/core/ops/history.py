@@ -53,6 +53,28 @@ def run(doc: Document, tx: Transaction) -> set[str]:
     return changed
 
 
+def combine(doc: Document, label: str, builders) -> Transaction:
+    """Junta várias ações numa transação só (ex.: edição em lote).
+
+    Cada ``builder`` (função sem argumentos que devolve uma ``Transaction``) é montado
+    sobre o resultado dos anteriores, aplicados provisoriamente; no fim tudo é desfeito e
+    o modelo volta ao estado inicial. Assim uma ação vê o que a anterior criou (ex.: a
+    variante de mão de um tipo de porta) e não a cria de novo.
+    """
+    applied: list[Transaction] = []
+    ops: list[Op] = []
+    try:
+        for build in builders:
+            tx = build()
+            run(doc, tx)
+            applied.append(tx)
+            ops += tx.ops
+    finally:
+        for tx in reversed(applied):
+            run(doc, tx.inverse())
+    return Transaction(label, ops)
+
+
 class History:
     """Pilhas de desfazer/refazer e diário de tudo o que foi aplicado.
 

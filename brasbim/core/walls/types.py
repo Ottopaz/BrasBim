@@ -2,8 +2,8 @@
 """Tipos de parede (``IfcWallType`` + ``IfcMaterialLayerSet``), spec §2.1 e §2.3.
 
 Operações: ``wall_type.create`` / ``wall_type.delete`` (data: estado completo) e
-``wall_type.edit`` (before/after: name, layers). ``wall_type.create`` é provisória
-(RF-TIP-01 ainda sem spec).
+``wall_type.edit`` (before/after: name, predefined_type, object_type, layers).
+``wall_type.create`` é provisória (RF-TIP-01 ainda sem spec).
 
 Estado de um tipo::
 
@@ -136,6 +136,8 @@ def _edit(doc: Document, op: Op) -> set[str]:
     state.update(op.after or {})
     _validate(state)
     wall_type.Name = state["name"]
+    wall_type.PredefinedType = state["predefined_type"]
+    wall_type.ElementType = state.get("object_type")
     lset = layer_set(wall_type)
     lset.LayerSetName = state["name"]
     if "layers" in (op.after or {}):

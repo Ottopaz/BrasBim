@@ -77,6 +77,54 @@ class Plan:
         return min(near)[1] if near else None
 
 
+    def in_rect(self, a: Point, b: Point, crossing: bool = False) -> list[str]:
+        """Elementos do pavimento na janela de cantos ``a`` e ``b`` (spec/ui 02 §3.1):
+        inteiramente dentro, ou que tocam a janela (``crossing``)."""
+        x0, x1 = sorted((a[0], b[0]))
+        y0, y1 = sorted((a[1], b[1]))
+        rect = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+        def inside(q):
+            return x0 <= q[0] <= x1 and y0 <= q[1] <= y1
+
+        out = []
+        groups = {**self.owners("wall"), **self.owners("door")}
+        for owner, shapes in sorted(groups.items()):
+            shapes = [s for s in shapes if s.role != "below"]
+            if not shapes:
+                continue
+            if not crossing:
+                if all(inside(q) for s in shapes for q in s.points):
+                    out.append(owner)
+            elif any(_touches(s, rect, inside) for s in shapes):
+                out.append(owner)
+        return out
+
+
+def _segments(points, closed: bool):
+    n = len(points)
+    return [(points[i - 1], points[i]) for i in range(0 if closed else 1, n)]
+
+
+def _cross(p, q, r, s) -> bool:
+    def orient(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    d1, d2 = orient(r, s, p), orient(r, s, q)
+    d3, d4 = orient(p, q, r), orient(p, q, s)
+    return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)
+
+
+def _touches(shape: Shape, rect, inside) -> bool:
+    if any(inside(q) for q in shape.points):
+        return True
+    if shape.closed and _inside(shape.points, rect[0]):
+        return True
+    edges = _segments(rect, True)
+    return any(_cross(p, q, r, s) for p, q in _segments(shape.points, shape.closed)
+               for r, s in edges)
+
+
 def _inside(points, p) -> bool:
     inside = False
     n = len(points)

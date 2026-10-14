@@ -524,3 +524,42 @@ def arc_through(start: Point, through: Point, end: Point) -> ArcPath:
     ccw = side_through < 0
     large = abs(side_center) > TOL and (side_center > 0) == (side_through > 0)
     return ArcPath(start, end, radius, ccw, large)
+
+
+# --- transformações e edição de caminhos -----------------------------------------------
+
+
+def path_midpoint(path: Path) -> Point:
+    """Ponto do meio do caminho (coordenadas do pavimento)."""
+    return frame(path).to_global(path.point(0.0, path.t_end / 2))
+
+
+def with_ends(path: Path, start: Point, end: Point) -> Path:
+    """O caminho com extremidades novas; o arco continua passando pelo seu ponto médio."""
+    if isinstance(path, LinePath):
+        return LinePath(tuple(start), tuple(end))
+    return arc_through(tuple(start), path_midpoint(path), tuple(end))
+
+
+def mapped(path: Path, fn) -> Path:
+    """Caminho levado por ``fn``, um movimento rígido (translação ou rotação) que
+    preserva o sentido de giro dos arcos."""
+    start, end = fn(path.start), fn(path.end)
+    if isinstance(path, LinePath):
+        return LinePath(start, end)
+    return ArcPath(start, end, path.radius, path.ccw, path.large)
+
+
+def translation(v: Point):
+    return lambda p: (p[0] + v[0], p[1] + v[1])
+
+
+def rotation(center: Point, angle: float):
+    """Rotação de ``angle`` radianos (anti-horário) em torno de ``center``."""
+    c, s = math.cos(angle), math.sin(angle)
+
+    def fn(p: Point) -> Point:
+        dx, dy = p[0] - center[0], p[1] - center[1]
+        return (center[0] + c * dx - s * dy, center[1] + s * dx + c * dy)
+
+    return fn
