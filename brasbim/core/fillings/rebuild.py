@@ -25,8 +25,6 @@ from brasbim.core.walls import openings
 
 log = logging.getLogger(__name__)
 
-QTO = "Qto_DoorBaseQuantities"
-
 
 # --- representações ------------------------------------------------------------
 
@@ -117,7 +115,7 @@ def rebuild_door(doc: Document, door) -> None:
     door.OverallWidth, door.OverallHeight = w, h
     _set_profile(doc, door, w, h)
     _set_body(doc, door, geometry.door_boxes(w, h, depth, faces, lining, tstate["panels"]))
-    props.write_qto(doc, door, QTO, {
+    props.write_qto(doc, door, params.QTO, {
         "Width": w, "Height": h, "Area": w * h, "Perimeter": 2 * (w + h)})
 
 

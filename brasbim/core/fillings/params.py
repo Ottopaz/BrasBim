@@ -13,6 +13,7 @@ ALIGNS = ("left_face", "axis", "right_face")
 # Psets próprios (porta §3.4).
 PSET = "BrasBim_Esquadria"
 TYPE_PSET = "BrasBim_EsquadriaTipo"
+QTO = "Qto_DoorBaseQuantities"
 _PSET_ALIGN = {"left_face": "FACE_ESQUERDA", "axis": "EIXO", "right_face": "FACE_DIREITA"}
 
 DOOR_PREDEFINED_TYPES = ("DOOR",)
@@ -56,6 +57,43 @@ def default_panels(operation_type: str, depth: float = DEFAULT_PANEL_DEPTH) -> l
     layout = DOOR_OPERATIONS[operation_type]
     return [{"operation": op, "position": pos, "width": 1 / len(layout), "depth": depth}
             for op, pos in layout]
+
+
+# Mão (porta §2.2): lado das dobradiças de quem empurra a folha. As variantes de um tipo
+# se distinguem pelo sufixo do nome.
+HINGES = ("left", "right")
+HAND_SUFFIX = {"left": " (E)", "right": " (D)"}
+_HAND_OF_SUFFIX = {"_LEFT": "left", "_RIGHT": "right"}
+
+
+def hand_of(operation_type: str) -> str | None:
+    """``left``/``right`` para operações com mão; ``None`` para as simétricas."""
+    for suffix, hand in _HAND_OF_SUFFIX.items():
+        if operation_type.endswith(suffix):
+            return hand
+    return None
+
+
+def mirror_operation(operation_type: str) -> str:
+    hand = hand_of(operation_type)
+    if hand is None:
+        return operation_type
+    stem = operation_type[: -len("_LEFT" if hand == "left" else "_RIGHT")]
+    return stem + ("_RIGHT" if hand == "left" else "_LEFT")
+
+
+def mirror_panels(panels: list[dict]) -> list[dict]:
+    """Folhas na ordem e posição da mão oposta (a esquerda passa a ser a direita)."""
+    swap = {"LEFT": "RIGHT", "RIGHT": "LEFT", "MIDDLE": "MIDDLE"}
+    return [{**p, "position": swap[p["position"]]} for p in reversed(panels)]
+
+
+def base_name(name: str) -> str:
+    """Nome do tipo sem o sufixo de mão; é o código usado na etiqueta (``Reference``)."""
+    for suffix in HAND_SUFFIX.values():
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 def align_to_pset(align: str) -> str:

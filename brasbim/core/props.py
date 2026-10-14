@@ -33,8 +33,23 @@ def write_pset(doc, product, name: str, values: dict) -> None:
     """Grava ``values`` no Pset e apaga as propriedades que não estão em ``values``."""
     pset = ensure_pset(doc, product, name)
     current = ifcopenshell.util.element.get_pset(product, name, should_inherit=False) or {}
-    stale = {k: None for k in current if k not in ("id", *values)}
+    # Apagar: None, ou lista vazia nas enumeradas (o IfcOpenShell recusa None nelas).
+    enumerated = {p.Name for p in pset.HasProperties or []
+                  if p.is_a("IfcPropertyEnumeratedValue")}
+    stale = {k: [] if k in enumerated else None for k in current if k not in ("id", *values)}
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties={**stale, **values})
+    if enumerated & set(stale):  # a lista de valores da propriedade apagada fica solta
+        for e in doc.ifc.by_type("IfcPropertyEnumeration"):
+            if not doc.ifc.get_total_inverses(e):
+                doc.ifc.remove(e)
+
+
+def remove_pset(doc, product, name: str) -> None:
+    """Apaga o Pset (ou Qto) ``name`` do próprio produto, se existir."""
+    found = ifcopenshell.util.element.get_pset(product, name, should_inherit=False)
+    if found:
+        ifcopenshell.api.pset.remove_pset(doc.ifc, product=product,
+                                          pset=doc.ifc.by_id(found["id"]))
 
 
 def write_qto(doc, product, name: str, quantities: dict) -> None:

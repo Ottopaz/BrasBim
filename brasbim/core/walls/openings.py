@@ -126,6 +126,9 @@ def check_fits(doc: Document, wall, state: dict) -> None:
     """Rejeita abertura que não cabe na parede. Usada pelos comandos: ao aplicar uma
     operação (inclusive desfazer), abertura fora dos limites só gera aviso (spec §6.3)."""
     band, wall_height = wall_info(doc, wall)
+    if not isinstance(band.path, geom2d.LinePath):
+        raise OpError("aberturas, portas e janelas em parede em arco ainda não são "
+                      "suportadas (V1)")
     found = problems(state, band, wall_height)
     if found:
         raise OpError(f"abertura não cabe na parede: {'; '.join(found)}")

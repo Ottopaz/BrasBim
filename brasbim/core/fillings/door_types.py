@@ -51,6 +51,18 @@ def default_state(operation_type: str = "SINGLE_SWING_LEFT") -> dict:
     }
 
 
+def mirrored(state: dict, variant: str | None) -> dict:
+    """Estado da variante com a outra mão (porta §2.2): mesma porta, operação e folhas
+    espelhadas, nome com o sufixo da mão nova; ``variant`` aponta para o tipo original."""
+    operation = params.mirror_operation(state["operation_type"])
+    hand = params.hand_of(operation)
+    if hand is None:
+        raise OpError(f"a operação {state['operation_type']} não tem mão (dobradiças)")
+    return {**state, "name": params.base_name(state["name"]) + params.HAND_SUFFIX[hand],
+            "operation_type": operation, "panels": params.mirror_panels(state["panels"]),
+            "variant": variant}
+
+
 # --- leitura -----------------------------------------------------------------
 
 

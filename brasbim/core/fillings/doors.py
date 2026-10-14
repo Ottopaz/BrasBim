@@ -13,27 +13,38 @@ Estado de uma porta::
 posicionamento (+x da parede = ``left``). ``align``/``offset``: Pset ``BrasBim_Esquadria``.
 ``common``: propriedades de ``Pset_DoorCommon`` diferentes do padrão.
 
+Porta de outra origem (sem ``BrasBim_Esquadria``, §6.6): o corpo não é regenerado e
+``common`` traz o Pset como está. ``foreign`` guarda o que o BrasBim não sabe refazer
+(representações, posicionamento, dimensões, enumerações da ocorrência, quantidades e o
+GlobalId da relação com o tipo), para que a conversão em porta paramétrica
+(``door.edit`` com ``foreign`` → ``None``) possa ser desfeita sem perda. Nas portas do
+BrasBim, ``foreign`` é ``None``.
+
 Largura, altura, distância e base são da abertura (``opening.*``). Posição, dimensões
 gravadas na porta, contenção, corpo e quantidades são derivados (``rebuild``).
 """
 
 from __future__ import annotations
 
+import ifcopenshell.api.pset
 import ifcopenshell.api.root
 import ifcopenshell.api.type
 import ifcopenshell.util.element
 
-from brasbim.core import guid, props
+from brasbim.core import fragment, guid, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import params
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
 COMMON_PSET = "Pset_DoorCommon"
-STATE_KEYS = ("name", "type", "opens_to", "align", "offset", "common")
+STATE_KEYS = ("name", "type", "opens_to", "align", "offset", "common", "foreign")
+# Quantidades que o BrasBim grava (porta §8); as demais, de outra origem, ficam intactas.
+_QUANTITIES = ("Width", "Height", "Area", "Perimeter")
 
 
 def default_state() -> dict:
-    return {"name": None, "opens_to": "left", "align": "axis", "offset": 0.0, "common": {}}
+    return {"name": None, "opens_to": "left", "align": "axis", "offset": 0.0, "common": {},
+            "foreign": None}
 
 
 # --- leitura -----------------------------------------------------------------
@@ -44,17 +55,40 @@ def is_parametric(door) -> bool:
     return bool(ifcopenshell.util.element.get_pset(door, params.PSET, should_inherit=False))
 
 
-def _common_defaults(door_type) -> dict:
-    return {"Reference": door_type.Name, "Status": "NEW", "IsExternal": False}
+def common_defaults(type_name: str) -> dict:
+    """Padrão de ``Pset_DoorCommon``. ``Reference`` é o código do tipo, igual nas duas
+    variantes de mão (porta §3.3)."""
+    return {"Reference": params.base_name(type_name), "Status": "NEW",
+            "IsExternal": False}
 
 
 def _read_common(door, door_type) -> dict:
+    """``Pset_DoorCommon`` sem o que é padrão do tipo (sem tipo: o Pset inteiro)."""
     values = ifcopenshell.util.element.get_pset(door, COMMON_PSET, should_inherit=False) or {}
     values = {k: v for k, v in values.items() if k != "id"}
     if isinstance(values.get("Status"), (list, tuple)):
         values["Status"] = values["Status"][0] if values["Status"] else None
-    defaults = _common_defaults(door_type) if door_type else {}
+    defaults = common_defaults(door_type.Name) if door_type else {}
     return {k: v for k, v in values.items() if defaults.get(k) != v}
+
+
+def _read_foreign(door) -> dict:
+    ifc = door.file
+    placement = door.ObjectPlacement
+    rel = next(iter(door.IsTypedBy), None)
+    qto = ifcopenshell.util.element.get_pset(door, params.QTO, should_inherit=False)
+    return {
+        "shape": fragment.dump(ifc, door.Representation),
+        "placement": None if placement is None else [
+            fragment.dump(ifc, placement.PlacementRelTo),
+            fragment.dump(ifc, placement.RelativePlacement)],
+        "overall": [door.OverallWidth, door.OverallHeight],
+        "predefined_type": door.PredefinedType,
+        "operation_type": door.OperationType,
+        "object_type": door.ObjectType,
+        "type_rel": rel.GlobalId if rel else None,
+        "quantities": None if not qto else {k: qto.get(k) for k in _QUANTITIES},
+    }
 
 
 def read_state(door) -> dict:
@@ -69,7 +103,10 @@ def read_state(door) -> dict:
     if values:
         state["align"] = params.align_from_pset(values["Alinhamento"])
         state["offset"] = float(values["Deslocamento"])
-    state["common"] = _read_common(door, door_type)
+        state["common"] = _read_common(door, door_type)
+    else:
+        state["common"] = _read_common(door, None)
+        state["foreign"] = _read_foreign(door)
     return state
 
 
@@ -102,9 +139,74 @@ def _orient(doc: Document, door, opens_to: str) -> None:
     ifcopenshell.util.element.remove_deep2(ifc, old)
 
 
+def _clear_shape(doc: Document, door) -> None:
+    shape = door.Representation
+    if shape is not None:
+        door.Representation = None
+        fragment.remove(doc.ifc, shape)
+
+
+def _write_common(doc: Document, door, values: dict) -> None:
+    values = dict(values)
+    if values.get("Status") is not None:
+        values["Status"] = [values["Status"]]
+    if values:
+        props.write_pset(doc, door, COMMON_PSET, values)
+    else:
+        props.remove_pset(doc, door, COMMON_PSET)
+
+
+def _restore_foreign(doc: Document, door, foreign: dict) -> None:
+    """Desfaz a conversão: volta corpo, posição, dimensões e quantidades de origem."""
+    ifc = doc.ifc
+    props.remove_pset(doc, door, params.PSET)
+    _clear_shape(doc, door)
+    door.Representation = fragment.load(ifc, foreign["shape"])
+    if foreign["placement"] is not None:
+        placement = door.ObjectPlacement
+        old = placement.RelativePlacement
+        placement.PlacementRelTo = fragment.load(ifc, foreign["placement"][0])
+        placement.RelativePlacement = fragment.load(ifc, foreign["placement"][1])
+        ifcopenshell.util.element.remove_deep2(ifc, old)
+    door.OverallWidth, door.OverallHeight = foreign["overall"]
+    if foreign["quantities"] is None:
+        props.remove_pset(doc, door, params.QTO)
+    else:
+        found = ifcopenshell.util.element.get_pset(door, params.QTO, should_inherit=False)
+        ifcopenshell.api.pset.edit_qto(ifc, qto=ifc.by_id(found["id"]),
+                                       properties=foreign["quantities"])
+
+
+def _write_foreign(doc: Document, door, state: dict) -> None:
+    """Porta de outra origem: só nome, tipo e Psets; o corpo fica o gravado (§6.6)."""
+    foreign = state["foreign"]
+    if is_parametric(door):
+        _restore_foreign(doc, door, foreign)
+    door_type = doc.get(state["type"], "IfcDoorType") if state["type"] else None
+    if ifcopenshell.util.element.get_type(door) != door_type:
+        if door_type is None:
+            ifcopenshell.api.type.unassign_type(doc.ifc, related_objects=[door])
+        else:
+            rel = ifcopenshell.api.type.assign_type(
+                doc.ifc, related_objects=[door], relating_type=door_type,
+                should_map_representations=False)
+            if list(rel.RelatedObjects) == [door] and foreign["type_rel"]:
+                rel.GlobalId = foreign["type_rel"]
+    door.Name = state["name"]
+    door.PredefinedType = foreign["predefined_type"]
+    door.OperationType = foreign["operation_type"]
+    door.ObjectType = foreign["object_type"]
+    _write_common(doc, door, state.get("common") or {})
+
+
 def write_state(doc: Document, door, state: dict) -> None:
     _validate(state)
+    if state.get("foreign") is not None:
+        _write_foreign(doc, door, state)
+        return
     door_type = doc.get(state["type"], "IfcDoorType")
+    if not is_parametric(door):
+        _clear_shape(doc, door)  # conversão de porta de outra origem: o corpo será gerado
     door.Name = state["name"]
     door.PredefinedType = None
     door.OperationType = None
@@ -117,10 +219,7 @@ def write_state(doc: Document, door, state: dict) -> None:
         "Alinhamento": doc.ifc.createIfcLabel(params.align_to_pset(state["align"])),
         "Deslocamento": doc.ifc.createIfcLengthMeasure(float(state["offset"])),
     })
-    common = {**_common_defaults(door_type), **(state.get("common") or {})}
-    if common.get("Status") is not None:
-        common["Status"] = [common["Status"]]
-    props.write_pset(doc, door, COMMON_PSET, common)
+    _write_common(doc, door, {**common_defaults(door_type.Name), **(state.get("common") or {})})
 
 
 # --- operações ---------------------------------------------------------------
@@ -129,7 +228,9 @@ def write_state(doc: Document, door, state: dict) -> None:
 def _create(doc: Document, op: Op) -> set[str]:
     if doc.find(op.id) is not None:
         raise OpError(f"GlobalId {op.id} já existe")
-    door = ifcopenshell.api.root.create_entity(doc.ifc, ifc_class="IfcDoor")
+    if op.data.get("foreign") is not None:
+        raise OpError("door.create não recria porta de outra origem")
+    door =ifcopenshell.api.root.create_entity(doc.ifc, ifc_class="IfcDoor")
     door.GlobalId = op.id
     try:
         write_state(doc, door, {**default_state(), **op.data})
