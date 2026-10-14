@@ -3,8 +3,8 @@ documento: Interface — planta por nível de detalhe, estilos de material e cor
 requisito: RF-DOC-01, RF-DOC-02, RF-DOC-08, RF-TIP-03, RF-ELE-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: —
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14, pontos (a)–(h) aceitos)
 ---
 
 # Planta por camadas e estilos de material
