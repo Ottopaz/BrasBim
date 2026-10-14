@@ -126,7 +126,7 @@ def _locate(path: Path, p: Point) -> tuple[float, float]:
 
 def _interior(path: Path, p: Point) -> bool:
     s, dist = _locate(path, p)
-    return dist <= TOL and TOL < s < path.length - TOL
+    return dist <= TOL < s < path.length - TOL
 
 
 def _endpoint(path: Path, end: str) -> Point:

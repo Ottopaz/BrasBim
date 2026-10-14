@@ -121,10 +121,10 @@ def problems(state: dict, band, wall_height: float) -> list[str]:
     return out
 
 
-def _check_fits(doc: Document, wall, state: dict) -> None:
+def check_fits(doc: Document, wall, state: dict) -> None:
+    """Rejeita abertura que não cabe na parede. Usada pelos comandos: ao aplicar uma
+    operação (inclusive desfazer), abertura fora dos limites só gera aviso (spec §6.3)."""
     band, wall_height = _wall_info(doc, wall)
-    if not isinstance(band.path, geom2d.LinePath):
-        raise OpError("abertura em parede curva ainda não é suportada (V1)")
     found = problems(state, band, wall_height)
     if found:
         raise OpError(f"abertura não cabe na parede: {'; '.join(found)}")
@@ -194,11 +194,13 @@ def _set_host(doc: Document, opening, wall) -> None:
 def write_state(doc: Document, opening, state: dict) -> None:
     _validate(state)
     wall = doc.get(state["wall"], "IfcWall")
-    _check_fits(doc, wall, state)
+    band = _wall_info(doc, wall)[0]
+    if not isinstance(band.path, geom2d.LinePath):
+        raise OpError("abertura em parede curva ainda não é suportada (V1)")
     opening.PredefinedType = state["kind"]
     _set_host(doc, opening, wall)
     _place(doc, opening, wall, state)
-    _write_body(doc, opening, state, _wall_info(doc, wall)[0])
+    _write_body(doc, opening, state, band)
 
 
 def refresh(doc: Document, wall, band, wall_height: float) -> None:

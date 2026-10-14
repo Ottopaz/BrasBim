@@ -7,6 +7,8 @@ Os comandos só leem o modelo para montar as operações; quem altera o modelo �
 
 from __future__ import annotations
 
+import itertools
+
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
@@ -72,7 +74,7 @@ def create_chain(doc: Document, wall_type, storey, points, closed: bool = False,
         points.append(points[0])
     if len(points) < 2:
         raise OpError("a cadeia precisa de pelo menos 2 pontos")
-    paths = [geom2d.LinePath(a, b) for a, b in zip(points, points[1:])]
+    paths = [geom2d.LinePath(a, b) for a, b in itertools.pairwise(points)]
     return _create_walls(doc, "Criar cadeia de paredes", wall_type, storey, paths, options)
 
 
@@ -81,7 +83,7 @@ def create_rectangle(doc: Document, wall_type, storey, corner, opposite, **optio
     referência na face esquerda (padrão), as paredes ficam dentro do retângulo."""
     (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
     points = [(x0, y0), (x0, y1), (x1, y1), (x1, y0), (x0, y0)]
-    paths = [geom2d.LinePath(a, b) for a, b in zip(points, points[1:])]
+    paths = [geom2d.LinePath(a, b) for a, b in itertools.pairwise(points)]
     return _create_walls(doc, "Criar retângulo de paredes", wall_type, storey, paths, options)
 
 
@@ -102,6 +104,32 @@ def edit_wall(doc: Document, wall, **changes) -> Transaction:
     if any(k in changes for k in _JOIN_KEYS):
         ops += connections.sync_ops(doc, {wall.GlobalId: {**state, **changes}})
     return Transaction("Editar parede", ops)
+
+
+def split_wall(doc: Document, wall, at) -> Transaction:
+    """Divide a parede no ponto ``at`` (spec §5.1): a segunda parte é uma parede nova,
+    ligada à primeira por junção L colinear. Aberturas depois do ponto passam para a
+    nova parede; abertura cortada pelo ponto impede a divisão."""
+    wall = doc.get(_gid(wall), "IfcWall")
+    state = read_state(doc, wall)
+    try:
+        first, second, s = geom2d.split(geom2d.path_from_dict(state["path"]), tuple(at))
+    except ValueError as e:
+        raise OpError(str(e)) from e
+    new = guid.new()
+    ops = [Op("wall.split", wall.GlobalId,
+              data={"path": state["path"], "at": [float(at[0]), float(at[1])], "new": new})]
+    for opening in openings.of_wall(wall):
+        o = openings.read_state(opening)
+        if o["distance"] < s < o["distance"] + o["width"]:
+            raise OpError(f"o ponto de divisão corta a abertura {opening.GlobalId}")
+        if o["distance"] >= s:
+            ops.append(Op("opening.edit", opening.GlobalId,
+                          before={"wall": wall.GlobalId, "distance": o["distance"]},
+                          after={"wall": new, "distance": o["distance"] - s}))
+    ops += connections.sync_ops(doc, {wall.GlobalId: {**state, "path": first.to_dict()},
+                                      new: {**state, "path": second.to_dict()}})
+    return Transaction("Dividir parede", ops)
 
 
 def delete_wall(doc: Document, wall) -> Transaction:
@@ -137,6 +165,7 @@ def create_opening(doc: Document, wall, distance: float, width: float, height: f
         "depth": None if depth is None else float(depth),
         "side": side,
     }
+    openings.check_fits(doc, doc.get(data["wall"]), {**openings.default_state(), **data})
     label = "Criar nicho" if kind == "RECESS" else "Criar abertura"
     return Transaction(label, [Op("opening.create", guid.new(), data=data)])
 
@@ -150,6 +179,8 @@ def edit_opening(doc: Document, opening, **changes) -> Transaction:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     state = openings.read_state(opening)
     before = {k: state[k] for k in changes}
+    after = {**state, **changes}
+    openings.check_fits(doc, doc.get(after["wall"], "IfcWall"), after)
     return Transaction("Editar abertura", [Op("opening.edit", opening.GlobalId, before=before,
                                               after=dict(changes))])
 

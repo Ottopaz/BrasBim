@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Ocorrência de parede (``IfcWall``): estado, leitura/gravação e operações.
 
-Operações (spec §5.2): ``wall.create`` / ``wall.delete`` (data: estado completo) e
-``wall.edit`` (before/after: campos de ``params.STATE_KEYS`` alterados).
+Operações (spec §5.2): ``wall.create`` / ``wall.delete`` (data: estado completo),
+``wall.edit`` (before/after: campos de ``params.STATE_KEYS`` alterados) e ``wall.split``
+(data: ``path`` original, ponto ``at`` e GlobalId ``new`` da segunda parte), cuja inversa
+é ``wall.merge`` (mesmos dados).
 
 O IFC é a fonte da verdade: o estado é lido do modelo (tipo, contenção, posicionamento,
 curva ``Axis``, Pset ``BrasBim_Parede``, ``Pset_WallCommon``) e gravado de volta nele.
@@ -60,10 +62,16 @@ def _read_path(wall) -> dict:
         raise OpError(f"parede {wall.GlobalId} sem representação Axis")
     origin, angle, _ = _frame(wall)
     curve = axis.Items[0]
+    points = None
     if curve.is_a("IfcPolyline"):
-        local_end = curve.Points[-1].Coordinates
-        end = to_storey(origin, angle, local_end)
-        return geom2d.LinePath(origin, end).to_dict()
+        points = [p.Coordinates for p in curve.Points]
+    elif curve.is_a("IfcIndexedPolyCurve") and not curve.Segments:
+        points = curve.Points.CoordList  # IFC de outra origem
+    if points is not None:
+        if len(points) != 2:
+            raise OpError(f"parede {wall.GlobalId}: eixo poligonal com {len(points)} pontos")
+        start, end = (to_storey(origin, angle, p[:2]) for p in points)
+        return geom2d.LinePath(start, end).to_dict()
     if curve.is_a("IfcTrimmedCurve"):
         radius = float(curve.BasisCurve.Radius)
         ccw = bool(curve.SenseAgreement)
@@ -248,5 +256,38 @@ def _edit(doc: Document, op: Op) -> set[str]:
     return {op.id}
 
 
+def _split(doc: Document, op: Op) -> set[str]:
+    wall = doc.get(op.id, "IfcWall")
+    state = read_state(doc, wall)
+    check_before(Op(op.op, op.id, before={"path": op.data["path"]}), state)
+    if doc.find(op.data["new"]) is not None:
+        raise OpError(f"GlobalId {op.data['new']} já existe")
+    try:
+        first, second, _ = geom2d.split(geom2d.path_from_dict(state["path"]),
+                                        tuple(op.data["at"]))
+    except ValueError as e:
+        raise OpError(f"wall.split {op.id}: {e}") from e
+    write_state(doc, wall, {**state, "path": first.to_dict()})
+    _create(doc, Op("wall.create", op.data["new"], data={**state, "path": second.to_dict()}))
+    return {op.id, op.data["new"]}
+
+
+def _merge(doc: Document, op: Op) -> set[str]:
+    wall = doc.get(op.id, "IfcWall")
+    other = doc.get(op.data["new"], "IfcWall")
+    if other.HasOpenings or any(r.is_a("IfcRelConnectsPathElements")
+                                for r in (*other.ConnectedTo, *other.ConnectedFrom)):
+        raise OpError(f"wall.merge: {other.GlobalId} ainda tem aberturas ou junções")
+    remove(doc, other)
+    write_state(doc, wall, {**read_state(doc, wall), "path": op.data["path"]})
+    return {op.id}
+
+
+def _swap_split(name: str):
+    return lambda op: Op(name, op.id, data=dict(op.data))
+
+
 register_inverse_pair("wall.create", _create, "wall.delete", _delete)
 register("wall.edit", _edit, invert_swap)
+register("wall.split", _split, _swap_split("wall.merge"))
+register("wall.merge", _merge, _swap_split("wall.split"))

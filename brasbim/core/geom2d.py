@@ -413,6 +413,27 @@ class ArcPath:
 Path = LinePath | ArcPath
 
 
+def split(path: Path, at: Point) -> tuple[Path, Path, float]:
+    """Divide o caminho no ponto mais próximo de ``at``.
+
+    Devolve as duas partes e a posição do ponto ao longo do caminho (comprimento desde o
+    início). Rejeita ponto a menos de ``MIN_LENGTH`` das extremidades.
+    """
+    f = frame(path)
+    t = path.param(f.to_local(at))
+    if isinstance(path, ArcPath):
+        t %= 2 * math.pi
+    if not (0 < path.arc_length(t) < path.length):
+        raise ValueError("o ponto de divisão fica fora da parede")
+    p = f.to_global(path.point(0.0, t))
+    if isinstance(path, LinePath):
+        return LinePath(path.start, p), LinePath(p, path.end), t
+    rest = path.sweep - t
+    return (ArcPath(path.start, p, path.radius, path.ccw, t > math.pi),
+            ArcPath(p, path.end, path.radius, path.ccw, rest > math.pi),
+            path.arc_length(t))
+
+
 def frame(path: Path) -> Frame:
     """Referencial local do caminho (origem no início, x na tangente inicial)."""
     return Frame(path.start, path.start_angle)

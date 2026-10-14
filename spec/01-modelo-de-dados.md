@@ -48,6 +48,7 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]` | `create` provisória (RF-TIP-01) |
 | `wall_type.edit` | `name`, `layers` | parede §5.2 |
 | `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
+| `wall.split` / `wall.merge` | `path` (caminho original), `at` (ponto), `new` (GlobalId da 2ª parte) | parede §5.1, §5.2; `wall.merge` é só a inversa |
 | `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |
 | `opening.create` / `.delete` / `.edit` | `wall`, `kind` (`OPENING` \| `RECESS`), `distance`, `width`, `height`, `sill`, `depth`, `side` (`left` \| `right`) | parede §5.2, §6.3 |
 | `filling.attach` / `.detach` | `id` = GlobalId do elemento que preenche; `opening` | parede §5.2, §6.3 |
@@ -67,11 +68,17 @@ parede; `depth` e `side` (face de entrada) só valem para nicho. *(decisão do p
 Excluir uma parede gera, na mesma transação e nesta ordem: `filling.detach`,
 `opening.delete`, `path_connection.delete` e `wall.delete` (spec da parede §6.4).
 
+Dividir: `wall.split` encurta a parede até o ponto (projetado no caminho) e cria a 2ª
+parte com o mesmo estado. Os comandos completam a ação na mesma transação: `opening.edit`
+leva as aberturas depois do ponto para a nova parede, e `path_connection.*` refaz as
+junções (inclusive a L colinear entre as duas partes). A inversa `wall.merge` exige que a
+2ª parte já esteja sem aberturas e junções; a ordem invertida da transação garante isso.
+*(decisão do projeto)*
+
 Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam as junções e geram
 estas operações na mesma transação da criação, edição ou exclusão da parede.
 
 ## 5. Pendências
-- `wall.split`: próxima etapa.
 - Excluir os elementos que preenchem as aberturas (portas, janelas) na cascata depende
   das operações desses elementos (RF-ELE-05/06).
 - Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.
