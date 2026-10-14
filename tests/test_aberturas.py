@@ -24,7 +24,7 @@ def _opening(model, wall, *args, **kwargs):
 
 
 def _door(model):
-    # A porta ainda não tem spec (RF-ELE-05); aqui ela é só o elemento que preenche.
+    # Porta "de outra origem" (sem BrasBim_Esquadria): só o elemento que preenche.
     return ifcopenshell.api.root.create_entity(model.doc.ifc, ifc_class="IfcDoor", name="P1")
 
 
@@ -143,7 +143,7 @@ def test_p11_excluir_parede_com_abertura(model):
     for cls in ("IfcOpeningElement", "IfcRelVoidsElement", "IfcRelFillsElement",
                 "IfcRelConnectsPathElements"):
         assert not ifc.by_type(cls), cls
-    assert ifc.by_type("IfcDoor")  # a porta fica até existir door.delete (RF-ELE-05)
+    assert ifc.by_type("IfcDoor")  # porta de outra origem só é desligada (porta §6.4)
     assert _qto(b)["NetFootprintArea"] == pytest.approx(4 * T)
 
     model.history.undo()

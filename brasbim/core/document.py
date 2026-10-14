@@ -19,7 +19,7 @@ class OpError(ValueError):
 class Document:
     def __init__(self, ifc: ifcopenshell.file):
         self.ifc = ifc
-        self._body = self._axis = None
+        self._body = self._axis = self._profile = None
 
     # --- criação e arquivo ---------------------------------------------------
 
@@ -65,6 +65,7 @@ class Document:
         doc = cls(ifc)
         doc.body_context  # noqa: B018 - cria os contextos
         doc.axis_context  # noqa: B018
+        doc.profile_context  # noqa: B018
         return doc
 
     @classmethod
@@ -121,6 +122,13 @@ class Document:
         if self._axis is None:
             self._axis = self._subcontext("Plan", "Axis", "GRAPH_VIEW")
         return self._axis
+
+    @property
+    def profile_context(self):
+        """Contorno 3D de portas e janelas (representação ``Profile``)."""
+        if self._profile is None:
+            self._profile = self._subcontext("Model", "Profile", "ELEVATION_VIEW")
+        return self._profile
 
     def _subcontext(self, context_type: str, identifier: str, target_view: str):
         for sub in self.ifc.by_type("IfcGeometricRepresentationSubContext"):

@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import logging
 
-import ifcopenshell.api.pset
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, guid
+from brasbim.core import geom2d, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
 from brasbim.core.walls import connections, joins, openings, params
@@ -22,26 +21,9 @@ from brasbim.core.walls import types as wall_types
 log = logging.getLogger(__name__)
 
 QTO = "Qto_WallBaseQuantities"
-_ORDER = ("Axis", "Body")
 
 
 # --- representações ------------------------------------------------------------
-
-
-def _replace_representation(doc: Document, wall, identifier: str, new_rep) -> None:
-    shape = wall.Representation
-    if shape is None:
-        wall.Representation = doc.ifc.createIfcProductDefinitionShape(None, None, [new_rep])
-        return
-    reps = [r for r in shape.Representations if r.RepresentationIdentifier != identifier]
-    old = [r for r in shape.Representations if r.RepresentationIdentifier == identifier]
-    reps.append(new_rep)
-    reps.sort(key=lambda r: _ORDER.index(r.RepresentationIdentifier)
-              if r.RepresentationIdentifier in _ORDER else len(_ORDER))
-    shape.Representations = reps
-    keep = {doc.axis_context, doc.body_context}
-    for rep in old:
-        ifcopenshell.util.element.remove_deep2(doc.ifc, rep, do_not_delete=keep)
 
 
 def _point(doc: Document, p):
@@ -64,7 +46,7 @@ def set_axis(doc: Document, wall, path: geom2d.Path) -> None:
             "CARTESIAN",
         )
     rep = ifc.createIfcShapeRepresentation(doc.axis_context, "Axis", "Curve2D", [curve])
-    _replace_representation(doc, wall, "Axis", rep)
+    props.replace_representation(doc, wall, "Axis", rep)
 
 
 def _indexed_curve(doc: Document, segments: list[geom2d.Segment]):
@@ -95,7 +77,7 @@ def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float)
         float(height),
     )
     rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", [solid])
-    _replace_representation(doc, wall, "Body", rep)
+    props.replace_representation(doc, wall, "Body", rep)
 
 
 # --- cálculo -------------------------------------------------------------------
@@ -201,9 +183,10 @@ def rebuild_wall(doc: Document, wall) -> None:
 
     length = path.centerline_length((ymin + ymax) / 2)
     footprint = geom2d.area(segments)
-    _write_qto(
+    props.write_qto(
         doc,
         wall,
+        QTO,
         {
             "Length": length,
             "Width": thickness,
@@ -216,17 +199,6 @@ def rebuild_wall(doc: Document, wall) -> None:
             "NetVolume": footprint * h - cut["volume"],
         },
     )
-
-
-def _write_qto(doc: Document, wall, quantities: dict) -> None:
-    found = ifcopenshell.util.element.get_pset(wall, QTO, should_inherit=False)
-    if found:
-        qto = doc.ifc.by_id(found["id"])
-    else:
-        qto = ifcopenshell.api.pset.add_qto(doc.ifc, product=wall, name=QTO)
-        guid.stamp(qto, wall.GlobalId, f"qto/{QTO}")
-        guid.stamp(qto.DefinesOccurrence[0], wall.GlobalId, f"rel/{QTO}")
-    ifcopenshell.api.pset.edit_qto(doc.ifc, qto=qto, properties=quantities)
 
 
 # --- registro ------------------------------------------------------------------

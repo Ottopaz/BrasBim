@@ -22,7 +22,7 @@ import ifcopenshell.api.spatial
 import ifcopenshell.api.type
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, guid
+from brasbim.core import geom2d, guid, props
 from brasbim.core.document import Document, OpError, axis_placement, local_placement
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 from brasbim.core.walls import params, rebuild
@@ -47,17 +47,8 @@ def to_storey(origin, angle, p) -> tuple[float, float]:
     return (origin[0] + c * p[0] - s * p[1], origin[1] + s * p[0] + c * p[1])
 
 
-def representation(wall, identifier: str):
-    if wall.Representation is None:
-        return None
-    for rep in wall.Representation.Representations:
-        if rep.RepresentationIdentifier == identifier:
-            return rep
-    return None
-
-
 def _read_path(wall) -> dict:
-    axis = representation(wall, "Axis")
+    axis = props.representation(wall, "Axis")
     if axis is None:
         raise OpError(f"parede {wall.GlobalId} sem representação Axis")
     origin, angle, _ = _frame(wall)
@@ -115,7 +106,7 @@ def read_state(doc: Document, wall) -> dict:
     else:
         # IFC de outra origem: lido como altura fixa (spec §3.1).
         state["base_offset"] = _frame(wall)[2]
-        body = representation(wall, "Body")
+        body = props.representation(wall, "Body")
         if body is not None and body.Items[0].is_a("IfcExtrudedAreaSolid"):
             state["fixed_height"] = float(body.Items[0].Depth)
         usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
@@ -130,16 +121,6 @@ def read_state(doc: Document, wall) -> dict:
 
 
 # --- gravação ----------------------------------------------------------------
-
-
-def _ensure_pset(doc: Document, wall, name: str):
-    found = ifcopenshell.util.element.get_pset(wall, name, should_inherit=False)
-    if found:
-        return doc.ifc.by_id(found["id"])
-    pset = ifcopenshell.api.pset.add_pset(doc.ifc, product=wall, name=name)
-    guid.stamp(pset, wall.GlobalId, f"pset/{name}")
-    guid.stamp(pset.DefinesOccurrence[0], wall.GlobalId, f"rel/{name}")
-    return pset
 
 
 def _assign_type(doc: Document, wall, wall_type) -> None:
@@ -203,16 +184,13 @@ def write_state(doc: Document, wall, state: dict) -> None:
     for key in ("PavimentoBase", "PavimentoTopo"):
         if values[key] is not None:
             values[key] = doc.ifc.createIfcIdentifier(values[key])
-    pset = _ensure_pset(doc, wall, params.PSET)
+    pset = props.ensure_pset(doc, wall, params.PSET)
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties=values)
 
     common = {**_common_defaults(wall_type), **(state.get("common") or {})}
     if common.get("Status") is not None:
         common["Status"] = [common["Status"]]
-    pset = _ensure_pset(doc, wall, COMMON_PSET)
-    current = ifcopenshell.util.element.get_pset(wall, COMMON_PSET, should_inherit=False)
-    stale = {k: None for k in current if k not in ("id", *common)}
-    ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties={**stale, **common})
+    props.write_pset(doc, wall, COMMON_PSET, common)
 
 
 # --- operações ---------------------------------------------------------------

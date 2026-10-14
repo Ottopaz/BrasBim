@@ -134,11 +134,7 @@ def split_wall(doc: Document, wall, at) -> Transaction:
 
 def delete_wall(doc: Document, wall) -> Transaction:
     """Exclui a parede. A cascata (spec §6.4) entra nesta mesma transação, antes do
-    ``wall.delete``: desliga os preenchimentos, exclui as aberturas e as junções.
-
-    Os elementos que preenchiam as aberturas (portas, janelas) continuam no modelo até
-    existirem as operações deles (RF-ELE-05/06).
-    """
+    ``wall.delete``: exclui as portas, as aberturas e as junções."""
     wall = doc.get(_gid(wall), "IfcWall")
     ops = []
     for opening in openings.of_wall(wall):
@@ -186,8 +182,19 @@ def edit_opening(doc: Document, opening, **changes) -> Transaction:
 
 
 def _opening_delete_ops(opening) -> list[Op]:
-    ops = [Op("filling.detach", rel.RelatedBuildingElement.GlobalId,
-              data={"opening": opening.GlobalId}) for rel in opening.HasFillings]
+    """Exclui a abertura e as portas do BrasBim que a preenchem (porta §6.4). Outros
+    elementos que preenchem (ex.: de outra origem) só são desligados."""
+    from brasbim.core.fillings import commands as filling_cmd  # evita import circular
+    from brasbim.core.fillings import doors
+
+    ops = []
+    for rel in opening.HasFillings:
+        element = rel.RelatedBuildingElement
+        if element.is_a("IfcDoor") and doors.is_parametric(element):
+            ops += filling_cmd.delete_ops(element)
+        else:
+            ops.append(Op("filling.detach", element.GlobalId,
+                          data={"opening": opening.GlobalId}))
     ops.append(Op("opening.delete", opening.GlobalId, data=openings.read_state(opening)))
     return ops
 

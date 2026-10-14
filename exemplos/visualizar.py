@@ -133,11 +133,23 @@ addEventListener("resize", () => {
 """
 
 
+_QTO = {
+    "Qto_WallBaseQuantities": (("Length", "Comprimento", "m"), ("Width", "Espessura", "m"),
+                               ("Height", "Altura", "m"), ("NetVolume", "Volume", "m³")),
+    "Qto_DoorBaseQuantities": (("Width", "Largura", "m"), ("Height", "Altura", "m"),
+                               ("Area", "Área", "m²")),
+}
+
+
 def _qto_text(element) -> str:
-    q = ifcopenshell.util.element.get_pset(element, "Qto_WallBaseQuantities") or {}
     parts = []
-    for key, label, unit in (("Length", "Comprimento", "m"), ("Width", "Espessura", "m"),
-                             ("Height", "Altura", "m"), ("NetVolume", "Volume", "m³")):
+    for name, fields in _QTO.items():
+        q = ifcopenshell.util.element.get_pset(element, name)
+        if q:
+            break
+    else:
+        return ""
+    for key, label, unit in fields:
         if key in q:
             parts.append(f"{label}: {q[key]:.3f} {unit}".replace(".", ","))
     return "\n".join(parts)
@@ -156,8 +168,8 @@ def to_html(ifc_path: str) -> str:
             shape = ifcopenshell.geom.create_shape(settings, product)
         except RuntimeError:
             continue
-        wall_type = ifcopenshell.util.element.get_type(product)
-        type_name = wall_type.Name if wall_type else product.is_a()
+        element_type = ifcopenshell.util.element.get_type(product)
+        type_name = element_type.Name if element_type else product.is_a()
         color = colors.setdefault(type_name, _PALETTE[len(colors) % len(_PALETTE)])
         container = ifcopenshell.util.element.get_container(product)
         elements.append({

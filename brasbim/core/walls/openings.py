@@ -29,7 +29,7 @@ import logging
 import ifcopenshell.api.root
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, guid
+from brasbim.core import geom2d, guid, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
@@ -91,7 +91,8 @@ def read_state(opening) -> dict:
 # --- validação -----------------------------------------------------------------
 
 
-def _wall_info(doc: Document, wall):
+def wall_info(doc: Document, wall):
+    """(faixa da parede, altura da parede), lidas do estado dela."""
     from brasbim.core.walls import rebuild
     from brasbim.core.walls.wall import read_state as read_wall
 
@@ -124,7 +125,7 @@ def problems(state: dict, band, wall_height: float) -> list[str]:
 def check_fits(doc: Document, wall, state: dict) -> None:
     """Rejeita abertura que não cabe na parede. Usada pelos comandos: ao aplicar uma
     operação (inclusive desfazer), abertura fora dos limites só gera aviso (spec §6.3)."""
-    band, wall_height = _wall_info(doc, wall)
+    band, wall_height = wall_info(doc, wall)
     found = problems(state, band, wall_height)
     if found:
         raise OpError(f"abertura não cabe na parede: {'; '.join(found)}")
@@ -134,8 +135,6 @@ def check_fits(doc: Document, wall, state: dict) -> None:
 
 
 def _write_body(doc: Document, opening, state: dict, band) -> None:
-    from brasbim.core.walls import rebuild
-
     ifc = doc.ifc
     through = state["kind"] == "OPENING"
     gap = CLEARANCE if through else 0.0
@@ -160,7 +159,7 @@ def _write_body(doc: Document, opening, state: dict, band) -> None:
         depth,
     )
     rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", [solid])
-    rebuild._replace_representation(doc, opening, "Body", rep)
+    props.replace_representation(doc, opening, "Body", rep)
 
 
 def _place(doc: Document, opening, wall, state: dict) -> None:
@@ -194,7 +193,7 @@ def _set_host(doc: Document, opening, wall) -> None:
 def write_state(doc: Document, opening, state: dict) -> None:
     _validate(state)
     wall = doc.get(state["wall"], "IfcWall")
-    band = _wall_info(doc, wall)[0]
+    band = wall_info(doc, wall)[0]
     if not isinstance(band.path, geom2d.LinePath):
         raise OpError("abertura em parede curva ainda não é suportada (V1)")
     opening.PredefinedType = state["kind"]

@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Demonstração: grava um IFC com paredes retas e em arco em dois pavimentos.
+"""Demonstração: grava um IFC com paredes retas e em arco em dois pavimentos, e portas.
 
 Uso: python exemplos/demo_paredes.py [saida.ifc]
 
 Abra o arquivo em qualquer visualizador IFC (ou em exemplos/visualizar.py). Os cantos
-saem recortados pelas junções L/T (IfcRelConnectsPathElements).
+saem recortados pelas junções L/T (IfcRelConnectsPathElements); as portas ficam em vãos
+das paredes (IfcOpeningElement + IfcRelFillsElement).
 """
 
 import sys
 
 from brasbim.core.document import Document
+from brasbim.core.fillings import commands as fcmd
 from brasbim.core.ops import History
 from brasbim.core.walls import commands as cmd
 
@@ -36,17 +38,31 @@ def main(path: str) -> None:
 
     # Térreo: retângulo 8 × 5 (face externa como referência; as paredes ficam para
     # dentro), uma divisória em T e uma parede em arco.
-    history.commit(cmd.create_rectangle(doc, alvenaria, terreo, (0, 0), (8, 5)))
-    history.commit(cmd.create_wall(doc, drywall, terreo, (4.5, 0), (4.5, 5), ref_line="axis"))
+    rect = cmd.create_rectangle(doc, alvenaria, terreo, (0, 0), (8, 5))
+    divisoria = cmd.create_wall(doc, drywall, terreo, (4.5, 0), (4.5, 5), ref_line="axis")
+    history.commit(rect)
+    history.commit(divisoria)
     history.commit(cmd.create_arc_wall(doc, alvenaria, terreo, (8, 1), (9.5, 2.5), (8, 4),
                                        ref_line="axis"))
+
+    # Portas: entrada de giro na parede oeste, divisória com porta de giro e porta de
+    # correr de 2 folhas na parede norte.
+    history.commit(fcmd.create_door_type(doc, "P1 – giro 80", defaults={"width": 0.86}))
+    history.commit(fcmd.create_door_type(doc, "P2 – correr 2 folhas", "DOUBLE_DOOR_SLIDING",
+                                         defaults={"width": 1.60}))
+    giro, correr = doc.ifc.by_type("IfcDoorType")
+    oeste, norte = rect.ops[0].id, rect.ops[1].id
+    history.commit(fcmd.create_door(doc, giro, oeste, 1.2, opens_to="right"))
+    history.commit(fcmd.create_door(doc, giro, divisoria.ops[0].id, 3.0))
+    history.commit(fcmd.create_door(doc, correr, norte, 5.6, opens_to="right"))
 
     # Superior: platibanda de 1,10 m sobre o retângulo.
     history.commit(cmd.create_rectangle(doc, alvenaria, superior, (0, 0), (8, 5),
                                         top_mode="fixed", fixed_height=1.10))
 
     doc.save(path)
-    print(f"{len(doc.ifc.by_type('IfcWall'))} paredes gravadas em {path}")
+    print(f"{len(doc.ifc.by_type('IfcWall'))} paredes e {len(doc.ifc.by_type('IfcDoor'))} "
+          f"portas gravadas em {path}")
 
 
 if __name__ == "__main__":

@@ -52,6 +52,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |
 | `opening.create` / `.delete` / `.edit` | `wall`, `kind` (`OPENING` \| `RECESS`), `distance`, `width`, `height`, `sill`, `depth`, `side` (`left` \| `right`) | parede §5.2, §6.3 |
 | `filling.attach` / `.detach` | `id` = GlobalId do elemento que preenche; `opening` | parede §5.2, §6.3 |
+| `door_type.create` / `.delete` / `.edit` | `name`, `predefined_type`, `operation_type`, `lining` (`thickness`, `depth`, `casing_thickness`, `casing_depth`, `threshold_thickness`), `panels[]` (`operation`, `position`, `width`, `depth`), `materials` (`lining`, `framing`, `glazing`), `defaults` (`width`, `height`, `base`), `variant` | porta §5.2 |
+| `door.create` / `.delete` / `.edit` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common` | porta §5.2 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
@@ -66,7 +68,16 @@ Aberturas: `id` = GlobalId do `IfcOpeningElement`. `distance` vai do início da 
 começo da abertura, ao longo do caminho; `sill` é a base da abertura em relação à base da
 parede; `depth` e `side` (face de entrada) só valem para nicho. *(decisão do projeto)*
 Excluir uma parede gera, na mesma transação e nesta ordem: `filling.detach`,
-`opening.delete`, `path_connection.delete` e `wall.delete` (spec da parede §6.4).
+`door.delete`, `opening.delete`, `path_connection.delete` e `wall.delete` (spec da
+parede §6.4, porta §6.4). Elementos de outra origem que preenchem a abertura só são
+desligados.
+
+Portas: `id` = GlobalId do `IfcDoor`. Largura, altura, distância e base são da abertura
+(`opening.*`). Criar uma porta gera `opening.create`, `door.create` e `filling.attach`;
+excluir gera `filling.detach`, `door.delete` e `opening.delete` (este último só se o vão
+não for mantido). Posição, `OverallWidth`/`OverallHeight`, contenção, corpo e
+quantidades da porta são derivados. `opens_to` é gravado no sentido do eixo x do
+posicionamento da porta; `align` e `offset` no Pset `BrasBim_Esquadria`.
 
 Dividir: `wall.split` encurta a parede até o ponto (projetado no caminho) e cria a 2ª
 parte com o mesmo estado. Os comandos completam a ação na mesma transação: `opening.edit`
@@ -79,6 +90,5 @@ Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam
 estas operações na mesma transação da criação, edição ou exclusão da parede.
 
 ## 5. Pendências
-- Excluir os elementos que preenchem as aberturas (portas, janelas) na cascata depende
-  das operações desses elementos (RF-ELE-05/06).
+- Janelas (RF-ELE-06) entram na cascata como as portas.
 - Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.

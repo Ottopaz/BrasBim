@@ -74,7 +74,8 @@ def _validate(state: dict) -> None:
             raise OpError("prioridade da camada deve estar entre 0 e 100")
 
 
-def _material(doc: Document, name: str):
+def material_named(doc: Document, name: str):
+    """Material com esse nome, criado se faltar."""
     for m in doc.ifc.by_type("IfcMaterial"):
         if m.Name == name:
             return m
@@ -87,7 +88,7 @@ def _write_layers(doc: Document, lset, layers: list[dict]) -> None:
     for spec in layers:
         spec = {**_LAYER_DEFAULTS, **spec}
         layer = ifcopenshell.api.material.add_layer(
-            doc.ifc, layer_set=lset, material=_material(doc, spec["material"])
+            doc.ifc, layer_set=lset, material=material_named(doc, spec["material"])
         )
         layer.LayerThickness = float(spec["thickness"])
         layer.Name = spec["name"]
