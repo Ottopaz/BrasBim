@@ -3,8 +3,8 @@ documento: Interface — edição de elementos, pavimentos e tipos (versão 0.2)
 requisito: RF-NUC-04, RF-NUC-05, RF-UI-02, RF-PRJ-04, RF-TIP-01, RF-TIP-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Edição de elementos, pavimentos e tipos
