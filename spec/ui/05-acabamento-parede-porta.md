@@ -3,8 +3,8 @@ documento: Interface — acabamento de parede e porta (espelhar, medidas no pain
 requisito: RF-NUC-05, RF-UI-02, RF-ELE-01, RF-ELE-05
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Acabamento de parede e porta
