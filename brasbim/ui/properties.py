@@ -3,20 +3,28 @@
 ``spec/ui/02-edicao.md`` §9).
 
 Mostra a seleção (parede, porta, ou vários elementos com edição em lote). As opções da
-ferramenta ativa ficam na barra Opções (``spec/ui/03-barras-e-icones.md`` §4.3). Cada campo confirmado gera uma transação; recusas do núcleo voltam o
+ferramenta ativa ficam na barra Opções (``spec/ui/03-barras-e-icones.md`` §4.3).
+
+Os campos são montados como grupos (título + linhas) e desenhados em pé (painel nas
+laterais) ou deitados, em blocos lado a lado (painel no topo ou na base;
+``spec/ui/04-painel-de-propriedades.md``). Cada campo confirmado gera uma transação; recusas do núcleo voltam o
 campo ao valor anterior (o painel é refeito a partir do modelo).
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 import ifcopenshell.util.element
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -35,7 +43,7 @@ from brasbim.core.walls import openings, rebuild
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state as read_wall
-from brasbim.ui.tools import fmt, parse_number
+from brasbim.ui.tools import block_grid, fmt, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
@@ -44,6 +52,18 @@ HINGES = [("Esquerda", "left"), ("Direita", "right")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 _INVALID = "QLineEdit { background: #fde2df; }"
 MIXED = "vários"
+
+
+ROW_HEIGHT = 27  # altura de uma linha de campo no arranjo deitado (px)
+TITLE_HEIGHT = 22
+
+
+class _Group:
+    """Grupo de campos: título e linhas (nome ou None, widget)."""
+
+    def __init__(self, title: str = ""):
+        self.title = title
+        self.rows: list[tuple[str | None, QWidget]] = []
 
 
 def _common(values):
@@ -62,6 +82,8 @@ class PropertiesPanel(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._pending = False
         self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
+        self.lying = False  # arranjo deitado (spec/ui 04 §2)
+        self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
 
     # --- refazer o painel ------------------------------------------------------------
@@ -72,12 +94,24 @@ class PropertiesPanel(QScrollArea):
             self._pending = True
             QTimer.singleShot(0, self._rebuild)
 
+    def wants_lying(self) -> bool:
+        return self.width() >= 2 * self.height()
+
+    def lines_available(self) -> int:
+        return max(1, (self.viewport().height() - TITLE_HEIGHT - 12) // ROW_HEIGHT)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        lying = self.wants_lying()
+        if lying != self.lying or (lying and self.lines_available() != self.lines):
+            focus = QApplication.focusWidget()
+            if focus is not None and self.isAncestorOf(focus):
+                return  # não atrapalha quem está digitando (spec/ui 04 §3)
+            self.refresh()
+
     def _rebuild(self) -> None:
         self._pending = False
-        body = QWidget()
-        self.layout_ = QVBoxLayout(body)
-        self.form = QFormLayout()
-        self.layout_.addLayout(self.form)
+        self.groups = [_Group()]
         selection = [self.session.doc.find(g) for g in sorted(self.session.selection)]
         selection = [e for e in selection if e is not None]
         if len(selection) == 1 and selection[0].is_a("IfcWall"):
@@ -95,27 +129,115 @@ class PropertiesPanel(QScrollArea):
             others = Counter(e.is_a() for e in selection
                              if not e.is_a("IfcWall") and not e.is_a("IfcDoor"))
             for cls, n in sorted(others.items()):
-                self.form.addRow(cls, QLabel(str(n)))
+                self._add(cls, QLabel(str(n)))
         else:
             self._tool_options()
+        self.lying = self.wants_lying()
+        if self.lying:
+            self._render_lying()
+        else:
+            self._render_standing()
+
+    # --- arranjos ---------------------------------------------------------------------
+
+    def _render_standing(self) -> None:
+        """Em pé: grupos um abaixo do outro (spec 0.1 §7)."""
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        body = QWidget()
+        self.layout_ = QVBoxLayout(body)
+        form = self.form = QFormLayout()
+        self.layout_.addLayout(form)
+        for i, group in enumerate(self.groups):
+            if group.title:
+                text = f"<b>{group.title}</b>" if i == 0 else (
+                    f"<span style='color:#666'>{group.title}</span>")
+                label = QLabel(text)
+                label.setWordWrap(True)
+                form.addRow(label)
+            for name, widget in group.rows:
+                if name is None:
+                    form.addRow(widget)
+                else:
+                    form.addRow(name, widget)
         self.layout_.addStretch(1)
         self.setWidget(body)
 
+    def _render_lying(self) -> None:
+        """Deitado: grupos em blocos lado a lado; campos em colunas dentro do bloco
+        (spec/ui 04 §3)."""
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.lines = self.lines_available()
+        self.form = None
+        body = QWidget()
+        row = QHBoxLayout(body)
+        row.setContentsMargins(4, 2, 4, 2)
+        metrics = self.fontMetrics()
+        blocks = [g for g in self.groups if g.title or g.rows]
+        for i, group in enumerate(blocks):
+            if i:
+                line = QFrame()
+                line.setFrameShape(QFrame.VLine)
+                line.setStyleSheet("color: #ccc")
+                row.addWidget(line)
+            block = QWidget()
+            block.setObjectName("bloco")
+            block.setProperty("titulo", group.title)
+            column = QVBoxLayout(block)
+            column.setContentsMargins(2, 0, 2, 0)
+            column.setSpacing(2)
+            title = QLabel(f"<b>{group.title}</b>" if i == 0 and group.title
+                           else f"<span style='color:#666'>{group.title}</span>")
+            column.addWidget(title)
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(6)
+            grid.setVerticalSpacing(2)
+            for (name, widget), (r, c) in zip(group.rows,
+                                              block_grid(len(group.rows), self.lines),
+                                              strict=True):
+                self._compact(widget, metrics)
+                if name is None:
+                    grid.addWidget(widget, r, 2 * c, 1, 2)
+                else:
+                    label = QLabel(name)
+                    label.setStyleSheet("color: #444")
+                    grid.addWidget(label, r, 2 * c)
+                    grid.addWidget(widget, r, 2 * c + 1)
+            column.addLayout(grid)
+            column.addStretch(1)
+            row.addWidget(block)
+        row.addStretch(1)
+        self.setWidget(body)
+
+    @staticmethod
+    def _compact(widget: QWidget, metrics) -> None:
+        if isinstance(widget, QLineEdit):
+            widget.setMaximumWidth(metrics.horizontalAdvance("0") * 8 + 16)
+        elif isinstance(widget, QComboBox):
+            widget.setMaximumWidth(metrics.horizontalAdvance("M") * 15 + 30)
+        elif isinstance(widget, QLabel) and widget.wordWrap():
+            widget.setMaximumWidth(280)
+
     # --- campos ---------------------------------------------------------------------------
 
+    def _add(self, name, widget=None) -> None:
+        """Linha no grupo atual: ``(nome, campo)`` ou só um widget (largura inteira)."""
+        if widget is None:
+            name, widget = None, name
+        self.groups[-1].rows.append((name or None, widget))
+
     def _title(self, text: str) -> None:
-        label = QLabel(f"<b>{text}</b>")
-        label.setWordWrap(True)
-        self.form.addRow(label)
+        self.groups[0].title = text
 
     def _section(self, text: str) -> None:
-        self.form.addRow(QLabel(f"<span style='color:#666'>{text}</span>"))
+        self.groups.append(_Group(re.sub(r"</?b>", "", text)))
 
     def _read(self, label: str, text: str) -> None:
         value = QLabel(text)
         value.setStyleSheet("color: #777")
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.form.addRow(label, value)
+        self._add(label, value)
 
     def _number(self, label: str, value, commit, placeholder: str = "",
                 allow_empty: bool = False) -> QLineEdit:
@@ -140,7 +262,7 @@ class PropertiesPanel(QScrollArea):
             commit(number)
 
         field.editingFinished.connect(done)
-        self.form.addRow(label, field)
+        self._add(label, field)
         return field
 
     def _combo(self, label: str, items, current, commit) -> QComboBox:
@@ -159,7 +281,7 @@ class PropertiesPanel(QScrollArea):
                 commit(value)
 
         combo.currentIndexChanged.connect(changed)
-        self.form.addRow(label, combo)
+        self._add(label, combo)
         return combo
 
     def _buttons(self, *buttons) -> None:
@@ -171,7 +293,7 @@ class PropertiesPanel(QScrollArea):
         holder = QWidget()
         holder.setLayout(row)
         row.setContentsMargins(0, 0, 0, 0)
-        self.form.addRow(holder)
+        self._add(holder)
 
     def _types(self, ifc_class: str):
         return [(e.Name or e.GlobalId, e.GlobalId)
@@ -200,7 +322,7 @@ class PropertiesPanel(QScrollArea):
         flip = QCheckBox("Inverter camadas")
         flip.setChecked(bool(state["flip_layers"]))
         flip.toggled.connect(lambda v: edit(flip_layers=bool(v)))
-        self.form.addRow("", flip)
+        self._add("", flip)
 
         self._section("Altura")
         self._number("Base", state["base_offset"], lambda v: edit(base_offset=v))
@@ -386,7 +508,7 @@ class PropertiesPanel(QScrollArea):
                              "corpo original é substituído.")
             warning.setWordWrap(True)
             warning.setStyleSheet("color: #8a5a00")
-            self.form.addRow(warning)
+            self._add(warning)
 
     # --- opções da ferramenta (§7.1) ------------------------------------------------------
 
@@ -403,4 +525,4 @@ class PropertiesPanel(QScrollArea):
         note = QLabel("Clique num elemento da planta para ver e editar as propriedades.")
         note.setWordWrap(True)
         note.setStyleSheet("color: #666")
-        self.form.addRow(note)
+        self._add(note)

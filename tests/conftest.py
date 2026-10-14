@@ -77,10 +77,16 @@ def snapshot(ifc) -> dict:
 
 
 @pytest.fixture(scope="module")
-def app():
+def app(tmp_path_factory):
     pytest.importorskip("PySide6")
+    from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication
 
+    # Preferências da janela (posição de painéis e barras) num lugar só dos testes, para
+    # não ler nem gravar as do usuário.
+    QSettings.setDefaultFormat(QSettings.IniFormat)
+    QSettings.setPath(QSettings.IniFormat, QSettings.UserScope,
+                      str(tmp_path_factory.mktemp("preferencias")))
     return QApplication.instance() or QApplication([])
 
 

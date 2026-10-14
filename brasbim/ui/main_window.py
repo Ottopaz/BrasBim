@@ -46,6 +46,11 @@ STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mu
 _LEVEL_COLOR = {"recusa": "#b3261e", "aviso": "#8a5a00", "info": "#333333"}
 
 
+def _settings() -> QSettings:
+    """Preferências da janela; o formato padrão permite aos testes usar outro lugar."""
+    return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim")
+
+
 def delete_transaction(session: Session) -> tuple[Transaction, int]:
     """Exclusão da seleção numa transação (§5.1): portas antes das paredes; operações
     repetidas (abertura, junção entre duas paredes excluídas) entram uma vez. Devolve a
@@ -218,7 +223,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(QLabel(f"Grade {fmt(self.ctx.grid)} m"))
 
     def _restore(self) -> None:
-        settings = QSettings("BrasBim", "BrasBim")
+        settings = _settings()
         geometry, state = settings.value("geometria"), settings.value("paineis")
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -440,7 +445,7 @@ class MainWindow(QMainWindow):
         if not self._ask_save():
             event.ignore()
             return
-        settings = QSettings("BrasBim", "BrasBim")
+        settings = _settings()
         settings.setValue("geometria", self.saveGeometry())
         settings.setValue("paineis", self.saveState(STATE_VERSION))
         self.session.close()

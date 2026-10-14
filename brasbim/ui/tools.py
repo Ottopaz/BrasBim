@@ -41,6 +41,13 @@ def fmt_exact(value: float) -> str:
     return f"{whole},{decimals.ljust(2, '0')}"
 
 
+def block_grid(count: int, lines: int) -> list[tuple[int, int]]:
+    """(linha, coluna) de cada campo num bloco do painel deitado (spec/ui 04 §3): de
+    cima para baixo e, quando as linhas acabam, na coluna seguinte."""
+    lines = max(1, lines)
+    return [(i % lines, i // lines) for i in range(count)]
+
+
 def parse_number(text: str) -> float:
     text = text.strip().replace(",", ".")
     if not text:
