@@ -3,8 +3,8 @@ documento: Interface — painel de propriedades deitado (em blocos lado a lado)
 requisito: RF-UI-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Painel de propriedades deitado
