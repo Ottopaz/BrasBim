@@ -16,6 +16,8 @@ spec/
   04-interoperabilidade.md IFC, BCF, IDS, DWG, PDF
   05-objetos-parametricos.md
   06-api-e-scripts.md
+  ui/
+    01-janela-e-ferramentas.md  janela principal, planta, 3D, primeiras ferramentas
   elementos/
     _MODELO.md             modelo para cada tipo de elemento
     parede.md, laje.md, pilar.md, viga.md, cobertura.md, porta.md, janela.md, espaco.md ...
