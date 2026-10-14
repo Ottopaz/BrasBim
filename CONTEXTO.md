@@ -21,7 +21,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas (parede e porta implementadas; janela não) |
 | `spec/01-modelo-de-dados.md` | rascunho vivo, atualizado a cada operação nova |
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
-| `spec/ui/06-planta-por-camadas` | **em revisão**, aguarda o revisor (pontos (a)–(h) em §9) |
+| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -31,6 +31,37 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   espelhar, comprimento e ângulo no painel, propriedades comuns.
 - Porta: tipos, alças de largura, etiqueta na planta, propriedades comuns.
 - Operações serializáveis com desfazer/refazer e diário de sessão (`feedback/diarios/`).
+
+## Pacote 2 em andamento (spec/ui 06)
+Feito:
+- `brasbim/core/clip.py`: booleanos 2D com `pyclipr` (união, interseção, diferença,
+  afastamento, recorte de polilinhas, semiplano). `pyclipr` instalado e em `pyproject.toml`.
+- `storey.*` com `cut_height` (Pset `BrasBim_Pavimento`, `AlturaPlanoCorte`;
+  `storeys.cut_height()`); `edit_storey` lê o estado completo. 179 testes passando.
+
+Falta (desenho combinado):
+- `core/layers.py`: regiões por camada. Base de cada camada = faixa crua da camada
+  (prolongada pela tangente nas pontas) ∩ peças da própria parede. Nas pontas com junção
+  (ATSTART/ATEND), extensão = faixa ∩ peças da vizinha, cortada no semiplano antes da
+  primeira camada da vizinha com prioridade ≥ (menor projeção ao longo da tangente de
+  saída). Atribuir por prioridade decrescente (desempate: contínua em X, mais espessa,
+  GlobalId, índice), cada uma = (base ∪ extensão) − já atribuído. Prioridade vazia = 0.
+- `core/plan.py`: corte relativo à base da parede (hoje usa 1,50 fixo sem descontar
+  `base_offset`); papéis `wall` (cortada), `wall_view` (abaixo), `wall_above`
+  (tracejada), linhas de peitoril e vão acima; nicho recortado; `Region` (mancha por
+  tipo no simplificado; por material no por camadas) e `Edge` (contorno externo por tipo).
+  Na vista, `wall` só desenha quando selecionada (sobreposição).
+- `core/materials.py`: estilos (spec 06 §4), operação `material.edit` (id = nome),
+  `IfcMaterialDefinitionRepresentation` com `IfcSurfaceStyle` (Model/Body) e
+  `IfcFillAreaStyle` (contexto novo Plan/Body); biblioteca §4.4 gravada no projeto novo
+  e no exemplo; registrar em `ops/base.HANDLER_MODULES`.
+- 3D: recorte dos triângulos do corpo pelas regiões das camadas (faces verticais por
+  intervalos ao longo da aresta, recuadas 1 mm para dentro; demais por interseção em xy);
+  `Scene` precisa do `Document`.
+- Interface: Exibir > Detalhe da planta, Exibir > Elementos acima do plano de corte,
+  coluna Plano de corte no painel do projeto, Projeto > Materiais… e botão na tabela de
+  camadas.
+- Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
 
 ## Próximos passos (nesta ordem)
 1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:

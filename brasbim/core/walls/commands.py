@@ -446,7 +446,7 @@ def create_storey(doc: Document, name: str, elevation: float) -> Transaction:
 
 def edit_storey(doc: Document, storey, **changes) -> Transaction:
     storey = doc.get(_gid(storey), "IfcBuildingStorey")
-    current = {"name": storey.Name, "elevation": float(storey.Elevation or 0.0)}
+    current = storeys.read(storey)
     before = {k: current[k] for k in changes}
     return Transaction(
         "Editar pavimento", [Op("storey.edit", storey.GlobalId, before=before, after=changes)]
