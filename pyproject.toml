@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "brasbim"
+version = "0.0.1"
+description = "Software BIM open source e IFC-nativo (IFC 4.3) para o mercado brasileiro"
+readme = "README.md"
+requires-python = ">=3.12"
+# Núcleo (brasbim/core) sob LGPL; aplicativo (brasbim/ui) sob GPL. Ver README.md.
+license = "LGPL-3.0-or-later AND GPL-3.0-or-later"
+license-files = ["COPYING", "COPYING.LESSER"]
+authors = [{ name = "Contribuidores do BrasBim" }]
+dependencies = [
+    "ifcopenshell>=0.8",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6>=6.7"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+brasbim = "brasbim.ui.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["brasbim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Lado sujo: nunca analisar
+extend-exclude = ["_restrito", "tools"]

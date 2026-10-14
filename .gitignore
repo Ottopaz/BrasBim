@@ -1,0 +1,23 @@
+# Material de engenharia reversa — NUNCA versionar no repositório público
+_restrito/
+
+# Ferramentas locais de análise (lado sujo) — fora do repositório
+tools/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Saídas de teste e arquivos locais
+*.ifc.bak
+.vscode/
+.idea/
