@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from brasbim.core.document import Document
@@ -27,10 +28,15 @@ class Transaction:
         return cls(d["label"], [Op.from_dict(o) for o in d["ops"]])
 
 
-def run(doc: Document, tx: Transaction) -> None:
-    """Aplica a transação inteira ou nada (desfaz o que já foi aplicado em caso de erro)."""
+def run(doc: Document, tx: Transaction) -> set[str]:
+    """Aplica a transação inteira ou nada (desfaz o que já foi aplicado em caso de erro).
+
+    Devolve os GlobalIds criados, alterados ou excluídos, inclusive os recalculados
+    (vizinhas de uma parede, portas de uma parede alterada).
+    """
     applied: list[Op] = []
     dirty: set[str] = set()
+    doc.changed.clear()
     try:
         for op in tx.ops:
             dirty |= apply_op(doc, op)
@@ -40,7 +46,11 @@ def run(doc: Document, tx: Transaction) -> None:
         for op in reversed(applied):
             apply_op(doc, invert_op(op))
         derive(doc, dirty)
+        doc.changed.clear()
         raise
+    changed = dirty | {op.id for op in tx.ops} | doc.changed
+    doc.changed.clear()
+    return changed
 
 
 class History:
@@ -48,6 +58,9 @@ class History:
 
     O diário (``journal``) inclui desfazer/refazer como transações comuns; reaplicá-lo
     em outro documento com os mesmos pavimentos reproduz o mesmo IFC.
+
+    ``listeners`` são chamados depois de cada transação aplicada, com o tipo
+    (``commit``, ``undo``, ``redo``), a transação e os GlobalIds alterados (``run``).
     """
 
     def __init__(self, doc: Document):
@@ -55,28 +68,36 @@ class History:
         self.undo_stack: list[Transaction] = []
         self.redo_stack: list[Transaction] = []
         self.journal: list[Transaction] = []
+        self.listeners: list[Callable[[str, Transaction, set[str]], None]] = []
+
+    def _notify(self, kind: str, tx: Transaction, changed: set[str]) -> None:
+        for listener in list(self.listeners):
+            listener(kind, tx, changed)
 
     def commit(self, tx: Transaction) -> None:
-        run(self.doc, tx)
+        changed = run(self.doc, tx)
         self.undo_stack.append(tx)
         self.redo_stack.clear()
         self.journal.append(tx)
+        self._notify("commit", tx, changed)
 
     def undo(self) -> Transaction | None:
         if not self.undo_stack:
             return None
         tx = self.undo_stack.pop()
         inverse = tx.inverse()
-        run(self.doc, inverse)
+        changed = run(self.doc, inverse)
         self.redo_stack.append(tx)
         self.journal.append(inverse)
+        self._notify("undo", tx, changed)
         return tx
 
     def redo(self) -> Transaction | None:
         if not self.redo_stack:
             return None
         tx = self.redo_stack.pop()
-        run(self.doc, tx)
+        changed = run(self.doc, tx)
         self.undo_stack.append(tx)
         self.journal.append(tx)
+        self._notify("redo", tx, changed)
         return tx

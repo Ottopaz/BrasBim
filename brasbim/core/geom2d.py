@@ -112,8 +112,9 @@ def polygon_area(points: list[Point]) -> float:
     return abs(sum(_cross(points[i], points[(i + 1) % n]) for i in range(n))) / 2
 
 
-def clip_area(points: list[Point], x0: float, x1: float, y0: float, y1: float) -> float:
-    """Área da parte do polígono dentro do retângulo ``[x0, x1] × [y0, y1]``."""
+def clip_rect(points: list[Point], x0: float, x1: float, y0: float, y1: float) -> list[Point]:
+    """Parte do polígono dentro do retângulo ``[x0, x1] × [y0, y1]`` (Sutherland–Hodgman;
+    os limites podem ser infinitos)."""
 
     def clip(pts, inside, cut):
         out = []
@@ -141,9 +142,15 @@ def clip_area(points: list[Point], x0: float, x1: float, y0: float, y1: float) -
         (lambda p: p[1] <= y1, at_y(y1)),
     ):
         if not pts:
-            return 0.0
+            return []
         pts = clip(pts, inside, cut)
-    return polygon_area(pts) if len(pts) >= 3 else 0.0
+    return pts if len(pts) >= 3 else []
+
+
+def clip_area(points: list[Point], x0: float, x1: float, y0: float, y1: float) -> float:
+    """Área da parte do polígono dentro do retângulo ``[x0, x1] × [y0, y1]``."""
+    pts = clip_rect(points, x0, x1, y0, y1)
+    return polygon_area(pts) if pts else 0.0
 
 
 # --- Curvas infinitas e referenciais ----------------------------------------------

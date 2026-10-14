@@ -156,6 +156,7 @@ def profile(doc: Document, wall, own: joins.Band) -> list[geom2d.Segment]:
 def rebuild_wall(doc: Document, wall) -> None:
     from brasbim.core.walls.wall import read_state  # evita import circular
 
+    doc.changed.add(wall.GlobalId)
     state = read_state(doc, wall)
     wall_type = doc.get(state["type"], "IfcWallType")
     thickness = wall_types.thickness(wall_type)

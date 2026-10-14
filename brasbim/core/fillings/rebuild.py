@@ -85,6 +85,7 @@ def _contain(doc: Document, element, wall) -> None:
 
 
 def rebuild_door(doc: Document, door) -> None:
+    doc.changed.add(door.GlobalId)
     if not door.FillsVoids:
         return  # sem abertura não há posição (porta independente é V1)
     opening = door.FillsVoids[0].RelatingOpeningElement

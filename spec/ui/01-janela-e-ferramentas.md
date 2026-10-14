@@ -3,8 +3,8 @@ documento: Interface — janela principal e primeiras ferramentas (versão 0.1 t
 requisito: RF-UI-01, RF-UI-02, RF-UI-03, RF-UI-04, RF-UI-07, RF-NUC-01, RF-NUC-04, RF-DES-01..04, RF-PRJ-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Janela principal e primeiras ferramentas
@@ -312,5 +312,5 @@ comando ou layout de diálogo de outro software foi copiado.
 (b) Sem ícones e sem atalhos de uma letra na versão 0.1 (§1, §6).
 (c) Tab para alternar dobradiças na ferramenta Porta (§5.5).
 (d) Biblioteca mínima do projeto novo (§2.2).
-(e) Observações e diários em `feedback/`, dentro do repositório (versionados ou não?) (§9).
+(e) Observações em `feedback/` versionadas; diários em `feedback/diarios/` fora do git (§9).
 (f) Escopo da versão 0.1 e ordem das seguintes (§11).

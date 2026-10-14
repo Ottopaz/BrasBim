@@ -25,3 +25,6 @@ htmlcov/
 # Saídas dos exemplos
 /demo_paredes.ifc
 /demo_paredes.html
+
+# Diários de sessão do aplicativo (spec/ui §9.2)
+/feedback/diarios/

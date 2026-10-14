@@ -20,6 +20,8 @@ class Document:
     def __init__(self, ifc: ifcopenshell.file):
         self.ifc = ifc
         self._body = self._axis = self._profile = None
+        # GlobalIds recalculados durante a transação em curso (ver ``ops.history.run``).
+        self.changed: set[str] = set()
 
     # --- criação e arquivo ---------------------------------------------------
 
