@@ -4,8 +4,8 @@ entidade_ifc: IfcWindow (PredefinedType e PartitioningType via IfcWindowType)
 requisito: RF-ELE-06
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO (pendente)
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Janela
@@ -283,7 +283,7 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
   veneziana, grade; `GlazingAreaFraction` e `IsExternal` automáticos; verificações de
   iluminação e ventilação.
 - V2: janela em fachada‑cortina.
-- Pontos de revisão: (a) nomes brasileiros × `IfcWindowPanelOperationEnum` (§2.3);
+- Pontos de revisão, aceitos pelo revisor em 2026‑10‑14: (a) nomes brasileiros × `IfcWindowPanelOperationEnum` (§2.3);
   (b) janela de correr de 4 folhas fora do MVP (§2.2); (c) `IsExternal` verdadeiro por
   padrão; (d) "abre para" como lado interno nos caixilhos sem giro (§2.4); (e) os
   pontos comuns de `porta.md` §11.

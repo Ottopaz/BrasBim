@@ -4,8 +4,8 @@ entidade_ifc: IfcDoor (PredefinedType e OperationType via IfcDoorType)
 requisito: RF-ELE-05
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO (pendente)
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Porta
@@ -412,7 +412,7 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
   giratória, basculante de garagem; bandeira; `FootPrint` gravado; verificação NBR 9050;
   `IsExternal` inferido.
 - V2: porta em fachada‑cortina (`IfcRelAggregates`).
-- Pontos de revisão: (a) gravar `IfcDoorLiningProperties`/`IfcDoorPanelProperties`
+- Pontos de revisão, aceitos pelo revisor em 2026‑10‑14: (a) gravar `IfcDoorLiningProperties`/`IfcDoorPanelProperties`
   (descontinuadas no 4.3.2) em vez dos Psets (§2.5); (b) variantes de tipo por mão
   (§2.2); (c) excluir a porta exclui a abertura (§6.4); (d) dimensões do vão como
   parâmetro principal, e não da folha (§3.1, §3.5); (e) nomes dos Psets próprios;
