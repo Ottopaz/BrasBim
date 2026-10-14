@@ -24,6 +24,8 @@ Software BIM **open source** e **IFC‑nativo** (IFC 4.3 é o modelo de dados e 
 1. Especificar em `spec/` (modelo: `spec/elementos/_MODELO.md`) → revisão humana.
 2. Implementar a partir da spec aprovada, com testes que verificam o IFC gerado.
 3. Commits com `git commit -s` (DCO).
+4. Estado atual, próximos passos e pendências: `CONTEXTO.md` (ler no início da sessão,
+   atualizar ao fim de cada etapa).
 
 ## Idioma
 Documentação e UI em português (pt‑BR). Identificadores de código em inglês.
