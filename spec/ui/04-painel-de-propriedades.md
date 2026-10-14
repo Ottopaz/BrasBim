@@ -66,8 +66,8 @@ colunas por bloco fica numa função sem Qt (`block_grid(n_campos, linhas)`), co
 - [ ] **UI37** Com o painel na lateral, a parede selecionada aparece em pé, como antes
       (os testes UI07 e UI27 continuam passando).
 - [ ] **UI38** Encaixar o painel no topo com uma parede selecionada: os grupos ficam lado a
-      lado, sem rolagem vertical; com altura para 3 linhas, o bloco "Geometria e
-      quantidades" (6 campos) tem 2 colunas de 3.
+      lado, sem rolagem vertical; com altura para 3 linhas, o bloco "Quantidades"
+      (6 campos) tem 2 colunas de 3.
 - [ ] **UI39** No arranjo deitado, mudar a base da parede no campo gera o mesmo
       `wall.edit` do arranjo em pé.
 - [ ] **UI40** `block_grid`: 6 campos em 3 linhas → posições (0,0) (1,0) (2,0) (0,1) (1,1)

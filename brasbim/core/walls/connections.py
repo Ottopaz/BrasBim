@@ -144,6 +144,8 @@ def sync_ops(doc: Document, changed: dict[str, dict | None]) -> list[Op]:
             sg, bg, tg, pg = cache[g]
             if sg != sc or min(tc, tg) - max(bc, bg) <= 1e-6:
                 continue
+            if g in states[c].get("no_join", ()) or c in states[g].get("no_join", ()):
+                continue  # junção desfeita à mão (spec/ui 05 §7.1)
             for type_c, type_g in joins.detect(pc, pg):
                 key = _key(c, type_c, g, type_g)
                 if key in desired:

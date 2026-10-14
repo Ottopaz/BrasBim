@@ -214,9 +214,13 @@ Formato geral de `spec/01-modelo-de-dados.md`. Propostas:
 | `door_type.create` / `.delete` | `name`, `predefined_type`, `operation_type`, `lining` (§3.2), `panels[]` (`operation`, `position`, `width`, `depth`), `materials`, `defaults` (`width`, `height`, `base`), `variant` |
 | `door_type.edit` | campos alterados (antes/depois) |
 | `door.create` / `.delete` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common` (Pset_DoorCommon diferente do padrão) |
-| `door.edit` | campos de `door.create` alterados (antes/depois) |
+| `door.edit` | campos de `door.create` alterados (antes/depois), e `foreign` (§6.6) |
 | `opening.*`, `filling.*` | já existentes (spec da parede §5.2) |
 
+- `foreign` (porta de outra origem, §6.6): o que o BrasBim não sabe refazer (representações,
+  posicionamento, dimensões, enumerações, quantidades e a relação com o tipo), em JSON;
+  `None` nas portas do BrasBim. A conversão em porta paramétrica é um `door.edit` com
+  `foreign` → `None`, e desfazê-la restaura o corpo original sem perda.
 - `door.create` cria a porta sem posição; posição, `OverallWidth/Height`, contenção
   espacial e corpo são **efeitos derivados** do `filling.attach` e da abertura,
   recalculados depois de cada operação, como o corpo da parede. *(decisão do projeto)*

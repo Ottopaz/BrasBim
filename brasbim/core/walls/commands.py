@@ -182,16 +182,20 @@ def _on_segment(p, a, b) -> bool:
     return margin < t < 1 - margin and math.dist(p, foot) <= joins.TOL
 
 
-def _reshape(doc: Document, label: str, paths: dict[str, geom2d.Path]) -> Transaction:
-    """Troca o caminho das paredes. As aberturas não saem do lugar quando o início da
-    parede se move (a distância ao início é corrigida); abertura que deixaria de caber
-    recusa a ação (spec/ui 02 §4.1)."""
+def _reshape(doc: Document, label: str, paths: dict[str, geom2d.Path],
+             extra: dict[str, dict] | None = None) -> Transaction:
+    """Troca o caminho das paredes (e, em ``extra``, outros campos do estado). As
+    aberturas não saem do lugar quando o início da parede se move (a distância ao início
+    é corrigida); abertura que deixaria de caber recusa a ação (spec/ui 02 §4.1)."""
     changed, wall_ops, opening_ops = {}, [], []
-    for gid, new in paths.items():
+    extra = extra or {}
+    for gid in dict.fromkeys([*paths, *extra]):
         wall = doc.get(gid, "IfcWall")
         state = read_state(doc, wall)
         old = geom2d.path_from_dict(state["path"])
-        future = {**state, "path": new.to_dict()}
+        new = paths.get(gid, old)
+        more = extra.get(gid, {})
+        future = {**state, **more, "path": new.to_dict()}
         band, height = rebuild.band(doc, future), rebuild.height(doc, future)
         keep_place = (isinstance(old, geom2d.LinePath) and isinstance(new, geom2d.LinePath)
                       and math.dist(old.start, new.start) > 1e-9)
@@ -209,8 +213,9 @@ def _reshape(doc: Document, label: str, paths: dict[str, geom2d.Path]) -> Transa
                 opening_ops.append(Op("opening.edit", opening.GlobalId,
                                       before={"distance": o["distance"]},
                                       after={"distance": distance}))
-        wall_ops.append(Op("wall.edit", gid, before={"path": state["path"]},
-                           after={"path": new.to_dict()}))
+        after = {**more, "path": new.to_dict()} if gid in paths else dict(more)
+        wall_ops.append(Op("wall.edit", gid, before={k: state[k] for k in after},
+                           after=after))
         changed[gid] = future
     return Transaction(label, wall_ops + opening_ops + connections.sync_ops(doc, changed))
 
@@ -470,3 +475,74 @@ def delete_storey(doc: Document, storey) -> Transaction:
                                  "fixed_height": rebuild.height(doc, state)}))
     ops.append(Op("storey.delete", storey.GlobalId, data=storeys.read(storey)))
     return Transaction("Excluir pavimento", ops)
+
+
+# --- junções manuais (spec/ui 05 §7) -----------------------------------------------------
+
+
+def _relations_between(wall_a, wall_b) -> list:
+    return [r for r in connections.of_wall(wall_a)
+            if wall_b in (r.RelatingElement, r.RelatedElement)]
+
+
+def unjoin_walls(doc: Document, a, b) -> Transaction:
+    """Desfaz a junção entre duas paredes e lembra a decisão (``no_join``): a detecção
+    automática não a recria."""
+    wall_a, wall_b = doc.get(_gid(a), "IfcWall"), doc.get(_gid(b), "IfcWall")
+    rels = _relations_between(wall_a, wall_b)
+    if not rels:
+        raise OpError("as paredes não estão ligadas por uma junção")
+    ops = [Op("path_connection.delete", r.GlobalId, data=connections.read(r)) for r in rels]
+    for wall, other in ((wall_a, wall_b), (wall_b, wall_a)):
+        current = read_state(doc, wall)["no_join"]
+        ops.append(Op("wall.edit", wall.GlobalId, before={"no_join": current},
+                      after={"no_join": sorted({*current, other.GlobalId})}))
+    return Transaction("Desfazer junção", ops)
+
+
+def join_walls(doc: Document, a, b) -> Transaction:
+    """Une duas paredes retas (spec/ui 05 §7): cada uma estende ou encurta pela própria
+    direção até o cruzamento dos caminhos; a que já passa pelo cruzamento fica (T)."""
+    wall_a, wall_b = doc.get(_gid(a), "IfcWall"), doc.get(_gid(b), "IfcWall")
+    states = {w.GlobalId: read_state(doc, w) for w in (wall_a, wall_b)}
+    paths = {g: geom2d.path_from_dict(s["path"]) for g, s in states.items()}
+    if not all(isinstance(p, geom2d.LinePath) for p in paths.values()):
+        raise OpError("só paredes retas podem ser unidas")
+    pa, pb = paths[wall_a.GlobalId], paths[wall_b.GlobalId]
+    found = geom2d.intersect(_line(pa), _line(pb))
+    if not found:
+        raise OpError("as paredes são paralelas e não se cruzam")
+    point = found[0]
+    new = {}
+    for gid, path in paths.items():
+        if _on_segment(point, path.start, path.end):
+            continue  # o cruzamento cai no meio desta parede: junção T
+        which = "start" if math.dist(path.start, point) < math.dist(path.end, point) else "end"
+        if math.dist(path.start if which == "start" else path.end, point) <= joins.TOL:
+            continue
+        _set_end(paths, new, gid, which, point)
+        if math.cos(new[gid].start_angle - path.start_angle) < 0:
+            raise OpError(f"a parede {gid} ficaria invertida")
+    other = {wall_a.GlobalId: wall_b.GlobalId, wall_b.GlobalId: wall_a.GlobalId}
+    extra = {g: {"no_join": [x for x in s["no_join"] if x != other[g]]}
+             for g, s in states.items() if other[g] in s["no_join"]}
+    if not new and not extra:
+        if _relations_between(wall_a, wall_b):
+            raise OpError("as paredes já estão unidas")
+        raise OpError("as paredes já se cruzam")
+    return _reshape(doc, "Unir paredes", new, extra)
+
+
+def swap_continuous(doc: Document, a, b) -> Transaction:
+    """Em X, a outra parede passa a ser a contínua (``RelatingElement``)."""
+    wall_a, wall_b = doc.get(_gid(a), "IfcWall"), doc.get(_gid(b), "IfcWall")
+    rels = [r for r in _relations_between(wall_a, wall_b)
+            if r.RelatingConnectionType == "ATPATH" and r.RelatedConnectionType == "ATPATH"]
+    if not rels:
+        raise OpError("trocar a contínua só vale para paredes que se cruzam (junção em X)")
+    rel = rels[0]
+    data = connections.read(rel)
+    swapped = {**data, "relating": data["related"], "related": data["relating"]}
+    return Transaction("Trocar a contínua", [
+        Op("path_connection.delete", rel.GlobalId, data=data),
+        Op("path_connection.create", guid.new(), data=swapped)])

@@ -46,9 +46,20 @@ class Shape:
     """Representação do tipo (paredes cortadas; spec/ui 03 §6), ``None`` = padrão."""
 
 
+@dataclass(frozen=True)
+class Label:
+    """Etiqueta de porta (spec/ui 05 §5): código e medidas do vão, no ponto ``at``."""
+
+    owner: str
+    at: Point
+    code: str
+    size: str
+
+
 @dataclass
 class Plan:
     shapes: list[Shape] = field(default_factory=list)
+    labels: list[Label] = field(default_factory=list)
 
     def owners(self, role_prefix: str) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -284,6 +295,41 @@ def door_shapes(doc: Document, door, storey) -> list[Shape]:
             for role, pts, closed in symbol]
 
 
+LABEL_GAP = 0.30  # etiqueta a 0,30 m da face, do lado oposto ao da folha (spec/ui 05 §5)
+
+
+def _fmt(v: float) -> str:
+    return f"{v:.2f}".replace(".", ",")
+
+
+def door_label(doc: Document, door, storey) -> Label | None:
+    if door.ObjectPlacement is None or not door.OverallWidth:
+        return None
+    common = ifcopenshell.util.element.get_pset(door, doors.COMMON_PSET) or {}
+    code = common.get("Reference") or door.Name
+    if not code:
+        return None
+    width, height = float(door.OverallWidth), float(door.OverallHeight or 0.0)
+    opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
+    if opening is not None:
+        try:
+            o = openings.read_state(opening)
+            width, height = o["width"], o["height"]
+        except OpError:
+            pass
+    at = _door_to_storey(door, storey)((float(door.OverallWidth) / 2, -LABEL_GAP))
+    return Label(door.GlobalId, at, str(code), f"{_fmt(width)} × {_fmt(height)}")
+
+
+def _continuous_last(walls) -> list:
+    """Em X, a parede contínua (``RelatingElement``) é desenhada depois da outra."""
+    def rank(wall):
+        return any(r.is_a("IfcRelConnectsPathElements")
+                   and r.RelatingConnectionType == "ATPATH"
+                   and r.RelatedConnectionType == "ATPATH" for r in wall.ConnectedTo)
+    return sorted(walls, key=lambda w: (rank(w), w.GlobalId))
+
+
 # --- pavimento ----------------------------------------------------------------------
 
 
@@ -300,8 +346,11 @@ def storey_plan(doc: Document, storey, show_below: bool = True) -> Plan:
         if i > 0:
             for wall in _contained(storeys[i - 1], "IfcWall"):
                 plan.shapes += wall_shapes(doc, wall, role="below")
-    for wall in _contained(storey, "IfcWall"):
+    for wall in _continuous_last(_contained(storey, "IfcWall")):
         plan.shapes += wall_shapes(doc, wall)
     for door in _contained(storey, "IfcDoor"):
         plan.shapes += door_shapes(doc, door, storey)
+        label = door_label(doc, door, storey)
+        if label is not None:
+            plan.labels.append(label)
     return plan

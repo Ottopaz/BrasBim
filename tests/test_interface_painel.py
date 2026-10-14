@@ -91,7 +91,7 @@ def test_ui38_deitado_no_topo(window):
     assert lines >= 2
     blocks = _blocks(panel)
     assert list(blocks)[:2] == ["Parede", "Altura"]
-    geometry = blocks["Geometria e quantidades"]
+    geometry = blocks["Quantidades"]
     assert len(geometry) == 6
     assert max(c for _, _, c in geometry) + 1 == math.ceil(6 / lines)
     assert max(r for _, r, _ in geometry) + 1 == min(lines, 6)

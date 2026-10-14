@@ -47,13 +47,13 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `storey.create` / `.delete` / `.edit` | `name`, `elevation` | Provisória (sem spec de pavimento) |
 | `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]`, `plan_style` | `create` provisória (RF-TIP-01); `plan_style`: spec/ui 03 §6 |
 | `wall_type.edit` | `name`, `predefined_type`, `object_type`, `layers`, `plan_style` | parede §5.2; spec/ui 02 §8.1 e 03 §6 |
-| `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
+| `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common`, `no_join` | parede §5.2; `no_join` (junções desfeitas): spec/ui 05 §7.1 |
 | `wall.split` / `wall.merge` | `path` (caminho original), `at` (ponto), `new` (GlobalId da 2ª parte) | parede §5.1, §5.2; `wall.merge` é só a inversa |
 | `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |
 | `opening.create` / `.delete` / `.edit` | `wall`, `kind` (`OPENING` \| `RECESS`), `distance`, `width`, `height`, `sill`, `depth`, `side` (`left` \| `right`) | parede §5.2, §6.3 |
 | `filling.attach` / `.detach` | `id` = GlobalId do elemento que preenche; `opening` | parede §5.2, §6.3 |
 | `door_type.create` / `.delete` / `.edit` | `name`, `predefined_type`, `operation_type`, `lining` (`thickness`, `depth`, `casing_thickness`, `casing_depth`, `threshold_thickness`), `panels[]` (`operation`, `position`, `width`, `depth`), `materials` (`lining`, `framing`, `glazing`), `defaults` (`width`, `height`, `base`), `variant` | porta §5.2 |
-| `door.create` / `.delete` / `.edit` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common` | porta §5.2 |
+| `door.create` / `.delete` / `.edit` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common`, `foreign` | porta §5.2 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`

@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
                                         ["Ctrl+Y", "Ctrl+Shift+Z"])
         edit_menu.addSeparator()
         for key, text in (("move", "Mover"), ("copy", "Copiar"), ("rotate", "Girar"),
-                          ("split", "Dividir")):
+                          ("mirror", "Espelhar"), ("split", "Dividir")):
             self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
         view_menu = bar.addMenu("E&xibir")
@@ -181,6 +181,14 @@ class MainWindow(QMainWindow):
                                                  self._toggle_selection_bar)
         self.selection_bar_action.setCheckable(True)
         self.selection_bar_action.setChecked(True)
+        view_menu.addSeparator()
+        self.tags_action = self._action(view_menu, "Etiquetas de porta",
+                                        lambda v: self._set_plan_option("show_tags", v))
+        self.tag_size_action = self._action(view_menu, "Medidas na etiqueta",
+                                            lambda v: self._set_plan_option("show_tag_size", v))
+        for action, value in ((self.tags_action, True), (self.tag_size_action, False)):
+            action.setCheckable(True)
+            action.setChecked(value)
         project_menu = bar.addMenu("&Projeto")
         self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
@@ -211,6 +219,11 @@ class MainWindow(QMainWindow):
         self.options_bar.wanted = True
         self.options_bar.show_for(self.toolbox.active)
 
+    def _set_plan_option(self, name: str, value: bool) -> None:
+        """Preferência de desenho da planta (spec/ui 05 §5); não vai para o IFC."""
+        setattr(self.plan, name, bool(value))
+        self.plan.update()
+
     def _toggle_selection_bar(self, checked: bool) -> None:
         self.selection_bar.enabled = checked
         self.plan.update()
@@ -229,6 +242,13 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         if state is not None:
             self.restoreState(state, STATE_VERSION)
+        for action, key, option in ((self.tags_action, "etiquetas_porta", "show_tags"),
+                                    (self.tag_size_action, "medidas_etiqueta",
+                                     "show_tag_size")):
+            value = settings.value(key)
+            if value is not None:
+                action.setChecked(str(value).lower() == "true")
+                self._set_plan_option(option, action.isChecked())
         self.options_bar.show_for(self.toolbox.active)
 
     # --- atualização ------------------------------------------------------------------
@@ -377,8 +397,14 @@ class MainWindow(QMainWindow):
         if not session.selection:
             session.message("selecione os elementos antes", "recusa")
             return
-        if key in ("move", "copy", "rotate"):
+        if key in ("move", "copy", "rotate", "mirror"):
             self.activate_tool(key)
+            return
+        if key in ("join", "unjoin", "swap"):
+            a, b = sorted(session.selection)
+            command = {"join": cmd.join_walls, "unjoin": cmd.unjoin_walls,
+                       "swap": cmd.swap_continuous}[key]
+            session.run(lambda: command(doc, a, b))
             return
         door_list = [doc.get(g) for g in sorted(session.selection)]
         flip = fc.flip_opening if key == "flip_opening" else fc.flip_hinges
@@ -448,6 +474,8 @@ class MainWindow(QMainWindow):
         settings = _settings()
         settings.setValue("geometria", self.saveGeometry())
         settings.setValue("paineis", self.saveState(STATE_VERSION))
+        settings.setValue("etiquetas_porta", self.tags_action.isChecked())
+        settings.setValue("medidas_etiqueta", self.tag_size_action.isChecked())
         self.session.close()
         event.accept()
 

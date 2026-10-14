@@ -75,7 +75,9 @@ def _read_path(wall) -> dict:
     raise OpError(f"curva Axis não suportada: {curve.is_a()}")
 
 
-def _common_defaults(wall_type) -> dict:
+def common_defaults(wall_type) -> dict:
+    """Padrão de ``Pset_WallCommon`` para paredes do tipo (o que não é gravado como
+    diferença em ``common``)."""
     defaults = {"Reference": wall_type.Name, "Status": "NEW", "IsExternal": False}
     load_bearing = {"SOLIDWALL": True, "PARTITIONING": False}.get(wall_type.PredefinedType)
     if load_bearing is not None:
@@ -88,7 +90,7 @@ def _read_common(wall, wall_type) -> dict:
     values = {k: v for k, v in values.items() if k != "id"}
     if isinstance(values.get("Status"), (list, tuple)):
         values["Status"] = values["Status"][0] if values["Status"] else None
-    defaults = _common_defaults(wall_type) if wall_type else {}
+    defaults = common_defaults(wall_type) if wall_type else {}
     return {k: v for k, v in values.items() if defaults.get(k) != v}
 
 
@@ -184,10 +186,12 @@ def write_state(doc: Document, wall, state: dict) -> None:
     for key in ("PavimentoBase", "PavimentoTopo"):
         if values[key] is not None:
             values[key] = doc.ifc.createIfcIdentifier(values[key])
+    if values["SemJuncaoCom"] is not None:
+        values["SemJuncaoCom"] = doc.ifc.createIfcText(values["SemJuncaoCom"])
     pset = props.ensure_pset(doc, wall, params.PSET)
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties=values)
 
-    common = {**_common_defaults(wall_type), **(state.get("common") or {})}
+    common = {**common_defaults(wall_type), **(state.get("common") or {})}
     if common.get("Status") is not None:
         common["Status"] = [common["Status"]]
     props.write_pset(doc, wall, COMMON_PSET, common)

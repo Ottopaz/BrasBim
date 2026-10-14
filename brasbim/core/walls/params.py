@@ -26,6 +26,7 @@ STATE_KEYS = (
     "top_offset",
     "fixed_height",
     "common",
+    "no_join",
 )
 
 
@@ -40,6 +41,7 @@ def default_state() -> dict:
         "top_offset": 0.0,
         "fixed_height": DEFAULT_FIXED_HEIGHT,
         "common": {},
+        "no_join": [],  # paredes com junção desfeita à mão (spec/ui 05 §7.1)
     }
 
 
@@ -80,6 +82,7 @@ def pset_values(state: dict) -> dict:
         "PavimentoTopo": state["top_storey"] if state["top_mode"] == "storey" else None,
         "DeslocamentoTopo": float(state["top_offset"]),
         "AlturaFixa": float(state["fixed_height"]),
+        "SemJuncaoCom": " ".join(sorted(state.get("no_join") or [])) or None,
     }
 
 
@@ -95,6 +98,7 @@ def state_from_pset(values: dict) -> dict:
         "top_storey": values.get("PavimentoTopo"),
         "top_offset": float(values["DeslocamentoTopo"]),
         "fixed_height": float(values["AlturaFixa"]),
+        "no_join": sorted((values.get("SemJuncaoCom") or "").split()),
     }
 
 

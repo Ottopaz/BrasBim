@@ -10,12 +10,14 @@ são recalculadas por ``connections.sync_ops``.
 from __future__ import annotations
 
 import copy
+import math
 
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
-from brasbim.core.fillings import doors
+from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.ops import Op, Transaction
+from brasbim.core.ops.history import combine
 from brasbim.core.walls import connections, openings, rebuild
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -142,6 +144,7 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
     for wall in walls:
         state = copy.deepcopy(read_wall(doc, wall))
         state["path"] = geom2d.mapped(geom2d.path_from_dict(state["path"]), fn).to_dict()
+        state["no_join"] = []
         gid = guid.new()
         ops.append(Op("wall.create", gid, data=state))
         new[gid] = state
@@ -162,3 +165,78 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         opening_ops += _copy_door_ops(doc, door, data)
     ops += opening_ops
     return Transaction("Copiar", ops + connections.sync_ops(doc, new))
+
+
+# --- espelhar (spec/ui 05 §2) ---------------------------------------------------------
+
+
+def _mirrored(path: geom2d.Path, fn) -> geom2d.Path:
+    """Caminho espelhado e com o sentido invertido: as camadas ficam do lado espelhado.
+    (O espelho inverte o giro do arco; inverter o sentido o desfaz.)"""
+    start, end = fn(path.end), fn(path.start)
+    if isinstance(path, geom2d.LinePath):
+        return geom2d.LinePath(start, end)
+    return geom2d.ArcPath(start, end, path.radius, path.ccw, path.large)
+
+
+def _has_hand(doc: Document, door) -> bool:
+    state = doors.read_state(door)
+    if state["foreign"] is not None or not state["type"]:
+        return False
+    return params.hand_of(door_types.read(doc.get(state["type"]))["operation_type"]) is not None
+
+
+def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
+    """Imagem espelhada da seleção pelo eixo ``a``–``b``; com ``keep``, espelha uma cópia
+    e mantém o original. As portas trocam as dobradiças (variante de mão)."""
+    if math.dist(a, b) < geom2d.MIN_LENGTH:
+        raise OpError("o eixo de simetria precisa de dois pontos distintos")
+    fn = geom2d.reflection(tuple(a), tuple(b))
+    walls, lone = _split(doc, gids)
+    if lone or not walls:
+        raise OpError("espelhe a parede que contém a porta")
+    door_list = []
+    for wall in walls:
+        for opening in openings.of_wall(wall):
+            for rel in opening.HasFillings:
+                element = rel.RelatedBuildingElement
+                if not element.is_a("IfcDoor") or not doors.is_parametric(element):
+                    raise OpError(f"o elemento {element.GlobalId}, de outra origem, não pode "
+                                  "ser espelhado")
+                door_list.append(element)
+    ops, changed, new_doors = [], {}, []
+    opening_ops = []
+    for wall in walls:
+        state = read_wall(doc, wall)
+        path = geom2d.path_from_dict(state["path"])
+        mirrored = _mirrored(path, fn)
+        gid = guid.new() if keep else wall.GlobalId
+        future = {**copy.deepcopy(state), "path": mirrored.to_dict()}
+        if keep:
+            future["no_join"] = []
+            ops.append(Op("wall.create", gid, data=future))
+        else:
+            ops.append(Op("wall.edit", gid, before={"path": state["path"]},
+                          after={"path": mirrored.to_dict()}))
+        changed[gid] = future
+        for opening in openings.of_wall(wall):
+            o = openings.read_state(opening)
+            distance = path.length - o["distance"] - o["width"]
+            if keep:
+                data = {**o, "wall": gid, "distance": distance}
+                fillings = [r.RelatedBuildingElement for r in opening.HasFillings]
+                if fillings:
+                    door_ops = _copy_door_ops(doc, fillings[0], data)
+                    opening_ops += door_ops
+                    if _has_hand(doc, fillings[0]):
+                        new_doors.append(door_ops[1].id)
+                else:
+                    opening_ops.append(Op("opening.create", guid.new(), data=data))
+            elif abs(distance - o["distance"]) > 1e-9:
+                opening_ops.append(Op("opening.edit", opening.GlobalId,
+                                      before={"distance": o["distance"]},
+                                      after={"distance": distance}))
+    base = Transaction("", ops + opening_ops + connections.sync_ops(doc, changed))
+    flips = new_doors if keep else [d.GlobalId for d in door_list if _has_hand(doc, d)]
+    return combine(doc, "Espelhar cópia" if keep else "Espelhar",
+                   [lambda: base, *[lambda d=d: door_cmd.flip_hinges(doc, d) for d in flips]])

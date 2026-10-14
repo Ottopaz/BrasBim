@@ -236,14 +236,35 @@ class SelectTool(Tool):
         selection = self.session.selection
         return [w for w in self.ctx.walls if w.gid in selection]
 
+    def _door_handles(self) -> list[tuple]:
+        """Alças nas bordas do vão da porta selecionada sozinha (spec/ui 05 §4)."""
+        selection = self.session.selection
+        if len(selection) != 1:
+            return []
+        door = self.session.doc.find(next(iter(selection)))
+        opening = fc.opening_of(door) if door is not None and door.is_a("IfcDoor") else None
+        host = openings.host(opening) if opening is not None else None
+        wall = next((w for w in self.ctx.walls if host and w.gid == host.GlobalId), None)
+        if wall is None or not wall.straight:
+            return []
+        o = openings.read_state(opening)
+        y = (wall.ymin + wall.ymax) / 2
+        return [(wall, "door_start", wall.frame.to_global((o["distance"], y)), door.GlobalId),
+                (wall, "door_end", wall.frame.to_global((o["distance"] + o["width"], y)),
+                 door.GlobalId)]
+
+    def _all_handles(self) -> list[tuple]:
+        """(parede, alça, ponto, porta) de todas as alças visíveis."""
+        return [(w, which, q, None) for w in self._selected_walls()
+                for which, q in _handle_points(w)] + self._door_handles()
+
     def _handle_at(self, p: Point) -> dict | None:
-        found = [(math.dist(p, q), which == "mid", w.gid, w, which)
-                 for w in self._selected_walls() for which, q in _handle_points(w)
-                 if math.dist(p, q) <= self.ctx.tol]
+        found = [(math.dist(p, q), which == "mid", w.gid, which, w, door)
+                 for w, which, q, door in self._all_handles() if math.dist(p, q) <= self.ctx.tol]
         if not found:
             return None
-        _, _, _, w, which = min(found, key=lambda f: (f[1], f[0], f[2]))
-        return {"wall": w, "which": which}
+        *_, which, w, door = min(found, key=lambda f: (f[1], f[0], f[2], f[3]))
+        return {"wall": w, "which": which, "door": door}
 
     def handles(self):
         hot = None
@@ -252,14 +273,34 @@ class SelectTool(Tool):
         elif self.cursor is not None and not self.drag:
             h = self._handle_at(self.cursor)
             hot = (h["wall"].gid, h["which"]) if h else None
-        return [(q, hot == (w.gid, which)) for w in self._selected_walls()
-                for which, q in _handle_points(w)]
+        return [(q, hot == (w.gid, which)) for w, which, q, _ in self._all_handles()]
+
+    def _door_resize(self, distance: float, width: float):
+        """Porta com o vão de ``distance`` a ``distance + width`` (alça da porta)."""
+        d = self.drag
+        doc, door = self.session.doc, d["door"]
+        d["want"] = (distance, width)
+
+        def build():
+            if width < 0.10:
+                raise OpError("largura do vão pequena demais")
+            return fc.edit_door(doc, door, width=width, distance=distance)
+
+        at = d["wall"].frame.to_global((distance + width / 2, d["wall"].ymax + 0.15))
+        return build, at, f"{fmt(width)} m"
 
     def _handle_build(self, p: Point, mods: Mods):
         """(função que monta a transação, ponto do rótulo, texto) para a alça em ``p``."""
         d = self.drag
         w, which, doc = d["wall"], d["which"], self.session.doc
         carry = not mods.ctrl
+        if which.startswith("door"):
+            self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
+            along = w.frame.to_local(self.snapped.point)[0]
+            o = d["opening"]
+            if which == "door_end":
+                return self._door_resize(o["distance"], along - o["distance"])
+            return self._door_resize(along, o["distance"] + o["width"] - along)
         if which in ("start", "end"):
             fixed = w.path.end if which == "start" else w.path.start
             self.snapped = self.ctx.snap(p, mods, fixed)
@@ -284,7 +325,22 @@ class SelectTool(Tool):
             w = d["wall"]
             d["tx"], d["error"] = None, str(e)
             d["marks"] = [_band_mark(w.path, w.ymin, w.ymax, "invalid")]
+        if d["which"].startswith("door"):
+            d["marks"] = self._door_marks("invalid" if d["error"] else "preview")
         d["labels"] = [(at, text)] if text else []
+
+    def _door_marks(self, style: str) -> list[Mark]:
+        """Pré-visualização da porta com o vão novo (alça da porta)."""
+        d = self.drag
+        distance, width = d["want"]
+        door = self.session.doc.get(d["door"])
+        state = doors.read_state(door)
+        tstate = (door_types.read(self.session.doc.get(state["type"]))
+                  if state["foreign"] is None else
+                  {**door_types.default_state("NOTDEFINED"),
+                   "lining": {"thickness": 0, "depth": None}})
+        return door_marks(self.session.doc, d["wall"], distance, max(width, 0.01), tstate,
+                          state["opens_to"], state["align"], state["offset"], style)
 
     def _handle_commit(self) -> None:
         d, self.drag = self.drag, None
@@ -300,6 +356,19 @@ class SelectTool(Tool):
             return False
         w, which, doc = d["wall"], d["which"], self.session.doc
         cursor = self.snapped.point if self.snapped else self.cursor
+        if which.startswith("door"):
+            o = d["opening"]
+            distance = o["distance"] if which == "door_end" else (
+                o["distance"] + o["width"] - value)
+            build, _, _ = self._door_resize(distance, value)
+            self.drag = None
+            try:
+                tx = build()
+            except OpError as e:
+                self.session.message(str(e), "recusa")
+                return True
+            self.session.run(tx)
+            return True
         if which in ("start", "end"):
             fixed = w.path.end if which == "start" else w.path.start
             moving = w.path.start if which == "start" else w.path.end
@@ -332,6 +401,9 @@ class SelectTool(Tool):
             self.drag = {"kind": "handle", **handle, "start": p, "active": False,
                          "sticky": False, "tx": None, "error": None, "marks": [],
                          "labels": []}
+            if handle["door"]:
+                door = self.session.doc.get(handle["door"])
+                self.drag["opening"] = openings.read_state(fc.opening_of(door))
             return
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         selection = self.session.selection
@@ -1140,11 +1212,52 @@ class RotateTool(_SelectionTool):
         return [(self.snapped.point, f"{math.degrees(angle):.1f}°".replace(".", ","))]
 
 
+class MirrorTool(_SelectionTool):
+    """Espelhar pelo eixo de dois pontos (spec/ui 05 §2); Ctrl no 2º clique mantém o
+    original."""
+
+    name, label = "mirror", "Espelhar"
+
+    def hint(self):
+        if not self.session.selection:
+            return "Selecione os elementos antes de usar esta ferramenta"
+        if not self.points:
+            return "Clique o primeiro ponto do eixo de simetria"
+        return ("Clique o segundo ponto do eixo (Shift: múltiplos de 45°; Ctrl mantém o "
+                "original); Esc cancela")
+
+    def wants_number(self):
+        return False
+
+    def click(self, q, mods):
+        if not self.points:
+            self.points = [q]
+            return
+        if math.dist(q, self.points[0]) <= geom2d.MIN_LENGTH:
+            return
+        doc, gids, a = self.session.doc, self._gids(), self.points[0]
+        before = {w.GlobalId for w in doc.ifc.by_type("IfcWall")}
+        if self.session.run(lambda: transform.mirror_elements(doc, gids, a, q, keep=mods.ctrl)) \
+                and mods.ctrl:
+            created = {w.GlobalId for w in doc.ifc.by_type("IfcWall")} - before
+            self.session.select(created)
+        self.points = []
+        self.finished = True
+
+    def preview(self):
+        if not self.points or not self.snapped:
+            return []
+        a, b = self.points[0], self.snapped.point
+        if math.dist(a, b) <= geom2d.MIN_LENGTH:
+            return []
+        return [Mark((a, b), False), *_shape_marks(self._shapes(), geom2d.reflection(a, b))]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, SplitTool, MoveTool,
-         CopyTool, RotateTool)
+         CopyTool, RotateTool, MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
-SELECTION_TOOLS = ("move", "copy", "rotate", "split")
+SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split")
 
 
 # --- mini-barra da seleção (spec/ui 03 §5) -------------------------------------------------
@@ -1160,9 +1273,11 @@ def selection_actions(doc, gids) -> list[str]:
     door_list = [e for e in elements if e.is_a("IfcDoor")]
     out = ["move", "copy"]
     if walls:
-        out.append("rotate")
+        out += ["rotate", "mirror"]
     if len(elements) == 1 and walls:
         out.append("split")
+    if len(walls) == 2 and len(elements) == 2:
+        out += _join_actions(doc, *walls)
     if door_list and len(door_list) == len(elements):
         out.append("flip_opening")
         hands = []
@@ -1174,6 +1289,24 @@ def selection_actions(doc, gids) -> list[str]:
         if all(hands):
             out.append("flip_hinges")
     out.append("delete")
+    return out
+
+
+def _join_actions(doc, a, b) -> list[str]:
+    """Junções manuais que se aplicam a duas paredes (spec/ui 05 §7)."""
+    out = []
+    paths = [geom2d.path_from_dict(cmd.read_state(doc, w)["path"]) for w in (a, b)]
+    if all(isinstance(p, geom2d.LinePath) for p in paths):
+        lines = [geom2d.line_through(p.start, p.end) for p in paths]
+        if geom2d.intersect(*lines):
+            out.append("join")
+    rels = [r for r in (*a.ConnectedTo, *a.ConnectedFrom)
+            if r.is_a("IfcRelConnectsPathElements") and b in (r.RelatingElement,
+                                                              r.RelatedElement)]
+    if rels:
+        out.append("unjoin")
+        if any(r.RelatingConnectionType == r.RelatedConnectionType == "ATPATH" for r in rels):
+            out.append("swap")
     return out
 
 

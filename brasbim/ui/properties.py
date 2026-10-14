@@ -13,6 +13,7 @@ campo ao valor anterior (o painel é refeito a partir do modelo).
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from brasbim.core import geom2d
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params
@@ -42,6 +44,7 @@ from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings, rebuild
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
+from brasbim.core.walls.wall import common_defaults as wall_common_defaults
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui.tools import block_grid, fmt, parse_number
 
@@ -52,6 +55,22 @@ HINGES = [("Esquerda", "left"), ("Direita", "right")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 _INVALID = "QLineEdit { background: #fde2df; }"
 MIXED = "vários"
+
+# Propriedades comuns no painel (spec/ui 05 §6): (propriedade IFC, nome, edição).
+STATUS = [("Nova", "NEW"), ("Existente", "EXISTING"), ("A demolir", "DEMOLISH"),
+          ("Temporária", "TEMPORARY")]
+WALL_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+               ("IsExternal", "Externa", "bool"), ("LoadBearing", "Estrutural", "bool"),
+               ("FireRating", "Resistência ao fogo", "text"),
+               ("AcousticRating", "Desempenho acústico", "text"),
+               ("ThermalTransmittance", "Transmitância térmica (W/m²K)", "number")]
+DOOR_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "status"),
+               ("IsExternal", "Externa", "bool"),
+               ("FireRating", "Resistência ao fogo", "text"),
+               ("AcousticRating", "Desempenho acústico", "text"),
+               ("HandicapAccessible", "Acessível", "bool"),
+               ("FireExit", "Saída de emergência", "bool")]
+YES_NO = [("Sim", True), ("Não", False)]
 
 
 ROW_HEIGHT = 27  # altura de uma linha de campo no arranjo deitado (px)
@@ -347,15 +366,32 @@ class PropertiesPanel(QScrollArea):
             self._number("Deslocamento do topo", state["top_offset"],
                          lambda v: edit(top_offset=v))
 
+        self._section("Geometria")
+        path = geom2d.path_from_dict(state["path"])
+        if isinstance(path, geom2d.LinePath):
+            def to_end(length, angle):
+                end = (path.start[0] + length * math.cos(angle),
+                       path.start[1] + length * math.sin(angle))
+                self._run(lambda: cmd.move_wall_end(doc, wall, "end", end))
+
+            degrees = math.degrees(path.start_angle) % 360.0
+            self._number("Comprimento", path.length,
+                         lambda v: to_end(v, path.start_angle))
+            self._number("Ângulo (°)", degrees,
+                         lambda v: to_end(path.length, math.radians(v)))
+        else:
+            self._read("Comprimento", f"{fmt(path.length)} m")
+            self._read("Raio", f"{fmt(path.radius)} m")
         q = ifcopenshell.util.element.get_pset(wall, "Qto_WallBaseQuantities") or {}
-        self._section("Geometria e quantidades")
+        self._section("Quantidades")
         thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
-        self._read("Comprimento", f"{fmt(q.get('Length', 0))} m")
+        self._read("Comprimento no eixo", f"{fmt(q.get('Length', 0))} m")
         self._read("Espessura", f"{fmt(thickness)} m")
         self._read("Altura", f"{fmt(height)} m")
         self._read("Área lateral bruta", f"{fmt(q.get('GrossSideArea', 0))} m²")
         self._read("Área lateral líquida", f"{fmt(q.get('NetSideArea', 0))} m²")
         self._read("Volume líquido", f"{fmt(q.get('NetVolume', 0))} m³")
+        self._wall_common([wall])
         self._section("Identificação")
         self._read("GlobalId", wall.GlobalId)
         self._read("Origem", "outro programa" if foreign else "BrasBim")
@@ -410,6 +446,7 @@ class PropertiesPanel(QScrollArea):
         names = Counter(doc.get(s["type"]).Name for s in states)
         for name, n in sorted(names.items()):
             self._read(name, str(n))
+        self._wall_common(walls)
 
     def _doors(self, door_list) -> None:
         doc = self.session.doc
@@ -452,6 +489,7 @@ class PropertiesPanel(QScrollArea):
                         for s in states)
         for name, n in sorted(names.items()):
             self._read(name, str(n))
+        self._door_common(door_list)
 
     # --- porta (§7.3) -------------------------------------------------------------------
 
@@ -499,6 +537,7 @@ class PropertiesPanel(QScrollArea):
             self._read("Largura", f"{fmt(q.get('Width', 0))} m")
             self._read("Altura", f"{fmt(q.get('Height', 0))} m")
             self._read("Área", f"{fmt(q.get('Area', 0))} m²")
+        self._door_common([door])
         self._section("Identificação")
         self._read("GlobalId", door.GlobalId)
         self._read("Origem", "outro programa" if state["foreign"] is not None else "BrasBim")
@@ -511,6 +550,91 @@ class PropertiesPanel(QScrollArea):
             self._add(warning)
 
     # --- opções da ferramenta (§7.1) ------------------------------------------------------
+
+    # --- propriedades comuns (spec/ui 05 §6) ------------------------------------------
+
+    def _text(self, label: str, value, commit, placeholder: str = "") -> QLineEdit:
+        field = QLineEdit("" if value is None else str(value))
+        field.setPlaceholderText(placeholder)
+        original = field.text()
+
+        def done():
+            if field.text().strip() != original:
+                commit(field.text().strip() or None)
+
+        field.editingFinished.connect(done)
+        self._add(label, field)
+        return field
+
+    def _common_group(self, elements, fields, effective, defaults, edit) -> None:
+        """Campos de ``Pset_*Common``. ``effective(e)``: valores com os padrões;
+        ``defaults(e)``: padrões do tipo; ``edit(e, common)``: transação de um elemento."""
+        doc = self.session.doc
+        self._section("Propriedades comuns")
+        values = [effective(e) for e in elements]
+        label = (f"Editar {len(elements)} elementos" if len(elements) > 1
+                 else "Editar propriedades")
+
+        def commit(key, value):
+            def build(element):
+                base = defaults(element)
+                merged = {**effective(element), key: value}
+                common = {k: v for k, v in merged.items()
+                          if v not in (None, "") and base.get(k) != v}
+                return edit(element, common)
+
+            if len(elements) == 1:
+                self._run(lambda: build(elements[0]))
+            else:
+                self._run(lambda: combine(doc, label, [lambda e=e: build(e)
+                                                       for e in elements]))
+
+        for key, name, kind in fields:
+            if kind == "bool":
+                current = _common(bool(v.get(key)) for v in values)
+                self._combo(name, YES_NO, current, lambda v, k=key: commit(k, v))
+            elif kind == "status":
+                current = _common(v.get("Status") or "NEW" for v in values)
+                self._combo(name, STATUS, current, lambda v, k=key: commit(k, v))
+            elif kind == "number":
+                self._number(name, _common(v.get(key) for v in values),
+                             lambda v, k=key: commit(k, v), placeholder=MIXED
+                             if len(values) > 1 else "", allow_empty=True)
+            elif kind == "read":
+                current = _common(v.get(key) for v in values)
+                self._read(name, MIXED if current is None and len(values) > 1
+                           else str(current or "—"))
+            else:
+                current = _common(v.get(key) for v in values)
+                self._text(name, current, lambda v, k=key: commit(k, v),
+                           placeholder=MIXED if current is None and len(values) > 1 else "")
+
+    def _wall_common(self, walls) -> None:
+        doc = self.session.doc
+
+        def defaults(wall):
+            return wall_common_defaults(doc.get(read_wall(doc, wall)["type"], "IfcWallType"))
+
+        def effective(wall):
+            return {**defaults(wall), **read_wall(doc, wall)["common"]}
+
+        self._common_group(walls, WALL_COMMON, effective, defaults,
+                           lambda w, common: cmd.edit_wall(doc, w, common=common))
+
+    def _door_common(self, door_list) -> None:
+        doc = self.session.doc
+
+        def defaults(door):
+            state = doors.read_state(door)
+            if state["foreign"] is not None or not state["type"]:
+                return {}
+            return doors.common_defaults(doc.get(state["type"]).Name)
+
+        def effective(door):
+            return {**defaults(door), **doors.read_state(door)["common"]}
+
+        self._common_group(door_list, DOOR_COMMON, effective, defaults,
+                           lambda d, common: fc.edit_door(doc, d, common=common))
 
     def _edit_type_button(self, ifc_class: str, gid: str) -> None:
         if self.edit_type is not None:

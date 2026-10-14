@@ -58,6 +58,8 @@ class PlanView(QWidget):
         self.origin = QPointF(200, 400)  # posição na tela do ponto (0, 0) do pavimento
         self._pan: QPointF | None = None
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
+        self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
+        self.show_tag_size = False
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -176,6 +178,7 @@ class PlanView(QWidget):
     def _draw_styled(self, painter: QPainter, path: QPainterPath, style: dict) -> None:
         """Parede cortada com a representação do tipo (spec/ui 03 §6.1)."""
         fill = style["fill"]
+        painter.fillPath(path, C["background"])  # cobre o que estiver por baixo (X)
         if fill == "solid":
             painter.fillPath(path, QColor(style["fill_color"]))
         elif fill == "hatch":
@@ -202,6 +205,23 @@ class PlanView(QWidget):
         painter.setPen(QPen(QColor(style["line_color"]), width))
         painter.setBrush(Qt.NoBrush)
         painter.drawPath(path)
+
+    def _draw_tags(self, painter: QPainter) -> None:
+        if not self.show_tags:
+            return
+        painter.setFont(QFont(self.font().family(), 9))
+        metrics = painter.fontMetrics()
+        selection = self.ctx.session.selection
+        for label in self.ctx.plan.labels:
+            lines = [label.code] + ([label.size] if self.show_tag_size else [])
+            q = self.to_screen(label.at)
+            height = metrics.height()
+            painter.setPen(QPen(C["select"] if label.owner in selection else QColor("#222")))
+            for i, text in enumerate(lines):
+                width = metrics.horizontalAdvance(text)
+                y = q.y() - len(lines) * height / 2 + i * height
+                painter.drawText(QRectF(q.x() - width / 2 - 2, y, width + 4, height),
+                                 Qt.AlignCenter, text)
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
@@ -257,6 +277,7 @@ class PlanView(QWidget):
         painter.fillRect(self.rect(), C["background"])
         self._draw_grid(painter)
         self._draw_plan(painter)
+        self._draw_tags(painter)
         self._draw_tool(painter)
         painter.end()
         if self.selection_bar is not None:

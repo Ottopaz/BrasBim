@@ -563,3 +563,16 @@ def rotation(center: Point, angle: float):
         return (center[0] + c * dx - s * dy, center[1] + s * dx + c * dy)
 
     return fn
+
+
+def reflection(a: Point, b: Point):
+    """Espelho pela reta que passa por ``a`` e ``b``."""
+    d = _unit(_sub(b, a))
+
+    def fn(p: Point) -> Point:
+        v = _sub(p, a)
+        t = v[0] * d[0] + v[1] * d[1]
+        foot = (a[0] + t * d[0], a[1] + t * d[1])
+        return (2 * foot[0] - p[0], 2 * foot[1] - p[1])
+
+    return fn
