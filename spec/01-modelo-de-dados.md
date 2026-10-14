@@ -1,0 +1,63 @@
+---
+documento: Modelo de dados — operações serializáveis
+requisito: RF-NUC-01, RF-NUC-02
+autor: Claude Code (sessão limpa, sem acesso a _restrito/)
+data: 2026-10-14
+status: rascunho (aguarda revisão)
+---
+
+# Operações serializáveis
+
+Formato das operações que alteram o modelo IFC. Origem: rascunho da spec da parede
+(`spec/elementos/parede.md` §5.2), já implementado em `brasbim/core/ops`.
+
+## 1. Operação
+Registro JSON, unidades SI (m, rad), coordenadas no plano do pavimento:
+
+```json
+{"op": "wall.edit", "id": "<GlobalId>", "before": {"base_offset": 0.0}, "after": {"base_offset": 0.1}}
+```
+
+| Campo | Uso |
+|---|---|
+| `op` | Nome da operação (`<objeto>.<ação>`) |
+| `id` | GlobalId do objeto criado, alterado ou excluído |
+| `data` | Estado completo (criar/excluir). Excluir guarda o estado para poder desfazer |
+| `before` / `after` | Só os campos alterados (editar). `before` serve para detectar conflito: a edição é rejeitada se o estado atual for outro |
+
+Toda operação é invertível sozinha: `create` ↔ `delete` (mesmo `data`), e `edit` troca
+`before` com `after`.
+
+## 2. Transação
+`{"label": "Criar parede", "ops": [...]}`. Uma ação do usuário é uma transação, aplicada
+inteira ou não aplicada (se uma operação falha, as anteriores são desfeitas). Desfazer
+aplica a inversa (operações invertidas, em ordem reversa). O diário registra tudo o que
+foi aplicado, inclusive desfazer e refazer. Reaplicado num modelo vazio com o mesmo
+projeto, o diário reproduz o mesmo IFC.
+
+## 3. Efeitos derivados
+Não são registrados. Quem aplica a operação os recalcula: corpo, recortes de junção,
+`IfcMaterialLayerSetUsage` e quantidades. Entidades derivadas recebem GlobalId
+determinístico (UUID v5 do GlobalId do dono + papel, ex.: `"<parede>/pset/BrasBim_Parede"`),
+para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto)*
+
+## 4. Operações existentes
+| `op` | Dados | Situação |
+|---|---|---|
+| `storey.create` / `.delete` / `.edit` | `name`, `elevation` | Provisória (sem spec de pavimento) |
+| `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]` | `create` provisória (RF-TIP-01) |
+| `wall_type.edit` | `name`, `layers` | parede §5.2 |
+| `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
+
+Caminho (`path`):
+- Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
+- Arco: `{"kind": "arc", "start", "end", "radius", "ccw": bool, "large": bool}`.
+  `large` distingue o arco maior que meia volta, porque raio + sentido + extremidades não
+  bastam. *(decisão do projeto)*
+
+`ref_line`: `axis` | `left_face` | `right_face`. `top_mode`: `storey` | `fixed`.
+`common`: propriedades de `Pset_WallCommon` que diferem do padrão.
+
+## 5. Pendências
+- `wall.split`, `path_connection.*`, `opening.*`, `filling.*`: próximas etapas.
+- Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.
