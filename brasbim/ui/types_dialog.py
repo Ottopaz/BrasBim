@@ -12,8 +12,10 @@ import copy
 
 import ifcopenshell.util.element
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QColorDialog,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -36,6 +38,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
+from brasbim.ui import icons
 from brasbim.ui.tools import fmt, parse_number
 from brasbim.ui.tools import fmt_exact as exact
 
@@ -43,6 +46,7 @@ WALL_USES = [("Parede maciça", "SOLIDWALL"), ("Divisória", "PARTITIONING"),
              ("Parapeito / mureta", "PARAPET"), ("Parede hidráulica", "PLUMBINGWALL")]
 LAYER_ROLES = [("Sem função", None), ("Estrutural", "LoadBearing"),
                ("Acabamento", "Finish"), ("Isolamento", "Insulation")]
+FILLS = [("Nenhum", "none"), ("Sólido", "solid"), ("Hachura", "hatch")]
 DOOR_OPERATIONS = [
     ("Giro, 1 folha, dobradiças à esquerda", "SINGLE_SWING_LEFT"),
     ("Giro, 1 folha, dobradiças à direita", "SINGLE_SWING_RIGHT"),
@@ -86,7 +90,7 @@ class TypesDialog(QDialog):
     ifc_class = ""
     title = ""
 
-    def __init__(self, session, parent=None):
+    def __init__(self, session, parent=None, select: str | None = None):
         super().__init__(parent)
         self.session = session
         self.setWindowTitle(self.title)
@@ -120,7 +124,7 @@ class TypesDialog(QDialog):
         layout = QHBoxLayout(self)
         layout.addLayout(left, 2)
         layout.addLayout(right, 5)
-        self.refresh()
+        self.refresh(select)
 
     # --- lista -------------------------------------------------------------------------
 
@@ -185,6 +189,7 @@ class TypesDialog(QDialog):
     def load(self, gid: str | None) -> None:
         self.current = gid
         self.dirty = False
+        self.sample = None
         self._clear_form()
         self.editor.setEnabled(gid is not None)
         self.apply_button.setEnabled(gid is not None)
@@ -293,6 +298,72 @@ class WallTypesDialog(TypesDialog):
         for layer in state["layers"]:
             self._append_layer(layer)
         self._update_total()
+        self._plan_style_editor(wall_type)
+
+    # representação na planta (spec/ui 03 §6.3)
+
+    def _color(self, label: str, color: str) -> QPushButton:
+        button = QPushButton(color.upper())
+        button.setProperty("color", color.upper())
+
+        def paint():
+            c = button.property("color")
+            text = "white" if QColor(c).lightness() < 128 else "black"
+            button.setText(c)
+            button.setStyleSheet(f"QPushButton {{ background: {c}; color: {text}; }}")
+
+        def pick():
+            chosen = QColorDialog.getColor(QColor(button.property("color")), self, label)
+            if chosen.isValid():
+                self.set_color(button, chosen.name())
+
+        button.paint = paint
+        button.clicked.connect(pick)
+        paint()
+        self.form.addRow(label, button)
+        return button
+
+    def set_color(self, button: QPushButton, color: str) -> None:
+        button.setProperty("color", color.upper())
+        button.paint()
+        self.touched()
+
+    def _plan_style_editor(self, wall_type) -> None:
+        style = wall_types.plan_style(wall_type)
+        self.form.addRow(QLabel("<span style='color:#666'>Representação na planta</span>"))
+        self.fill = self._combo("Preenchimento", FILLS, style["fill"])
+        self.fill_color = self._color("Cor do preenchimento", style["fill_color"])
+        self.hatch_angle = self._line("Ângulo da hachura (°)", exact(style["hatch_angle"]))
+        self.hatch_spacing = self._line("Espaçamento da hachura", exact(style["hatch_spacing"]))
+        weights = list(wall_types.LINE_WEIGHTS)
+        if style["line_weight"] not in weights:
+            weights.append(style["line_weight"])
+        self.line_weight = self._combo(
+            "Espessura da linha",
+            [(f"{exact(w * 1000)} mm", w) for w in sorted(weights)], style["line_weight"])
+        self.line_color = self._color("Cor da linha", style["line_color"])
+        self.sample = QLabel()
+        self.form.addRow("Amostra", self.sample)
+        self._update_sample()
+
+    def read_plan_style(self) -> dict:
+        return {"fill": self.fill.currentData(),
+                "fill_color": self.fill_color.property("color"),
+                "hatch_angle": parse_number(self.hatch_angle.text()),
+                "hatch_spacing": parse_number(self.hatch_spacing.text()),
+                "line_weight": self.line_weight.currentData(),
+                "line_color": self.line_color.property("color")}
+
+    def _update_sample(self) -> None:
+        try:
+            self.sample.setPixmap(icons.swatch(self.read_plan_style(), 120, 28))
+        except ValueError:
+            self.sample.clear()
+
+    def touched(self, *_args) -> None:
+        super().touched()
+        if getattr(self, "sample", None) is not None:
+            self._update_sample()
 
     def _append_layer(self, layer: dict, at: int | None = None) -> None:
         self.layers.blockSignals(True)
@@ -377,6 +448,9 @@ class WallTypesDialog(TypesDialog):
     def changes(self) -> dict:
         new = {"name": self.name.text().strip(), "predefined_type": self.use.currentData(),
                "layers": self.read_layers()}
+        style, old = self.read_plan_style(), self.state["plan_style"]
+        if style != {**wall_types.DEFAULT_PLAN_STYLE, **(old or {})}:
+            new["plan_style"] = style
         if not new["name"]:
             raise ValueError("nome vazio")
         names = {t.Name for t in self.types() if t.GlobalId != self.current}
@@ -398,7 +472,7 @@ class WallTypesDialog(TypesDialog):
         names = {t.Name for t in self.types()}
         return cmd.create_wall_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
                                     state["layers"], state["predefined_type"],
-                                    state["object_type"])
+                                    state["object_type"], state["plan_style"])
 
     def delete_transaction(self, gid):
         return cmd.delete_wall_type(self.session.doc, gid)

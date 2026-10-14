@@ -27,6 +27,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.geom2d import Point
 from brasbim.core.walls import openings, rebuild
+from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state as read_wall
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,8 @@ class Shape:
     role: str
     points: tuple[Point, ...]
     closed: bool = True
+    style: dict | None = field(default=None, hash=False, compare=False)
+    """Representação do tipo (paredes cortadas; spec/ui 03 §6), ``None`` = padrão."""
 
 
 @dataclass
@@ -185,7 +188,9 @@ def wall_shapes(doc: Document, wall, role: str = "wall") -> list[Shape]:
         pieces = [geom2d.clip_rect(local, a, b, -math.inf, math.inf)
                   for a, b in _cut_intervals(wall, band.path.length)]
     frame = band.frame
-    return [Shape(wall.GlobalId, role, tuple(frame.to_global(p) for p in piece))
+    style = (wall_types.plan_style(doc.get(state["type"], "IfcWallType"))
+             if role == "wall" else None)
+    return [Shape(wall.GlobalId, role, tuple(frame.to_global(p) for p in piece), True, style)
             for piece in pieces if piece]
 
 

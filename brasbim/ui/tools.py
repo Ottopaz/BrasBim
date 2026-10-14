@@ -859,10 +859,16 @@ class SplitTool(Tool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.target: dict | None = None
+        self.only: set[str] | None = None  # pela mini-barra: só a parede selecionada
 
     def hint(self):
-        return ("Clique sobre uma parede para dividi-la; digite um número para a distância ao "
+        which = "a parede selecionada" if self.only else "uma parede"
+        return (f"Clique sobre {which} para dividi-la; digite um número para a distância ao "
                 "início")
+
+    def cancel(self):
+        self.only = None
+        return super().cancel()
 
     def wants_number(self):
         return self.target is not None
@@ -892,7 +898,8 @@ class SplitTool(Tool):
     def move(self, p, mods):
         super().move(p, mods)
         self.target = None
-        hit = snap.wall_at(self.ctx.walls, p, self.ctx.tol)
+        walls = [w for w in self.ctx.walls if self.only is None or w.gid in self.only]
+        hit = snap.wall_at(walls, p, self.ctx.tol)
         if hit is None:
             self.snapped = None
             return
@@ -909,7 +916,9 @@ class SplitTool(Tool):
             self.session.message(target["error"], "recusa")
         else:
             doc = self.session.doc
-            self.session.run(lambda: cmd.split_wall(doc, target["wall"], target["point"]))
+            if self.session.run(lambda: cmd.split_wall(doc, target["wall"], target["point"]))                     and self.only is not None:
+                self.only = None
+                self.finished = True
         self.target = None
 
     def press(self, p, mods, button="left"):
@@ -1126,8 +1135,53 @@ class RotateTool(_SelectionTool):
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, SplitTool, MoveTool,
          CopyTool, RotateTool)
-# Ferramentas que dependem de seleção (desativadas sem ela).
-SELECTION_TOOLS = ("move", "copy", "rotate")
+# Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
+# Esc, a vista volta para Selecionar.
+SELECTION_TOOLS = ("move", "copy", "rotate", "split")
+
+
+# --- mini-barra da seleção (spec/ui 03 §5) -------------------------------------------------
+
+
+def selection_actions(doc, gids) -> list[str]:
+    """Ações da mini-barra que se aplicam à seleção, na ordem da barra."""
+    elements = [doc.find(g) for g in sorted(gids)]
+    elements = [e for e in elements if e is not None]
+    if not elements:
+        return []
+    walls = [e for e in elements if e.is_a("IfcWall")]
+    door_list = [e for e in elements if e.is_a("IfcDoor")]
+    out = ["move", "copy"]
+    if walls:
+        out.append("rotate")
+    if len(elements) == 1 and walls:
+        out.append("split")
+    if door_list and len(door_list) == len(elements):
+        out.append("flip_opening")
+        hands = []
+        for door in door_list:
+            state = doors.read_state(door)
+            tstate = (door_types.read(doc.get(state["type"]))
+                      if state["type"] and state["foreign"] is None else None)
+            hands.append(tstate and params.hand_of(tstate["operation_type"]))
+        if all(hands):
+            out.append("flip_hinges")
+    out.append("delete")
+    return out
+
+
+def bar_position(rect, size, view, gap: float = 12.0) -> tuple[float, float]:
+    """Canto superior esquerdo da mini-barra (coordenadas da tela): acima do canto
+    superior direito de ``rect`` (x0, y0, x1, y1); se não couber, abaixo do canto
+    inferior direito; sempre dentro de ``view`` (largura, altura)."""
+    _, y0, x1, y1 = rect
+    w, h = size
+    vw, vh = view
+    x = x1 - w
+    y = y0 - gap - h
+    if y < 0:
+        y = y1 + gap
+    return (min(max(x, 0.0), max(vw - w, 0.0)), min(max(y, 0.0), max(vh - h, 0.0)))
 
 
 @dataclass
@@ -1137,6 +1191,7 @@ class ToolBox:
     ctx: PlanContext
     tools: dict = field(default_factory=dict)
     active: Tool | None = None
+    wall_form: str = "wall"  # última forma de parede usada (spec/ui 03 §4.1)
 
     def __post_init__(self):
         self.reset()
@@ -1167,4 +1222,6 @@ class ToolBox:
         if self.active is not None:
             self.active.cancel()
         self.active = self.tools[name]
+        if name in ("wall", "arc", "rectangle"):
+            self.wall_form = name
         return self.active

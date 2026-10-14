@@ -405,9 +405,12 @@ def detach_filling(doc: Document, element) -> Transaction:
 
 
 def create_wall_type(doc: Document, name: str, layers: list[dict], predefined_type="SOLIDWALL",
-                     object_type: str | None = None) -> Transaction:
+                     object_type: str | None = None,
+                     plan_style: dict | None = None) -> Transaction:
     data = {"name": name, "predefined_type": predefined_type, "object_type": object_type,
             "layers": layers}
+    if plan_style is not None:
+        data["plan_style"] = plan_style
     return Transaction("Criar tipo de parede", [Op("wall_type.create", guid.new(), data=data)])
 
 

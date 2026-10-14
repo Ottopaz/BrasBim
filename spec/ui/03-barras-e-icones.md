@@ -151,7 +151,7 @@ Pset próprio no `IfcWallType`, **`BrasBim_RepresentacaoPlanta`**:
 |---|---|---|
 | `Preenchimento` | `IfcLabel` | `NENHUM`, `SOLIDO`, `HACHURA` |
 | `CorPreenchimento` | `IfcLabel` | `#9C9A93` |
-| `AnguloHachura` | `IfcPlaneAngleMeasure` (graus, unidade do projeto) | `45` |
+| `AnguloHachura` | `IfcPlaneAngleMeasure` (unidade do projeto: radiano; a interface mostra graus) | `0.785398` (45°) |
 | `EspacamentoHachura` | `IfcPositiveLengthMeasure` | `0.10` |
 | `EspessuraLinha` | `IfcPositiveLengthMeasure` (metros: 0,0005 = 0,50 mm) | `0.0005` |
 | `CorLinha` | `IfcLabel` | `#2B2A27` |

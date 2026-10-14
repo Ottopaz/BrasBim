@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Janela principal (``spec/ui/01-janela-e-ferramentas.md`` §2, §6, §8, §9)."""
+"""Janela principal (``spec/ui/01-janela-e-ferramentas.md`` §2, §6, §8, §9; barras e
+mini-barra, ``spec/ui/03-barras-e-icones.md`` §2–§5)."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
+from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -34,11 +35,14 @@ from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
 from brasbim.ui.scene3d import Scene
+from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
-from brasbim.ui.tools import SELECTION_TOOLS, TOOLS, Mods, PlanContext, ToolBox, fmt
+from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
+from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
 from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog
 from brasbim.ui.view3d import View3D
 
+STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
 _LEVEL_COLOR = {"recusa": "#b3261e", "aviso": "#8a5a00", "info": "#333333"}
 
 
@@ -90,6 +94,9 @@ class MainWindow(QMainWindow):
         self.plan.cursor_moved.connect(self._show_cursor)
         self.plan.hint_changed.connect(self.hint.setText)
         self.plan.tool_finished.connect(lambda: self.activate_tool("select"))
+        self.plan.tool_options_changed.connect(self.options_bar.refresh)
+        self.selection_bar = SelectionBar(self.plan, self.run_selection_action)
+        self.plan.selection_bar = self.selection_bar
         self.resize(1280, 800)
         self._restore()
         self._refresh_all()
@@ -121,6 +128,7 @@ class MainWindow(QMainWindow):
         self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(270)
+        self.properties.edit_type = self.edit_type
         self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
         self.messages = QListWidget()
         self.messages.setWordWrap(True)
@@ -151,6 +159,9 @@ class MainWindow(QMainWindow):
         self.redo_action = self._action(edit_menu, "Refazer", self.redo,
                                         ["Ctrl+Y", "Ctrl+Shift+Z"])
         edit_menu.addSeparator()
+        for key, text in (("move", "Mover"), ("copy", "Copiar"), ("rotate", "Girar"),
+                          ("split", "Dividir")):
+            self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
         view_menu = bar.addMenu("E&xibir")
         self._action(view_menu, "Planta", lambda: self.set_view("plan"))
@@ -158,29 +169,46 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        view_menu.addSeparator()
+        self.bars_menu = view_menu.addMenu("Barras")
+        self._action(view_menu, "Reorganizar barras", self.reset_bars)
+        self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
+                                                 self._toggle_selection_bar)
+        self.selection_bar_action.setCheckable(True)
+        self.selection_bar_action.setChecked(True)
         project_menu = bar.addMenu("&Projeto")
-        self._action(project_menu, "Tipos de parede…", lambda: self.edit_types(WallTypesDialog))
-        self._action(project_menu, "Tipos de porta…", lambda: self.edit_types(DoorTypesDialog))
+        self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
+        self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
         self._action(help_menu, "Sobre", self.about)
 
-        toolbar = self.addToolBar("Ferramentas")
-        toolbar.setObjectName("ferramentas")
-        group = QActionGroup(self)
-        self.tool_actions = {}
-        for cls in TOOLS:
-            if cls.name == SELECTION_TOOLS[0]:
-                toolbar.addSeparator()
-            action = QAction(cls.label, self, checkable=True)
-            action.triggered.connect(lambda _=False, n=cls.name: self.activate_tool(n))
-            group.addAction(action)
-            toolbar.addAction(action)
-            self.tool_actions[cls.name] = action
-        toolbar.addSeparator()
-        toolbar.addAction(self.undo_action)
-        toolbar.addAction(self.redo_action)
+        self.tools_bar = ToolsBar(self)
+        self.history_bar = history_bar(self)
+        self.options_bar = OptionsBar(self)
+        self.tool_actions = self.tools_bar.actions_by_tool
+        for toolbar in (self.tools_bar, self.history_bar, self.options_bar):
+            self.bars_menu.addAction(toolbar.toggleViewAction())
+        self.options_bar.toggleViewAction().triggered.connect(
+            lambda checked: setattr(self.options_bar, "wanted", checked))
+        self.reset_bars()
         self.tool_actions["select"].setChecked(True)
+
+    def reset_bars(self) -> None:
+        """Posição inicial (spec/ui 03 §2): Ferramentas à esquerda, Histórico e Opções no
+        topo."""
+        for toolbar, area in ((self.tools_bar, Qt.LeftToolBarArea),
+                              (self.history_bar, Qt.TopToolBarArea),
+                              (self.options_bar, Qt.TopToolBarArea)):
+            self.removeToolBar(toolbar)
+            self.addToolBar(area, toolbar)
+            toolbar.setVisible(toolbar is not self.options_bar)
+        self.options_bar.wanted = True
+        self.options_bar.show_for(self.toolbox.active)
+
+    def _toggle_selection_bar(self, checked: bool) -> None:
+        self.selection_bar.enabled = checked
+        self.plan.update()
 
     def _build_status(self) -> None:
         self.hint = QLabel()
@@ -195,7 +223,8 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
         if state is not None:
-            self.restoreState(state)
+            self.restoreState(state, STATE_VERSION)
+        self.options_bar.show_for(self.toolbox.active)
 
     # --- atualização ------------------------------------------------------------------
 
@@ -219,7 +248,6 @@ class MainWindow(QMainWindow):
             self.ctx.invalidate()
             self._refresh_all()
         elif event == "selection":
-            self._refresh_tools()
             self.properties.refresh()
             self.plan.update()
             self.view3d.update()
@@ -228,7 +256,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_all(self) -> None:
         self.project.refresh()
-        self._refresh_tools()
+        self.options_bar.refresh()
         self.properties.refresh()
         self.plan.update()
         self.view3d.update()
@@ -240,14 +268,6 @@ class MainWindow(QMainWindow):
         self.undo_action.setToolTip(f"Desfazer {undo[-1].label}" if undo else "Desfazer")
         self.redo_action.setToolTip(f"Refazer {redo[-1].label}" if redo else "Refazer")
         self.hint.setText(self.toolbox.active.hint())
-
-    def _refresh_tools(self) -> None:
-        """Mover, Copiar e Girar só com seleção (0.2 §2)."""
-        has_selection = bool(self.session.selection)
-        for name in SELECTION_TOOLS:
-            self.tool_actions[name].setEnabled(has_selection)
-        if not has_selection and self.toolbox.active.name in SELECTION_TOOLS:
-            self.activate_tool("select")
 
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
@@ -271,9 +291,10 @@ class MainWindow(QMainWindow):
     # --- ações -------------------------------------------------------------------------
 
     def activate_tool(self, name: str) -> None:
-        self.toolbox.activate(name)
-        self.tool_actions[name].setChecked(True)
-        self.hint.setText(self.toolbox.active.hint())
+        tool = self.toolbox.activate(name)
+        self.tools_bar.mark(name)
+        self.options_bar.show_for(tool)
+        self.hint.setText(tool.hint())
         self.properties.refresh()
         self.plan.update()
         self.plan.setFocus()
@@ -324,11 +345,39 @@ class MainWindow(QMainWindow):
             self.split = False
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
 
-    def edit_types(self, dialog_class) -> None:
+    def edit_type(self, ifc_class: str, gid: str | None = None) -> None:
+        """Janela de tipos de parede ou de porta, aberta no tipo ``gid``."""
+        dialog_class = WallTypesDialog if ifc_class == "IfcWallType" else DoorTypesDialog
         self.toolbox.active.cancel()
-        dialog_class(self.session, self).exec()
+        dialog_class(self.session, self, select=gid).exec()
         self.toolbox.check_types()
+        self.options_bar.refresh()
         self.properties.refresh()
+        self.plan.update()
+
+    def run_selection_action(self, key: str) -> None:
+        """Ação da mini-barra ou do menu Editar sobre a seleção (spec/ui 03 §5)."""
+        session, doc = self.session, self.session.doc
+        if key == "delete":
+            self.delete_selection()
+            return
+        if key == "split":
+            walls = [g for g in session.selection
+                     if doc.find(g) is not None and doc.find(g).is_a("IfcWall")]
+            tool = self.toolbox.tools["split"]
+            self.activate_tool("split")
+            tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
+            self.hint.setText(tool.hint())
+            return
+        if not session.selection:
+            session.message("selecione os elementos antes", "recusa")
+            return
+        if key in ("move", "copy", "rotate"):
+            self.activate_tool(key)
+            return
+        door_list = [doc.get(g) for g in sorted(session.selection)]
+        flip = fc.flip_opening if key == "flip_opening" else fc.flip_hinges
+        session.run(lambda: fc.flip_each(doc, door_list, flip))
 
     def fit_all(self) -> None:
         self.plan.fit()
@@ -393,7 +442,7 @@ class MainWindow(QMainWindow):
             return
         settings = QSettings("BrasBim", "BrasBim")
         settings.setValue("geometria", self.saveGeometry())
-        settings.setValue("paineis", self.saveState())
+        settings.setValue("paineis", self.saveState(STATE_VERSION))
         self.session.close()
         event.accept()
 

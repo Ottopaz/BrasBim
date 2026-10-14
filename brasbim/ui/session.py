@@ -22,7 +22,14 @@ from brasbim.core.walls import commands as cmd
 
 MAX_MESSAGES = 200
 
-# Biblioteca mínima do projeto novo (spec/ui §2.2; valores de parede §3.4 e porta §3.5).
+# Biblioteca mínima do projeto novo (spec/ui §2.2; valores de parede §3.4 e porta §3.5;
+# representação na planta, spec/ui 03 §6.4).
+_WALL_STYLES = {
+    "Alvenaria 14": {"fill": "solid", "fill_color": "#9C9A93", "hatch_angle": 45.0,
+                     "hatch_spacing": 0.10, "line_weight": 0.0005, "line_color": "#2B2A27"},
+    "Drywall 9,5": {"fill": "hatch", "fill_color": "#B9B6AE", "hatch_angle": 45.0,
+                    "hatch_spacing": 0.05, "line_weight": 0.00035, "line_color": "#2B2A27"},
+}
 _WALL_TYPES = [
     ("Alvenaria 14", "SOLIDWALL", [
         {"material": "Reboco", "thickness": 0.025, "category": "Finish", "priority": 20},
@@ -109,7 +116,8 @@ class Session:
         history.commit(cmd.create_storey(doc, "Térreo", 0.0))
         history.commit(cmd.create_storey(doc, "Superior", 2.8))
         for name, predefined, layers in _WALL_TYPES:
-            history.commit(cmd.create_wall_type(doc, name, layers, predefined_type=predefined))
+            history.commit(cmd.create_wall_type(doc, name, layers, predefined_type=predefined,
+                                                plan_style=_WALL_STYLES[name]))
         for name, operation, width in _DOOR_TYPES:
             history.commit(fc.create_door_type(doc, name, operation,
                                                defaults={"width": width}))

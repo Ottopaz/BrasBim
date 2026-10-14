@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later. Ícone próprio do BrasBim. -->
+<path d="M19 19 V7"/><path d="M19 7 A12 12 0 0 0 7 19" stroke-width="1"/><circle cx="19" cy="19" r="1.75" fill="currentColor"/>
+</svg>

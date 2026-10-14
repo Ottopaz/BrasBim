@@ -2,8 +2,8 @@
 """Painel de propriedades (``spec/ui/01-janela-e-ferramentas.md`` §7 e
 ``spec/ui/02-edicao.md`` §9).
 
-Mostra a seleção (parede, porta, ou vários elementos com edição em lote) ou, sem seleção,
-as opções da ferramenta ativa. Cada campo confirmado gera uma transação; recusas do núcleo voltam o
+Mostra a seleção (parede, porta, ou vários elementos com edição em lote). As opções da
+ferramenta ativa ficam na barra Opções (``spec/ui/03-barras-e-icones.md`` §4.3). Cada campo confirmado gera uma transação; recusas do núcleo voltam o
 campo ao valor anterior (o painel é refeito a partir do modelo).
 """
 
@@ -35,7 +35,6 @@ from brasbim.core.walls import openings, rebuild
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state as read_wall
-from brasbim.ui import tools as t
 from brasbim.ui.tools import fmt, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
@@ -62,6 +61,7 @@ class PropertiesPanel(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._pending = False
+        self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
         self.refresh()
 
     # --- refazer o painel ------------------------------------------------------------
@@ -194,6 +194,7 @@ class PropertiesPanel(QScrollArea):
 
         self._combo("Tipo", self._types("IfcWallType"), state["type"],
                     lambda v: edit(type=v))
+        self._edit_type_button("IfcWallType", state["type"])
         self._combo("Linha de referência", REF_LINES, state["ref_line"],
                     lambda v: edit(ref_line=v))
         flip = QCheckBox("Inverter camadas")
@@ -347,6 +348,8 @@ class PropertiesPanel(QScrollArea):
             self._run(lambda: fc.edit_door(doc, door, **changes))
 
         self._combo("Tipo", self._types("IfcDoorType"), state["type"], lambda v: edit(type=v))
+        if state["type"] and state["foreign"] is None:
+            self._edit_type_button("IfcDoorType", state["type"])
         self._read("Código", str(common.get("Reference") or "—"))
         if o is not None:
             self._section("Vão")
@@ -387,47 +390,17 @@ class PropertiesPanel(QScrollArea):
 
     # --- opções da ferramenta (§7.1) ------------------------------------------------------
 
+    def _edit_type_button(self, ifc_class: str, gid: str) -> None:
+        if self.edit_type is not None:
+            self._buttons(("Editar tipo…", lambda: self.edit_type(ifc_class, gid)))
+
     def _tool_options(self) -> None:
-        tool = self.toolbox.active
-        if isinstance(tool, t._WallTool):
-            options = tool.options
-            self._title(f"{tool.label}: próxima parede")
-            self._combo("Tipo", self._types("IfcWallType"), options.type,
-                        lambda v: (setattr(options, "type", v), self.refresh()))
-            self._combo("Linha de referência", REF_LINES, options.ref_line,
-                        lambda v: setattr(options, "ref_line", v))
-            self._combo("Topo", TOPS, options.top,
-                        lambda v: (setattr(options, "top", v), self.refresh()))
-            if options.top == "fixed":
-                self._number("Altura", options.fixed_height,
-                             lambda v: setattr(options, "fixed_height", v))
-        elif isinstance(tool, t.DoorTool):
-            self._title("Porta: próxima porta")
-            self._combo("Tipo", self._types("IfcDoorType"), tool.type,
-                        lambda v: (setattr(tool, "type", v), self.refresh()))
-            tstate = tool.type_state()
-            defaults = tstate["defaults"] if tstate else {"width": 0, "height": 0, "base": 0}
-            self._number("Largura", tool.width, lambda v: setattr(tool, "width", v),
-                         placeholder=f"{fmt(defaults['width'])} (do tipo)", allow_empty=True)
-            self._number("Altura", tool.height, lambda v: setattr(tool, "height", v),
-                         placeholder=f"{fmt(defaults['height'])} (do tipo)", allow_empty=True)
-            self._number("Base", tool.base, lambda v: setattr(tool, "base", v),
-                         placeholder=f"{fmt(defaults['base'])} (do tipo)", allow_empty=True)
-            if tstate and params.hand_of(tstate["operation_type"]) is not None:
-                self._combo("Dobradiças", HINGES, tool.hinges,
-                            lambda v: setattr(tool, "hinges", v))
-            self._combo("Alinhamento", ALIGNS, tool.align, lambda v: setattr(tool, "align", v))
-            self._number("Deslocamento", tool.offset, lambda v: setattr(tool, "offset", v))
-            note = QLabel("O lado do cursor em relação à parede define para onde a porta abre.")
-            note.setWordWrap(True)
-            note.setStyleSheet("color: #666")
-            self.form.addRow(note)
-        else:
-            self._title("Nada selecionado")
-            storey = self.session.storey
-            if storey is not None:
-                self._read("Pavimento ativo", f"{storey.Name} ({fmt(storey.Elevation or 0)})")
-            note = QLabel("Clique num elemento da planta para ver e editar as propriedades.")
-            note.setWordWrap(True)
-            note.setStyleSheet("color: #666")
-            self.form.addRow(note)
+        """Sem seleção: só o pavimento ativo e a dica (spec/ui 03 §4.3)."""
+        self._title("Nada selecionado")
+        storey = self.session.storey
+        if storey is not None:
+            self._read("Pavimento ativo", f"{storey.Name} ({fmt(storey.Elevation or 0)})")
+        note = QLabel("Clique num elemento da planta para ver e editar as propriedades.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #666")
+        self.form.addRow(note)

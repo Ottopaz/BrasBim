@@ -20,7 +20,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QLineEdit, QWidget
 
 from brasbim.core.snap import KIND_LABEL
-from brasbim.ui.tools import Mods, PlanContext, ToolBox, parse_number
+from brasbim.ui.tools import SELECTION_TOOLS, Mods, PlanContext, ToolBox, parse_number
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
 HANDLE_PX = 4  # metade do lado da alça na tela (0.2 §4)
@@ -48,6 +48,7 @@ class PlanView(QWidget):
     cursor_moved = Signal(float, float)
     hint_changed = Signal(str)
     tool_finished = Signal()
+    tool_options_changed = Signal()
 
     def __init__(self, toolbox: ToolBox, parent=None):
         super().__init__(parent)
@@ -56,6 +57,7 @@ class PlanView(QWidget):
         self.scale = 60.0  # pixels por metro
         self.origin = QPointF(200, 400)  # posição na tela do ponto (0, 0) do pavimento
         self._pan: QPointF | None = None
+        self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -75,6 +77,16 @@ class PlanView(QWidget):
 
     def to_world(self, q: QPointF) -> tuple[float, float]:
         return ((q.x() - self.origin.x()) / self.scale, (self.origin.y() - q.y()) / self.scale)
+
+    def selection_rect(self) -> tuple[float, float, float, float] | None:
+        """Retângulo da seleção na tela (x0, y0, x1, y1), ou None se não está na planta."""
+        selection = self.ctx.session.selection
+        pts = [self.to_screen(p) for s in self.ctx.plan.shapes
+               if s.owner in selection and s.role != "below" for p in s.points]
+        if not pts:
+            return None
+        xs, ys = [q.x() for q in pts], [q.y() for q in pts]
+        return min(xs), min(ys), max(xs), max(ys)
 
     def _sync_tol(self) -> None:
         self.ctx.tol = SNAP_PX / self.scale
@@ -144,6 +156,9 @@ class PlanView(QWidget):
                 painter.setPen(QPen(C["below"], 1, Qt.DashLine))
                 painter.setBrush(Qt.NoBrush)
             elif role == "wall":
+                if not selected and shape.style is not None:
+                    self._draw_styled(painter, path, shape.style)
+                    continue
                 painter.setPen(QPen(C["select"] if selected else C["wall_line"],
                                     2 if selected else 1.4))
                 fill = QColor(C["select"]) if selected else C["wall_fill"]
@@ -157,6 +172,36 @@ class PlanView(QWidget):
                 painter.setPen(QPen(color, 0.8 if role == "door_swing" else 1.3, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
+
+    def _draw_styled(self, painter: QPainter, path: QPainterPath, style: dict) -> None:
+        """Parede cortada com a representação do tipo (spec/ui 03 §6.1)."""
+        fill = style["fill"]
+        if fill == "solid":
+            painter.fillPath(path, QColor(style["fill_color"]))
+        elif fill == "hatch":
+            spacing = style["hatch_spacing"] * self.scale
+            color = QColor(style["fill_color"])
+            if spacing < 3:  # longe demais para ver as linhas: tom chapado
+                color.setAlpha(120)
+                painter.fillPath(path, color)
+            else:
+                painter.save()
+                painter.setClipPath(path)
+                painter.setPen(QPen(color.darker(130), 1))
+                rect = path.boundingRect()
+                center = rect.center()
+                angle = -math.radians(style["hatch_angle"])  # y da tela para baixo
+                d = QPointF(math.cos(angle), math.sin(angle))
+                n = QPointF(-d.y(), d.x())
+                reach = math.hypot(rect.width(), rect.height()) / 2 + 1
+                for k in range(-int(reach / spacing) - 1, int(reach / spacing) + 2):
+                    o = center + n * (k * spacing)
+                    painter.drawLine(o - d * reach, o + d * reach)
+                painter.restore()
+        width = max(1.0, style["line_weight"] * 1000 * 96 / 25.4)
+        painter.setPen(QPen(QColor(style["line_color"]), width))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(path)
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
@@ -214,6 +259,8 @@ class PlanView(QWidget):
         self._draw_plan(painter)
         self._draw_tool(painter)
         painter.end()
+        if self.selection_bar is not None:
+            self.selection_bar.place()
 
     # --- entrada ---------------------------------------------------------------------
 
@@ -283,6 +330,7 @@ class PlanView(QWidget):
         # Tab é da ferramenta (§5.5), não troca o foco.
         if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Tab, Qt.Key_Backtab):
             self.toolbox.active.key("tab")
+            self.tool_options_changed.emit()
             self._refresh_hint()
             self.update()
             return True
@@ -292,8 +340,13 @@ class PlanView(QWidget):
         key, text = event.key(), event.text()
         tool = self.toolbox.active
         if key == Qt.Key_Escape:
-            if not tool.cancel():
-                self.window().activate_tool("select")
+            busy = tool.cancel()
+            session = self.ctx.session
+            if tool.name in SELECTION_TOOLS or not busy:
+                if tool.name == "select" and session.selection:
+                    session.select([])  # Esc com a mini-barra visível (spec/ui 03 §5)
+                else:
+                    self.tool_finished.emit()
         elif key in (Qt.Key_Return, Qt.Key_Enter):
             tool.key("enter")
         elif key == Qt.Key_Home:

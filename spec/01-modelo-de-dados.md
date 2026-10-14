@@ -45,8 +45,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `op` | Dados | Situação |
 |---|---|---|
 | `storey.create` / `.delete` / `.edit` | `name`, `elevation` | Provisória (sem spec de pavimento) |
-| `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]` | `create` provisória (RF-TIP-01) |
-| `wall_type.edit` | `name`, `layers` | parede §5.2 |
+| `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]`, `plan_style` | `create` provisória (RF-TIP-01); `plan_style`: spec/ui 03 §6 |
+| `wall_type.edit` | `name`, `predefined_type`, `object_type`, `layers`, `plan_style` | parede §5.2; spec/ui 02 §8.1 e 03 §6 |
 | `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common` | parede §5.2 |
 | `wall.split` / `wall.merge` | `path` (caminho original), `at` (ponto), `new` (GlobalId da 2ª parte) | parede §5.1, §5.2; `wall.merge` é só a inversa |
 | `path_connection.create` / `.delete` | `relating`, `related` (GlobalIds das paredes), `relating_type`, `related_type` (`ATSTART` \| `ATEND` \| `ATPATH`) | parede §5.2, §6.2 |

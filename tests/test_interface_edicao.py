@@ -168,10 +168,8 @@ def test_ui19_dividir(window):
 def test_ui20_mover_pela_ferramenta(window):
     s = window.session
     walls = _rectangle(window)
-    assert not window.tool_actions["move"].isEnabled()
     s.select([w.GlobalId for w in walls])
-    assert window.tool_actions["move"].isEnabled()
-    window.activate_tool("move")
+    window.run_selection_action("move")  # botão Mover da mini-barra (spec/ui 03 §5)
     _click(window, (0, 0))
     _move(window, (2, 1))
     window.plan.repaint()
