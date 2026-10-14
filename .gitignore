@@ -21,3 +21,7 @@ htmlcov/
 *.ifc.bak
 .vscode/
 .idea/
+
+# Saídas dos exemplos
+/demo_paredes.ifc
+/demo_paredes.html
