@@ -3,8 +3,8 @@ documento: Interface — barras móveis, ícones, barra de opções, mini-barra 
 requisito: RF-UI-01, RF-UI-02, RF-UI-03, RF-TIP-03 (parcial), RF-DOC-02 (parcial)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-14)
 ---
 
 # Barras, ícones e representação da parede
