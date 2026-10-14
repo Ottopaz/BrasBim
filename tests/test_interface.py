@@ -17,7 +17,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from conftest import snapshot
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFormLayout, QLabel, QLineEdit, QPushButton
 from test_porta_edicao import _foreign_door_ifc
@@ -27,27 +27,7 @@ from brasbim.core.ops import History, Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import feedback
 from brasbim.ui import main_window as mw
-from brasbim.ui.session import Session
 from brasbim.ui.tools import Mods
-
-
-@pytest.fixture(scope="module")
-def app():
-    return QApplication.instance() or QApplication([])
-
-
-@pytest.fixture
-def window(app, tmp_path):
-    session = Session(journal_dir=tmp_path / "diarios")
-    w = mw.MainWindow(session)
-    w.resize(1200, 800)
-    w.show()
-    w.plan.scale, w.plan.origin = 50.0, QPointF(100, 600)
-    w.plan._sync_tol()
-    app.processEvents()
-    yield w
-    session.modified = False
-    w.close()
 
 
 def _ops(tx):

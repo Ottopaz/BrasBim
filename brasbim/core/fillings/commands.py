@@ -102,6 +102,9 @@ def edit_door_type(doc: Document, door_type, **changes) -> Transaction:
 def delete_door_type(doc: Document, door_type) -> Transaction:
     """Exclui um tipo sem portas (porta §6.4); a variante dele perde o vínculo."""
     door_type = doc.get(_gid(door_type), "IfcDoorType")
+    used = ifcopenshell.util.element.get_types(door_type)
+    if used:
+        raise OpError(f"o tipo {door_type.Name} é usado por {len(used)} porta(s)")
     state = door_types.read(door_type)
     ops = []
     partner = _partner(doc, state)

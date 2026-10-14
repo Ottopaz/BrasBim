@@ -23,6 +23,7 @@ from brasbim.core.snap import KIND_LABEL
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, parse_number
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
+HANDLE_PX = 4  # metade do lado da alça na tela (0.2 §4)
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 
 # Cores da planta (próprias).
@@ -38,6 +39,7 @@ C = {
     "select": QColor("#1d6fd6"),
     "preview": QColor("#1d6fd6"),
     "invalid": QColor("#d43a2f"),
+    "crossing": QColor("#2f8f4e"),
     "label_bg": QColor(255, 255, 255, 225),
 }
 
@@ -45,6 +47,7 @@ C = {
 class PlanView(QWidget):
     cursor_moved = Signal(float, float)
     hint_changed = Signal(str)
+    tool_finished = Signal()
 
     def __init__(self, toolbox: ToolBox, parent=None):
         super().__init__(parent)
@@ -161,6 +164,13 @@ class PlanView(QWidget):
             if mark.style == "gap":
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(QBrush(C["background"]))
+            elif mark.style in ("window", "crossing"):
+                color = C["preview"] if mark.style == "window" else C["crossing"]
+                fill = QColor(color)
+                fill.setAlpha(25)
+                painter.setPen(QPen(color, 1, Qt.SolidLine if mark.style == "window"
+                                    else Qt.DashLine))
+                painter.setBrush(QBrush(fill))
             else:
                 color = C["invalid"] if mark.style == "invalid" else C["preview"]
                 fill = QColor(color)
@@ -168,6 +178,11 @@ class PlanView(QWidget):
                 painter.setPen(QPen(color, 1.4, Qt.DashLine))
                 painter.setBrush(QBrush(fill) if mark.closed else Qt.NoBrush)
             painter.drawPath(self._path(mark.points, mark.closed))
+        for point, hot in tool.handles():
+            q, r = self.to_screen(point), HANDLE_PX
+            painter.setPen(QPen(C["select"], 1.2))
+            painter.setBrush(QBrush(C["select"] if hot else QColor("white")))
+            painter.drawRect(QRectF(q.x() - r, q.y() - r, 2 * r, 2 * r))
         snapped = tool.snapped
         if snapped is not None and snapped.kind not in ("free",):
             q = self.to_screen(snapped.point)
@@ -209,6 +224,10 @@ class PlanView(QWidget):
                     bool(m & Qt.ControlModifier))
 
     def _refresh_hint(self) -> None:
+        tool = self.toolbox.active
+        if tool.finished:
+            tool.finished = False
+            self.tool_finished.emit()
         self.hint_changed.emit(self.toolbox.active.hint())
 
     def mousePressEvent(self, event):
@@ -282,8 +301,9 @@ class PlanView(QWidget):
         elif key == Qt.Key_Space and not event.isAutoRepeat():
             self._space = True
             self.setCursor(Qt.OpenHandCursor)
-        elif text and (text.isdigit() or text in ",.") and tool.name != "select":
+        elif text and (text.isdigit() or text in ",.-") and tool.wants_number():
             pos = self.mapFromGlobal(QCursor.pos())
+            self.numeric.setPlaceholderText(tool.number_hint)
             self.numeric.move(pos.x() + 14, pos.y() + 14)
             self.numeric.setText(text)
             self.numeric.show()
@@ -318,6 +338,6 @@ class PlanView(QWidget):
             self.ctx.session.message(f"número inválido: {text!r}", "recusa")
             return
         if not self.toolbox.active.numeric(value):
-            self.ctx.session.message("a ferramenta não espera um comprimento agora", "recusa")
+            self.ctx.session.message("a ferramenta não espera um número agora", "recusa")
         self._refresh_hint()
         self.update()

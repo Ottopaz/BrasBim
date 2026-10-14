@@ -34,7 +34,7 @@ def _split(doc: Document, gids) -> tuple[list, list]:
         if not e.is_a("IfcDoor"):
             raise OpError(f"{e.is_a()} {e.GlobalId}: mover, copiar e girar ainda não "
                           "suportam esta classe")
-        host = _host_wall(e)
+        host = host_wall(e)
         if host is None or host.GlobalId not in wall_ids:
             lone.append(e)
     if not walls and not lone:
@@ -42,7 +42,7 @@ def _split(doc: Document, gids) -> tuple[list, list]:
     return walls, lone
 
 
-def _host_wall(door):
+def host_wall(door):
     opening = door_cmd.opening_of(door)
     return openings.host(opening) if opening is not None else None
 

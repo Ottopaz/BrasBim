@@ -71,3 +71,34 @@ def _value(v, top=False):
 def snapshot(ifc) -> dict:
     """{GlobalId: atributos expandidos} de todas as entidades IfcRoot."""
     return {e.GlobalId: _value(e, top=True) for e in ifc.by_type("IfcRoot")}
+
+
+# --- interface (Qt sem tela) -------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def app():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def window(app, tmp_path):
+    """Janela principal com um projeto novo; planta a 50 px/m com (0, 0) em (100, 600)."""
+    from PySide6.QtCore import QPointF
+
+    from brasbim.ui import main_window as mw
+    from brasbim.ui.session import Session
+
+    session = Session(journal_dir=tmp_path / "diarios")
+    w = mw.MainWindow(session)
+    w.resize(1200, 800)
+    w.show()
+    w.plan.scale, w.plan.origin = 50.0, QPointF(100, 600)
+    w.plan._sync_tol()
+    app.processEvents()
+    yield w
+    session.modified = False
+    w.close()

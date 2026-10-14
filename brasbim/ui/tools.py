@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Ferramentas da planta (``spec/ui/01-janela-e-ferramentas.md`` §5), sem Qt.
+"""Ferramentas da planta (``spec/ui/01-janela-e-ferramentas.md`` §5 e
+``spec/ui/02-edicao.md`` §3–§6), sem Qt.
 
 A vista traduz mouse e teclado em chamadas (``move``, ``press``, ``double``, ``release``,
 ``key``, ``numeric``, ``cancel``) com coordenadas do pavimento em metros, e desenha o que
@@ -13,7 +14,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
-from brasbim.core import geom2d, plan, snap
+from brasbim.core import geom2d, plan, snap, transform
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params
@@ -32,6 +33,14 @@ def fmt(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+def fmt_exact(value: float) -> str:
+    """Como ``fmt``, mas sem perder milímetros (até 4 casas): campos que o usuário edita e
+    que voltam ao modelo, como a espessura de uma camada."""
+    text = f"{value:.4f}".rstrip("0")
+    whole, _, decimals = text.partition(".")
+    return f"{whole},{decimals.ljust(2, '0')}"
+
+
 def parse_number(text: str) -> float:
     text = text.strip().replace(",", ".")
     if not text:
@@ -48,7 +57,8 @@ class Mods:
 
 @dataclass(frozen=True)
 class Mark:
-    """Traço de pré-visualização. ``style``: ``preview``, ``invalid`` ou ``gap``."""
+    """Traço de pré-visualização. ``style``: ``preview``, ``invalid``, ``gap``,
+    ``window`` (seleção por janela) ou ``crossing`` (por cruzamento)."""
 
     points: tuple[Point, ...]
     closed: bool = True
@@ -95,10 +105,13 @@ class Tool:
     name = ""
     label = ""
 
+    number_hint = "comprimento"
+
     def __init__(self, ctx: PlanContext):
         self.ctx = ctx
         self.cursor: Point | None = None
         self.snapped: snap.Snap | None = None
+        self.finished = False  # a ferramenta terminou: a vista volta para Selecionar
 
     @property
     def session(self) -> Session:
@@ -112,6 +125,14 @@ class Tool:
 
     def labels(self) -> list[tuple[Point, str]]:
         return []
+
+    def handles(self) -> list[tuple[Point, bool]]:
+        """Alças a desenhar: (ponto, em destaque)."""
+        return []
+
+    def wants_number(self) -> bool:
+        """Digitar um número abre o campo de entrada numérica."""
+        return True
 
     def move(self, p: Point, mods: Mods) -> None:
         self.cursor = p
@@ -137,7 +158,44 @@ class Tool:
         return False
 
 
-# --- Selecionar (§5.1) ------------------------------------------------------------------
+# --- Selecionar (0.1 §5.1; 0.2 §3, §4) ---------------------------------------------------
+
+
+def _band_marks_of(ctx: PlanContext, tx, style="preview") -> list[Mark]:
+    """Paredes da transação na forma nova (operações ``wall.edit`` com caminho)."""
+    bands = {w.gid: w for w in ctx.walls}
+    marks = []
+    for op in tx.ops:
+        if op.op == "wall.edit" and "path" in (op.after or {}) and op.id in bands:
+            w = bands[op.id]
+            try:
+                marks.append(_band_mark(geom2d.path_from_dict(op.after["path"]), w.ymin,
+                                        w.ymax, style))
+            except ValueError:
+                continue
+    return marks
+
+
+def moving_shapes(ctx: PlanContext, gids) -> list[plan.Shape]:
+    """Desenho da seleção na planta, com as portas das paredes selecionadas."""
+    selected = set(gids)
+    doc = ctx.session.doc
+    out = [s for s in ctx.plan.shapes if s.owner in selected and s.role != "below"]
+    for owner, shapes in sorted(ctx.plan.owners("door").items()):
+        if owner in selected:
+            continue
+        host = transform.host_wall(doc.get(owner))
+        if host is not None and host.GlobalId in selected:
+            out += shapes
+    return out
+
+
+def _shape_marks(shapes, fn, style="preview") -> list[Mark]:
+    return [Mark(tuple(fn(q) for q in s.points), s.closed, style) for s in shapes]
+
+
+def _handle_points(w: snap.WallPath) -> list[tuple[str, Point]]:
+    return [("start", w.path.start), ("end", w.path.end), ("mid", w.middle())]
 
 
 class SelectTool(Tool):
@@ -148,64 +206,260 @@ class SelectTool(Tool):
         self.drag: dict | None = None
 
     def hint(self) -> str:
-        if self.drag and self.drag.get("active"):
+        d = self.drag
+        if d and d["kind"] == "door" and d["active"]:
             return "Solte sobre uma parede reta para posicionar a porta (Esc cancela)"
-        return "Clique para selecionar; Ctrl+clique soma; arraste uma porta para movê-la"
+        if d and d["kind"] == "handle":
+            return ("Leve a alça e clique ou solte; Ctrl ao soltar não leva as vizinhas; "
+                    "digite um número para a medida; Esc cancela")
+        if d and d["kind"] == "window":
+            return ("Janela: para a direita, só elementos inteiros; para a esquerda, também "
+                    "os que tocam; Ctrl soma à seleção")
+        if d and d["kind"] == "move" and d["active"]:
+            return "Solte para mover a seleção (Esc cancela)"
+        return ("Clique para selecionar; Ctrl+clique soma; arraste no vazio para selecionar "
+                "por janela; arraste as alças ou a seleção para editar")
+
+    def wants_number(self) -> bool:
+        return bool(self.drag and self.drag["kind"] == "handle" and self.drag["active"])
+
+    # alças (§4)
+
+    def _selected_walls(self) -> list[snap.WallPath]:
+        selection = self.session.selection
+        return [w for w in self.ctx.walls if w.gid in selection]
+
+    def _handle_at(self, p: Point) -> dict | None:
+        found = [(math.dist(p, q), which == "mid", w.gid, w, which)
+                 for w in self._selected_walls() for which, q in _handle_points(w)
+                 if math.dist(p, q) <= self.ctx.tol]
+        if not found:
+            return None
+        _, _, _, w, which = min(found, key=lambda f: (f[1], f[0], f[2]))
+        return {"wall": w, "which": which}
+
+    def handles(self):
+        hot = None
+        if self.drag and self.drag["kind"] == "handle":
+            hot = (self.drag["wall"].gid, self.drag["which"])
+        elif self.cursor is not None and not self.drag:
+            h = self._handle_at(self.cursor)
+            hot = (h["wall"].gid, h["which"]) if h else None
+        return [(q, hot == (w.gid, which)) for w in self._selected_walls()
+                for which, q in _handle_points(w)]
+
+    def _handle_build(self, p: Point, mods: Mods):
+        """(função que monta a transação, ponto do rótulo, texto) para a alça em ``p``."""
+        d = self.drag
+        w, which, doc = d["wall"], d["which"], self.session.doc
+        carry = not mods.ctrl
+        if which in ("start", "end"):
+            fixed = w.path.end if which == "start" else w.path.start
+            self.snapped = self.ctx.snap(p, mods, fixed)
+            q = self.snapped.point
+            return (lambda: cmd.move_wall_end(doc, w.gid, which, q, carry=carry), q,
+                    f"{fmt(math.dist(fixed, q))} m")
+        self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
+        q = self.snapped.point
+        if w.straight:
+            offset = w.frame.to_local(q)[1]
+            return (lambda: cmd.offset_wall(doc, w.gid, offset, carry=carry), q,
+                    f"{fmt(abs(offset))} m")
+        return lambda: cmd.bend_arc_wall(doc, w.gid, q), q, ""
+
+    def _handle_update(self, p: Point, mods: Mods) -> None:
+        d = self.drag
+        build, at, text = self._handle_build(p, mods)
+        try:
+            d["tx"], d["error"] = build(), None
+            d["marks"] = _band_marks_of(self.ctx, d["tx"])
+        except OpError as e:
+            w = d["wall"]
+            d["tx"], d["error"] = None, str(e)
+            d["marks"] = [_band_mark(w.path, w.ymin, w.ymax, "invalid")]
+        d["labels"] = [(at, text)] if text else []
+
+    def _handle_commit(self) -> None:
+        d, self.drag = self.drag, None
+        self.snapped = None
+        if d["error"]:
+            self.session.message(d["error"], "recusa")
+        elif d["tx"] is not None:
+            self.session.run(d["tx"])
+
+    def numeric(self, value):
+        d = self.drag
+        if not self.wants_number():
+            return False
+        w, which, doc = d["wall"], d["which"], self.session.doc
+        cursor = self.snapped.point if self.snapped else self.cursor
+        if which in ("start", "end"):
+            fixed = w.path.end if which == "start" else w.path.start
+            moving = w.path.start if which == "start" else w.path.end
+            target = cursor if cursor and math.dist(cursor, fixed) > 1e-9 else moving
+            dx, dy = target[0] - fixed[0], target[1] - fixed[1]
+            length = math.hypot(dx, dy)
+            q = (fixed[0] + value * dx / length, fixed[1] + value * dy / length)
+            build = lambda: cmd.move_wall_end(doc, w.gid, which, q)
+        elif w.straight:
+            side = -1.0 if cursor and w.frame.to_local(cursor)[1] < 0 else 1.0
+            build = lambda: cmd.offset_wall(doc, w.gid, side * value)
+        else:
+            return False
+        self.drag = None
+        self.session.run(build)
+        return True
+
+    # mouse
 
     def press(self, p, mods, button="left"):
         if button != "left":
             return
+        d = self.drag
+        if d and d["kind"] == "handle":  # alça presa ao cursor (clique, mover, clique)
+            self._handle_update(p, mods)
+            self._handle_commit()
+            return
+        handle = None if mods.ctrl else self._handle_at(p)
+        if handle:
+            self.drag = {"kind": "handle", **handle, "start": p, "active": False,
+                         "sticky": False, "tx": None, "error": None, "marks": [],
+                         "labels": []}
+            return
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         selection = self.session.selection
+        entity = self.session.doc.find(gid) if gid else None
+        is_door = entity is not None and entity.is_a("IfcDoor")
         if gid and not mods.ctrl and gid in selection:
-            entity = self.session.doc.find(gid)
-            if entity is not None and entity.is_a("IfcDoor") and len(selection) == 1:
-                self.drag = {"door": gid, "start": p, "active": False, "target": None}
-                return
-        self.session.select([gid] if gid else [], add=mods.ctrl)
-        if gid and not mods.ctrl:
-            entity = self.session.doc.find(gid)
-            if entity is not None and entity.is_a("IfcDoor"):
-                self.drag = {"door": gid, "start": p, "active": False, "target": None}
+            if is_door and len(selection) == 1:
+                self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
+                             "target": None}
+            else:
+                base = self.ctx.snap(p, Mods(alt=mods.alt)).point
+                self.drag = {"kind": "move", "gid": gid, "start": p, "base": base,
+                             "active": False, "vector": None,
+                             "shapes": moving_shapes(self.ctx, selection)}
+            return
+        if gid and not mods.ctrl and is_door:
+            self.session.select([gid])
+            self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
+                         "target": None}
+            return
+        self.drag = {"kind": "pending", "gid": gid, "start": p, "ctrl": mods.ctrl}
 
     def move(self, p, mods):
         super().move(p, mods)
-        drag = self.drag
-        if not drag:
+        d = self.drag
+        if not d:
+            self.snapped = None
             return
-        if not drag["active"] and math.dist(p, drag["start"]) < self.ctx.tol * DRAG_START:
+        moved = math.dist(p, d["start"]) >= self.ctx.tol * DRAG_START
+        kind = d["kind"]
+        if kind == "pending":
+            if moved:
+                self.drag = {"kind": "window", "start": d["start"], "end": p,
+                             "ctrl": d["ctrl"]}
             return
-        drag["active"] = True
-        door = self.session.doc.find(drag["door"])
-        drag["target"] = _door_target(self.ctx, door, p)
+        if kind == "window":
+            d["end"] = p
+            return
+        if kind == "handle":
+            d["active"] = d["active"] or moved
+            if d["active"]:
+                self._handle_update(p, mods)
+            return
+        if not d["active"] and not moved:
+            return
+        d["active"] = True
+        if kind == "door":
+            door = self.session.doc.find(d["door"])
+            d["target"] = _door_target(self.ctx, door, p)
+        else:
+            self.snapped = self.ctx.snap(p, mods, d["base"])
+            q, base = self.snapped.point, d["base"]
+            d["vector"] = (q[0] - base[0], q[1] - base[1])
 
     def release(self, p, mods):
-        drag, self.drag = self.drag, None
-        if not drag or not drag["active"] or drag["target"] is None:
+        d = self.drag
+        if not d:
             return
-        target = drag["target"]
-        if target.get("error"):
-            self.session.message(target["error"], "recusa")
+        kind = d["kind"]
+        if kind == "handle":
+            if not d["active"]:  # clique sem arrastar: a alça segue o cursor
+                d["active"] = d["sticky"] = True
+                return
+            if not d["sticky"]:
+                self._handle_update(p, mods)
+                self._handle_commit()
             return
-        door = self.session.doc.find(drag["door"])
-        self.session.run(lambda: fc.edit_door(self.session.doc, door, wall=target["wall"],
-                                              distance=target["distance"]))
+        self.drag = None
+        self.snapped = None
+        selection = self.session.selection
+        if kind == "pending":
+            if d["gid"] or not d["ctrl"]:
+                self.session.select([d["gid"]] if d["gid"] else [], add=d["ctrl"])
+            return
+        if kind == "window":
+            a, b = d["start"], d["end"]
+            gids = self.ctx.plan.in_rect(a, b, crossing=b[0] < a[0])
+            if d["ctrl"]:
+                self.session.select(set(gids) - selection, add=True)
+            else:
+                self.session.select(gids)
+            return
+        if not d["active"]:
+            if kind == "move":
+                self.session.select([d["gid"]])
+            return
+        if kind == "door":
+            target = d["target"]
+            if target is None:
+                return
+            if target.get("error"):
+                self.session.message(target["error"], "recusa")
+                return
+            door = self.session.doc.find(d["door"])
+            self.session.run(lambda: fc.edit_door(self.session.doc, door,
+                                                  wall=target["wall"],
+                                                  distance=target["distance"]))
+        elif kind == "move" and d["vector"] and math.hypot(*d["vector"]) > 1e-9:
+            doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
+            self.session.run(lambda: transform.move_elements(doc, gids, vector))
 
     def cancel(self):
         if self.drag:
             self.drag = None
+            self.snapped = None
             return True
         return False
 
     def preview(self):
-        if not self.drag or not self.drag.get("target"):
+        d = self.drag
+        if not d:
             return []
-        return self.drag["target"]["marks"]
+        if d["kind"] == "door":
+            return d["target"]["marks"] if d.get("target") else []
+        if d["kind"] == "handle":
+            return d["marks"] if d["active"] else []
+        if d["kind"] == "window":
+            (x0, y0), (x1, y1) = d["start"], d["end"]
+            return [Mark(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), True,
+                         "crossing" if x1 < x0 else "window")]
+        if d["kind"] == "move" and d["active"] and d["vector"]:
+            return _shape_marks(d["shapes"], geom2d.translation(d["vector"]))
+        return []
 
     def labels(self):
-        if not self.drag or not self.drag.get("target"):
+        d = self.drag
+        if not d:
             return []
-        return self.drag["target"]["labels"]
+        if d["kind"] == "door":
+            return d["target"]["labels"] if d.get("target") else []
+        if d["kind"] == "handle":
+            return d["labels"] if d["active"] else []
+        if d["kind"] == "move" and d["active"] and d["vector"] and self.snapped:
+            return [(self.snapped.point, f"{fmt(math.hypot(*d['vector']))} m")]
+        return []
 
 
 # --- paredes (§5.2–5.4) -----------------------------------------------------------------
@@ -595,7 +849,285 @@ class DoorTool(Tool):
         return self.target["labels"] if self.target else []
 
 
-TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool)
+# --- dividir (0.2 §5) -----------------------------------------------------------------------
+
+
+class SplitTool(Tool):
+    name, label = "split", "Dividir"
+    number_hint = "distância ao início"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.target: dict | None = None
+
+    def hint(self):
+        return ("Clique sobre uma parede para dividi-la; digite um número para a distância ao "
+                "início")
+
+    def wants_number(self):
+        return self.target is not None
+
+    def _aim(self, wall: snap.WallPath, q: Point) -> None:
+        _, along, _ = wall.project(q)
+        path = wall.path
+        t = along if wall.straight else along / path.radius
+        point = wall.frame.to_global(path.point(0.0, t))
+        error = None
+        try:
+            cmd.split_wall(self.session.doc, wall.gid, point)
+        except OpError as e:
+            error = str(e)
+        style = "invalid" if error else "preview"
+        cross = tuple(wall.frame.to_global(path.point(y, t))
+                      for y in (wall.ymin - 0.15, wall.ymax + 0.15))
+        y = wall.ymax + 0.25
+        self.target = {
+            "wall": wall.gid, "point": point, "error": error,
+            "marks": [Mark(cross, False, style)],
+            "labels": [(wall.frame.to_global(path.point(y, t / 2)), fmt(along)),
+                       (wall.frame.to_global(path.point(y, (t + path.t_end) / 2)),
+                        fmt(path.length - along))],
+        }
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self.target = None
+        hit = snap.wall_at(self.ctx.walls, p, self.ctx.tol)
+        if hit is None:
+            self.snapped = None
+            return
+        s = self.ctx.snap(p, mods)
+        q, _, _ = hit.wall.project(s.point)
+        self.snapped = snap.Snap(q, s.kind if s.wall == hit.wall.gid else "path", hit.wall.gid)
+        self._aim(hit.wall, q)
+
+    def _commit(self) -> None:
+        target = self.target
+        if target is None:
+            self.session.message("clique sobre uma parede", "recusa")
+        elif target["error"]:
+            self.session.message(target["error"], "recusa")
+        else:
+            doc = self.session.doc
+            self.session.run(lambda: cmd.split_wall(doc, target["wall"], target["point"]))
+        self.target = None
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        self._commit()
+
+    def numeric(self, value):
+        if self.target is None:
+            return False
+        wall = next((w for w in self.ctx.walls if w.gid == self.target["wall"]), None)
+        if wall is None:
+            return False
+        path = wall.path
+        if not 0 < value < path.length:
+            self.session.message("a distância deve ficar dentro da parede", "recusa")
+            return True
+        t = value if wall.straight else value / path.radius
+        self._aim(wall, wall.frame.to_global(path.point(0.0, t)))
+        self._commit()
+        return True
+
+    def preview(self):
+        return self.target["marks"] if self.target else []
+
+    def labels(self):
+        return self.target["labels"] if self.target else []
+
+
+# --- mover, copiar, girar (0.2 §6) ---------------------------------------------------------
+
+
+class _SelectionTool(Tool):
+    """Ferramenta que age sobre a seleção a partir de pontos clicados."""
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.points: list[Point] = []
+
+    def _gids(self) -> list[str]:
+        return sorted(self.session.selection)
+
+    def wants_number(self):
+        return bool(self.points)
+
+    def _point(self, p, mods) -> Point:
+        origin = self.points[-1] if self.points else None
+        self.snapped = self.ctx.snap(p, mods, origin)
+        return self.snapped.point
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self._point(p, mods)
+
+    def cancel(self):
+        if self.points:
+            self.points = []
+            return True
+        return False
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        if not self.session.selection:
+            self.session.message("selecione os elementos antes", "recusa")
+            return
+        self.click(self._point(p, mods), mods)
+
+    def click(self, q: Point, mods: Mods) -> None:
+        raise NotImplementedError
+
+    def _shapes(self) -> list[plan.Shape]:
+        return moving_shapes(self.ctx, self._gids())
+
+
+class MoveTool(_SelectionTool):
+    name, label = "move", "Mover"
+    number_hint = "distância"
+    copies = False
+
+    def hint(self):
+        if not self.session.selection:
+            return "Selecione os elementos antes de usar esta ferramenta"
+        if not self.points:
+            return "Clique o ponto de base"
+        if self.copies:
+            return ("Clique o destino de cada cópia; digite um número para a distância; "
+                    "Esc termina")
+        return "Clique o destino; digite um número para a distância; Esc cancela"
+
+    def _vector(self, q: Point) -> Point:
+        base = self.points[0]
+        return (q[0] - base[0], q[1] - base[1])
+
+    def _apply(self, vector: Point) -> None:
+        doc, gids = self.session.doc, self._gids()
+        if self.copies:
+            self.session.run(lambda: transform.copy_elements(doc, gids, vector))
+            return
+        self.session.run(lambda: transform.move_elements(doc, gids, vector))
+        self.points = []
+        self.finished = True
+
+    def click(self, q, mods):
+        if not self.points:
+            self.points = [q]
+            return
+        vector = self._vector(q)
+        if math.hypot(*vector) > 1e-9:
+            self._apply(vector)
+
+    def numeric(self, value):
+        if not self.points:
+            return False
+        base = self.points[0]
+        target = self.snapped.point if self.snapped else self.cursor
+        dx, dy = (target[0] - base[0], target[1] - base[1]) if target else (1.0, 0.0)
+        length = math.hypot(dx, dy)
+        dx, dy = (dx / length, dy / length) if length > 1e-9 else (1.0, 0.0)
+        self._apply((value * dx, value * dy))
+        return True
+
+    def preview(self):
+        if not self.points or not self.snapped:
+            return []
+        return _shape_marks(self._shapes(), geom2d.translation(self._vector(self.snapped.point)))
+
+    def labels(self):
+        if not self.points or not self.snapped:
+            return []
+        return [(self.snapped.point, f"{fmt(math.hypot(*self._vector(self.snapped.point)))} m")]
+
+
+class CopyTool(MoveTool):
+    name, label = "copy", "Copiar"
+    copies = True
+
+
+class RotateTool(_SelectionTool):
+    name, label = "rotate", "Girar"
+    number_hint = "ângulo (graus)"
+    STEP = 15.0  # Shift: múltiplos de 15°
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.shift = False
+
+    def hint(self):
+        if not self.session.selection:
+            return "Selecione os elementos antes de usar esta ferramenta"
+        return ["Clique o centro do giro",
+                "Clique um ponto da direção de referência, ou digite o ângulo em graus",
+                "Clique a direção final (Shift: múltiplos de 15°), ou digite o ângulo"][
+            len(self.points)]
+
+    def _point(self, p, mods) -> Point:
+        self.shift = mods.shift
+        self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
+        return self.snapped.point
+
+    def _angle(self, q: Point) -> float | None:
+        c, r = self.points
+        if math.dist(q, c) < 1e-9:
+            return None
+        angle = (math.atan2(q[1] - c[1], q[0] - c[0]) - math.atan2(r[1] - c[1], r[0] - c[0]))
+        angle = (angle + math.pi) % (2 * math.pi) - math.pi
+        if self.shift:
+            step = math.radians(self.STEP)
+            angle = round(angle / step) * step
+        return angle
+
+    def _apply(self, angle: float) -> None:
+        doc, gids, center = self.session.doc, self._gids(), self.points[0]
+        self.session.run(lambda: transform.rotate_elements(doc, gids, center, angle))
+        self.points = []
+        self.finished = True
+
+    def click(self, q, mods):
+        if len(self.points) < 2:
+            if not self.points or math.dist(q, self.points[0]) > geom2d.MIN_LENGTH:
+                self.points.append(q)
+            return
+        angle = self._angle(q)
+        if angle is not None and abs(angle) > 1e-9:
+            self._apply(angle)
+
+    def numeric(self, value):
+        if not self.points:
+            return False
+        self._apply(math.radians(value))
+        return True
+
+    def preview(self):
+        if not self.points or not self.snapped:
+            return []
+        c = self.points[0]
+        if len(self.points) == 1:
+            return [Mark((c, self.snapped.point), False)]
+        angle = self._angle(self.snapped.point)
+        if angle is None:
+            return []
+        return [Mark((c, self.points[1]), False), *_shape_marks(
+            self._shapes(), geom2d.rotation(c, angle))]
+
+    def labels(self):
+        if len(self.points) < 2 or not self.snapped:
+            return []
+        angle = self._angle(self.snapped.point)
+        if angle is None:
+            return []
+        return [(self.snapped.point, f"{math.degrees(angle):.1f}°".replace(".", ","))]
+
+
+TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, SplitTool, MoveTool,
+         CopyTool, RotateTool)
+# Ferramentas que dependem de seleção (desativadas sem ela).
+SELECTION_TOOLS = ("move", "copy", "rotate")
 
 
 @dataclass
@@ -618,6 +1150,18 @@ class ToolBox:
             self.tools[cls.name] = tool
         name = self.active.name if self.active else "select"
         self.active = self.tools[name]
+
+    def check_types(self) -> None:
+        """Depois de editar os tipos: opção que aponta para tipo excluído volta ao
+        primeiro da lista."""
+        doc = self.ctx.session.doc
+        for tool in self.tools.values():
+            holder = tool.options if isinstance(tool, _WallTool) else tool
+            ifc_class = "IfcWallType" if isinstance(tool, _WallTool) else "IfcDoorType"
+            if not hasattr(holder, "type") or (holder.type and doc.find(holder.type)):
+                continue
+            types = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+            holder.type = types[0].GlobalId if types else None
 
     def activate(self, name: str) -> Tool:
         if self.active is not None:

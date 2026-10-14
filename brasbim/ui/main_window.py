@@ -31,10 +31,12 @@ from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui import feedback
 from brasbim.ui.plan_view import PlanView
+from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
 from brasbim.ui.scene3d import Scene
 from brasbim.ui.session import Session
-from brasbim.ui.tools import TOOLS, Mods, PlanContext, ToolBox, fmt
+from brasbim.ui.tools import SELECTION_TOOLS, TOOLS, Mods, PlanContext, ToolBox, fmt
+from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog
 from brasbim.ui.view3d import View3D
 
 _LEVEL_COLOR = {"recusa": "#b3261e", "aviso": "#8a5a00", "info": "#333333"}
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
         session.listeners.append(self._on_session)
         self.plan.cursor_moved.connect(self._show_cursor)
         self.plan.hint_changed.connect(self.hint.setText)
+        self.plan.tool_finished.connect(lambda: self.activate_tool("select"))
         self.resize(1280, 800)
         self._restore()
         self._refresh_all()
@@ -114,9 +117,8 @@ class MainWindow(QMainWindow):
         return dock
 
     def _build_docks(self) -> None:
-        self.storeys = QListWidget()
-        self.storeys.itemDoubleClicked.connect(self._storey_clicked)
-        self._dock("Projeto", "projeto", self.storeys, Qt.LeftDockWidgetArea)
+        self.project = ProjectPanel(self.session)
+        self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(270)
         self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
@@ -156,6 +158,9 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        project_menu = bar.addMenu("&Projeto")
+        self._action(project_menu, "Tipos de parede…", lambda: self.edit_types(WallTypesDialog))
+        self._action(project_menu, "Tipos de porta…", lambda: self.edit_types(DoorTypesDialog))
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -165,6 +170,8 @@ class MainWindow(QMainWindow):
         group = QActionGroup(self)
         self.tool_actions = {}
         for cls in TOOLS:
+            if cls.name == SELECTION_TOOLS[0]:
+                toolbar.addSeparator()
             action = QAction(cls.label, self, checkable=True)
             action.triggered.connect(lambda _=False, n=cls.name: self.activate_tool(n))
             group.addAction(action)
@@ -205,13 +212,14 @@ class MainWindow(QMainWindow):
             self.ctx.invalidate()
             self.scene.update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
-            if tool.cursor is not None and tool.name == "door":
+            if tool.cursor is not None and tool.name in ("door", "split"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo
             self._refresh_all()
         elif event == "storey":
             self.ctx.invalidate()
             self._refresh_all()
         elif event == "selection":
+            self._refresh_tools()
             self.properties.refresh()
             self.plan.update()
             self.view3d.update()
@@ -219,7 +227,8 @@ class MainWindow(QMainWindow):
             self._show_messages()
 
     def _refresh_all(self) -> None:
-        self._refresh_storeys()
+        self.project.refresh()
+        self._refresh_tools()
         self.properties.refresh()
         self.plan.update()
         self.view3d.update()
@@ -232,22 +241,17 @@ class MainWindow(QMainWindow):
         self.redo_action.setToolTip(f"Refazer {redo[-1].label}" if redo else "Refazer")
         self.hint.setText(self.toolbox.active.hint())
 
+    def _refresh_tools(self) -> None:
+        """Mover, Copiar e Girar só com seleção (0.2 §2)."""
+        has_selection = bool(self.session.selection)
+        for name in SELECTION_TOOLS:
+            self.tool_actions[name].setEnabled(has_selection)
+        if not has_selection and self.toolbox.active.name in SELECTION_TOOLS:
+            self.activate_tool("select")
+
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
         self.setWindowTitle(f"{name}{'*' if self.session.modified else ''} — BrasBim")
-
-    def _refresh_storeys(self) -> None:
-        self.storeys.clear()
-        for storey in reversed(self.session.doc.storeys()):
-            active = storey.GlobalId == self.session.storey_id
-            text = f"{'● ' if active else '   '}{storey.Name} ({fmt(storey.Elevation or 0)})"
-            item = QListWidgetItem(text)
-            item.setData(Qt.UserRole, storey.GlobalId)
-            if active:
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-            self.storeys.addItem(item)
 
     def _show_messages(self) -> None:
         self.messages.clear()
@@ -263,9 +267,6 @@ class MainWindow(QMainWindow):
 
     def _show_cursor(self, x: float, y: float) -> None:
         self.coords.setText(f"x {fmt(x)}   y {fmt(y)}")
-
-    def _storey_clicked(self, item: QListWidgetItem) -> None:
-        self.session.set_storey(self.session.doc.find(item.data(Qt.UserRole)))
 
     # --- ações -------------------------------------------------------------------------
 
@@ -322,6 +323,12 @@ class MainWindow(QMainWindow):
             self.tabs.show()
             self.split = False
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
+
+    def edit_types(self, dialog_class) -> None:
+        self.toolbox.active.cancel()
+        dialog_class(self.session, self).exec()
+        self.toolbox.check_types()
+        self.properties.refresh()
 
     def fit_all(self) -> None:
         self.plan.fit()
