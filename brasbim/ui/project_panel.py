@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Painel Projeto: tabela de pavimentos (``spec/ui/02-edicao.md`` §7).
 
-Um clique numa linha torna o pavimento ativo; clique duplo numa célula edita o nome ou a
-cota (``storey.edit``); os botões criam e excluem pavimentos.
+Um clique numa linha torna o pavimento ativo; clique duplo numa célula edita o nome, a
+cota ou o plano de corte (``storey.edit``; spec/ui 06 §3.1, vazio = padrão); os botões
+criam e excluem pavimentos.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from brasbim.core import storeys as storeys_
 from brasbim.core.walls import commands as cmd
 from brasbim.ui.tools import fmt, parse_number
 
@@ -37,11 +39,13 @@ class ProjectPanel(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Nome", "Cota"])
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Nome", "Cota", "Plano de corte"])
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        for column in (1, 2):
+            self.table.horizontalHeader().setSectionResizeMode(column,
+                                                               QHeaderView.ResizeToContents)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.DoubleClicked
@@ -70,15 +74,20 @@ class ProjectPanel(QWidget):
             name = QTableWidgetItem(f"{'● ' if active else ''}{storey.Name or ''}")
             name.setData(Qt.UserRole, storey.GlobalId)
             elevation = QTableWidgetItem(fmt(storey.Elevation or 0.0))
-            elevation.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            cut = QTableWidgetItem(fmt(storeys_.cut_height(storey)))
+            cut.setToolTip("Altura do plano de corte da planta acima da cota; "
+                           "vazio volta ao padrão")
+            for item in (elevation, cut):
+                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if active:
                 font = name.font()
                 font.setBold(True)
-                name.setFont(font)
-                elevation.setFont(font)
+                for item in (name, elevation, cut):
+                    item.setFont(font)
                 self.table.selectRow(row)
             self.table.setItem(row, 0, name)
             self.table.setItem(row, 1, elevation)
+            self.table.setItem(row, 2, cut)
         self.delete_button.setEnabled(len(storeys) > 1)
         self.table.blockSignals(False)
 
@@ -101,6 +110,8 @@ class ProjectPanel(QWidget):
             name = text.removeprefix("● ").strip()
             if name and name != storey.Name:
                 self.session.run(lambda: cmd.edit_storey(doc, storey, name=name))
+        elif item.column() == 2:
+            self._edit_cut(storey, text)
         else:
             try:
                 elevation = parse_number(text)
@@ -110,6 +121,23 @@ class ProjectPanel(QWidget):
             if elevation is not None and abs(elevation - (storey.Elevation or 0.0)) > 1e-9:
                 self.session.run(lambda: cmd.edit_storey(doc, storey, elevation=elevation))
         self.refresh()  # recusa ou texto inválido: volta ao valor do modelo
+
+    def _edit_cut(self, storey, text: str) -> None:
+        if not text:
+            value = None
+        else:
+            try:
+                value = parse_number(text)
+            except ValueError:
+                self.session.message(f"plano de corte inválido: {text!r}", "recusa")
+                return
+        current = storeys_.read(storey)["cut_height"]
+        if value is None and current is None:
+            return
+        if value is not None and abs(value - storeys_.cut_height(storey)) < 1e-9:
+            return
+        doc = self.session.doc
+        self.session.run(lambda: cmd.edit_storey(doc, storey, cut_height=value))
 
     def add_storey(self) -> None:
         doc = self.session.doc

@@ -138,6 +138,8 @@ class PlanContext:
         self.input_view = None  # vista (planta ou 3D) que recebeu o último movimento
         self._plan = None
         self._walls = None
+        self.detail = "simple"  # Exibir > Detalhe da planta (spec/ui 06 §2)
+        self.show_above = True  # Exibir > Elementos acima do plano de corte (§3.2)
 
     def invalidate(self) -> None:
         self._plan = self._walls = None
@@ -146,7 +148,9 @@ class PlanContext:
     def plan(self) -> plan.Plan:
         if self._plan is None:
             storey = self.session.storey
-            self._plan = plan.storey_plan(self.session.doc, storey) if storey else plan.Plan()
+            self._plan = (plan.storey_plan(self.session.doc, storey, detail=self.detail,
+                                           show_above=self.show_above)
+                          if storey else plan.Plan())
         return self._plan
 
     @property

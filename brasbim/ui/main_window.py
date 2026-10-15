@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QColor, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -198,6 +198,21 @@ class MainWindow(QMainWindow):
         for action, value in ((self.tags_action, True), (self.tag_size_action, False)):
             action.setCheckable(True)
             action.setChecked(value)
+        view_menu.addSeparator()
+        detail_menu = view_menu.addMenu("Detalhe da planta")
+        group = QActionGroup(self)
+        self.detail_actions = {}
+        for key, text in (("simple", "Simplificado"), ("layers", "Por camadas")):
+            action = self._action(detail_menu, text,
+                                  lambda _=False, k=key: self.set_plan_detail(k))
+            action.setCheckable(True)
+            group.addAction(action)
+            self.detail_actions[key] = action
+        self.detail_actions["simple"].setChecked(True)
+        self.above_action = self._action(view_menu, "Elementos acima do plano de corte",
+                                         self.set_show_above)
+        self.above_action.setCheckable(True)
+        self.above_action.setChecked(True)
         project_menu = bar.addMenu("&Projeto")
         self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
@@ -233,6 +248,20 @@ class MainWindow(QMainWindow):
         setattr(self.plan, name, bool(value))
         self.plan.update()
 
+    def set_plan_detail(self, detail: str) -> None:
+        """Exibir > Detalhe da planta (spec/ui 06 §2): preferência, não vai para o IFC."""
+        self.detail_actions[detail].setChecked(True)
+        self.ctx.detail = detail
+        self.ctx.invalidate()
+        self.plan.update()
+
+    def set_show_above(self, value: bool) -> None:
+        """Exibir > Elementos acima do plano de corte (spec/ui 06 §3.2)."""
+        self.above_action.setChecked(bool(value))
+        self.ctx.show_above = bool(value)
+        self.ctx.invalidate()
+        self.plan.update()
+
     def _toggle_selection_bar(self, checked: bool) -> None:
         for view in (self.plan, self.view3d):
             view.selection_bar.enabled = checked
@@ -259,6 +288,12 @@ class MainWindow(QMainWindow):
             if value is not None:
                 action.setChecked(str(value).lower() == "true")
                 self._set_plan_option(option, action.isChecked())
+        detail = settings.value("detalhe_planta")
+        if detail in self.detail_actions:
+            self.set_plan_detail(detail)
+        above = settings.value("acima_do_corte")
+        if above is not None:
+            self.set_show_above(str(above).lower() == "true")
         self.options_bar.show_for(self.toolbox.active)
 
     # --- atualização ------------------------------------------------------------------
@@ -540,6 +575,8 @@ class MainWindow(QMainWindow):
         settings.setValue("paineis", self.saveState(STATE_VERSION))
         settings.setValue("etiquetas_porta", self.tags_action.isChecked())
         settings.setValue("medidas_etiqueta", self.tag_size_action.isChecked())
+        settings.setValue("detalhe_planta", self.ctx.detail)
+        settings.setValue("acima_do_corte", self.ctx.show_above)
         self.session.close()
         event.accept()
 

@@ -450,6 +450,9 @@ def create_storey(doc: Document, name: str, elevation: float) -> Transaction:
 def edit_storey(doc: Document, storey, **changes) -> Transaction:
     storey = doc.get(_gid(storey), "IfcBuildingStorey")
     current = storeys.read(storey)
+    cut = changes.get("cut_height")
+    if cut is not None and abs(cut - storeys.DEFAULT_CUT_HEIGHT) < 1e-9:
+        changes["cut_height"] = None  # o padrão não é gravado (spec/ui 06 §3.1)
     before = {k: current[k] for k in changes}
     return Transaction(
         "Editar pavimento", [Op("storey.edit", storey.GlobalId, before=before, after=changes)]

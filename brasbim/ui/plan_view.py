@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
 from brasbim.core.snap import KIND_LABEL
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
@@ -174,24 +175,57 @@ class PlanView(QWidget, ToolInput):
                     painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
                 k += 1
 
+    def _px(self, weight: float) -> float:
+        """Espessura de linha em metros de papel (NBR 8403) para pixels (spec/ui 03 §6.1)."""
+        return weight * 1000 * 96 / 25.4
+
+    def _rings_path(self, rings) -> QPainterPath:
+        path = QPainterPath()
+        path.setFillRule(Qt.OddEvenFill)
+        for ring in rings:
+            path.addPolygon(self._polygon(ring))
+            path.closeSubpath()
+        return path
+
     def _draw_plan(self, painter: QPainter) -> None:
+        """Ordem (spec/ui 06 §3.2): pavimento de baixo, acima do plano, em vista, cortadas
+        (regiões e bordas), destaque da seleção e portas."""
         selection = self.ctx.session.selection
-        for shape in self.ctx.plan.shapes:
+        plan = self.ctx.plan
+        rest = []
+        for shape in plan.shapes:
+            role = shape.role
+            if role not in ("below", "wall_above", "wall_view"):
+                rest.append(shape)
+                continue
+            selected = shape.owner in selection
+            if role == "below":
+                pen = QPen(C["below"], 1, Qt.DashLine)
+            elif role == "wall_above":
+                pen = QPen(C["select"] if selected else C["wall_line"],
+                           max(1.0, self._px(ABOVE_WEIGHT)), Qt.DashLine)
+            else:
+                pen = QPen(C["select"] if selected else C["wall_line"],
+                           2 if selected else max(1.0, self._px(VIEW_WEIGHT)))
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(self._path(shape.points, shape.closed))
+        for region in plan.regions:
+            self._draw_region(painter, self._rings_path(region.rings), region.fill)
+        painter.setBrush(Qt.NoBrush)
+        for edge in plan.edges:
+            painter.setPen(QPen(QColor(edge.color), max(1.0, self._px(edge.weight))))
+            painter.drawPath(self._rings_path(edge.rings))
+        for shape in rest:
             selected = shape.owner in selection
             path = self._path(shape.points, shape.closed)
             role = shape.role
-            if role == "below":
-                painter.setPen(QPen(C["below"], 1, Qt.DashLine))
-                painter.setBrush(Qt.NoBrush)
-            elif role == "wall":
-                if not selected and shape.style is not None:
-                    self._draw_styled(painter, path, shape.style)
+            if role == "wall":
+                if not selected:  # o desenho vem das regiões (sobreposição nas junções)
                     continue
-                painter.setPen(QPen(C["select"] if selected else C["wall_line"],
-                                    2 if selected else 1.4))
-                fill = QColor(C["select"]) if selected else C["wall_fill"]
-                if selected:
-                    fill.setAlpha(110)
+                painter.setPen(QPen(C["select"], 2))
+                fill = QColor(C["select"])
+                fill.setAlpha(110)
                 painter.setBrush(QBrush(fill))
             else:
                 color = C["select"] if selected else (C["swing"] if role == "door_swing"
@@ -201,36 +235,42 @@ class PlanView(QWidget, ToolInput):
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
 
-    def _draw_styled(self, painter: QPainter, path: QPainterPath, style: dict) -> None:
-        """Parede cortada com a representação do tipo (spec/ui 03 §6.1)."""
-        fill = style["fill"]
-        painter.fillPath(path, C["background"])  # cobre o que estiver por baixo (X)
-        if fill == "solid":
-            painter.fillPath(path, QColor(style["fill_color"]))
-        elif fill == "hatch":
-            spacing = style["hatch_spacing"] * self.scale
-            color = QColor(style["fill_color"])
-            if spacing < 3:  # longe demais para ver as linhas: tom chapado
+    def _draw_region(self, painter: QPainter, path: QPainterPath, fill: dict) -> None:
+        """Mancha de tipo ou de material; a hachura parte da origem do pavimento, para
+        continuar de uma parede para a outra (spec/ui 06 §2.2)."""
+        painter.fillPath(path, C["background"])  # cobre o que estiver por baixo
+        pattern = fill["pattern"]
+        if fill.get("background"):
+            painter.fillPath(path, QColor(fill["background"]))
+        if pattern not in ("lines", "cross"):
+            return
+        spacing = fill["spacing"] * self.scale
+        color = QColor(fill["line_color"])
+        if fill.get("source") == "type":
+            color = color.darker(130)
+            if spacing < 3:  # longe demais para ver as linhas: tom chapado (spec/ui 03)
                 color.setAlpha(120)
                 painter.fillPath(path, color)
-            else:
-                painter.save()
-                painter.setClipPath(path)
-                painter.setPen(QPen(color.darker(130), 1))
-                rect = path.boundingRect()
-                center = rect.center()
-                angle = -math.radians(style["hatch_angle"])  # y da tela para baixo
-                d = QPointF(math.cos(angle), math.sin(angle))
-                n = QPointF(-d.y(), d.x())
-                reach = math.hypot(rect.width(), rect.height()) / 2 + 1
-                for k in range(-int(reach / spacing) - 1, int(reach / spacing) + 2):
-                    o = center + n * (k * spacing)
-                    painter.drawLine(o - d * reach, o + d * reach)
-                painter.restore()
-        width = max(1.0, style["line_weight"] * 1000 * 96 / 25.4)
-        painter.setPen(QPen(QColor(style["line_color"]), width))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawPath(path)
+                return
+        elif spacing < 1:  # menos de 1 px: só o fundo (spec/ui 06 §4.1)
+            return
+        painter.save()
+        painter.setClipPath(path)
+        painter.setPen(QPen(color, 1))
+        rect = path.boundingRect()
+        corners = [rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()]
+        anchor = self.to_screen((0.0, 0.0))
+        angles = [fill["angle"]] + ([fill["angle"] + 90.0] if pattern == "cross" else [])
+        for degrees in angles:
+            a = -math.radians(degrees)  # y da tela para baixo
+            d = QPointF(math.cos(a), math.sin(a))
+            n = QPointF(-d.y(), d.x())
+            ss = [QPointF.dotProduct(c - anchor, n) for c in corners]
+            ts = [QPointF.dotProduct(c - anchor, d) for c in corners]
+            for k in range(math.floor(min(ss) / spacing), math.ceil(max(ss) / spacing) + 1):
+                o = anchor + n * (k * spacing)
+                painter.drawLine(o + d * (min(ts) - 1), o + d * (max(ts) + 1))
+        painter.restore()
 
     def _draw_tags(self, painter: QPainter) -> None:
         if not self.show_tags:

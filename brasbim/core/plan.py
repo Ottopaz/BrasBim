@@ -1,19 +1,26 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Planta de um pavimento como primitivas 2D, sem Qt (``spec/ui/01-janela-e-ferramentas.md``
-§3, ``parede.md`` §7, ``porta.md`` §7).
+§3, ``spec/ui/06-planta-por-camadas.md``, ``parede.md`` §7, ``porta.md`` §7).
 
-Versão simplificada: tudo o que é do pavimento aparece cortado; os vãos que o plano de
-corte atravessa interrompem a parede; portas com folha aberta a 90° e arco de giro. As
-coordenadas são as do pavimento, em metros. Nada disto é gravado no IFC.
+O plano de corte é o do pavimento (``storeys.cut_height``), medido a partir da base de
+cada parede. As coordenadas são as do pavimento, em metros. Nada disto é gravado no IFC.
 
-Papéis (``Shape.role``): ``wall`` (preenchida), ``below`` (parede do pavimento de baixo),
-``door_frame`` (marco, preenchido), ``door_leaf`` (folha), ``door_swing`` (arco de giro,
-linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejada) e ``door``
-(contorno de porta de outra origem).
+Papéis (``Shape.role``): ``wall`` (parte cortada da parede: escolha, seleção e fantasma;
+o preenchimento vem das regiões), ``wall_view`` (em vista: abaixo do plano, e as faces
+no peitoril), ``wall_above`` (acima do plano: tracejado), ``below`` (parede do pavimento
+de baixo), ``door_frame`` (marco, preenchido), ``door_leaf`` (folha), ``door_swing`` (arco
+de giro, linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejada) e
+``door`` (contorno de porta de outra origem).
+
+Regiões (``Region``) e bordas (``Edge``) desenham as paredes cortadas: no detalhe
+simplificado, uma mancha por tipo (paredes do mesmo tipo unidas, sem linha na junção);
+no por camadas, uma por material, com a prioridade das camadas nas junções
+(``layers.regions``), e o tipo só para paredes sem camadas.
 """
 
 from __future__ import annotations
 
+import itertools
 import logging
 import math
 from dataclasses import dataclass, field
@@ -22,17 +29,18 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import geom2d
+from brasbim.core import clip, geom2d, layers, materials, storeys
+from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.geom2d import Point
-from brasbim.core.walls import openings, rebuild
+from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state as read_wall
 
 log = logging.getLogger(__name__)
 
-CUT_HEIGHT = 1.50  # plano de corte acima do piso do pavimento (parede §7, a confirmar)
+DETAILS = ("simple", "layers")  # Exibir > Detalhe da planta (spec/ui 06 §2)
 _ARC_STEPS = 16
 
 
@@ -56,10 +64,33 @@ class Label:
     size: str
 
 
+@dataclass(frozen=True)
+class Region:
+    """Mancha das paredes cortadas: ``key`` = GlobalId do tipo ou nome do material.
+    ``fill``: ``pattern`` (none, solid, lines, cross), ``background``, ``angle``,
+    ``spacing`` (m), ``line_color`` e ``source`` (``type`` ou ``material``). Anéis com a
+    regra par-ímpar."""
+
+    key: str
+    rings: Rings = field(hash=False)
+    fill: dict = field(hash=False)
+
+
+@dataclass(frozen=True)
+class Edge:
+    """Contorno de uma região: espessura em metros de papel (NBR 8403) e cor."""
+
+    rings: Rings = field(hash=False)
+    weight: float
+    color: str
+
+
 @dataclass
 class Plan:
     shapes: list[Shape] = field(default_factory=list)
     labels: list[Label] = field(default_factory=list)
+    regions: list[Region] = field(default_factory=list)
+    edges: list[Edge] = field(default_factory=list)
 
     def owners(self, role_prefix: str) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -82,13 +113,16 @@ class Plan:
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
-        walls = [s for s in self.shapes if s.role == "wall"]
-        for s in walls:
-            if _inside(s.points, p):
-                return s.owner
-        near = [(_distance_to_outline(s.points, p), s.owner) for s in walls]
-        near = [n for n in near if n[0] <= tol]
-        return min(near)[1] if near else None
+        for roles in (("wall",), ("wall_view", "wall_above")):  # cortadas primeiro
+            walls = [s for s in self.shapes if s.role in roles]
+            for s in walls:
+                if s.closed and _inside(s.points, p):
+                    return s.owner
+            near = [(_distance_to_outline(s.points, p, s.closed), s.owner) for s in walls]
+            near = [n for n in near if n[0] <= tol]
+            if near:
+                return min(near)[1]
+        return None
 
 
     def in_rect(self, a: Point, b: Point, crossing: bool = False) -> list[str]:
@@ -159,33 +193,126 @@ def distance_to_segment(p: Point, a: Point, b: Point) -> float:
     return math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
 
 
-def _distance_to_outline(points, p) -> float:
-    return min(distance_to_segment(p, points[i - 1], points[i]) for i in range(len(points)))
+def _distance_to_outline(points, p, closed: bool = True) -> float:
+    return min(distance_to_segment(p, a, b) for a, b in _segments(points, closed))
 
 
 # --- paredes -------------------------------------------------------------------------
 
+_FAR = 1e3  # m: "infinito" dos recortes no sistema local da parede
+_MARGIN = 10.0  # m: alcance das pontas além do caminho (junções)
+VIEW_WEIGHT = 0.00025  # parede em vista: linha média (spec/ui 06 §3.2)
+ABOVE_WEIGHT = 0.00018  # acima do plano: tracejado fino
+LAYER_WEIGHT = 0.00018  # divisa entre materiais
 
-def _cut_intervals(wall, length: float) -> list[tuple[float, float]]:
-    """Trechos da parede reta que não estão em vão atravessado pelo plano de corte."""
-    gaps = []
-    for opening in openings.of_wall(wall):
-        try:
-            o = openings.read_state(opening)
-        except OpError:
+
+def _slab(a: float, b: float, y0: float = -_FAR, y1: float = _FAR) -> list[Point]:
+    a, b = max(a, -_FAR), min(b, _FAR)
+    return [(a, y0), (b, y0), (b, y1), (a, y1)]
+
+
+def _over(profile, c: float, length: float) -> list[tuple[float, float]]:
+    """Trechos ``x`` em que o topo do perfil fica acima de ``c`` (pontas ao infinito)."""
+    xs = sorted({-_MARGIN, length + _MARGIN, *(x for x, _ in profile)})
+    out: list[list[float]] = []
+    for a, b in itertools.pairwise(xs):
+        ha, hb = top.at(profile, a) - c, top.at(profile, b) - c
+        if ha <= 0 and hb <= 0:
             continue
-        if o["kind"] == "OPENING" and o["sill"] <= CUT_HEIGHT <= o["sill"] + o["height"]:
-            gaps.append((o["distance"], o["distance"] + o["width"]))
-    out, x = [], -math.inf
-    for a, b in sorted(gaps):
-        if a > x:
-            out.append((x, a))
-        x = max(x, b)
-    out.append((x, math.inf))
-    return [(a, b) for a, b in out if b - a > 1e-6 and a < length + 1 and b > -1]
+        lo = a if ha > 0 else a + (b - a) * ha / (ha - hb)
+        hi = b if hb > 0 else a + (b - a) * ha / (ha - hb)
+        if out and abs(out[-1][1] - lo) < 1e-9:
+            out[-1][1] = hi
+        else:
+            out.append([lo, hi])
+    for piece in out:
+        piece[0] = -_FAR if piece[0] <= -_MARGIN else piece[0]
+        piece[1] = _FAR if piece[1] >= length + _MARGIN else piece[1]
+    return [(a, b) for a, b in out if b - a > 1e-9]
+
+
+@dataclass
+class _Cut:
+    """Uma parede do pavimento diante do plano de corte."""
+
+    wall: object
+    type_id: str
+    style: dict
+    shapes: list[Shape]
+    pieces: Rings  # área cortada, coordenadas do pavimento
+    crossed: set[str]  # aberturas atravessadas pelo plano
+
+
+def _cut_wall(doc: Document, wall, cut: float, show_above: bool) -> _Cut | None:
+    try:
+        state = read_wall(doc, wall)
+        band = rebuild.band(doc, state)
+        segments = rebuild.profile(doc, wall, band)
+    except (OpError, ValueError) as e:
+        log.warning("parede %s fora da planta: %s", wall.GlobalId, e)
+        return None
+    gid, frame = wall.GlobalId, band.frame
+    style = wall_types.plan_style(doc.get(state["type"], "IfcWallType"))
+    out = _Cut(wall, state["type"], style, [], [], set())
+
+    def emit(role: str, rings, closed=True):
+        out.shapes += [Shape(gid, role, tuple(frame.to_global(p) for p in r), closed,
+                             style if role == "wall" else None) for r in rings]
+
+    local = [geom2d.polygon(segments)]
+    c = cut - state["base_offset"]  # plano em relação à base da parede
+    if c < 0:  # parede toda acima do plano
+        if show_above:
+            emit("wall_above", local)
+        return out
+    straight = isinstance(band.path, geom2d.LinePath)
+    profile = state.get("top_profile")
+    if profile and straight:
+        over = _over(profile, c, band.path.length)
+    else:
+        over = [(-_FAR, _FAR)] if rebuild.height(doc, state) > c else []
+    slabs = [_slab(a, b) for a, b in over]
+    emit("wall_view", clip.difference(local, slabs))  # trechos com o topo abaixo do plano
+    pieces = clip.intersection(local, slabs)
+    if straight and pieces:
+        holes = []
+        for opening in openings.of_wall(wall):
+            try:
+                o = openings.read_state(opening)
+            except OpError:
+                continue
+            x0, x1 = o["distance"], o["distance"] + o["width"]
+            if not any(a < x1 and x0 < b for a, b in over):
+                continue  # trecho em vista: o vão não aparece
+            if o["sill"] > c:
+                if o["kind"] == "OPENING" and show_above:
+                    emit("wall_above", [_slab(x0, x1, band.ymin, band.ymax)])
+                continue
+            if o["sill"] + o["height"] < c:
+                continue  # vão todo abaixo do plano: a parede está cortada acima dele
+            out.crossed.add(opening.GlobalId)
+            if o["kind"] == "RECESS":
+                depth = o["depth"] or 0.0
+                y0, y1 = ((band.ymax - depth, _FAR) if o["side"] == "left"
+                          else (-_FAR, band.ymin + depth))
+                holes.append(_slab(x0, x1, y0, y1))
+                continue
+            holes.append(_slab(x0, x1))
+            if o["sill"] > 1e-9:  # peitoril: as faces aparecem em vista
+                emit("wall_view", [[(x0, y), (x1, y)] for y in (band.ymin, band.ymax)],
+                     closed=False)
+        pieces = clip.difference(pieces, holes)
+    emit("wall", pieces)
+    out.pieces = [[frame.to_global(p) for p in r] for r in pieces]
+    return out
 
 
 def wall_shapes(doc: Document, wall, role: str = "wall") -> list[Shape]:
+    """Contorno da parede inteira (``role`` qualquer) ou, com ``wall``, a parte cortada
+    no plano padrão."""
+    if role == "wall":
+        found = _cut_wall(doc, wall, storeys.DEFAULT_CUT_HEIGHT, True)
+        return [s for s in found.shapes if s.role == "wall"] if found else []
     try:
         state = read_wall(doc, wall)
         band = rebuild.band(doc, state)
@@ -193,16 +320,50 @@ def wall_shapes(doc: Document, wall, role: str = "wall") -> list[Shape]:
     except (OpError, ValueError) as e:
         log.warning("parede %s fora da planta: %s", wall.GlobalId, e)
         return []
-    local = geom2d.polygon(segments)
-    pieces = [local]
-    if role == "wall" and isinstance(band.path, geom2d.LinePath):
-        pieces = [geom2d.clip_rect(local, a, b, -math.inf, math.inf)
-                  for a, b in _cut_intervals(wall, band.path.length)]
-    frame = band.frame
-    style = (wall_types.plan_style(doc.get(state["type"], "IfcWallType"))
-             if role == "wall" else None)
-    return [Shape(wall.GlobalId, role, tuple(frame.to_global(p) for p in piece), True, style)
-            for piece in pieces if piece]
+    return [Shape(wall.GlobalId, role,
+                  tuple(band.frame.to_global(p) for p in geom2d.polygon(segments)))]
+
+
+def _fill_of_type(style: dict) -> dict:
+    pattern = {"none": "none", "solid": "solid", "hatch": "lines"}[style["fill"]]
+    return {"pattern": pattern, "background": style["fill_color"] if pattern == "solid" else None,
+            "angle": style["hatch_angle"], "spacing": style["hatch_spacing"],
+            "line_color": style["fill_color"], "source": "type"}
+
+
+def _type_regions(cuts: list[_Cut]) -> dict[str, Rings]:
+    """União das peças de cada tipo; quem vem depois (a contínua em X) cobre os outros."""
+    out: dict[str, Rings] = {}
+    for w in cuts:
+        if not w.pieces:
+            continue
+        for key, rings in out.items():
+            if key != w.type_id:
+                out[key] = clip.difference(rings, w.pieces)
+        out[w.type_id] = clip.union(out.get(w.type_id, []), w.pieces)
+    return {k: v for k, v in out.items() if v}
+
+
+def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
+    by_type = _type_regions(cuts)
+    styles = {w.type_id: w.style for w in cuts}
+    layered: set[str] = set()
+    if detail == "layers":
+        found = layers.regions(doc, [w.wall for w in cuts if w.pieces],
+                               {w.wall.GlobalId: w.pieces for w in cuts if w.pieces})
+        owners = {r.owner for r in found}
+        layered = {w.type_id for w in cuts if w.wall.GlobalId in owners}
+        for material, rings in sorted(layers.by_material(found).items(),
+                                      key=lambda kv: kv[0] or ""):
+            cut = materials.style(doc, material)["cut"]
+            plan.regions.append(Region(material or "", rings, {**cut, "source": "material"}))
+            plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR))
+    for key, rings in by_type.items():
+        if key not in layered:
+            plan.regions.append(Region(key, rings, _fill_of_type(styles[key])))
+    for key, rings in by_type.items():
+        style = styles[key]
+        plan.edges.append(Edge(rings, style["line_weight"], style["line_color"]))
 
 
 # --- portas --------------------------------------------------------------------------
@@ -338,17 +499,29 @@ def _contained(storey, ifc_class: str) -> list:
                    if e.is_a(ifc_class)), key=lambda e: e.GlobalId)
 
 
-def storey_plan(doc: Document, storey, show_below: bool = True) -> Plan:
+def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "simple",
+                show_above: bool = True) -> Plan:
+    """Planta do pavimento. ``detail``: ``simple`` ou ``layers`` (spec/ui 06 §2);
+    ``show_above``: paredes e vãos acima do plano em tracejado (§3.2)."""
     plan = Plan()
     if show_below:
-        storeys = doc.storeys()
-        i = storeys.index(storey)
+        storeys_ = doc.storeys()
+        i = storeys_.index(storey)
         if i > 0:
-            for wall in _contained(storeys[i - 1], "IfcWall"):
+            for wall in _contained(storeys_[i - 1], "IfcWall"):
                 plan.shapes += wall_shapes(doc, wall, role="below")
-    for wall in _continuous_last(_contained(storey, "IfcWall")):
-        plan.shapes += wall_shapes(doc, wall)
+    cut = storeys.cut_height(storey)
+    cuts = [c for c in (_cut_wall(doc, wall, cut, show_above)
+                        for wall in _continuous_last(_contained(storey, "IfcWall")))
+            if c is not None]
+    order = {"wall_above": 0, "wall_view": 1}  # acima, abaixo, cortadas (§3.2)
+    plan.shapes += sorted((s for c in cuts for s in c.shapes), key=lambda s: order.get(s.role, 2))
+    _regions(doc, plan, cuts, detail)
+    crossed = {o for c in cuts for o in c.crossed}
     for door in _contained(storey, "IfcDoor"):
+        opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
+        if opening is not None and opening.GlobalId not in crossed:
+            continue  # vão fora do plano de corte: sem símbolo (spec/ui 06 §3.3)
         plan.shapes += door_shapes(doc, door, storey)
         label = door_label(doc, door, storey)
         if label is not None:
