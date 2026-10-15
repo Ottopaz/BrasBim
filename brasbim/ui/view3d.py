@@ -49,7 +49,7 @@ TRANSFORM_TOOLS = ("move", "copy", "rotate", "mirror")
 def storey_of(element):
     """Pavimento que contém o elemento (a porta, pelo da parede se preciso)."""
     container = ifcopenshell.util.element.get_container(element)
-    if container is None and element.is_a("IfcDoor"):
+    if container is None and (element.is_a("IfcDoor") or element.is_a("IfcWindow")):
         host = transform.host_wall(element)
         container = ifcopenshell.util.element.get_container(host) if host else None
     return container if container is not None and container.is_a("IfcBuildingStorey") \
@@ -177,12 +177,14 @@ class View3D(QOpenGLWidget, ToolInput):
             GL.glViewport(0, 0, w, h)
 
     def _ghost_gids(self) -> set[str]:
-        """Seleção mais as portas das paredes selecionadas (elas vão junto)."""
+        """Seleção mais as esquadrias das paredes selecionadas (elas vão junto)."""
         doc, selection = self.ctx.session.doc, self.selection
         out = set(selection)
         for gid in self.scene.meshes:
             element = doc.find(gid)
-            if element is not None and element.is_a("IfcDoor") and gid not in selection:
+            filling = element is not None and (element.is_a("IfcDoor")
+                                               or element.is_a("IfcWindow"))
+            if filling and gid not in selection:
                 host = transform.host_wall(element)
                 if host is not None and host.GlobalId in selection:
                     out.add(gid)
@@ -207,6 +209,7 @@ class View3D(QOpenGLWidget, ToolInput):
             GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
             GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
             GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
+        self._paint_glass(selected)
         GL.glDisableClientState(GL.GL_COLOR_ARRAY)
         GL.glColor3f(0.25, 0.25, 0.25)
         for mesh in self.scene.meshes.values():
@@ -220,6 +223,25 @@ class View3D(QOpenGLWidget, ToolInput):
             # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
             # a mini-barra é posta depois que a pintura termina.
             QTimer.singleShot(0, self.selection_bar, self.selection_bar.place)
+
+    def _paint_glass(self, selected) -> None:
+        """Vidros translúcidos, depois das peças opacas (spec/ui 09 §7)."""
+        glass = [(gid, m) for gid, m in self.scene.meshes.items() if m.glass is not None]
+        if not glass:
+            return
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        GL.glDepthMask(GL.GL_FALSE)
+        for gid, mesh in glass:
+            colors = mesh.glass_colors
+            if gid in selected:
+                colors = colors.copy()
+                colors[:, :3] = colors[:, :3] * 0.4 + _SELECT * 0.6
+            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.glass)
+            GL.glColorPointer(4, GL.GL_FLOAT, 0, colors)
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.glass))
+        GL.glDepthMask(GL.GL_TRUE)
+        GL.glDisable(GL.GL_BLEND)
 
     @property
     def navigating(self) -> bool:

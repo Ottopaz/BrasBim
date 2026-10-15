@@ -68,6 +68,15 @@ class Mesh:
     edges: np.ndarray  # (m, 3) float32, pares de pontos
     base: tuple[float, float, float]
     parts: dict | None = None  # parede por camadas: {material: triângulos (n, 3, 3)}
+    glass: np.ndarray | None = None  # triângulos translúcidos (vidro), (n, 3) float32
+    glass_colors: np.ndarray | None = None  # (n, 4): RGBA
+
+    @property
+    def all_vertices(self) -> np.ndarray:
+        """Triângulos opacos e translúcidos juntos (escolha por raio e limites)."""
+        if self.glass is None:
+            return self.vertices
+        return np.concatenate([self.vertices, self.glass])
 
 
 def _shaded(vertices: np.ndarray, color) -> np.ndarray:
@@ -77,6 +86,55 @@ def _shaded(vertices: np.ndarray, color) -> np.ndarray:
     normals = normals / np.where(length > 0, length, 1)[:, None]
     light = 0.45 + 0.55 * np.abs(normals @ _LIGHT)
     return np.repeat(np.clip(np.outer(light, color), 0, 1), 3, axis=0).astype(np.float32)
+
+
+def _shading_of(ifc, name: str):
+    """``IfcSurfaceStyleShading`` pelo nome que o IfcOpenShell dá ao material da face
+    (``IfcSurfaceStyleShading-<id>``)."""
+    try:
+        entity = ifc.by_id(int(name.rsplit("-", 1)[1]))
+    except (IndexError, ValueError, RuntimeError):
+        return None
+    return entity if entity.is_a("IfcSurfaceStyleShading") else None
+
+
+def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh | None:
+    """Esquadria com uma cor por peça (``IfcStyledItem`` do material, spec/ui 09 §7); as
+    peças com transparência (vidro) vão à parte, para o desenho translúcido."""
+    ids = np.asarray(g.material_ids, dtype=np.int64)
+    if not len(ids) or len(ids) != len(tri):
+        return None
+    looks = []
+    for material in g.materials:
+        shading = _shading_of(entity.file, material.name)
+        if shading is None or shading.SurfaceColour is None:
+            looks.append((color, 0.0))
+            continue
+        c = shading.SurfaceColour
+        looks.append(((c.Red, c.Green, c.Blue), float(shading.Transparency or 0.0)))
+    if not looks:
+        return None
+    solid_tri, solid_col, glass_tri, glass_col = [], [], [], []
+    for i, (rgb, transparency) in enumerate(looks):
+        part = tri[(ids == i) | ((ids < 0) & (i == 0))]
+        if not len(part):
+            continue
+        flat = part.astype(np.float32).reshape(-1, 3)
+        shaded = _shaded(flat, rgb)
+        if transparency > 1e-6:
+            glass_tri.append(flat)
+            glass_col.append(np.c_[shaded, np.full(len(shaded), 1 - transparency)])
+        else:
+            solid_tri.append(flat)
+            solid_col.append(shaded)
+    if not solid_tri and not glass_tri:
+        return None
+    empty = np.zeros((0, 3), dtype=np.float32)
+    return Mesh(np.concatenate(solid_tri) if solid_tri else empty,
+                np.concatenate(solid_col) if solid_col else empty, edges, color,
+                glass=np.concatenate(glass_tri) if glass_tri else None,
+                glass_colors=(np.concatenate(glass_col).astype(np.float32)
+                              if glass_col else None))
 
 
 class Scene:
@@ -111,6 +169,10 @@ class Scene:
             return None
         color = material_color(entity)
         tri = verts[faces]
+        if entity.is_a("IfcDoor") or entity.is_a("IfcWindow"):
+            styled = _styled_mesh(entity, g, tri, verts[edges], color)
+            if styled is not None:
+                return styled
         layered = self._split(entity, tri) if entity.is_a("IfcWall") else None
         if layered is None:
             return Mesh(tri, _shaded(tri, color), verts[edges], color)
@@ -180,8 +242,8 @@ class Scene:
     def bounds(self) -> tuple[np.ndarray, np.ndarray] | None:
         if not self.meshes:
             return None
-        lows = [m.vertices.min(axis=0) for m in self.meshes.values()]
-        highs = [m.vertices.max(axis=0) for m in self.meshes.values()]
+        lows = [m.all_vertices.min(axis=0) for m in self.meshes.values()]
+        highs = [m.all_vertices.max(axis=0) for m in self.meshes.values()]
         return np.min(lows, axis=0), np.max(highs, axis=0)
 
 
@@ -194,10 +256,11 @@ class Scene:
         for gid, mesh in self.meshes.items():
             if only is not None and gid not in only:
                 continue
-            low, high = mesh.vertices.min(axis=0), mesh.vertices.max(axis=0)
+            verts = mesh.all_vertices
+            low, high = verts.min(axis=0), verts.max(axis=0)
             if not _hits_box(origin, direction, low, high):
                 continue
-            t = ray_triangles(origin, direction, mesh.vertices.reshape(-1, 3, 3))
+            t = ray_triangles(origin, direction, verts.reshape(-1, 3, 3))
             if t is not None and (best is None or t < best[1]):
                 best = (gid, t)
         if best is None:
@@ -208,8 +271,8 @@ class Scene:
         meshes = [m for g, m in self.meshes.items() if g in gids]
         if not meshes:
             return None
-        return (np.min([m.vertices.min(axis=0) for m in meshes], axis=0),
-                np.max([m.vertices.max(axis=0) for m in meshes], axis=0))
+        return (np.min([m.all_vertices.min(axis=0) for m in meshes], axis=0),
+                np.max([m.all_vertices.max(axis=0) for m in meshes], axis=0))
 
 
 def _wall_layers(doc, storey) -> dict:
