@@ -9,7 +9,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (279 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (282 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -25,6 +25,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
+| `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas, a implementar (pacote 4, básico; aceites LA01–12, PI01–14, VI01–13, UI96–UI109) |
 
 ## O que já existe
@@ -127,6 +128,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Biblioteca J1–J6 em `ui/session.py`.
 
 ## Próximos passos (nesta ordem)
+0. Revisão da aparência (spec/ui 11) usando o aplicativo; ajustes pelo retorno.
 1. Revisão das specs do pacote 4 (APROVADAS em 2026‑10‑15; pontos de revisão no fim de cada uma
    e em spec/ui 10 §13). Diretriz do revisor (2026‑10‑15): primeiro o básico de todos os
    elementos principais, depois refinar cada um pelo uso.
@@ -163,6 +165,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   spec 07 mudam a origem).
 
 ## Gosto do usuário
+Aparência: cores, fonte e folha de estilo só em `ui/theme.py` (nunca cor fixa nos
+módulos; teste AP02). Tema sempre claro, cobalto como único destaque.
 Interface limpa: ícones, opções só da ferramenta ativa, ações só com seleção; nada fixo
 poluindo a tela. Desenvolvimento guiado pelo uso: no início da sessão, ler
 `feedback/*.md` (observações) e `feedback/diarios/erro-*.md` (erros).

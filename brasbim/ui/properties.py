@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +47,7 @@ from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
 from brasbim.core.walls.wall import read_state as read_wall
+from brasbim.ui import theme
 from brasbim.ui.tools import block_grid, fmt, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
@@ -55,7 +57,7 @@ SLOPE_RISE, GABLE_RISE = 0.50, 1.00  # topo novo: fim e cumeeira acima da altura
 OPENS_TO = [("Face esquerda da parede", "left"), ("Face direita da parede", "right")]
 HINGES = [("Esquerda", "left"), ("Direita", "right")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
-_INVALID = "QLineEdit { background: #fde2df; }"
+_INVALID = f"QLineEdit {{ background: {theme.ERROR_SOFT}; border-color: {theme.ERROR}; }}"
 MIXED = "vários"
 
 # Propriedades comuns no painel (spec/ui 05 §6): (propriedade IFC, nome, edição).
@@ -160,6 +162,7 @@ class PropertiesPanel(QScrollArea):
         self.toolbox = toolbox
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFont(theme.font(width=92))  # um pouco estreita: painel denso (spec/ui 11 §3)
         self._pending = False
         self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
@@ -231,19 +234,33 @@ class PropertiesPanel(QScrollArea):
         body = QWidget()
         self.layout_ = QVBoxLayout(body)
         form = self.form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(4)
         self.layout_.addLayout(form)
         for i, group in enumerate(self.groups):
             if group.title:
                 text = f"<b>{group.title}</b>" if i == 0 else (
-                    f"<span style='color:#666'>{group.title}</span>")
+                    f"<span style='font-weight:600'>{group.title}</span>")
                 label = QLabel(text)
                 label.setWordWrap(True)
+                if i:
+                    label.setContentsMargins(0, 8, 0, 0)
                 form.addRow(label)
             for name, widget in group.rows:
+                if isinstance(widget, QComboBox):
+                    # nomes longos de tipo não alargam o painel além da tela
+                    widget.setSizeAdjustPolicy(
+                        QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                    widget.setMinimumContentsLength(8)
+                elif isinstance(widget, QLabel) and name is not None:
+                    # valor longo (GlobalId) não alarga o painel; selecionável para copiar
+                    widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
                 if name is None:
                     form.addRow(widget)
                 else:
-                    form.addRow(name, widget)
+                    label = QLabel(name)
+                    label.setWordWrap(True)  # rótulo longo quebra; o campo fica ao lado
+                    form.addRow(label, widget)
         self.layout_.addStretch(1)
         self.setWidget(body)
 
@@ -263,7 +280,7 @@ class PropertiesPanel(QScrollArea):
             if i:
                 line = QFrame()
                 line.setFrameShape(QFrame.VLine)
-                line.setStyleSheet("color: #ccc")
+                line.setStyleSheet(f"color: {theme.RULE_SOFT}")
                 row.addWidget(line)
             block = QWidget()
             block.setObjectName("bloco")
@@ -272,7 +289,7 @@ class PropertiesPanel(QScrollArea):
             column.setContentsMargins(2, 0, 2, 0)
             column.setSpacing(2)
             title = QLabel(f"<b>{group.title}</b>" if i == 0 and group.title
-                           else f"<span style='color:#666'>{group.title}</span>")
+                           else f"<span style='font-weight:600'>{group.title}</span>")
             column.addWidget(title)
             grid = QGridLayout()
             grid.setHorizontalSpacing(6)
@@ -285,7 +302,7 @@ class PropertiesPanel(QScrollArea):
                     grid.addWidget(widget, r, 2 * c, 1, 2)
                 else:
                     label = QLabel(name)
-                    label.setStyleSheet("color: #444")
+                    label.setStyleSheet(f"color: {theme.INK_SOFT}")
                     grid.addWidget(label, r, 2 * c)
                     grid.addWidget(widget, r, 2 * c + 1)
             column.addLayout(grid)
@@ -319,7 +336,7 @@ class PropertiesPanel(QScrollArea):
 
     def _read(self, label: str, text: str) -> None:
         value = QLabel(text)
-        value.setStyleSheet("color: #777")
+        value.setStyleSheet(f"color: {theme.INK}")
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._add(label, value)
 
@@ -657,7 +674,7 @@ class PropertiesPanel(QScrollArea):
             band, _ = openings.wall_info(doc, host)
             if tstate["lining"]["depth"] > band.thickness + 1e-6:
                 note = QLabel("O marco é mais profundo que a parede.")
-                note.setStyleSheet("color: #8a5a00")
+                note.setStyleSheet(f"color: {theme.WARN}")
                 self._add(note)
         q = ifcopenshell.util.element.get_pset(door, qto) or {}
         if q:
@@ -676,7 +693,7 @@ class PropertiesPanel(QScrollArea):
                              f"{hand_name.lower()} ou alinhamento a converte em "
                              f"{noun.lower()} do BrasBim, e o corpo original é substituído.")
             warning.setWordWrap(True)
-            warning.setStyleSheet("color: #8a5a00")
+            warning.setStyleSheet(f"color: {theme.WARN}")
             self._add(warning)
 
     # --- opções da ferramenta (§7.1) ------------------------------------------------------
@@ -779,5 +796,5 @@ class PropertiesPanel(QScrollArea):
             self._read("Pavimento ativo", f"{storey.Name} ({fmt(storey.Elevation or 0)})")
         note = QLabel("Clique num elemento da planta para ver e editar as propriedades.")
         note.setWordWrap(True)
-        note.setStyleSheet("color: #666")
+        note.setStyleSheet(f"color: {theme.INK_SOFT}")
         self._add(note)

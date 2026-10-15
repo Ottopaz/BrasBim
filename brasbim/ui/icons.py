@@ -2,7 +2,7 @@
 """Ícones próprios do BrasBim (``spec/ui/03-barras-e-icones.md`` §3).
 
 Os SVG de ``icons/`` usam ``currentColor``; aqui a cor é trocada pela do texto do tema
-(e pela de destaque no estado marcado) antes de desenhar.
+(e pela do texto sobre o destaque no estado marcado) antes de desenhar.
 """
 
 from __future__ import annotations
@@ -48,12 +48,12 @@ def icon(name: str) -> QIcon:
     svg = (ICON_DIR / f"{name}.svg").read_text(encoding="utf-8")
     palette = QGuiApplication.palette()
     normal = palette.color(QPalette.WindowText).name()
-    accent = palette.color(QPalette.Highlight).name()
+    checked = palette.color(QPalette.HighlightedText).name()  # sobre a placa cobalto
     disabled = palette.color(QPalette.Disabled, QPalette.WindowText).name()
     result = QIcon()
     for size in _SIZES:
         result.addPixmap(_pixmap(svg, normal, size), QIcon.Normal, QIcon.Off)
-        result.addPixmap(_pixmap(svg, accent, size), QIcon.Normal, QIcon.On)
+        result.addPixmap(_pixmap(svg, checked, size), QIcon.Normal, QIcon.On)
         result.addPixmap(_pixmap(svg, disabled, size), QIcon.Disabled, QIcon.Off)
     return result
 

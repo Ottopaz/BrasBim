@@ -23,6 +23,7 @@ from brasbim.core import geom2d
 from brasbim.core.document import Document
 from brasbim.core.ops import History, Transaction
 from brasbim.core.walls import commands as cmd
+from brasbim.ui import theme
 from brasbim.ui.scene3d import ray_plane
 from brasbim.ui.tools import Mods, polar_point, rect_corner
 
@@ -116,7 +117,7 @@ def test_ui64_esc_e_valor_invalido(window):
     QTest.keyClick(window.plan, Qt.Key_Tab)
     QTest.keyClicks(window.plan.numeric, "0")
     QTest.keyClick(window.plan.numeric, Qt.Key_Return)
-    assert "fdecea" in window.plan.numeric.styleSheet()  # vermelho
+    assert theme.ERROR_SOFT in window.plan.numeric.styleSheet()  # vermelho
     assert window.plan.measure.editing == 0 and not tool.fixed
     assert s.messages[-1]["text"] == "comprimento pequeno demais"
     window.plan.numeric.clear()

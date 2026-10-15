@@ -15,19 +15,21 @@ from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
 
+from brasbim.ui import theme
 from brasbim.ui.tools import SELECTION_TOOLS, parse_number
 
 ROWS = 2
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
 DWELL_MS = 400  # cursor parado sobre um vértice: ponto de referência (spec/ui 09 §2.1)
-# Cores do tema (claro ou escuro): o valor do cursor legível, o fixado em negrito.
+# Cores do tema (spec/ui 11): o valor do cursor legível, o fixado em negrito.
 _STYLE = {
     "cursor": "QLineEdit { color: palette(text); background: transparent; border: none; }",
     "fixed": "QLineEdit { color: palette(text); font-weight: bold; background: transparent; "
              "border: none; }",
     "edit": "QLineEdit { color: palette(text); background: palette(base); "
-            "border: 1px solid #1d6fd6; }",
-    "invalid": "QLineEdit { color: #b3261e; background: #fdecea; border: 1px solid #d43a2f; }",
+            f"border: 1px solid {theme.ACCENT}; }}",
+    "invalid": f"QLineEdit {{ color: {theme.ERROR}; background: {theme.ERROR_SOFT}; "
+               f"border: 1px solid {theme.ERROR}; }}",
 }
 
 

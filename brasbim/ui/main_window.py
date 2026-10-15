@@ -31,7 +31,7 @@ from brasbim.core.fillings import doors
 from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
-from brasbim.ui import feedback
+from brasbim.ui import feedback, theme
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
@@ -45,7 +45,7 @@ from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog, WindowType
 from brasbim.ui.view3d import View3D, storey_of
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
-_LEVEL_COLOR = {"recusa": "#b3261e", "aviso": "#8a5a00", "info": "#333333"}
+_LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 
 
 def _settings() -> QSettings:
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
         self.project = ProjectPanel(self.session)
         self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
-        self.properties.setMinimumWidth(270)
+        self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
         self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
         self.messages = QListWidget()
@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
         for m in self.session.messages[-60:]:
             item = QListWidgetItem(f"{m['time']}  {m['text']}")
             item.setToolTip(m["level"])
-            item.setForeground(QColor(_LEVEL_COLOR.get(m["level"], "#333333")))
+            item.setForeground(QColor(_LEVEL_COLOR.get(m["level"], theme.INK)))
             self.messages.addItem(item)
         self.messages.scrollToBottom()
         last = self.session.messages[-1] if self.session.messages else None

@@ -7,16 +7,18 @@ Barras comuns do Qt: vão para qualquer borda da janela ou ficam soltas. A barra
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar
 
 from brasbim.core.fillings import params
 from brasbim.core.walls import types as wall_types
-from brasbim.ui import icons
+from brasbim.ui import icons, theme
 from brasbim.ui.tools import WindowTool, _FillingTool, _WallTool, fmt, parse_number
 
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
+ICON_PX = 20  # ícones das barras (spec/ui 11 §3)
+
 CREATE_TOOLS = [
     ("select", "select", "Selecionar",
      "clique para selecionar; Ctrl+clique soma; arraste no vazio para selecionar por janela"),
@@ -61,6 +63,7 @@ def _bar(title: str, name: str, parent) -> QToolBar:
     bar = QToolBar(title, parent)
     bar.setObjectName(name)
     bar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    bar.setIconSize(QSize(ICON_PX, ICON_PX))
     bar.setMovable(True)
     bar.setFloatable(True)
     bar.setAllowedAreas(Qt.AllToolBarAreas)
@@ -72,6 +75,7 @@ class ToolsBar(QToolBar):
         super().__init__("Ferramentas", window)
         self.setObjectName("barra_ferramentas")
         self.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.setIconSize(QSize(ICON_PX, ICON_PX))
         self.setAllowedAreas(Qt.AllToolBarAreas)
         group = QActionGroup(self)
         self.actions_by_tool = {}
@@ -146,7 +150,7 @@ class OptionsBar(QToolBar):
 
     def _label(self, text: str) -> None:
         label = QLabel(f" {text} ")
-        label.setStyleSheet("color: #666")
+        label.setStyleSheet(f"color: {theme.INK_SOFT}")
         self.addWidget(label)
 
     def _choices(self, items, current, commit) -> None:
@@ -189,7 +193,8 @@ class OptionsBar(QToolBar):
                 commit(parse_number(text))
                 field.setStyleSheet("")
             except ValueError:
-                field.setStyleSheet("QLineEdit { background: #fde2df; }")
+                field.setStyleSheet(f"QLineEdit {{ background: {theme.ERROR_SOFT}; "
+                                    f"border-color: {theme.ERROR}; }}")
 
         field.editingFinished.connect(done)
         self.addWidget(field)

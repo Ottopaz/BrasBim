@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QWidget
 
 from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
 from brasbim.core.snap import KIND_LABEL
+from brasbim.ui import theme
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
 from brasbim.ui.tools import Mods, PlanContext, ToolBox
@@ -30,21 +31,22 @@ _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 _FRAME_MAX_SCALE = 200.0  # enquadrar a seleção não aproxima mais que isto (spec/ui 07 §4)
 _FRAME_MARGIN = 0.2
 
-# Cores da planta (próprias).
+# Cores da planta (spec/ui 11 §2).
 C = {
-    "background": QColor("#f6f5f1"),
-    "grid": QColor("#e4e2da"),
-    "grid_major": QColor("#cfccc1"),
+    "background": QColor(theme.PAPER),
+    "grid": QColor(theme.GRID),
+    "grid_major": QColor(theme.GRID_MAJOR),
     "wall_fill": QColor("#9c9a93"),
-    "wall_line": QColor("#2b2a27"),
+    "wall_line": QColor(theme.INK),
     "below": QColor("#bdbab2"),
-    "door": QColor("#2b2a27"),
-    "swing": QColor("#6d6a62"),
-    "select": QColor("#1d6fd6"),
-    "preview": QColor("#1d6fd6"),
-    "invalid": QColor("#d43a2f"),
-    "crossing": QColor("#2f8f4e"),
-    "label_bg": QColor(255, 255, 255, 225),
+    "door": QColor(theme.INK),
+    "swing": QColor(theme.INK_SOFT),
+    "select": QColor(theme.ACCENT),
+    "preview": QColor(theme.ACCENT),
+    "invalid": QColor(theme.ERROR),
+    "crossing": QColor(theme.OK),
+    "label_bg": QColor(247, 248, 246, 225),
+    "label": QColor(theme.INK),
 }
 
 
@@ -158,24 +160,35 @@ class PlanView(QWidget, ToolInput):
         return path
 
     def _draw_grid(self, painter: QPainter) -> None:
-        step = 0.1 if self.scale * 0.1 >= 8 else 1.0 if self.scale >= 8 else None
-        if step is None:
+        """Grade de 1 m; a de 0,10 m aparece aos poucos com o zoom, para não competir
+        com o desenho (spec/ui 11 §4.1)."""
+        metre = self.scale
+        if metre >= 8:
+            major, minor = 1.0, 0.1
+        elif metre * 10 >= 8:
+            major, minor = 10.0, 1.0
+        else:
             return
+        fade = min(1.0, max(0.0, (minor * self.scale - 7) / 17))
+        faint = QColor(C["grid"])
+        faint.setAlphaF(fade)
         x0, y1 = self.to_world(QPointF(0, 0))
         x1, y0 = self.to_world(QPointF(self.width(), self.height()))
+        ratio = round(major / minor)
         for axis in (0, 1):
             lo, hi = (x0, x1) if axis == 0 else (y0, y1)
-            k = math.floor(lo / step)
-            while k * step <= hi:
-                v = k * step
-                major = step == 1.0 or k % 10 == 0
-                painter.setPen(QPen(C["grid_major"] if major else C["grid"], 1))
-                if axis == 0:
-                    x = self.to_screen((v, 0)).x()
-                    painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
-                else:
-                    y = self.to_screen((0, v)).y()
-                    painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
+            k = math.floor(lo / minor)
+            while k * minor <= hi:
+                is_major = k % ratio == 0
+                if is_major or fade > 0:
+                    painter.setPen(QPen(C["grid_major"] if is_major else faint, 1))
+                    v = k * minor
+                    if axis == 0:
+                        x = self.to_screen((v, 0)).x()
+                        painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
+                    else:
+                        y = self.to_screen((0, v)).y()
+                        painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
                 k += 1
 
     def _px(self, weight: float) -> float:
@@ -286,7 +299,7 @@ class PlanView(QWidget, ToolInput):
             lines = [label.code] + ([label.size] if self.show_tag_size else [])
             q = self.to_screen(label.at)
             height = metrics.height()
-            painter.setPen(QPen(C["select"] if label.owner in selection else QColor("#222")))
+            painter.setPen(QPen(C["select"] if label.owner in selection else C["label"]))
             for i, text in enumerate(lines):
                 width = metrics.horizontalAdvance(text)
                 y = q.y() - len(lines) * height / 2 + i * height
@@ -321,7 +334,7 @@ class PlanView(QWidget, ToolInput):
         for point, hot in tool.handles():
             q, r = self.to_screen(point), HANDLE_PX
             painter.setPen(QPen(C["select"], 1.2))
-            painter.setBrush(QBrush(C["select"] if hot else QColor("white")))
+            painter.setBrush(QBrush(C["select"] if hot else C["background"]))
             painter.drawRect(QRectF(q.x() - r, q.y() - r, 2 * r, 2 * r))
         snapped = tool.snapped
         if snapped is not None and snapped.kind not in ("free",):
@@ -343,7 +356,7 @@ class PlanView(QWidget, ToolInput):
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(C["label_bg"]))
         painter.drawRoundedRect(rect, 3, 3)
-        painter.setPen(QPen(QColor("#222")))
+        painter.setPen(QPen(C["label"]))
         painter.drawText(rect, Qt.AlignCenter, text)
 
     def paintEvent(self, event):

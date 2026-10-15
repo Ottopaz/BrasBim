@@ -20,6 +20,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from brasbim.core import snap, transform
 from brasbim.core.document import OpError
+from brasbim.ui import theme
 from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
@@ -36,7 +37,7 @@ except ImportError:  # PyOpenGL ausente: a vista não desenha
     GLError = RuntimeError
 
 _SELECT = np.array([0.11, 0.44, 0.84], dtype=np.float32)
-_BACKGROUND = (0.93, 0.94, 0.95)
+_BACKGROUND = theme.rgbf(theme.VIEW3D_BACKGROUND)
 _MARK_COLOR = {"invalid": (0.83, 0.23, 0.18), "guide": (0.45, 0.60, 0.80),
                "reference": (0.10, 0.45, 0.85)}
 _PREVIEW = (0.11, 0.44, 0.84)

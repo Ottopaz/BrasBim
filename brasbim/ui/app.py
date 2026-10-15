@@ -10,11 +10,13 @@ import sys
 def main() -> int:
     from PySide6.QtWidgets import QApplication
 
+    from brasbim.ui import theme
     from brasbim.ui.main_window import MainWindow
     from brasbim.ui.session import Session, feedback_dir
 
     app = QApplication(sys.argv)
     app.setApplicationName("BrasBim")
+    theme.apply(app)
     session = Session(journal_dir=feedback_dir() / "diarios")
     window = MainWindow(session)
     window.install_excepthook()

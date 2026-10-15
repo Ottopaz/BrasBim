@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from brasbim.core import materials
 from brasbim.core.ops import Transaction
+from brasbim.ui import theme
 from brasbim.ui.tools import fmt_exact, parse_number
 
 PATTERNS = [("Nenhum", "none"), ("Sólido", "solid"), ("Linhas", "lines"), ("Cruzado", "cross")]
@@ -98,7 +99,7 @@ class MaterialsDialog(QDialog):
         self.spacing = self._line("Espaçamento (m)")
         self.line_color = self._color_button("Cor das linhas")
         self.note = QLabel()
-        self.note.setStyleSheet("color:#666")
+        self.note.setStyleSheet(f"color: {theme.INK_SOFT}")
         self.form.addRow(self.note)
         self.sample = QLabel()
         self.form.addRow(self.sample)
