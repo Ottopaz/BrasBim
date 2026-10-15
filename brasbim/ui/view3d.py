@@ -15,7 +15,7 @@ import math
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from brasbim.core import snap, transform
@@ -213,7 +213,14 @@ class View3D(QOpenGLWidget, ToolInput):
         self._paint_handles()
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
         if self.selection_bar is not None:
-            self.selection_bar.place()
+            # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
+            # a mini-barra é posta depois que a pintura termina.
+            QTimer.singleShot(0, self.selection_bar, self.selection_bar.place)
+
+    @property
+    def navigating(self) -> bool:
+        """Órbita ou deslocamento em curso (a mini-barra some até soltar)."""
+        return self._drag is not None
 
     def _paint_tool(self) -> None:
         """Fantasma da seleção transformada e marcas da ferramenta no plano (§3.3)."""
@@ -447,6 +454,7 @@ class View3D(QOpenGLWidget, ToolInput):
             return
         if self._drag is not None:
             self._drag = None
+            self.update()  # a mini-barra volta junto à seleção
             return
         if press is None:
             return

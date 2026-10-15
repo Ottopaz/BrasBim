@@ -325,3 +325,27 @@ def test_ui61b_quadro_mostra_a_medida_ao_vivo(window):
     QTest.keyClicks(window.plan.numeric, "45")
     _move(window, (4, 1))
     assert box.edits[1].text() == "45"  # depois da tecla, o campo para de seguir
+
+
+def test_orbita_esconde_a_mini_barra(window):
+    """Orbitar no 3D não deixa cópias da mini-barra: ela some durante a órbita e volta
+    junto à seleção ao soltar (erro relatado em 2026-10-15)."""
+    s = window.session
+    walls = _rectangle(window)
+    view = window.view3d
+    window.set_view("3d")
+    view.fit()
+    s.select([_south(s, walls).GlobalId])
+    view.ctx.input_view = view
+    bar = view.selection_bar
+    bar.place()  # o que a pintura agenda (a vista sem tela pode não pintar)
+    assert bar.isVisible()
+    start = QPointF(20, 20)
+    QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, start.toPoint())
+    QTest.mouseMove(view, QPoint(60, 40))
+    QTest.mouseMove(view, QPoint(90, 60))
+    bar.place()
+    assert view.navigating and not bar.isVisible()
+    QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, QPoint(90, 60))
+    bar.place()
+    assert not view.navigating and bar.isVisible()
