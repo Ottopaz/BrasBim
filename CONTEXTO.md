@@ -4,7 +4,7 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑14.*
+*Atualizado em 2026‑10‑15.*
 
 ## Comandos
 | Para | Comando |
@@ -21,7 +21,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas (parede e porta implementadas; janela não) |
 | `spec/01-modelo-de-dados.md` | rascunho vivo, atualizado a cada operação nova |
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
-| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** |
+| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (pausada) |
+| `spec/ui/07-medidas-e-edicao-no-3d` | **aprovada**; implementação em andamento, vai antes do restante do pacote 2 |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -64,6 +65,9 @@ Falta (desenho combinado):
 - Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
 
 ## Próximos passos (nesta ordem)
+0. **Spec 07** (pedido de 2026‑10‑15): campos de medida com Tab ao desenhar, seleção e
+   edição no 3D, Mostrar na planta / Mostrar no 3D. Revisar e implementar antes das
+   camadas.
 1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:
    detalhe da planta (simplificado e por camadas), prioridade das camadas nas junções,
    plano de corte por pavimento, paredes abaixo e acima do plano, estilos de material
