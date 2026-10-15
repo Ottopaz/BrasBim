@@ -56,3 +56,31 @@ def test_coluna_plano_de_corte(window):
     assert ue.get_pset(s.storey, storeys.PSET) is None
     window.undo()
     assert storeys.cut_height(s.storey) == pytest.approx(1.0)
+
+
+def test_ui56_dialogo_de_materiais(window):
+    from brasbim.core import materials
+    from brasbim.ui.materials_dialog import MaterialsDialog
+
+    s = window.session
+    _rectangle(window)
+    dialog = MaterialsDialog(s, window, select="Bloco cerâmico")
+    assert dialog.current == "Bloco cerâmico"
+    names = [dialog.list.item(i).text() for i in range(dialog.list.count())]
+    assert "Bloco cerâmico" in names  # biblioteca: estilo gravado, sem "(padrão)"
+    dialog.pattern.setCurrentIndex(dialog.pattern.findData("cross"))
+    dialog.angle.setText("30")
+    dialog.spacing.setText("0,04")
+    dialog.set_color(dialog.color, "#aa5533")
+    assert dialog.sample.pixmap() is not None
+    assert dialog.apply()
+    tx = s.history.undo_stack[-1]
+    assert [op.op for op in tx.ops] == ["material.edit"]
+    style = materials.style(s.doc, "Bloco cerâmico")
+    assert style["color"] == "#AA5533" and style["cut"]["pattern"] == "cross"
+    assert style["cut"]["angle"] == pytest.approx(30)
+    assert window.scene.meshes  # 3D recarregado com a cor nova
+    dialog.close()
+    window.undo()
+    assert materials.style(s.doc, "Bloco cerâmico")["color"] == \
+        materials.LIBRARY["Bloco cerâmico"]["color"]

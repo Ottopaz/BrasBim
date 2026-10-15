@@ -155,3 +155,28 @@ def test_porta_some_quando_o_plano_passa_acima_do_vao(model):
     drawing = plan.storey_plan(model.doc, model.terreo)
     assert _roles(drawing, door) == [] and drawing.labels == []
     assert _roles(drawing, wall.GlobalId) == ["wall"]  # cortada acima do vão
+
+
+# --- UI59: modelo de exemplo -------------------------------------------------------------
+
+
+def test_ui59_exemplo_por_camadas_sem_padrao(tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    from brasbim.core import materials
+    from brasbim.core.document import Document
+
+    source = Path(__file__).parent.parent / "exemplos" / "demo_paredes.py"
+    spec = importlib.util.spec_from_file_location("demo_paredes", source)
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+    path = tmp_path / "demo.ifc"
+    demo.main(str(path))
+    doc = Document.open(str(path))
+    keys = set()
+    for storey in doc.storeys():
+        drawing = plan.storey_plan(doc, storey, detail="layers")
+        keys |= {r.key for r in drawing.regions if r.fill["source"] == "material"}
+    assert keys >= {"Bloco cerâmico", "Reboco"}
+    assert all(not materials.style(doc, k)["default"] for k in keys)

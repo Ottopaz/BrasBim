@@ -29,16 +29,19 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from brasbim.core import materials
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons
+from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.tools import fmt, parse_number
 from brasbim.ui.tools import fmt_exact as exact
 
@@ -275,8 +278,10 @@ class WallTypesDialog(TypesDialog):
             uses.append((state["predefined_type"], state["predefined_type"]))
         self.use = self._combo("Uso", uses, state["predefined_type"])
         self.form.addRow(QLabel("Camadas, da face esquerda para a direita:"))
-        self.layers = QTableWidget(0, 4)
-        self.layers.setHorizontalHeaderLabels(["Material", "Espessura", "Função", "Prioridade"])
+        self.layers = QTableWidget(0, 5)
+        self.layers.setHorizontalHeaderLabels(["Material", "Espessura", "Função", "Prioridade",
+                                               ""])
+        self.layers.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.layers.verticalHeader().hide()
         self.layers.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.layers.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -385,7 +390,22 @@ class WallTypesDialog(TypesDialog):
         self.layers.setCellWidget(row, 2, role)
         priority = layer.get("priority")
         self.layers.setItem(row, 3, QTableWidgetItem("" if priority is None else str(priority)))
+        style = QToolButton()
+        style.setText("…")
+        style.setToolTip("Estilo do material (cor e corte)")
+        style.clicked.connect(lambda _=False, item=material: self.edit_material(item))
+        self.layers.setCellWidget(row, 4, style)
         self.layers.blockSignals(False)
+
+    def edit_material(self, item: QTableWidgetItem) -> None:
+        """Abre Projeto > Materiais… no material da camada (spec/ui 06 §4.2)."""
+        name = item.text().strip()
+        if not materials.named(self.session.doc, name):
+            self.session.message(f"o material {name!r} ainda não existe: aplique o tipo antes",
+                                 "recusa")
+            return
+        self.materials_dialog = MaterialsDialog(self.session, self, select=name)
+        self.materials_dialog.exec()
 
     def _layers_changed(self, *_args) -> None:
         self.touched()

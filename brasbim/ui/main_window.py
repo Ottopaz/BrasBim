@@ -32,6 +32,7 @@ from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui import feedback
+from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
@@ -216,6 +217,7 @@ class MainWindow(QMainWindow):
         project_menu = bar.addMenu("&Projeto")
         self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
+        self._action(project_menu, "Materiais…", lambda: self.edit_materials())
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -434,6 +436,12 @@ class MainWindow(QMainWindow):
         self.toolbox.check_types()
         self.options_bar.refresh()
         self.properties.refresh()
+        self.plan.update()
+
+    def edit_materials(self, name: str | None = None) -> None:
+        """Projeto > Materiais… (spec/ui 06 §4.2), aberto no material ``name``."""
+        self.toolbox.active.cancel()
+        MaterialsDialog(self.session, self, select=name).exec()
         self.plan.update()
 
     def run_selection_action(self, key: str) -> None:
