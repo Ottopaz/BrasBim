@@ -150,17 +150,17 @@ eixo z é do caso **sem** `IfcMaterialLayerSetUsage`. [IFC-WALL] Por isso, tomba
       2,80: `wall.edit` com altura fixa 2,50; digitar `3` com a alça presa dá 3,00. Com
       topo no pavimento de cima, muda o deslocamento do topo.
 - [x] **UI76** 3D, alça de ponta e de face geram a mesma transação que as alças da planta.
-- [ ] **UI77** Empena 2,80 nas pontas e 4,00 na cumeeira, numa parede de 6 m: IFC com
+- [x] **UI77** Empena 2,80 nas pontas e 4,00 na cumeeira, numa parede de 6 m: IFC com
       `IfcBooleanClippingResult` e dois `IfcPolygonalBoundedHalfSpace`; o sólido triangulado
       tem z máximo 4,00 em x = 3 e 2,80 nas pontas; `IfcMaterialLayerSetUsage` continua;
       `Qto_WallBaseQuantities.Height` = 4,00.
-- [ ] **UI78** Inclinado de 2,40 a 3,00: porta de 2,10 cabe; porta de 2,60 no início é
+- [x] **UI78** Inclinado de 2,40 a 3,00: porta de 2,10 cabe; porta de 2,60 no início é
       recusada. Mudar o comprimento mantém as alturas.
-- [ ] **UI79** Tombar 10° uma parede de 14 cm e 2,80: `ExtrudedDirection` ≈ (0, 0,174,
+- [x] **UI79** Tombar 10° uma parede de 14 cm e 2,80: `ExtrudedDirection` ≈ (0, 0,174,
       0,985), sem `IfcMaterialLayerSetUsage`, topo deslocado 0,494 m para a esquerda,
       espessura verdadeira 0,14; voltar a 0° restaura o `IfcMaterialLayerSetUsage`.
-- [ ] **UI80** Tombar parede com porta é recusado; porta em parede tombada é recusada.
-- [ ] **UI81** Salvar e reabrir: forma do topo, perfil e inclinação voltam iguais; os
+- [x] **UI80** Tombar parede com porta é recusado; porta em parede tombada é recusada.
+- [x] **UI81** Salvar e reabrir: forma do topo, perfil e inclinação voltam iguais; os
       diários de UI75–UI79 reaplicados reproduzem o IFC.
 
 ## 8. Fontes públicas

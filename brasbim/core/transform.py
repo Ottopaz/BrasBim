@@ -18,7 +18,7 @@ from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
-from brasbim.core.walls import connections, openings, rebuild
+from brasbim.core.walls import connections, openings, rebuild, top
 from brasbim.core.walls.wall import read_state as read_wall
 
 _TOL = 0.01  # folga para achar a parede sob o centro de uma porta deslocada
@@ -212,12 +212,16 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         mirrored = _mirrored(path, fn)
         gid = guid.new() if keep else wall.GlobalId
         future = {**copy.deepcopy(state), "path": mirrored.to_dict()}
+        changes = {"path": mirrored.to_dict()}
+        if state["top_profile"]:  # o caminho é percorrido ao contrário
+            changes["top_profile"] = top.reversed_profile(state["top_profile"], path.length)
+            future["top_profile"] = changes["top_profile"]
         if keep:
             future["no_join"] = []
             ops.append(Op("wall.create", gid, data=future))
         else:
-            ops.append(Op("wall.edit", gid, before={"path": state["path"]},
-                          after={"path": mirrored.to_dict()}))
+            ops.append(Op("wall.edit", gid, before={k: state[k] for k in changes},
+                          after=changes))
         changed[gid] = future
         for opening in openings.of_wall(wall):
             o = openings.read_state(opening)

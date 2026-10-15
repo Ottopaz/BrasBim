@@ -32,6 +32,7 @@ import ifcopenshell.util.element
 from brasbim.core import geom2d, guid, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
+from brasbim.core.walls import top
 
 log = logging.getLogger(__name__)
 
@@ -109,14 +110,18 @@ def _validate(state: dict) -> None:
         raise OpError("largura e altura da abertura devem ser maiores que zero")
 
 
-def problems(state: dict, band, wall_height: float) -> list[str]:
-    """Motivos pelos quais a abertura não cabe na parede (vazio se cabe)."""
+def problems(state: dict, band, wall_height: float, profile=None) -> list[str]:
+    """Motivos pelos quais a abertura não cabe na parede (vazio se cabe). Com ``profile``
+    (topo inclinado), o vão fica abaixo do topo em todo o seu comprimento."""
     out = []
     tol = 1e-6
-    if state["distance"] < -tol or state["distance"] + state["width"] > band.path.length + tol:
+    x0, x1 = state["distance"], state["distance"] + state["width"]
+    if x0 < -tol or x1 > band.path.length + tol:
         out.append("fora do comprimento da parede")
+    if profile:
+        wall_height = top.lowest(profile, x0, x1)
     if state["sill"] < -tol or state["sill"] + state["height"] > wall_height + tol:
-        out.append("fora da altura da parede")
+        out.append("ultrapassa o topo da parede" if profile else "fora da altura da parede")
     if state["kind"] == "RECESS" and not (0 < (state["depth"] or 0) < band.thickness):
         out.append("profundidade do nicho deve ser positiva e menor que a espessura")
     return out
@@ -125,11 +130,17 @@ def problems(state: dict, band, wall_height: float) -> list[str]:
 def check_fits(doc: Document, wall, state: dict) -> None:
     """Rejeita abertura que não cabe na parede. Usada pelos comandos: ao aplicar uma
     operação (inclusive desfazer), abertura fora dos limites só gera aviso (spec §6.3)."""
+    from brasbim.core.walls.wall import TILT_WITH_OPENINGS
+    from brasbim.core.walls.wall import read_state as read_wall
+
     band, wall_height = wall_info(doc, wall)
     if not isinstance(band.path, geom2d.LinePath):
         raise OpError("aberturas, portas e janelas em parede em arco ainda não são "
                       "suportadas (V1)")
-    found = problems(state, band, wall_height)
+    wall_state = read_wall(doc, wall)
+    if abs(wall_state["tilt"]) > 1e-9:
+        raise OpError(TILT_WITH_OPENINGS)
+    found = problems(state, band, wall_height, wall_state["top_profile"])
     if found:
         raise OpError(f"abertura não cabe na parede: {'; '.join(found)}")
 
@@ -205,7 +216,7 @@ def write_state(doc: Document, opening, state: dict) -> None:
     _write_body(doc, opening, state, band)
 
 
-def refresh(doc: Document, wall, band, wall_height: float) -> None:
+def refresh(doc: Document, wall, band, wall_height: float, profile=None) -> None:
     """Refaz o corpo das aberturas da parede (a espessura pode ter mudado).
 
     Abertura que deixou de caber não é excluída; fica com aviso (spec §6.3).
@@ -214,7 +225,7 @@ def refresh(doc: Document, wall, band, wall_height: float) -> None:
     for opening in of_wall(wall):
         state = read_state(opening)
         _write_body(doc, opening, state, band)
-        found = problems(state, band, wall_height)
+        found = problems(state, band, wall_height, profile)
         if found:
             log.warning("abertura %s inválida: %s", opening.GlobalId, "; ".join(found))
         spans.append((opening.GlobalId, state))

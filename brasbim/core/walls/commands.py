@@ -48,7 +48,7 @@ def _wall_data(doc: Document, wall_type, storey, path: geom2d.Path, options: dic
 
 # Campos que mudam a detecção de junções.
 _JOIN_KEYS = ("path", "storey", "base_offset", "top_mode", "top_storey", "top_offset",
-              "fixed_height")
+              "fixed_height", "top_profile", "tilt")
 
 
 def _create_walls(doc: Document, label: str, wall_type, storey, paths, options) -> Transaction:
@@ -120,6 +120,9 @@ def split_wall(doc: Document, wall, at) -> Transaction:
     nova parede; abertura cortada pelo ponto impede a divisão."""
     wall = doc.get(_gid(wall), "IfcWall")
     state = read_state(doc, wall)
+    if state["top_profile"]:
+        raise OpError("dividir parede com topo inclinado ainda não é possível; "
+                      "volte o topo a plano antes")
     try:
         first, second, s = geom2d.split(geom2d.path_from_dict(state["path"]), tuple(at))
     except ValueError as e:

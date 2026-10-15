@@ -41,7 +41,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params
 from brasbim.core.ops.history import combine
 from brasbim.core.walls import commands as cmd
-from brasbim.core.walls import openings, rebuild
+from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
@@ -50,6 +50,8 @@ from brasbim.ui.tools import block_grid, fmt, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
+TOP_SHAPES = [("Plano", "flat"), ("Inclinado", "slope"), ("Empena", "gable"), ("Livre", "free")]
+SLOPE_RISE, GABLE_RISE = 0.50, 1.00  # topo novo: fim e cumeeira acima da altura atual
 OPENS_TO = [("Face esquerda da parede", "left"), ("Face direita da parede", "right")]
 HINGES = [("Esquerda", "left"), ("Direita", "right")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
@@ -83,6 +85,33 @@ class _Group:
     def __init__(self, title: str = ""):
         self.title = title
         self.rows: list[tuple[str | None, QWidget]] = []
+
+
+def _initial_profile(shape: str, state: dict, path, height: float) -> list:
+    """Perfil ao trocar a forma do topo: parte da altura atual (spec/ui 08 §4.1)."""
+    old, length = state["top_profile"], path.length
+    if shape == "flat":
+        return []
+    if shape == "slope":
+        return top.slope(length, height, height + SLOPE_RISE)
+    if shape == "gable":
+        return top.gable(length, height, height + GABLE_RISE)
+    return [list(p) for p in old] or top.slope(length, height, height)
+
+
+def _points_text(profile) -> str:
+    return "; ".join(f"{fmt(x)} {fmt(h)}" for x, h in profile)
+
+
+def _parse_points(text: str) -> list:
+    """``"0 2,8; 3 4; 6 2,8"`` → [[0, 2.8], [3, 4], [6, 2.8]]."""
+    points = []
+    for item in text.split(";"):
+        parts = item.split()
+        if len(parts) != 2:
+            raise ValueError(item)
+        points.append([parse_number(parts[0]), parse_number(parts[1])])
+    return points
 
 
 def _common(values):
@@ -359,16 +388,26 @@ class PropertiesPanel(QScrollArea):
                 return
             edit(top_mode="storey", top_storey=above.GlobalId, top_offset=0.0)
 
-        self._combo("Topo", TOPS, state["top_mode"], top)
-        if state["top_mode"] == "fixed":
-            self._number("Altura", state["fixed_height"], lambda v: edit(fixed_height=v))
+        path = geom2d.path_from_dict(state["path"])
+        straight = isinstance(path, geom2d.LinePath)
+        if straight:
+            self._combo("Forma do topo", TOP_SHAPES, state["top_shape"],
+                        lambda v: edit(top_shape=v,
+                                       top_profile=_initial_profile(v, state, path, height)))
+        if state["top_shape"] == "flat":
+            self._combo("Topo", TOPS, state["top_mode"], top)
+            if state["top_mode"] == "fixed":
+                self._number("Altura", state["fixed_height"], lambda v: edit(fixed_height=v))
+            else:
+                self._number("Deslocamento do topo", state["top_offset"],
+                             lambda v: edit(top_offset=v))
         else:
-            self._number("Deslocamento do topo", state["top_offset"],
-                         lambda v: edit(top_offset=v))
+            self._top_profile(state, path, lambda p: edit(top_profile=p))
+        if straight:
+            self._number("Inclinação (°)", state["tilt"], lambda v: edit(tilt=v))
 
         self._section("Geometria")
-        path = geom2d.path_from_dict(state["path"])
-        if isinstance(path, geom2d.LinePath):
+        if straight:
             def to_end(length, angle):
                 end = (path.start[0] + length * math.cos(angle),
                        path.start[1] + length * math.sin(angle))
@@ -395,6 +434,38 @@ class PropertiesPanel(QScrollArea):
         self._section("Identificação")
         self._read("GlobalId", wall.GlobalId)
         self._read("Origem", "outro programa" if foreign else "BrasBim")
+
+    def _top_profile(self, state, path, commit) -> None:
+        """Parâmetros do topo inclinado, empena ou livre (spec/ui 08 §4.1)."""
+        profile, shape, length = state["top_profile"], state["top_shape"], path.length
+        if shape == "slope":
+            (_, h0), (_, h1) = profile
+            self._number("Altura no início", h0, lambda v: commit(top.slope(length, v, h1)))
+            self._number("Altura no fim", h1, lambda v: commit(top.slope(length, h0, v)))
+            self._number("Ângulo (°)", top.angle(profile),
+                         lambda v: commit(top.slope_by_angle(length, h0, v)))
+        elif shape == "gable":
+            (_, h), (x, hc), _ = profile
+            self._number("Altura nas pontas", h,
+                         lambda v: commit(top.gable(length, v, hc, x)))
+            self._number("Altura da cumeeira", hc,
+                         lambda v: commit(top.gable(length, h, v, x)))
+            self._number("Ângulo (°)", top.angle(profile),
+                         lambda v: commit(top.gable_by_angle(length, h, v, x)))
+            self._number("Posição da cumeeira", x,
+                         lambda v: commit(top.gable(length, h, hc, v)))
+        else:
+            def points(text):
+                try:
+                    found = _parse_points(text)
+                except ValueError:
+                    self.session.message("Pontos do topo: use \"distância altura\" "
+                                         "separados por ponto e vírgula", "recusa")
+                    self.refresh()
+                    return
+                commit(found)
+
+            self._text("Pontos (distância altura; …)", _points_text(profile), points)
 
     # --- vários elementos (0.2 §9) ---------------------------------------------------------
 

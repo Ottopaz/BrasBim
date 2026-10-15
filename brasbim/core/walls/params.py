@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+from brasbim.core.walls.top import PSET_SHAPES
+
 REF_LINES = ("axis", "left_face", "right_face")
 TOP_MODES = ("storey", "fixed")
 DEFAULT_FIXED_HEIGHT = 2.80
+MAX_TILT = 45.0  # graus (spec/ui 08 §5.1)
 
 # Pset próprio com os vínculos que não têm atributo IFC (spec §3.1).
 PSET = "BrasBim_Parede"
@@ -27,6 +30,9 @@ STATE_KEYS = (
     "fixed_height",
     "common",
     "no_join",
+    "top_shape",
+    "top_profile",
+    "tilt",
 )
 
 
@@ -42,6 +48,9 @@ def default_state() -> dict:
         "fixed_height": DEFAULT_FIXED_HEIGHT,
         "common": {},
         "no_join": [],  # paredes com junção desfeita à mão (spec/ui 05 §7.1)
+        "top_shape": "flat",  # spec/ui 08 §4
+        "top_profile": [],  # [[posição, altura a partir da base], ...]
+        "tilt": 0.0,  # graus a partir da vertical, + para a esquerda (spec/ui 08 §5)
     }
 
 
@@ -83,6 +92,8 @@ def pset_values(state: dict) -> dict:
         "DeslocamentoTopo": float(state["top_offset"]),
         "AlturaFixa": float(state["fixed_height"]),
         "SemJuncaoCom": " ".join(sorted(state.get("no_join") or [])) or None,
+        "FormaTopo": PSET_SHAPES[state.get("top_shape") or "flat"],
+        "Inclinacao": float(state.get("tilt") or 0.0),
     }
 
 
@@ -99,6 +110,12 @@ def state_from_pset(values: dict) -> dict:
         "top_offset": float(values["DeslocamentoTopo"]),
         "fixed_height": float(values["AlturaFixa"]),
         "no_join": sorted((values.get("SemJuncaoCom") or "").split()),
+        "top_shape": {v: k for k, v in PSET_SHAPES.items()}[values.get("FormaTopo")
+                                                                  or "PLANO"],
+        "top_profile": [[float(x), float(h)] for x, h in zip(
+            values.get("PerfilTopoPosicoes") or [], values.get("PerfilTopoAlturas") or [],
+            strict=True)],
+        "tilt": float(values.get("Inclinacao") or 0.0),
     }
 
 
@@ -111,3 +128,5 @@ def validate(state: dict) -> None:
         raise ValueError("topo ligado a pavimento exige o pavimento do topo")
     if state["top_mode"] == "fixed" and state["fixed_height"] <= 0:
         raise ValueError("altura fixa deve ser maior que zero")
+    if abs(state.get("tilt") or 0.0) > MAX_TILT + 1e-9:
+        raise ValueError(f"inclinação fora do limite de ±{MAX_TILT:.0f}°")

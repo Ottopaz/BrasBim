@@ -20,7 +20,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from brasbim.core import snap, transform
 from brasbim.core.document import OpError
-from brasbim.ui.handles3d import PLANAR, WallHandle3D, wall_handles
+from brasbim.ui.handles3d import WallHandle3D, wall_handles
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
 from brasbim.ui.tools import Mods, ToolBox
@@ -299,25 +299,29 @@ class View3D(QOpenGLWidget, ToolInput):
         self.after_tool_input()
 
     def _feed_handle(self, pos: QPointF, mods: Mods) -> None:
-        """Leva a alça presa ao cursor: ponto no plano (pontas, face) ou cota (topo, base)."""
+        """Leva a alça presa ao cursor: ponto no plano (pontas, face, inclinação), cota
+        (topo, base) ou ponto no plano da parede (vértice interno do topo)."""
         h = self.toolbox.active.drag3d
         origin, direction = self.ray(pos)
-        if h.kind in PLANAR:
-            z = h.zb + (h.h / 2 if h.kind == "face" else 0.0)
-            hit = ray_plane(origin, direction, z)
+        if h.planar:
+            hit = ray_plane(origin, direction, h.plane_z)
             if hit is None:
                 return
             self.ctx.tol = SNAP_PX * self.camera.pixel_size(hit, self.height())
             p = (float(hit[0]), float(hit[1]))
             if h.kind == "face":
                 p = self.ctx.snap(p, Mods(alt=mods.alt)).point
-            else:
+            elif h.kind != "tilt":
                 fixed = h.wall.path.end if h.kind == "start" else h.wall.path.start
                 p = self.ctx.snap(p, mods, fixed).point
             h.update(point=p, ctrl=mods.ctrl)
         else:
-            forward, _, _ = self.camera.axes()
-            normal = np.array([forward[0], forward[1], 0.0])
+            if h.in_wall_plane:  # plano vertical da parede (§4.1)
+                o, y = h.wall.frame.to_global((0.0, 0.0)), h.wall.frame.to_global((0.0, 1.0))
+                normal = np.array([y[0] - o[0], y[1] - o[1], 0.0])
+            else:  # plano vertical de frente para a câmera
+                forward, _, _ = self.camera.axes()
+                normal = np.array([forward[0], forward[1], 0.0])
             if np.linalg.norm(normal) < 1e-6:
                 return  # olhando de cima: não há plano vertical de frente
             normal /= np.linalg.norm(normal)
@@ -330,7 +334,8 @@ class View3D(QOpenGLWidget, ToolInput):
                 return
             hit = origin + t * direction
             tol = SNAP_PX * self.camera.pixel_size(hit, self.height())
-            h.update(z=h.snap_z(float(hit[2]), mods.alt, tol), ctrl=mods.ctrl)
+            point = (float(hit[0]), float(hit[1])) if h.in_wall_plane else None
+            h.update(point=point, z=h.snap_z(float(hit[2]), mods.alt, tol), ctrl=mods.ctrl)
         h.moved = True
         self.after_tool_input()
 

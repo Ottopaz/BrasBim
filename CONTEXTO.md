@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (spec 07 implementada).*
+*Atualizado em 2026‑10‑15 (spec 08 implementada).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (195 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (209 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -23,7 +23,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
 | `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (retomar em `core/layers.py`) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
-| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | **aprovada**; §2 e §3 (alças no 3D, UI73–UI76) implementados; falta §4 topo e §5 tombada |
+| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81); §4.3 (corte da planta por trecho) espera o pacote 2 |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -44,22 +44,26 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   menu do botão direito (Mostrar na planta / Mostrar no 3D / Enquadrar). Câmera e raio
   sem Qt em `ui/scene3d.py` (`Camera`, `Scene.pick`, `ray_plane`).
 
-## Spec 08 — o que falta (próxima sessão começa aqui)
-**Etapa 2 — topo (§4):** estado novo da parede `top_shape` (`flat`/`slope`/`gable`/`free`)
-e `top_profile` (lista de [posição, altura a partir da base]) em `walls/params.py`
-(`STATE_KEYS`, `default_state`, Pset `BrasBim_Parede`: `FormaTopo`, `PerfilTopoPosicoes`,
-`PerfilTopoAlturas`). `walls/rebuild.py`: `set_body` extruda até a maior altura e, com
-perfil, grava `Body` `Clipping` (`IfcBooleanClippingResult` DIFFERENCE + um
-`IfcPolygonalBoundedHalfSpace` por trecho; contorno horizontal cobrindo a faixa só no
-trecho). Quantidades com o perfil. `openings.check_fits`: vão abaixo do topo. Mudar o
-comprimento reposiciona os pontos proporcionalmente. Painel (grupo Altura): campo Topo e
-parâmetros; `handles3d`: um vértice de topo por ponto do perfil (vertical; cumeeira
-também anda ao longo da parede). Testes UI77, UI78, UI81 (parte do topo).
-**Etapa 3 — tombada (§5):** `tilt` (graus, −45..45, + para a esquerda); `set_body` com
-`ExtrudedDirection` (0, sen θ, cos θ), profundidade h/cos θ, planta alargada 1/cos θ;
-sem `IfcMaterialLayerSetUsage` (associar o `IfcMaterialLayerSet` do tipo) e restaurar a
-0°; recusar com aberturas; alça "tilt" a 0,30 m da face no topo. Testes UI79–UI81.
-Também atualizar `spec/01-modelo-de-dados.md` com as chaves novas.
+## Spec 08 — como ficou (topo e tombada)
+- Estado da parede: `top_shape` (`flat`/`slope`/`gable`/`free`), `top_profile`
+  ([posição, altura a partir da base]; vazio no plano) e `tilt` (graus, + esquerda).
+  Pset `BrasBim_Parede`: `FormaTopo`, `PerfilTopoPosicoes`/`PerfilTopoAlturas`
+  (`IfcPropertyListValue`, refeitas a cada gravação: o IfcOpenShell não edita listas),
+  `Inclinacao`.
+- `core/walls/top.py`: formas (`slope`, `gable`, por ângulo), validação, altura em x,
+  menor altura num vão, área lateral e volume sob o topo.
+- `rebuild.set_body`: com perfil, `Clipping` (`IfcBooleanClippingResult` DIFFERENCE
+  encadeado, um `IfcPolygonalBoundedHalfSpace` por trecho, plano com normal para cima e
+  `AgreementFlag` falso; o primeiro e o último trecho vão até 1 m além da planta). Tombada:
+  `ExtrudedDirection` (0, sen θ, cos θ), profundidade h/cos θ; `rebuild.band` já devolve a
+  faixa alargada por 1/cos θ (junções e planta usam a base alargada).
+- Tombada: `_assign_type` associa o `IfcMaterialLayerSet` direto; voltar a 0° refaz o
+  `IfcMaterialLayerSetUsage`. Recusa com aberturas (`wall.TILT_WITH_OPENINGS`) e aviso em
+  Mensagens para vizinha com inclinação diferente.
+- `wall.edit` que muda só o `path` reescala o perfil; espelhar inverte o perfil.
+- Painel: "Forma do topo" (o campo "Topo" antigo, pavimento de cima/altura fixa, continua
+  para o topo plano), parâmetros de cada forma, "Pontos (distância altura; …)" no livre,
+  "Inclinação (°)". Alças 3D `top0`…`topN` (interna anda no plano da parede) e `tilt`.
 
 ## Pacote 2 em andamento (spec/ui 06)
 Feito:
@@ -93,8 +97,6 @@ Falta (desenho combinado):
 - Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
 
 ## Próximos passos (nesta ordem)
-0. **Spec 08** (aprovada em 2026‑10‑15): alças da parede no 3D → topo
-   inclinado/empena → parede tombada. Exige alterar `parede.md` (§6 da spec 08).
 1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:
    detalhe da planta (simplificado e por camadas), prioridade das camadas nas junções,
    plano de corte por pavimento, paredes abaixo e acima do plano, estilos de material
@@ -105,6 +107,10 @@ Falta (desenho combinado):
 2. **Pacote 3 (etapa 3c):** janela (`janela.md`), no padrão novo da interface.
 
 ## Pendências
+- Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
+  volta no `wall.merge`).
+- Painel com várias paredes não mostra forma do topo nem inclinação.
+- Planta: topo abaixo do plano de corte por trecho (spec 08 §4.3) entra com o pacote 2.
 - Excluir porta de outra origem.
 - Mover porta deve recalcular as vizinhas da parede do vão.
 - Nicho e vão livre sem ferramenta na interface.

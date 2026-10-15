@@ -9,13 +9,14 @@
 from __future__ import annotations
 
 import logging
+import math
 
 import ifcopenshell.util.element
 
 from brasbim.core import geom2d, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.walls import connections, joins, openings, params
+from brasbim.core.walls import connections, joins, openings, params, top
 from brasbim.core.walls import types as wall_types
 
 log = logging.getLogger(__name__)
@@ -67,16 +68,56 @@ def _indexed_curve(doc: Document, segments: list[geom2d.Segment]):
     return doc.ifc.createIfcIndexedPolyCurve(plist, indices, False)
 
 
-def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float) -> None:
+def _point3(doc: Document, p):
+    return doc.ifc.createIfcCartesianPoint(tuple(float(c) for c in p))
+
+
+def _top_cut(doc: Document, x0: float, x1: float, a, b, y0: float, y1: float):
+    """Semiespaço acima do trecho de topo ``a``–``b`` ([posição, altura]), limitado na
+    planta pelo retângulo ``[x0, x1] × [y0, y1]`` (spec/ui 08 §4.2, [IFC-PBHS])."""
     ifc = doc.ifc
-    profile = ifc.createIfcArbitraryClosedProfileDef("AREA", None, _indexed_curve(doc, segments))
+    dx, dz = b[0] - a[0], b[1] - a[1]
+    n = math.hypot(dx, dz)
+    plane = ifc.createIfcPlane(ifc.createIfcAxis2Placement3D(
+        _point3(doc, (a[0], 0.0, a[1])),
+        ifc.createIfcDirection((-dz / n, 0.0, dx / n)),  # normal para cima
+        ifc.createIfcDirection((dx / n, 0.0, dz / n)),
+    ))
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+    boundary = ifc.createIfcPolyline([_point(doc, c) for c in corners])
+    # AgreementFlag falso: o semiespaço fica do lado para onde a normal aponta (acima do
+    # topo), e é ele que a diferença retira.
+    return ifc.createIfcPolygonalBoundedHalfSpace(
+        plane, False,
+        ifc.createIfcAxis2Placement3D(_point3(doc, (0.0, 0.0, 0.0)), None, None), boundary)
+
+
+def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
+             profile=None, tilt: float = 0.0) -> None:
+    """Corpo: extrusão da planta (vertical, ou inclinada na parede tombada) e, com topo
+    inclinado, recorte por um semiespaço limitado por trecho (spec/ui 08 §4.2, §5.2)."""
+    ifc = doc.ifc
+    area = ifc.createIfcArbitraryClosedProfileDef("AREA", None, _indexed_curve(doc, segments))
+    t = math.radians(tilt)
     solid = ifc.createIfcExtrudedAreaSolid(
-        profile,
+        area,
         ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0)), None, None),
-        ifc.createIfcDirection((0.0, 0.0, 1.0)),
-        float(height),
+        ifc.createIfcDirection((0.0, math.sin(t), math.cos(t)) if tilt else (0.0, 0.0, 1.0)),
+        float(height) / math.cos(t),
     )
-    rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", [solid])
+    kind = "SweptSolid"
+    if profile:
+        pts = geom2d.polygon(segments)
+        margin = 1.0 + float(height) * abs(math.tan(t))
+        xmin, xmax = min(p[0] for p in pts) - 1.0, max(p[0] for p in pts) + 1.0
+        ymin, ymax = min(p[1] for p in pts) - margin, max(p[1] for p in pts) + margin
+        xs = [xmin, *(x for x, _ in profile[1:-1]), xmax]
+        for k in range(len(profile) - 1):
+            solid = ifc.createIfcBooleanClippingResult(
+                "DIFFERENCE", solid,
+                _top_cut(doc, xs[k], xs[k + 1], profile[k], profile[k + 1], ymin, ymax))
+        kind = "Clipping"
+    rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, [solid])
     props.replace_representation(doc, wall, "Body", rep)
 
 
@@ -88,16 +129,28 @@ def elevation(doc: Document, storey_id: str) -> float:
 
 
 def height(doc: Document, state: dict) -> float:
+    """Altura da parede; com topo inclinado, a maior altura do perfil (spec/ui 08 §4.2)."""
+    if state.get("top_profile"):
+        return top.highest(state["top_profile"])
     if state["top_mode"] == "fixed":
         return float(state["fixed_height"])
-    top = elevation(doc, state["top_storey"]) + state["top_offset"]
-    return top - (elevation(doc, state["storey"]) + state["base_offset"])
+    z_top = elevation(doc, state["top_storey"]) + state["top_offset"]
+    return z_top - (elevation(doc, state["storey"]) + state["base_offset"])
+
+
+def widening(state: dict) -> float:
+    """Parede tombada: a planta da base é alargada por 1/cos θ, para a espessura medida
+    perpendicular às faces ser a das camadas (spec/ui 08 §5.2)."""
+    return 1.0 / math.cos(math.radians(state.get("tilt") or 0.0))
 
 
 def band(doc: Document, state: dict) -> joins.Band:
+    """Faixa da parede na base (alargada na parede tombada)."""
     thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
     sense, offset = params.layer_usage(state["ref_line"], state["flip_layers"], thickness)
-    return joins.Band(geom2d.path_from_dict(state["path"]), *params.band(sense, offset, thickness))
+    k = widening(state)
+    ymin, ymax = params.band(sense, offset, thickness)
+    return joins.Band(geom2d.path_from_dict(state["path"]), ymin * k, ymax * k)
 
 
 def end_cuts(doc: Document, wall, own: joins.Band) -> dict[str, geom2d.Curve]:
@@ -166,24 +219,35 @@ def rebuild_wall(doc: Document, wall) -> None:
     if h <= 0:
         raise OpError(f"parede {wall.GlobalId}: altura resultante {h:.3f} m não é positiva")
 
+    tilt = float(state["tilt"])
     sense, offset = params.layer_usage(state["ref_line"], state["flip_layers"], thickness)
-    usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
-    usage.LayerSetDirection = "AXIS2"
-    usage.DirectionSense = sense
-    usage.OffsetFromReferenceLine = offset
+    if not tilt:
+        usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
+        usage.LayerSetDirection = "AXIS2"
+        usage.DirectionSense = sense
+        usage.OffsetFromReferenceLine = offset
 
-    ymin, ymax = params.band(sense, offset, thickness)
-    own = joins.Band(path, ymin, ymax)
+    own = band(doc, state)
     try:
         segments = profile(doc, wall, own)
     except ValueError as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
-    set_body(doc, wall, segments, h)
-    openings.refresh(doc, wall, own, h)
+    top_profile = state["top_profile"]
+    set_body(doc, wall, segments, h, top_profile, tilt)
+    openings.refresh(doc, wall, own, h, top_profile)
     cut = openings.deductions(wall, own, h, segments)
+    if tilt:
+        _warn_tilt_joins(doc, wall, tilt)
 
-    length = path.centerline_length((ymin + ymax) / 2)
+    # Parede tombada: faces e volume medidos na inclinação (k = 1/cos θ).
+    k = widening(state)
+    length = path.centerline_length((own.ymin + own.ymax) / 2)
     footprint = geom2d.area(segments)
+    if top_profile:
+        side = top.side_area(top_profile, 0.0, length)
+        net_volume = top.volume(geom2d.polygon(segments), top_profile)
+    else:
+        side, net_volume = length * h, footprint * h
     props.write_qto(
         doc,
         wall,
@@ -192,14 +256,28 @@ def rebuild_wall(doc: Document, wall) -> None:
             "Length": length,
             "Width": thickness,
             "Height": h,
-            "GrossFootprintArea": length * thickness,
+            "GrossFootprintArea": length * thickness * k,
             "NetFootprintArea": footprint - cut["footprint"],
-            "GrossSideArea": length * h,
-            "NetSideArea": length * h - cut["side"],
-            "GrossVolume": length * thickness * h,
-            "NetVolume": footprint * h - cut["volume"],
+            "GrossSideArea": side * k,
+            "NetSideArea": side * k - cut["side"],
+            "GrossVolume": side * thickness * k,
+            "NetVolume": net_volume - cut["volume"],
         },
     )
+
+
+def _warn_tilt_joins(doc: Document, wall, tilt: float) -> None:
+    """Junções de paredes tombadas são resolvidas só na base (spec/ui 08 §5.1)."""
+    from brasbim.core.walls.wall import read_state  # evita import circular
+
+    for other in connections.neighbors(wall):
+        try:
+            other_tilt = read_state(doc, other)["tilt"]
+        except OpError:
+            continue
+        if abs(other_tilt - tilt) > 1e-6:
+            log.warning("paredes %s e %s unidas com inclinações diferentes: o topo não "
+                        "fica casado", wall.GlobalId, other.GlobalId)
 
 
 # --- registro ------------------------------------------------------------------

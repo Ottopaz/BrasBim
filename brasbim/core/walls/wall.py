@@ -25,7 +25,7 @@ import ifcopenshell.util.element
 from brasbim.core import geom2d, guid, props
 from brasbim.core.document import Document, OpError, axis_placement, local_placement
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
-from brasbim.core.walls import params, rebuild
+from brasbim.core.walls import params, rebuild, top
 from brasbim.core.walls import types as wall_types
 
 COMMON_PSET = "Pset_WallCommon"
@@ -124,8 +124,33 @@ def read_state(doc: Document, wall) -> dict:
 
 # --- gravação ----------------------------------------------------------------
 
+TILT_WITH_OPENINGS = "parede tombada ainda não aceita aberturas"
+_PROFILE_PROPS = ("PerfilTopoPosicoes", "PerfilTopoAlturas")
 
-def _assign_type(doc: Document, wall, wall_type) -> None:
+
+def _validate_shape(state: dict, path: geom2d.Path) -> None:
+    """Topo com perfil e inclinação só em parede reta (spec/ui 08 §4.1, §5.1)."""
+    shape = state.get("top_shape") or "flat"
+    straight = isinstance(path, geom2d.LinePath)
+    if not straight and (shape != "flat" or abs(state.get("tilt") or 0.0) > 1e-9):
+        raise ValueError("topo inclinado e parede tombada só em parede reta")
+    top.validate(shape, state.get("top_profile") or [], path.length)
+
+
+def _remove_profile_props(doc: Document, pset) -> None:
+    """As listas do perfil são refeitas a cada gravação (o IfcOpenShell não edita
+    ``IfcPropertyListValue``)."""
+    old = [p for p in pset.HasProperties or [] if p.Name in _PROFILE_PROPS]
+    if old:
+        pset.HasProperties = [p for p in pset.HasProperties if p not in old]
+        for prop in old:
+            ifcopenshell.util.element.remove_deep2(doc.ifc, prop)
+
+
+
+def _assign_type(doc: Document, wall, wall_type, tilted: bool = False) -> None:
+    """Tipo e material. Parede tombada associa o ``IfcMaterialLayerSet`` do tipo, sem
+    ``IfcMaterialLayerSetUsage`` (o IFC exige extrusão vertical nele; spec/ui 08 §5.2)."""
     if ifcopenshell.util.element.get_type(wall) != wall_type:
         rel = ifcopenshell.api.type.assign_type(
             doc.ifc, related_objects=[wall], relating_type=wall_type
@@ -133,14 +158,24 @@ def _assign_type(doc: Document, wall, wall_type) -> None:
         guid.stamp(rel, wall_type.GlobalId, "types")
     lset = wall_types.layer_set(wall_type)
     usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
-    if usage is None or not usage.is_a("IfcMaterialLayerSetUsage") or usage.ForLayerSet != lset:
+    if tilted:
+        wanted = usage is not None and usage == lset
+    else:
+        wanted = (usage is not None and usage.is_a("IfcMaterialLayerSetUsage")
+                  and usage.ForLayerSet == lset)
+    if not wanted:
         if usage is not None:
             ifcopenshell.api.material.unassign_material(doc.ifc, products=[wall])
-        ifcopenshell.api.material.assign_material(
-            doc.ifc, products=[wall], type="IfcMaterialLayerSetUsage", material=lset
-        )
-    usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
-    guid.stamp(usage.AssociatedTo[0], wall.GlobalId, "material")
+        if tilted:
+            rel = doc.ifc.create_entity(
+                "IfcRelAssociatesMaterial", GlobalId=guid.new(), RelatedObjects=[wall],
+                RelatingMaterial=lset)
+        else:
+            ifcopenshell.api.material.assign_material(
+                doc.ifc, products=[wall], type="IfcMaterialLayerSetUsage", material=lset
+            )
+    rel = next(r for r in wall.HasAssociations if r.is_a("IfcRelAssociatesMaterial"))
+    guid.stamp(rel, wall.GlobalId, "material")
 
 
 def _place(doc: Document, wall, storey, path: geom2d.Path, base_offset: float) -> None:
@@ -161,15 +196,19 @@ def write_state(doc: Document, wall, state: dict) -> None:
     try:
         params.validate(state)
         path = geom2d.path_from_dict(state["path"])
+        _validate_shape(state, path)
     except (ValueError, KeyError) as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
+    tilted = abs(state.get("tilt") or 0.0) > 1e-9
+    if tilted and wall.HasOpenings:
+        raise OpError(TILT_WITH_OPENINGS)
     wall_type = doc.get(state["type"], "IfcWallType")
     storey = doc.get(state["storey"], "IfcBuildingStorey")
     if state["top_mode"] == "storey":
         doc.get(state["top_storey"], "IfcBuildingStorey")
 
     wall.Name = state["name"]
-    _assign_type(doc, wall, wall_type)
+    _assign_type(doc, wall, wall_type, tilted)
     if ifcopenshell.util.element.get_container(wall) != storey:
         rel = ifcopenshell.api.spatial.assign_container(
             doc.ifc, products=[wall], relating_structure=storey
@@ -188,7 +227,15 @@ def write_state(doc: Document, wall, state: dict) -> None:
             values[key] = doc.ifc.createIfcIdentifier(values[key])
     if values["SemJuncaoCom"] is not None:
         values["SemJuncaoCom"] = doc.ifc.createIfcText(values["SemJuncaoCom"])
+    values["Inclinacao"] = doc.ifc.createIfcPlaneAngleMeasure(values["Inclinacao"])
     pset = props.ensure_pset(doc, wall, params.PSET)
+    _remove_profile_props(doc, pset)
+    profile = state.get("top_profile") or []
+    if profile:
+        for key, column in (("PerfilTopoPosicoes", 0), ("PerfilTopoAlturas", 1)):
+            values[key] = doc.ifc.create_entity(
+                "IfcPropertyListValue", Name=key,
+                ListValues=[doc.ifc.createIfcLengthMeasure(float(p[column])) for p in profile])
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties=values)
 
     common = {**common_defaults(wall_type), **(state.get("common") or {})}
@@ -233,7 +280,13 @@ def _edit(doc: Document, op: Op) -> set[str]:
     unknown = set(op.after or {}) - set(params.STATE_KEYS)
     if unknown:
         raise OpError(f"wall.edit: campos desconhecidos {sorted(unknown)}")
-    state.update(op.after or {})
+    after = op.after or {}
+    if "path" in after and "top_profile" not in after and state["top_profile"]:
+        # Mudar o comprimento reposiciona os pontos do topo (spec/ui 08 §4.1).
+        old = geom2d.path_from_dict(state["path"]).length
+        new = geom2d.path_from_dict(after["path"]).length
+        state["top_profile"] = top.scaled(state["top_profile"], old, new)
+    state.update(after)
     write_state(doc, wall, state)
     return {op.id}
 
