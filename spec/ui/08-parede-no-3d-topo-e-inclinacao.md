@@ -3,8 +3,8 @@ documento: Interface e núcleo — alças da parede no 3D, topo inclinado e empe
 requisito: RF-ELE-01, RF-ELE-17, RF-NUC-05, RF-UI-03
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-15, pontos (a)–(h) aceitos)
 ---
 
 # Parede no 3D: alças, topo inclinado e parede tombada

@@ -5,7 +5,8 @@ requisito: RF-ELE-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-14
 status: aprovado
-revisor: OTTO (aprovado em 2026-10-14)
+revisor: OTTO (aprovado em 2026-10-14; topo inclinado e parede tombada acrescentados pela
+  spec/ui/08, aprovada em 2026-10-15)
 ---
 
 # Parede
@@ -26,15 +27,18 @@ Tem espessura constante ao longo do seu caminho, composta por camadas de materia
   `PARTITIONING` (divisória, não portante), `PARAPET` (platibanda/mureta),
   `PLUMBINGWALL` (shaft/enchimento hidráulico), `USERDEFINED` (exige `ObjectType`).
   `STANDARD` e `POLYGONAL` estão obsoletos e **não** são gravados. [IFC-WALLENUM]
-- Paredes de espessura variável, inclinadas ou de seção não retangular estão **fora** do
-  escopo desta spec (seriam `IfcWall` sem `IfcMaterialLayerSetUsage`; ver §11).
+- Paredes de espessura variável ou de seção não retangular estão **fora** do escopo desta
+  spec (§11). Topo inclinado/empena e parede tombada: `spec/ui/08` §4 e §5. A tombada é
+  `IfcWall` **sem** `IfcMaterialLayerSetUsage`, porque o IFC exige extrusão vertical nas
+  paredes com camadas. [IFC-WALL]
 
 ### 2.2 Representações
 | Identificador | Tipo | Conteúdo |
 |---|---|---|
 | `Axis` (contexto `Plan`) | `Curve2D` | Reta: `IfcPolyline` de 2 pontos sobre o eixo x local, no sentido +x. Curva: `IfcTrimmedCurve` sobre `IfcCircle`, tangente inicial em +x. [IFC-WALL] |
 | `Body` (contexto `Model`) | `SweptSolid` | `IfcExtrudedAreaSolid` de `IfcArbitraryClosedProfileDef` (planta da parede **já com as junções resolvidas**), extrudado em +z local. [IFC-WALL] |
-| `Body` | `Clipping` | Quando o topo é recortado (V1, RF-ELE-17): `IfcBooleanClippingResult` do sólido acima com `IfcHalfSpaceSolid`/`IfcPolygonalBoundedHalfSpace`. [IFC-WALL] |
+| `Body` | `Clipping` | Topo inclinado, empena ou livre (`spec/ui/08` §4.2): `IfcBooleanClippingResult` do sólido acima com um `IfcPolygonalBoundedHalfSpace` por trecho do topo. Recorte por cobertura (RF-ELE-17) continua V1. [IFC-WALL] |
+| `Body` (tombada) | `SweptSolid` | `IfcExtrudedAreaSolid` com `ExtrudedDirection` inclinada (0, sen θ, cos θ) e profundidade altura/cos θ; planta da base alargada por 1/cos θ (`spec/ui/08` §5.2). [IFC-WALL, IFC-EAS] |
 
 - `ObjectPlacement`: `IfcLocalPlacement` relativo ao pavimento; origem no ponto inicial da
   linha de referência; eixo x local na direção do desenho; z = vertical do pavimento.
@@ -81,6 +85,9 @@ Tem espessura constante ao longo do seu caminho, composta por camadas de materia
 | Deslocamento do topo | real | m | 0,00 | — |
 | Altura fixa | real | m | 2,80 | > 0 |
 | Altura resultante | real (calculado) | m | — | Deve ser > 0; senão a operação é rejeitada |
+| Forma do topo | enum `plano` \| `inclinado` \| `empena` \| `livre` | — | `plano` | Só parede reta (`spec/ui/08` §4) |
+| Perfil do topo | lista de (posição, altura) | m | vazio | Alturas a partir da base; posições de 0 ao comprimento |
+| Inclinação | real | ° | 0 | −45 a 45, positiva para a esquerda; só parede reta e sem aberturas (`spec/ui/08` §5) |
 
 Os vínculos com pavimentos (base, topo, deslocamentos, linha de referência) não têm
 atributo IFC próprio; ficam no Pset próprio **`BrasBim_Parede`** (prefixo `Pset_` é
@@ -325,6 +332,7 @@ consultado em 2026‑10‑14. Base: `https://github.com/buildingSMART/IFC4.x-dev
 | Código | Documento |
 |---|---|
 | IFC-WALL | `docs/schemas/shared/IfcSharedBldgElements/Entities/IfcWall.md` |
+| IFC-EAS | `docs/schemas/resource/IfcGeometricModelResource/Entities/IfcExtrudedAreaSolid.md` (consultado em 2026‑10‑15) |
 | IFC-WALLENUM | `docs/schemas/shared/IfcSharedBldgElements/Types/IfcWallTypeEnum.md` |
 | IFC-RCPE | `docs/schemas/shared/IfcSharedBldgElements/Entities/IfcRelConnectsPathElements.md` |
 | IFC-CTE | `docs/schemas/shared/IfcSharedBldgElements/Types/IfcConnectionTypeEnum.md` |
@@ -349,8 +357,9 @@ Outras:
 Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 ## 11. Fora do escopo / pendências
-- Paredes de espessura variável, inclinadas, de seção não retangular, perfis compostos
-  por partes (`IfcRelAggregates`, `ELEMENTEDWALL`) e parede com topo/base em rampa: V1/V2.
+- Paredes de espessura variável, de seção não retangular, perfis compostos por partes
+  (`IfcRelAggregates`, `ELEMENTEDWALL`) e base em rampa: V1/V2. Topo inclinado e parede
+  tombada: `spec/ui/08`.
 - Recorte por cobertura (RF-ELE-17, `Clipping`): V1.
 - Pontos de revisão, aceitos pelo revisor em 2026‑10‑14: (a) junção X como `ATPATH`/`ATPATH`; (b) L `ATEND`/`ATEND`;
   (c) plano de corte e convenções gráficas frente à NBR 6492; (d) nome do Pset próprio.
