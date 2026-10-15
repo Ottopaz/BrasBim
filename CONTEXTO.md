@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (pacote 2: camadas e estilos de material no núcleo).*
+*Atualizado em 2026‑10‑15 (pacote 2 concluído: planta por camadas, plano de corte, estilos de material, cor por camada no 3D).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (217 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (239 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -21,9 +21,9 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas (parede e porta implementadas; janela não) |
 | `spec/01-modelo-de-dados.md` | rascunho vivo, atualizado a cada operação nova |
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
-| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (retomar em `core/layers.py`) |
+| `spec/ui/06-planta-por-camadas` | aprovada e implementada (testes UI51–UI60) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
-| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81); §4.3 (corte da planta por trecho) espera o pacote 2 |
+| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -65,65 +65,52 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   para o topo plano), parâmetros de cada forma, "Pontos (distância altura; …)" no livre,
   "Inclinação (°)". Alças 3D `top0`…`topN` (interna anda no plano da parede) e `tilt`.
 
-## Pacote 2 em andamento (spec/ui 06)
-Feito:
-- `brasbim/core/clip.py`: booleanos 2D com `pyclipr` (união, interseção, diferença,
-  afastamento, recorte de polilinhas, semiplano). `pyclipr` instalado e em `pyproject.toml`.
-- `storey.*` com `cut_height` (Pset `BrasBim_Pavimento`, `AlturaPlanoCorte`;
-  `storeys.cut_height()`); `edit_storey` lê o estado completo.
-- `core/layers.py` (`wall_layers`, `regions(doc, walls, pieces)`, `by_material`):
-  base = faixa da camada (prolongada) ∩ peças da parede; extensão nas pontas com junção =
-  retângulo da faixa (de `reach` antes a `reach` depois do nó) ∩ peças da vizinha,
-  cortado antes da primeira camada da vizinha com prioridade ≥ (projeção medida só dentro
-  da faixa). Testes em `tests/test_camadas.py` (L, T, prioridades invertidas).
-- `core/materials.py`: `style(doc, nome)` (com `"default"`), `read_style`, `write_style`,
-  operação `material.edit` (id = nome; registrada em `HANDLER_MODULES`), `LIBRARY` (§4.4),
-  `edit_op`. `walls.types.material_named` grava o estilo da biblioteca ao criar o
-  material. `Document.plan_body_context` (Plan/Body/PLAN_VIEW). Remoção própria das
-  representações (`remove_deep2` apagava o contexto). Testes em `tests/test_materiais.py`
-  (UI56, UI57, UI59 no núcleo).
-
-Falta (desenho combinado):
-- `core/plan.py`: corte relativo à base da parede (hoje usa 1,50 fixo sem descontar
-  `base_offset`); papéis `wall` (cortada), `wall_view` (abaixo), `wall_above`
-  (tracejada), linhas de peitoril e vão acima; nicho recortado; `Region` (mancha por
-  tipo no simplificado; por material no por camadas) e `Edge` (contorno externo por tipo).
-  Na vista, `wall` só desenha quando selecionada (sobreposição).
-- `core/plan.py` (desenho pensado): `storey_plan(doc, storey, show_below, detail,
-  show_above)`; por parede, `c_rel = corte − base_offset`; acima se `c_rel < 0`; abaixo
-  onde o topo ≤ `c_rel` (por trecho com `top.at`); vãos atravessados interrompem
-  (peitoril > 0: linhas das faces em `wall_view` aberto); vão acima: retângulo
-  `wall_above`; nicho: diferença do retângulo na face (`side` left = face ymax).
-  `Region(key, rings, fill, line)` e `Edge(rings, weight, color)`; no simplificado,
-  região por tipo = união das peças − peças de outros tipos que vêm depois (contínua em
-  X por último); no por camadas, `layers.regions` + `by_material` com o corte de
-  `materials.style`, e paredes sem camadas pelo tipo. A vista desenha `wall` só
-  selecionada; hachura ancorada na origem do pavimento. Opções no `PlanContext`
-  (`detail`, `show_above`).
-- 3D: `scene3d.material_color` passar a usar `materials.read_style`/`default_style`.
-- 3D: recorte dos triângulos do corpo pelas regiões das camadas (faces verticais por
-  intervalos ao longo da aresta, recuadas 1 mm para dentro; demais por interseção em xy);
-  `Scene` precisa do `Document`.
-- Interface: Exibir > Detalhe da planta, Exibir > Elementos acima do plano de corte,
-  coluna Plano de corte no painel do projeto, Projeto > Materiais… e botão na tabela de
-  camadas.
-- Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
+## Pacote 2 — como ficou (spec/ui 06)
+- `core/clip.py` (booleanos com `pyclipr`), `core/layers.py` (regiões por camada com
+  prioridade nas junções), `core/materials.py` (estilos, `material.edit`, biblioteca).
+- `core/plan.py`: `storey_plan(doc, storey, show_below, detail, show_above)`. Plano
+  `storeys.cut_height(storey)` medido da base da parede (`corte − base_offset`). Papéis:
+  `wall` (cortada; só escolha, seleção e fantasma), `wall_view` (abaixo do plano, e as
+  faces no peitoril, abertas), `wall_above` (tracejada; também vão acima do plano),
+  `below` (pavimento de baixo). Topo inclinado: trechos com o topo ≤ plano em vista.
+  Nicho atravessado recorta a face (`side` left = face ymax). Porta só aparece se o vão é
+  atravessado. `Region(key, rings, fill)` e `Edge(rings, weight, color)`: simplificado
+  = união por tipo (quem vem depois, a contínua em X, cobre os outros tipos); por
+  camadas = `layers.regions` + `by_material`, divisas 0,18 mm e contorno do tipo por fora;
+  tipos sem camadas usam a mancha do tipo.
+- `ui/plan_view.py`: regiões com fundo e hachura ancorada na origem do pavimento
+  (cruzada = duas famílias); espaçamento < 1 px não desenha (material) e < 3 px vira tom
+  (tipo, como antes). `wall` só desenhada como destaque da seleção.
+- `PlanContext.detail` / `show_above`; Exibir > Detalhe da planta (Simplificado / Por
+  camadas) e Exibir > Elementos acima do plano de corte, guardados em `QSettings`
+  (`detalhe_planta`, `acima_do_corte`). Coluna Plano de corte no painel do projeto (vazio =
+  padrão); `cmd.edit_storey` troca 1,50 por `None` (o padrão não é gravado).
+- 3D: `core/mesh_layers.py` (`split`: faces verticais por trechos da aresta recuada 1 mm;
+  demais por interseção em planta e ear clipping; sobras < 1 mm² descartadas).
+  `Scene.load(ifc, doc)` guarda o `Document`; paredes com camadas e não tombadas ganham
+  `Mesh.parts` por material; cores por `materials.read_style`/`default_style`
+  (`scene3d.color_of`). `Session.last_tx`: `material.edit` recarrega o 3D inteiro.
+- `ui/materials_dialog.py`: Projeto > Materiais… e botão "…" na tabela de camadas do
+  diálogo de tipos (coluna 4). Aplicar (ou trocar de material / fechar) grava
+  `material.edit`.
+- Mini-barra: some durante zoom (300 ms depois da roda), deslocamento e órbita, no 3D e
+  na planta (`navigating`; relato de 2026‑10‑15).
 
 ## Próximos passos (nesta ordem)
-1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:
-   detalhe da planta (simplificado e por camadas), prioridade das camadas nas junções,
-   plano de corte por pavimento, paredes abaixo e acima do plano, estilos de material
-   no IFC (`IfcSurfaceStyle`, `IfcFillAreaStyle`), operação `material.edit`, cor por
-   camada no 3D (recorte feito pelo BrasBim, porque o fatiamento por camadas do
-   IfcOpenShell falha com "Unexpected topology"). Testes UI51–UI60. Requer instalar
-   `pyclipr` (Clipper2) e acrescentá-lo às dependências.
+1. Uso do pacote 2 pelo revisor (planta por camadas, plano de corte, materiais) e
+   ajustes pelo retorno em `feedback/`.
 2. **Pacote 3 (etapa 3c):** janela (`janela.md`), no padrão novo da interface.
 
 ## Pendências
 - Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
   volta no `wall.merge`).
 - Painel com várias paredes não mostra forma do topo nem inclinação.
-- Planta: topo abaixo do plano de corte por trecho (spec 08 §4.3) entra com o pacote 2.
+- Planta e 3D por camadas: parede em arco sem vãos na planta (como antes) e sem corte por
+  trecho no topo inclinado; parede tombada fica com uma cor só no 3D.
+- Prioridade das camadas em junção de tipos diferentes em X: o contorno por tipo usa a
+  ordem de desenho, as camadas usam a prioridade (podem divergir).
+- 3D: cada edição recalcula as regiões do pavimento inteiro (sem cache entre edições);
+  medir em projeto grande.
 - Excluir porta de outra origem.
 - Mover porta deve recalcular as vizinhas da parede do vão.
 - Nicho e vão livre sem ferramenta na interface.

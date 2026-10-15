@@ -219,34 +219,34 @@ padrão.
   regiões das camadas, devolve triângulos por camada.
 
 ## 7. Critérios de aceite (testes)
-- [ ] **UI51** Duas paredes do mesmo tipo em L, simplificado: a planta tem um contorno só
+- [x] **UI51** Duas paredes do mesmo tipo em L, simplificado: a planta tem um contorno só
       (união), sem linha na junção; com tipos diferentes, a linha entre eles existe.
-- [ ] **UI52** Por camadas, L entre alvenarias 14: regiões de bloco das duas unidas no
+- [x] **UI52** Por camadas, L entre alvenarias 14: regiões de bloco das duas unidas no
       canto; reboco externo uma faixa contínua em L; reboco interno das duas para no bloco;
       sem linha entre faixas do mesmo material.
-- [ ] **UI53** Por camadas, T de alvenaria em alvenaria: o bloco da que chega toca o bloco
+- [x] **UI53** Por camadas, T de alvenaria em alvenaria: o bloco da que chega toca o bloco
       da contínua e o reboco da contínua é interrompido; trocar as prioridades no tipo
       inverte o resultado.
-- [ ] **UI54** Plano de corte 1,00 m num pavimento: mureta de 0,90 m aparece só em contorno
+- [x] **UI54** Plano de corte 1,00 m num pavimento: mureta de 0,90 m aparece só em contorno
       (abaixo); parede com base a 1,20 m aparece tracejada (acima) e some ao desligar a
       opção; o Pset `BrasBim_Pavimento` tem `AlturaPlanoCorte = 1.0`; voltar a 1,50 remove
       a propriedade; desfazer volta.
-- [ ] **UI55** Vão livre com base 1,00 e altura 1,20, plano a 1,50: a parede é interrompida e
+- [x] **UI55** Vão livre com base 1,00 e altura 1,20, plano a 1,50: a parede é interrompida e
       as faces no trecho aparecem como parede em vista; plano a 0,50: a parede não é
       interrompida.
-- [ ] **UI56** Editar o material "Bloco cerâmico" para Cruzado 30°, 0,04 m, cor `#AA5533`:
+- [x] **UI56** Editar o material "Bloco cerâmico" para Cruzado 30°, 0,04 m, cor `#AA5533`:
       o IFC relido tem `IfcMaterialDefinitionRepresentation` com `IfcSurfaceStyle` (cor) no
       contexto Model/Body e `IfcFillAreaStyle` com duas `IfcFillAreaStyleHatching`
       (ângulos 30° e 120°, espaçamento 0,04) no Plan/Body; desfazer volta ao estado
       anterior; passa na validação de esquema.
-- [ ] **UI57** Material de outra origem com `IfcSurfaceStyleRendering` e textura: a cor é
+- [x] **UI57** Material de outra origem com `IfcSurfaceStyleRendering` e textura: a cor é
       lida; editar o corte mantém a textura.
-- [ ] **UI58** 3D: parede de alvenaria 14 com porta tem triângulos com as cores do reboco e
+- [x] **UI58** 3D: parede de alvenaria 14 com porta tem triângulos com as cores do reboco e
       do bloco, a área de cada cor bate com a das faixas (faces laterais e topo), e a
       soma das áreas é a do corpo sem divisão.
-- [ ] **UI59** A biblioteca inicial grava os estilos de §4.4; um modelo de exemplo aberto
+- [x] **UI59** A biblioteca inicial grava os estilos de §4.4; um modelo de exemplo aberto
       mostra a planta por camadas sem material "(padrão)".
-- [ ] **UI60** Os diários de UI54–UI56 reaplicados num projeto novo reproduzem o IFC.
+- [x] **UI60** Os diários de UI54–UI56 reaplicados num projeto novo reproduzem o IFC.
 
 ## 8. Fontes públicas
 Documentação IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`,

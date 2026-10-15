@@ -44,7 +44,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 ## 4. Operações existentes
 | `op` | Dados | Situação |
 |---|---|---|
-| `storey.create` / `.delete` / `.edit` | `name`, `elevation` | Provisória (sem spec de pavimento) |
+| `storey.create` / `.delete` / `.edit` | `name`, `elevation`, `cut_height` | Provisória (sem spec de pavimento); `cut_height` (plano de corte acima da cota; `None` = padrão 1,50, Pset `BrasBim_Pavimento`): spec/ui 06 §3.1 |
+| `material.edit` | `id` = nome do material; `style` (`color`, `cut`: `pattern`, `background`, `angle`, `spacing`, `line_color`; `None` = sem estilo) | spec/ui 06 §4.3; vale para todos os `IfcMaterial` com o nome |
 | `wall_type.create` / `.delete` | `name`, `predefined_type`, `object_type`, `layers[]`, `plan_style` | `create` provisória (RF-TIP-01); `plan_style`: spec/ui 03 §6 |
 | `wall_type.edit` | `name`, `predefined_type`, `object_type`, `layers`, `plan_style` | parede §5.2; spec/ui 02 §8.1 e 03 §6 |
 | `wall.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `path`, `ref_line`, `flip_layers`, `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common`, `no_join`, `top_shape`, `top_profile`, `tilt` | parede §5.2; `no_join` (junções desfeitas): spec/ui 05 §7.1; `top_shape` (`flat`/`slope`/`gable`/`free`), `top_profile` (lista de [posição, altura a partir da base]; vazia no plano; `wall.edit` que muda só `path` reposiciona os pontos proporcionalmente) e `tilt` (graus, −45..45, + para a esquerda): spec/ui 08 §4–§5 |

@@ -180,3 +180,38 @@ def test_ui59_exemplo_por_camadas_sem_padrao(tmp_path):
         keys |= {r.key for r in drawing.regions if r.fill["source"] == "material"}
     assert keys >= {"Bloco cerâmico", "Reboco"}
     assert all(not materials.style(doc, k)["default"] for k in keys)
+
+
+# --- UI60: diário ------------------------------------------------------------------------
+
+
+def test_ui60_diario_reproduz_o_ifc(model):
+    import json
+
+    from conftest import PROJECT_ID, snapshot
+
+    from brasbim.core import materials
+    from brasbim.core.document import Document
+    from brasbim.core.ops import History, Transaction
+
+    model.commit(cmd.edit_storey(model.doc, model.terreo, cut_height=1.0))  # UI54
+    wall = model.wall((0, 0), (5, 0))
+    model.commit(cmd.create_opening(model.doc, wall, 1.0, 1.0, 1.2, sill=1.0))  # UI55
+    new = {"color": "#AA5533", "cut": {"pattern": "cross", "background": None, "angle": 30.0,
+                                       "spacing": 0.04, "line_color": "#2B2A27"}}
+    model.commit(Transaction("Editar material",  # UI56
+                             [materials.edit_op(model.doc, "Bloco cerâmico", new)]))
+    model.commit(cmd.edit_storey(model.doc, model.terreo, cut_height=1.5))
+
+    def state(doc):
+        names = sorted({m.Name for m in doc.ifc.by_type("IfcMaterial")})
+        return snapshot(doc.ifc), {n: materials.style(doc, n) for n in names}
+
+    final = state(model.doc)
+    journal = json.loads(json.dumps([tx.to_dict() for tx in model.history.journal]))
+    other = Document.new(project_id=PROJECT_ID)
+    history = History(other)
+    for tx in journal:
+        history.commit(Transaction.from_dict(tx))
+    assert state(other) == final
+    assert other.ifc.by_type("IfcFillAreaStyleHatching")
