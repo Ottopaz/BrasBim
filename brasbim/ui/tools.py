@@ -327,8 +327,8 @@ class SelectTool(Tool):
         if d and d["kind"] == "door" and d["active"]:
             return "Solte sobre uma parede reta para posicionar a porta (Esc cancela)"
         if d and d["kind"] == "handle":
-            return ("Leve a alça e clique ou solte; Ctrl ao soltar não leva as vizinhas; "
-                    "digite um número para a medida; Esc cancela")
+            return ("Leve a alça e clique ou solte; Ctrl ao soltar leva as vizinhas da "
+                    "ponta; digite um número para a medida; Esc cancela")
         if d and d["kind"] == "window":
             return ("Janela: para a direita, só elementos inteiros; para a esquerda, também "
                     "os que tocam; Ctrl soma à seleção")
@@ -403,7 +403,9 @@ class SelectTool(Tool):
         """(função que monta a transação, ponto do rótulo, texto) para a alça em ``p``."""
         d = self.drag
         w, which, doc = d["wall"], d["which"], self.session.doc
-        carry = not mods.ctrl
+        # Ponta: só esta parede; Ctrl leva as vizinhas (decisão de 2026-10-15, spec/ui 08
+        # §2). Meio: as vizinhas acompanham; Ctrl solta (spec/ui 02 §4.2).
+        carry = mods.ctrl if which in ("start", "end") else not mods.ctrl
         if which.startswith("door"):
             self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
             along = w.frame.to_local(self.snapped.point)[0]
@@ -486,7 +488,7 @@ class SelectTool(Tool):
             dx, dy = target[0] - fixed[0], target[1] - fixed[1]
             length = math.hypot(dx, dy)
             q = (fixed[0] + value * dx / length, fixed[1] + value * dy / length)
-            build = lambda: cmd.move_wall_end(doc, w.gid, which, q)
+            build = lambda: cmd.move_wall_end(doc, w.gid, which, q, carry=False)
         elif w.straight:
             side = -1.0 if cursor and w.frame.to_local(cursor)[1] < 0 else 1.0
             build = lambda: cmd.offset_wall(doc, w.gid, side * value)

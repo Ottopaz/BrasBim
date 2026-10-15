@@ -302,3 +302,26 @@ def test_ui72_mostrar_no_3d(window):
     assert view.camera.target == pytest.approx((low + high) / 2)
     assert (view.camera.yaw, view.camera.pitch) == (yaw, pitch)
     assert window.tabs.currentWidget() is view
+
+
+def test_ui61b_quadro_mostra_a_medida_ao_vivo(window):
+    """O quadro informa comprimento e ângulo enquanto se desenha; o campo aberto pelo Tab
+    segue o cursor até a primeira tecla, e Tab sem digitar não fixa nada."""
+    window.activate_tool("wall")
+    tool = window.toolbox.active
+    box = window.plan.measure
+    _click(window, (0, 0))
+    _move(window, (3, 0))
+    assert box.isVisible()
+    assert [e.text() for e in box.edits] == ["3,00", "0,0"]
+    _move(window, (0, 2))
+    assert [e.text() for e in box.edits] == ["2,00", "90,0"]
+    QTest.keyClick(window.plan, Qt.Key_Tab)
+    assert box.editing == 0 and box.edits[0].selectedText() == "2,00"
+    _move(window, (4, 0))
+    assert box.edits[0].text() == "4,00" and box.edits[1].text() == "0,0"
+    QTest.keyClick(window.plan.numeric, Qt.Key_Tab)  # sem digitar: não fixa
+    assert box.editing == 1 and not tool.fixed
+    QTest.keyClicks(window.plan.numeric, "45")
+    _move(window, (4, 1))
+    assert box.edits[1].text() == "45"  # depois da tecla, o campo para de seguir

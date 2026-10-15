@@ -2,8 +2,9 @@
 """Quadro de medidas junto ao cursor (``spec/ui/07-medidas-e-edicao-no-3d.md`` §2) e a
 entrada de teclado comum às vistas de planta e 3D.
 
-O quadro mostra os campos da ferramenta ativa (``Tool.fields``): o valor que o cursor dá
-(cinza) ou o valor fixado (preto, com cadeado). Tab passa a digitar no primeiro campo; Tab
+O quadro mostra os campos da ferramenta ativa (``Tool.fields``): o valor que o cursor dá,
+atualizado a cada movimento, ou o valor fixado (negrito, com cadeado). O campo aberto pelo
+Tab continua acompanhando o cursor até a primeira tecla. Tab passa a digitar no primeiro campo; Tab
 fixa e vai ao próximo; Enter fixa e confirma o ponto; Esc solta os valores fixados.
 Ferramenta sem campos que aceita número (alças da seleção) usa um campo único, sem Tab.
 """
@@ -18,9 +19,9 @@ from brasbim.ui.tools import SELECTION_TOOLS, parse_number
 
 ROWS = 2
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
-# Cores do tema (claro ou escuro): o valor do cursor mais apagado, o fixado em negrito.
+# Cores do tema (claro ou escuro): o valor do cursor legível, o fixado em negrito.
 _STYLE = {
-    "cursor": "QLineEdit { color: palette(mid); background: transparent; border: none; }",
+    "cursor": "QLineEdit { color: palette(text); background: transparent; border: none; }",
     "fixed": "QLineEdit { color: palette(text); font-weight: bold; background: transparent; "
              "border: none; }",
     "edit": "QLineEdit { color: palette(text); background: palette(base); "
@@ -74,6 +75,7 @@ class MeasureBox(QFrame):
             edit.setFixedWidth(64)
             edit.setAlignment(Qt.AlignRight)
             edit.installEventFilter(self)
+            edit.textEdited.connect(self._typed)
             padlock.setPixmap(lock)
             padlock.setFixedWidth(10)
             for col, w in enumerate((name, edit, unit, padlock)):
@@ -83,12 +85,16 @@ class MeasureBox(QFrame):
             self.units.append(unit)
             self.locks.append(padlock)
         self.editing: int | None = None
+        self.typed = False  # o campo em edição já recebeu tecla (deixa de seguir o cursor)
         self.generic = False  # campo único para ferramenta sem campos (alças)
         self.hide()
 
     @property
     def tool(self):
         return self.view.toolbox.active
+
+    def _typed(self, _text: str) -> None:
+        self.typed = True
 
     def current(self) -> QLineEdit | None:
         return self.edits[self.editing] if self.editing is not None else None
@@ -122,6 +128,9 @@ class MeasureBox(QFrame):
             self.locks[row].setVisible(f.fixed is not None)
             edit = self.edits[row]
             if row == self.editing:
+                if not self.typed:  # aberto pelo Tab: mostra a medida atual, selecionada
+                    edit.setText(f.text(f.fixed) if f.fixed is not None else f.text())
+                    edit.selectAll()
                 continue
             edit.setReadOnly(True)
             edit.setFocusPolicy(Qt.NoFocus)
@@ -148,6 +157,7 @@ class MeasureBox(QFrame):
         if not fields:
             return
         self.editing = row % min(len(fields), ROWS)
+        self.typed = text is not None
         self.refresh()
         edit = self.edits[self.editing]
         edit.setReadOnly(False)
@@ -194,6 +204,8 @@ class MeasureBox(QFrame):
             return True
         fields = self.tool.fields()
         if self.editing >= len(fields):
+            return True
+        if not self.typed:  # nada digitado: o campo continua seguindo o cursor
             return True
         key, text = fields[self.editing].key, edit.text()
         error = None

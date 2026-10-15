@@ -84,15 +84,16 @@ def test_ui15_alca_de_extremidade(window):
     tool = window.toolbox.active
     assert len(tool.handles()) == 3
     window.plan.repaint()
-    _drag(window, (6, 4), (7, 5))
+    _drag(window, (6, 4), (7, 5), release=Qt.ControlModifier)  # Ctrl: a vizinha vai junto
     assert len(_joins(s)) == 4
     assert _path(s, north).end == pytest.approx((7, 5))
     assert _path(s, _wall_from(s, walls, (7, 5))).end == pytest.approx((6, 0))
     tx = s.history.undo_stack[-1]
     assert tx.label == "Mover extremidade de parede"
     window.undo()
-    _drag(window, (6, 4), (7, 5), release=Qt.ControlModifier)  # Ctrl ao soltar: só esta
+    _drag(window, (6, 4), (7, 5))  # sem Ctrl: só esta parede (spec/ui 08 §2)
     assert len(_joins(s)) == 3
+    assert _path(s, _wall_from(s, walls, (6, 4))).end == pytest.approx((6, 0))
 
 
 def test_ui16_alca_presa_ao_cursor_com_numero(window):

@@ -372,7 +372,7 @@ class PropertiesPanel(QScrollArea):
             def to_end(length, angle):
                 end = (path.start[0] + length * math.cos(angle),
                        path.start[1] + length * math.sin(angle))
-                self._run(lambda: cmd.move_wall_end(doc, wall, "end", end))
+                self._run(lambda: cmd.move_wall_end(doc, wall, "end", end, carry=False))
 
             degrees = math.degrees(path.start_angle) % 360.0
             self._number("Comprimento", path.length,

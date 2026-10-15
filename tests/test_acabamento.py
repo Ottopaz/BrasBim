@@ -110,8 +110,8 @@ def test_ui43_comprimento_e_angulo_no_painel(window):
     path = geom2d.path_from_dict(cmd.read_state(s.doc, south)["path"])
     assert path.end == pytest.approx((1, 0))
     west = next(w for w in walls if w != south and geom2d.path_from_dict(
-        cmd.read_state(s.doc, w)["path"]).start == pytest.approx((1, 0)))
-    assert west is not None  # a vizinha em L acompanhou
+        cmd.read_state(s.doc, w)["path"]).start == pytest.approx((0, 0)))
+    assert west is not None  # só esta parede muda (spec/ui 08 §2)
     s.run(lambda: cmd.create_wall(s.doc, ue.get_type(south), s.storey, (10, 0), (14, 0)))
     single = next(w for w in s.doc.ifc.by_type("IfcWall") if w not in walls)
     s.select([single.GlobalId])
