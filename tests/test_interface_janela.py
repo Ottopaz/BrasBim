@@ -339,3 +339,101 @@ def test_ui93_excluir_parede_com_porta_e_janelas(window, monkeypatch):
     window.delete_selection()
     assert "1 porta e 2 janelas" in asked[0]
     assert not s.doc.ifc.by_type("IfcWindow") and not s.doc.ifc.by_type("IfcDoor")
+
+
+# --- 3D (spec/ui 09 §4.2 e §7) --------------------------------------------------------------
+
+
+def _view3d(window):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtWidgets import QApplication
+
+    window.plan.origin = QPointF(150, 350)
+    window.set_view("split")
+    QApplication.processEvents()
+    window.view3d.fit()
+    return window.view3d
+
+
+def test_ui89_alcas_no_3d(window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from test_parede_3d import _drag3d, _handle, _screen
+
+    s = window.session
+    _, win = _placed(window)
+    view = _view3d(window)
+    s.select([win.GlobalId])
+    assert [k for k, _ in view.handles()] == ["edge_start", "edge_end", "sill", "head"]
+    sill = _handle(view, "sill")
+    assert sill[2] == pytest.approx(1.1)
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, _screen(view, sill))
+    tool = window.toolbox.active
+    assert [f.label for f in tool.fields()] == ["Peitoril"]
+    QTest.keyClicks(view, "1")  # o primeiro número abre o quadro; o resto vai para ele
+    QTest.keyClicks(view.numeric, ",3")
+    QTest.keyClick(view.numeric, Qt.Key_Return)
+    o = _opening(window, win)
+    assert (o["sill"], o["height"]) == pytest.approx((1.3, 1.0))
+    s.select([win.GlobalId])
+    head = _handle(view, "head")
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, _screen(view, head))
+    QTest.keyClicks(view, "2")
+    QTest.keyClicks(view.numeric, ",5")
+    QTest.keyClick(view.numeric, Qt.Key_Return)
+    o = _opening(window, win)
+    assert (o["sill"], o["height"]) == pytest.approx((1.3, 1.2))
+    s.select([win.GlobalId])
+    end = _handle(view, "edge_end")
+    _drag3d(view, end, (end[0] + 0.3, end[1], end[2]))
+    o = _opening(window, win)
+    assert o["distance"] == pytest.approx(1.5) and o["width"] == pytest.approx(1.5, abs=0.02)
+
+    p1 = min(s.doc.ifc.by_type("IfcDoorType"), key=lambda t: t.Name)
+    tx = fc.create_door(s.doc, p1, _wall(window, (0, 6), (5, 6)), 1.0)
+    s.run(tx)
+    s.select([next(op.id for op in tx.ops if op.op == "door.create")])
+    assert [k for k, _ in view.handles()] == ["edge_start", "edge_end", "head"]
+
+
+def test_ui92_cores_e_vidro_no_3d(window):
+    s = window.session
+    _, win = _placed(window)
+    view = _view3d(window)
+    mesh = view.scene.meshes[win.GlobalId]
+    assert mesh.glass is not None and len(mesh.glass)
+    assert mesh.glass_colors[:, 3] == pytest.approx(0.4)  # transparência 0,6
+    assert len(mesh.vertices)
+    body = next(r for r in win.Representation.Representations
+                if r.RepresentationIdentifier == "Body")
+    for item in body.Items:
+        assert any(i.is_a("IfcStyledItem") for i in s.doc.ifc.get_inverse(item))
+    p = mesh.glass[0]
+    hit = view.scene.pick((p[0], p[1] - 5, p[2]), (0, 1, 0))
+    assert hit is not None
+
+
+def test_ui95_diario_reaplicado(window):
+    import json
+
+    from conftest import snapshot
+
+    from brasbim.core.document import Document
+    from brasbim.core.ops import History, Transaction
+
+    s = window.session
+    wall, win = _placed(window)
+    tool = _tool(window)
+    tool.move(_inside(window, wall, 4.2), Mods())
+    tool.fix("ref", 0.30)
+    tool.confirm()
+    s.run(fc.flip_opening(s.doc, win))
+    s.run(fc.edit_window(s.doc, win, base=1.2))
+    s.run(lambda: fc.create_window_type(s.doc, "J9", "TRIPLE_PANEL_HORIZONTAL",
+                                        ["FIXEDCASEMENT", "TOPHUNG", "FIXEDCASEMENT"]))
+    journal = json.loads(json.dumps([tx.to_dict() for tx in s.history.journal]))
+    other = Document.new(project_id=s.doc.ifc.by_type("IfcProject")[0].GlobalId)
+    history = History(other)
+    for tx in journal:
+        history.commit(Transaction.from_dict(tx))
+    assert snapshot(other.ifc) == snapshot(s.doc.ifc)

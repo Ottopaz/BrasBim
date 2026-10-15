@@ -280,3 +280,153 @@ class WallHandle3D:
         corners = [local[0], local[len(local) // 2 - 1], local[len(local) // 2], local[-1]]
         lines += [[point(q, 0.0), point(q, h)] for q in corners]
         return lines
+
+
+# --- esquadria (spec/ui 09 §4.2) ------------------------------------------------------
+
+_FILLING_LABELS = {"edge_start": ("width", "Largura"), "edge_end": ("width", "Largura"),
+                   "sill": ("sill", "Peitoril"), "head": ("head", "Verga")}
+
+
+def filling_handles(doc, wall: snap.WallPath, element) -> list[tuple[str, tuple]]:
+    """Alças da porta ou janela selecionada sozinha: bordas do vão, base (só janela) e
+    topo, no meio de cada lado, na face do lado "abre para"."""
+    from brasbim.core.fillings import commands as fc
+    from brasbim.core.fillings import doors
+    from brasbim.core.walls import openings
+
+    opening = fc.opening_of(element)
+    if opening is None or not wall.straight:
+        return []
+    o = openings.read_state(opening)
+    _, zb, _ = wall_frame(doc, wall.gid)
+    y = wall.ymax if doors.read_state(element)["opens_to"] == "left" else wall.ymin
+    x0, x1 = o["distance"], o["distance"] + o["width"]
+    z0, z1 = zb + o["sill"], zb + o["sill"] + o["height"]
+
+    def at(x, z):
+        p = wall.frame.to_global((x, y))
+        return (p[0], p[1], z)
+
+    out = [("edge_start", at(x0, (z0 + z1) / 2)), ("edge_end", at(x1, (z0 + z1) / 2))]
+    if element.is_a("IfcWindow"):
+        out.append(("sill", at((x0 + x1) / 2, z0)))
+    out.append(("head", at((x0 + x1) / 2, z1)))
+    return out
+
+
+class FillingHandle3D:
+    """Arrasto de uma alça da esquadria no 3D, no plano vertical da parede: bordas mudam
+    a largura (a outra borda fica), a base muda o peitoril (a altura fica), o topo muda a
+    verga (o peitoril fica)."""
+
+    planar = False
+    in_wall_plane = True
+
+    def __init__(self, ctx, wall: snap.WallPath, element, kind: str):
+        from brasbim.core.fillings import commands as fc
+        from brasbim.core.walls import openings
+
+        self.ctx, self.wall, self.element, self.kind = ctx, wall, element, kind
+        self.opening = openings.read_state(fc.opening_of(element))
+        _, self.zb, _ = wall_frame(ctx.session.doc, wall.gid)
+        self.storey_z = self.zb
+        self.fixed: dict[str, float] = {}
+        self.moved = self.sticky = self.ctrl = False
+        self.point: Point | None = None
+        self.z: float | None = None
+        self.error: str | None = None
+        self.tx = None
+        self.anchor = None
+
+    def _label(self):
+        key, label = _FILLING_LABELS[self.kind]
+        if key == "head" and not self.element.is_a("IfcWindow"):
+            label = "Altura"
+        return key, label
+
+    def _span(self) -> tuple[float, float, float, float]:
+        """(distância, largura, peitoril, altura) que a alça daria agora."""
+        o = self.opening
+        d, w, s, h = o["distance"], o["width"], o["sill"], o["height"]
+        key = self._label()[0]
+        value = self.fixed.get(key)
+        if self.kind in ("edge_start", "edge_end"):
+            x = self.wall.frame.to_local(self.point)[0] if self.point else None
+            if self.kind == "edge_end":
+                w = value if value is not None else (x - d if x is not None else w)
+            else:
+                end = d + w
+                w = value if value is not None else (end - x if x is not None else w)
+                d = end - w
+        elif self.kind == "sill":
+            s = value if value is not None else (self.z - self.zb if self.z is not None else s)
+        elif value is not None:
+            h = value - s if self.element.is_a("IfcWindow") else value  # verga ou altura
+        elif self.z is not None:
+            h = self.z - self.zb - s
+        return d, w, s, h
+
+    def value(self) -> float:
+        _, w, s, h = self._span()
+        key = self._label()[0]
+        if key == "width":
+            return w
+        if key == "sill":
+            return s
+        return s + h if self.element.is_a("IfcWindow") else h
+
+    def fields(self):
+        from brasbim.ui.tools import Field
+
+        key, label = self._label()
+        return [Field(key, label, "m", self.value(), self.fixed.get(key))]
+
+    def check(self, key: str, value: float) -> str | None:
+        if key in ("width", "head") and value <= MIN_HEIGHT:
+            return "medida pequena demais"
+        if value < 0:
+            return "a medida não pode ser negativa"
+        return None
+
+    def snap_z(self, z: float, alt: bool, tol: float) -> float:
+        if alt:
+            return z
+        grid = self.ctx.grid / 10  # 1 cm
+        return self.zb + round((z - self.zb) / grid) * grid
+
+    def update(self, point: Point | None = None, z: float | None = None,
+               ctrl: bool = False) -> None:
+        if point is not None:
+            self.point = point
+        if z is not None:
+            self.z = z
+        self.ctrl = ctrl
+        try:
+            self.tx, self.error = self.build(), None
+        except OpError as e:
+            self.tx, self.error = None, str(e)
+
+    def build(self):
+        from brasbim.core.fillings import commands as fc
+
+        d, w, s, h = self._span()
+        if w <= MIN_HEIGHT or h <= MIN_HEIGHT:
+            raise OpError("vão pequeno demais")
+        o = self.opening
+        changes = {k: v for k, v, old in (("distance", d, o["distance"]),
+                                          ("width", w, o["width"]),
+                                          ("base", s, o["sill"]), ("height", h, o["height"]))
+                   if abs(v - old) > 1e-9}
+        return fc.edit_door(self.ctx.session.doc, self.element, **changes)
+
+    def outline(self) -> list[list[tuple[float, float, float]]]:
+        d, w, s, h = self._span()
+        lines = []
+        for y in (self.wall.ymin, self.wall.ymax):
+            pts = []
+            for x, z in ((d, s), (d + w, s), (d + w, s + h), (d, s + h), (d, s)):
+                p = self.wall.frame.to_global((x, y))
+                pts.append((p[0], p[1], self.zb + z))
+            lines.append(pts)
+        return lines

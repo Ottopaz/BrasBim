@@ -20,7 +20,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from brasbim.core import snap, transform
 from brasbim.core.document import OpError
-from brasbim.ui.handles3d import WallHandle3D, wall_handles
+from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
@@ -304,12 +304,30 @@ class View3D(QOpenGLWidget, ToolInput):
             else snap.wall_paths(doc, storey)
         return next((w for w in walls if w.gid == element.GlobalId), None)
 
+    def selected_filling(self):
+        """(porta ou janela selecionada sozinha, parede dela) ou (None, None)."""
+        doc, selection = self.ctx.session.doc, self.selection
+        if len(selection) != 1:
+            return None, None
+        element = doc.find(next(iter(selection)))
+        if element is None or not (element.is_a("IfcDoor") or element.is_a("IfcWindow")):
+            return None, None
+        host = transform.host_wall(element)
+        storey = storey_of(element)
+        if host is None or storey is None:
+            return None, None
+        walls = (self.ctx.walls if storey.GlobalId == self.ctx.session.storey_id
+                 else snap.wall_paths(doc, storey))
+        return element, next((w for w in walls if w.gid == host.GlobalId), None)
+
     def handles(self) -> list[tuple[str, tuple[float, float, float]]]:
-        wall = self.selected_wall()
-        if wall is None:
-            return []
+        doc = self.ctx.session.doc
         try:
-            return wall_handles(self.ctx.session.doc, wall)
+            element, wall = self.selected_filling()
+            if element is not None and wall is not None:  # spec/ui 09 §4.2
+                return filling_handles(doc, wall, element)
+            wall = self.selected_wall()
+            return wall_handles(doc, wall) if wall is not None else []
         except (OpError, ValueError, KeyError):
             return []
 
@@ -326,7 +344,11 @@ class View3D(QOpenGLWidget, ToolInput):
 
     def _start_handle(self, kind: str) -> None:
         tool = self.toolbox.active
-        tool.drag3d = WallHandle3D(self.ctx, self.selected_wall(), kind)
+        element, wall = self.selected_filling()
+        if element is not None and wall is not None:
+            tool.drag3d = FillingHandle3D(self.ctx, wall, element, kind)
+        else:
+            tool.drag3d = WallHandle3D(self.ctx, self.selected_wall(), kind)
         tool.drag3d.anchor = np.array(dict(self.handles())[kind])  # o plano passa pela alça
         tool.drag3d.update()
         self.after_tool_input()

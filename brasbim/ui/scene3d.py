@@ -102,7 +102,7 @@ def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh |
     """Esquadria com uma cor por peça (``IfcStyledItem`` do material, spec/ui 09 §7); as
     peças com transparência (vidro) vão à parte, para o desenho translúcido."""
     ids = np.asarray(g.material_ids, dtype=np.int64)
-    if not len(ids) or len(ids) != len(tri):
+    if not len(ids) or 3 * len(ids) != len(tri):  # ``tri``: 3 vértices por face
         return None
     looks = []
     for material in g.materials:
@@ -116,7 +116,7 @@ def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh |
         return None
     solid_tri, solid_col, glass_tri, glass_col = [], [], [], []
     for i, (rgb, transparency) in enumerate(looks):
-        part = tri[(ids == i) | ((ids < 0) & (i == 0))]
+        part = tri[np.repeat((ids == i) | ((ids < 0) & (i == 0)), 3)]
         if not len(part):
             continue
         flat = part.astype(np.float32).reshape(-1, 3)
