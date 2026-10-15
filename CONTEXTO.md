@@ -25,7 +25,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
-| `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | **em revisão** (pacote 4, básico; aceites LA01–12, PI01–14, VI01–13, UI96–UI109) |
+| `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas, a implementar (pacote 4, básico; aceites LA01–12, PI01–14, VI01–13, UI96–UI109) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -127,7 +127,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Biblioteca J1–J6 em `ui/session.py`.
 
 ## Próximos passos (nesta ordem)
-1. Revisão das specs do pacote 4 (laje, pilar, viga; pontos de revisão no fim de cada uma
+1. Revisão das specs do pacote 4 (APROVADAS em 2026‑10‑15; pontos de revisão no fim de cada uma
    e em spec/ui 10 §13). Diretriz do revisor (2026‑10‑15): primeiro o básico de todos os
    elementos principais, depois refinar cada um pelo uso.
 2. Implementar o pacote 4 (núcleo em `core/structure/`, depois interface), commits por etapa.

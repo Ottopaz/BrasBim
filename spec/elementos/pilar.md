@@ -4,8 +4,8 @@ entidade_ifc: IfcColumn (PredefinedType via IfcColumnType)
 requisito: RF-ELE-03
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-15)
 ---
 
 # Pilar

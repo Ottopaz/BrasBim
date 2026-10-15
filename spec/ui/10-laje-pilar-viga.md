@@ -3,8 +3,8 @@ documento: Interface — laje, pilar e viga (ferramentas, opções, tipos, paine
 requisito: RF-ELE-02, RF-ELE-03, RF-ELE-04, RF-TIP-06, RF-UI-01, RF-UI-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-15)
 ---
 
 # Laje, pilar e viga na interface

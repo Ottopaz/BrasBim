@@ -4,8 +4,8 @@ entidade_ifc: IfcSlab (PredefinedType via IfcSlabType)
 requisito: RF-ELE-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-15)
 ---
 
 # Laje
