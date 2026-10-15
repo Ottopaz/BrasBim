@@ -9,7 +9,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (191 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (192 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -23,6 +23,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
 | `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (retomar em `core/layers.py`) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
+| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | **em revisão** (pontos (a)–(h)); §2 (ponta unida move só a parede) já implementado |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -73,6 +74,8 @@ Falta (desenho combinado):
 - Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
 
 ## Próximos passos (nesta ordem)
+0. **Spec 08** (pedido de 2026‑10‑15): revisar; depois alças da parede no 3D → topo
+   inclinado/empena → parede tombada. Exige alterar `parede.md` (§6 da spec 08).
 1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:
    detalhe da planta (simplificado e por camadas), prioridade das camadas nas junções,
    plano de corte por pavimento, paredes abaixo e acima do plano, estilos de material
