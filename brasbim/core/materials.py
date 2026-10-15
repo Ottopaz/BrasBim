@@ -47,7 +47,9 @@ LIBRARY = {
     "Gesso acartonado": {"color": "#EBEBE6", "cut": _cut("none")},
     "Montante de aço": {"color": "#A6ADB8", "cut": _cut("cross", angle=45.0, spacing=0.02)},
     "Madeira": {"color": "#9E7045", "cut": _cut("lines", angle=30.0, spacing=0.015)},
-    "Vidro": {"color": "#A6CCE0", "cut": _cut("solid", background="#A6CCE0")},
+    "Vidro": {"color": "#A6CCE0", "cut": _cut("solid", background="#A6CCE0"),
+              "transparency": 0.6},
+    "Alumínio": {"color": "#C4C7CC", "cut": _cut("solid", background="#9DA1A8")},
 }
 _PALETTE = ("#C9A37D", "#9EB5C7", "#A8C499", "#D4B582", "#BAA3C9", "#C99999")
 
@@ -99,14 +101,31 @@ def _is_plan(rep) -> bool:
     return rep.ContextOfItems is not None and rep.ContextOfItems.ContextType == "Plan"
 
 
-def _read_color(material) -> str | None:
+def _shading(material):
     for rep, _, style in _styled(material):
         if not (style.is_a("IfcSurfaceStyle") and _is_model(rep)):
             continue
         for s in style.Styles or []:
             if s.is_a("IfcSurfaceStyleShading") and s.SurfaceColour is not None:
-                c = s.SurfaceColour
-                return _hex((c.Red, c.Green, c.Blue))
+                return s
+    return None
+
+
+def _read_color(material) -> str | None:
+    s = _shading(material)
+    if s is None:
+        return None
+    c = s.SurfaceColour
+    return _hex((c.Red, c.Green, c.Blue))
+
+
+def surface_style(doc: Document, name: str | None):
+    """``IfcSurfaceStyle`` gravado no material (para os ``IfcStyledItem`` das peças da
+    esquadria, spec/ui 09 §7), ou ``None``."""
+    for material in named(doc, name) if name else []:
+        for rep, _, style in _styled(material):
+            if style.is_a("IfcSurfaceStyle") and _is_model(rep):
+                return style
     return None
 
 
@@ -147,7 +166,12 @@ def read_style(material) -> dict | None:
     if color is None and cut is None:
         return None
     base = default_style(material.Name)
-    return {"color": color or base["color"], "cut": cut or dict(DEFAULT_CUT)}
+    out = {"color": color or base["color"], "cut": cut or dict(DEFAULT_CUT)}
+    shading = _shading(material)
+    transparency = shading.Transparency if shading is not None else None
+    if transparency:
+        out["transparency"] = round(float(transparency), 6)
+    return out
 
 
 def style(doc: Document, name: str | None) -> dict:
@@ -217,7 +241,8 @@ def _detach(material, rep) -> None:
             definition.Representations = [r for r in definition.Representations if r != rep]
 
 
-def _write_color(doc: Document, material, color: str | None) -> None:
+def _write_color(doc: Document, material, color: str | None,
+                 transparency: float = 0.0) -> None:
     surfaces = [(rep, s) for rep, _, s in _styled(material)
                 if _is_model(rep) and s.is_a("IfcSurfaceStyle")]
     if color is None:
@@ -232,15 +257,16 @@ def _write_color(doc: Document, material, color: str | None) -> None:
         if shading:
             old = shading[0].SurfaceColour
             shading[0].SurfaceColour = _rgb_entity(doc, color)
+            shading[0].Transparency = float(transparency)
             if old is not None and not doc.ifc.get_inverse(old):
                 doc.ifc.remove(old)
         else:
             s.Styles = [*s.Styles, doc.ifc.createIfcSurfaceStyleShading(
-                _rgb_entity(doc, color), 0.0)]
+                _rgb_entity(doc, color), float(transparency))]
         return
     surface = doc.ifc.createIfcSurfaceStyle(
-        material.Name, "BOTH", [doc.ifc.createIfcSurfaceStyleShading(_rgb_entity(doc, color),
-                                                                     0.0)])
+        material.Name, "BOTH", [doc.ifc.createIfcSurfaceStyleShading(
+            _rgb_entity(doc, color), float(transparency))])
     _attach(doc, material, doc.body_context, surface)
 
 
@@ -290,6 +316,8 @@ def _validate(style: dict | None) -> None:
         raise OpError("o corte sólido precisa da cor do fundo")
     if cut.get("background") is not None and not color_ok(cut["background"]):
         raise OpError(f"cor inválida: {cut['background']!r}")
+    if not 0 <= style.get("transparency", 0.0) < 1:
+        raise OpError("a transparência deve ficar entre 0 e 1")
     if cut["spacing"] <= 0:
         raise OpError("o espaçamento da hachura deve ser positivo")
     if not color_ok(cut["line_color"]):
@@ -298,7 +326,8 @@ def _validate(style: dict | None) -> None:
 
 def write_style(doc: Document, material, new: dict | None) -> None:
     _validate(new)
-    _write_color(doc, material, new["color"] if new else None)
+    _write_color(doc, material, new["color"] if new else None,
+                 new.get("transparency", 0.0) if new else 0.0)
     _write_cut(doc, material, {**DEFAULT_CUT, **new["cut"]} if new and new.get("cut") else None)
     _cleanup(doc, material)
 
@@ -328,3 +357,11 @@ def add_library_styles(doc: Document, names=None) -> None:
         if material.Name in LIBRARY and (names is None or material.Name in names) \
                 and read_style(material) is None:
             write_style(doc, material, copy.deepcopy(LIBRARY[material.Name]))
+
+
+def ensure_style(doc: Document, name: str) -> None:
+    """Grava o estilo padrão no material que ainda não tem nenhum (as peças das esquadrias
+    apontam para o ``IfcSurfaceStyle`` dele, spec/ui 09 §7)."""
+    for material in named(doc, name):
+        if read_style(material) is None:
+            write_style(doc, material, default_style(name))

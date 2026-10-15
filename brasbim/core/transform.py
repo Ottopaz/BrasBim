@@ -15,7 +15,7 @@ import math
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
-from brasbim.core.fillings import door_types, doors, params
+from brasbim.core.fillings import doors
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
 from brasbim.core.walls import connections, openings, rebuild, top
@@ -33,7 +33,7 @@ def _split(doc: Document, gids) -> tuple[list, list]:
     for e in elements:
         if e.is_a("IfcWall"):
             continue
-        if not e.is_a("IfcDoor"):
+        if not (e.is_a("IfcDoor") or e.is_a("IfcWindow")):
             raise OpError(f"{e.is_a()} {e.GlobalId}: mover, copiar e girar ainda não "
                           "suportam esta classe")
         host = host_wall(e)
@@ -103,7 +103,7 @@ def _wall_moves(doc: Document, walls, fn) -> tuple[list[Op], dict]:
 def _transform(doc: Document, gids, fn, label: str, lone_allowed: bool) -> Transaction:
     walls, lone = _split(doc, gids)
     if lone and not lone_allowed:
-        raise OpError("gire a parede que contém a porta")
+        raise OpError(f"gire a parede que contém a {door_cmd.kind(lone[0]).noun}")
     _check_follows(walls)
     ops, changed = _wall_moves(doc, walls, fn)
     moved = {w.GlobalId for w in walls}
@@ -126,11 +126,12 @@ def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
 
 def _copy_door_ops(doc: Document, door, opening_data: dict) -> list[Op]:
     if not doors.is_parametric(door):
-        raise OpError(f"a porta {door.GlobalId} é de outra origem e não pode ser copiada")
+        raise OpError(f"a {door_cmd.kind(door).noun} {door.GlobalId} é de outra origem e "
+                      "não pode ser copiada")
     opening_id, door_id = guid.new(), guid.new()
     state = copy.deepcopy(doors.read_state(door))
     return [Op("opening.create", opening_id, data=opening_data),
-            Op("door.create", door_id, data=state),
+            Op(f"{door_cmd.kind(door).prefix}.create", door_id, data=state),
             Op("filling.attach", door_id, data={"opening": opening_id})]
 
 
@@ -151,7 +152,7 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         for opening in openings.of_wall(wall):
             data = {**openings.read_state(opening), "wall": gid}
             fillings = [r.RelatedBuildingElement for r in opening.HasFillings]
-            if any(not f.is_a("IfcDoor") for f in fillings):
+            if any(not (f.is_a("IfcDoor") or f.is_a("IfcWindow")) for f in fillings):
                 raise OpError(f"a abertura {opening.GlobalId} tem preenchimento que não "
                               "pode ser copiado")
             if fillings:
@@ -183,24 +184,26 @@ def _has_hand(doc: Document, door) -> bool:
     state = doors.read_state(door)
     if state["foreign"] is not None or not state["type"]:
         return False
-    return params.hand_of(door_types.read(doc.get(state["type"]))["operation_type"]) is not None
+    return door_cmd.hand(doc, door) is not None
 
 
 def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
     """Imagem espelhada da seleção pelo eixo ``a``–``b``; com ``keep``, espelha uma cópia
-    e mantém o original. As portas trocam as dobradiças (variante de mão)."""
+    e mantém o original. Portas e janelas trocam a mão (variante)."""
     if math.dist(a, b) < geom2d.MIN_LENGTH:
         raise OpError("o eixo de simetria precisa de dois pontos distintos")
     fn = geom2d.reflection(tuple(a), tuple(b))
     walls, lone = _split(doc, gids)
     if lone or not walls:
-        raise OpError("espelhe a parede que contém a porta")
+        noun = door_cmd.kind(lone[0]).noun if lone else "porta"
+        raise OpError(f"espelhe a parede que contém a {noun}")
     door_list = []
     for wall in walls:
         for opening in openings.of_wall(wall):
             for rel in opening.HasFillings:
                 element = rel.RelatedBuildingElement
-                if not element.is_a("IfcDoor") or not doors.is_parametric(element):
+                filling = element.is_a("IfcDoor") or element.is_a("IfcWindow")
+                if not filling or not doors.is_parametric(element):
                     raise OpError(f"o elemento {element.GlobalId}, de outra origem, não pode "
                                   "ser espelhado")
                 door_list.append(element)

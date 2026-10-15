@@ -26,7 +26,7 @@ import ifcopenshell.api.material
 import ifcopenshell.api.root
 import ifcopenshell.util.element
 
-from brasbim.core import guid, props
+from brasbim.core import guid, materials, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import params
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
@@ -198,6 +198,9 @@ def write(doc: Document, door_type, state: dict) -> None:
     door_type.ParameterTakesPrecedence = True
     _write_predefined(doc, door_type, state)
     _write_materials(doc, door_type, state["materials"])
+    for name in state["materials"].values():
+        if name:
+            materials.ensure_style(doc, name)  # as peças do corpo usam o estilo (ui 09 §7)
     d = state["defaults"]
     ifc = doc.ifc
     props.write_pset(doc, door_type, params.TYPE_PSET, {

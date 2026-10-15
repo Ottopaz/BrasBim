@@ -63,6 +63,7 @@ HANDLER_MODULES = (
     "brasbim.core.walls.connections",
     "brasbim.core.walls.openings",
     "brasbim.core.fillings.door_types",
+    "brasbim.core.fillings.window_types",
     "brasbim.core.fillings.doors",
     "brasbim.core.fillings.rebuild",
 )

@@ -55,6 +55,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `filling.attach` / `.detach` | `id` = GlobalId do elemento que preenche; `opening` | parede §5.2, §6.3 |
 | `door_type.create` / `.delete` / `.edit` | `name`, `predefined_type`, `operation_type`, `lining` (`thickness`, `depth`, `casing_thickness`, `casing_depth`, `threshold_thickness`), `panels[]` (`operation`, `position`, `width`, `depth`), `materials` (`lining`, `framing`, `glazing`), `defaults` (`width`, `height`, `base`), `variant` | porta §5.2 |
 | `door.create` / `.delete` / `.edit` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common`, `foreign` | porta §5.2 |
+| `window_type.create` / `.delete` / `.edit` | `name`, `code`, `predefined_type`, `partitioning`, `lining` (`depth`, `thickness`, `mullion_thickness`, `mullion_offsets[]`, `transom_thickness`, `transom_offsets[]`), `panels[]` (`operation`, `position`, `frame_depth`, `frame_thickness`), `materials`, `defaults`, `variant` | janela §5.2 |
+| `window.create` / `.delete` / `.edit` | os mesmos campos de `door.*` (na janela, `foreign.operation_type` guarda o `PartitioningType`) | janela §5.2 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
@@ -79,6 +81,12 @@ excluir gera `filling.detach`, `door.delete` e `opening.delete` (este último s�
 não for mantido). Posição, `OverallWidth`/`OverallHeight`, contenção, corpo e
 quantidades da porta são derivados. `opens_to` é gravado no sentido do eixo x do
 posicionamento da porta; `align` e `offset` no Pset `BrasBim_Esquadria`.
+
+Janelas: iguais às portas, com `window.*` e `window_type.*` (janela §5.2). O peitoril é o
+`sill` da abertura. O código do tipo (`code`) é o `Reference` do `Pset_WindowCommon` do
+`IfcWindowType`. Cada peça do `Body` de porta e janela tem um `IfcStyledItem` com o
+`IfcSurfaceStyle` do material dela (marco, caixilho, vidro; spec/ui 09 §7); o estilo
+padrão é gravado no material quando o tipo é gravado.
 
 Dividir: `wall.split` encurta a parede até o ponto (projetado no caminho) e cria a 2ª
 parte com o mesmo estado. Os comandos completam a ação na mesma transação: `opening.edit`

@@ -5,9 +5,12 @@
 - ``OverallWidth``/``OverallHeight`` copiados da abertura (§3.1)
 - Representações ``Profile`` e ``Body`` (§2.3, §6.2)
 - Contenção no pavimento da parede (§2.7, §6.3)
-- ``Qto_DoorBaseQuantities`` (§8)
+- ``Qto_DoorBaseQuantities`` / ``Qto_WindowBaseQuantities`` (§8)
+- Cada peça do ``Body`` com um ``IfcStyledItem`` do estilo do material dela
+  (``spec/ui/09-janela.md`` §7)
 
-Portas de outra origem (sem ``BrasBim_Esquadria``) mantêm o corpo (§6.6).
+Vale para a porta e a janela (``janela.md`` §2.5 e §6). Esquadrias de outra origem (sem
+``BrasBim_Esquadria``) mantêm o corpo (§6.6).
 """
 
 from __future__ import annotations
@@ -17,9 +20,9 @@ import logging
 import ifcopenshell.api.spatial
 import ifcopenshell.util.element
 
-from brasbim.core import guid, props
+from brasbim.core import guid, materials, props
 from brasbim.core.document import Document
-from brasbim.core.fillings import door_types, doors, geometry, params
+from brasbim.core.fillings import door_types, doors, geometry, params, window_types
 from brasbim.core.ops.base import register_derive
 from brasbim.core.walls import openings
 
@@ -51,8 +54,29 @@ def _box_solid(ifc, box):
         ifc.createIfcDirection((0.0, 0.0, 1.0)), z1 - z0)
 
 
-def _set_body(doc: Document, door, boxes) -> None:
-    solids = [_box_solid(doc.ifc, b) for b in boxes]
+def _clear_styles(doc: Document, element) -> None:
+    """Apaga os ``IfcStyledItem`` das peças do corpo atual (o estilo fica no material)."""
+    shape = element.Representation
+    for rep in shape.Representations if shape is not None else []:
+        if rep.RepresentationIdentifier != "Body":
+            continue
+        for item in rep.Items or []:
+            for styled in [i for i in doc.ifc.get_inverse(item) if i.is_a("IfcStyledItem")]:
+                doc.ifc.remove(styled)
+
+
+def _set_body(doc: Document, door, parts, names: dict) -> None:
+    """``parts``: (caixa, papel); ``names``: papel → material (sem material de caixilho, o
+    do marco)."""
+    _clear_styles(doc, door)
+    solids = []
+    for box, role in parts:
+        solid = _box_solid(doc.ifc, box)
+        name = names.get(role) or names.get("lining")
+        style = materials.surface_style(doc, name)
+        if style is not None:
+            doc.ifc.createIfcStyledItem(solid, [style], None)
+        solids.append(solid)
     rep = doc.ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", solids)
     props.replace_representation(doc, door, "Body", rep)
 
@@ -85,6 +109,7 @@ def _contain(doc: Document, element, wall) -> None:
 
 
 def rebuild_door(doc: Document, door) -> None:
+    """Refaz os efeitos derivados da porta ou da janela."""
     doc.changed.add(door.GlobalId)
     if not door.FillsVoids:
         return  # sem abertura não há posição (porta independente é V1)
@@ -98,13 +123,16 @@ def rebuild_door(doc: Document, door) -> None:
     o = openings.read_state(opening)
     band, _ = openings.wall_info(doc, wall)
     state = doors.read_state(door)
-    tstate = door_types.read(doc.get(state["type"], "IfcDoorType"))
+    window = door.is_a("IfcWindow")
+    _, type_class, _, qto, _ = doors.kind_of(door)
+    module = window_types if window else door_types
+    tstate = module.read(doc.get(state["type"], type_class))
     lining = tstate["lining"]
     thickness = band.ymax - band.ymin
     depth = lining["depth"] or thickness
     if depth > thickness + 1e-6:
-        log.warning("porta %s: marco (%.3f m) mais profundo que a parede (%.3f m)",
-                    door.GlobalId, depth, thickness)
+        log.warning("%s %s: marco (%.3f m) mais profundo que a parede (%.3f m)",
+                    "janela" if window else "porta", door.GlobalId, depth, thickness)
     a, b = params.lining_band(state["align"], state["offset"], depth, band.ymin, band.ymax)
     w, h = o["width"], o["height"]
     _place(doc, door, opening, state["opens_to"], w, a, b)
@@ -115,8 +143,12 @@ def rebuild_door(doc: Document, door) -> None:
         faces = (b - band.ymax, b - band.ymin)
     door.OverallWidth, door.OverallHeight = w, h
     _set_profile(doc, door, w, h)
-    _set_body(doc, door, geometry.door_boxes(w, h, depth, faces, lining, tstate["panels"]))
-    props.write_qto(doc, door, params.QTO, {
+    if window:
+        parts = geometry.window_parts(w, h, tstate)
+    else:
+        parts = geometry.door_parts(w, h, depth, faces, lining, tstate["panels"])
+    _set_body(doc, door, parts, tstate["materials"])
+    props.write_qto(doc, door, qto, {
         "Width": w, "Height": h, "Area": w * h, "Perimeter": 2 * (w + h)})
 
 
@@ -133,13 +165,14 @@ def affected_doors(doc: Document, dirty: set[str]) -> list:
         entity = doc.find(gid)
         if entity is None:
             continue
-        if entity.is_a("IfcDoor"):
+        if entity.is_a("IfcDoor") or entity.is_a("IfcWindow"):
             found[gid] = entity
-        elif entity.is_a("IfcDoorType"):
+        elif entity.is_a("IfcDoorType") or entity.is_a("IfcWindowType"):
             found.update({d.GlobalId: d for d in ifcopenshell.util.element.get_types(entity)})
         elif entity.is_a("IfcWall"):
             for opening in openings.of_wall(entity):
-                found.update({e.GlobalId: e for e in _fillings(opening) if e.is_a("IfcDoor")})
+                found.update({e.GlobalId: e for e in _fillings(opening)
+                              if e.is_a("IfcDoor") or e.is_a("IfcWindow")})
     return sorted(found.values(), key=lambda d: d.GlobalId)
 
 

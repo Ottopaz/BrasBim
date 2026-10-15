@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Ocorrência de porta (``IfcDoor``), ``spec/elementos/porta.md`` §3.1 e §5.2.
+"""Ocorrência de porta (``IfcDoor``) e de janela (``IfcWindow``),
+``spec/elementos/porta.md`` §3.1 e §5.2 e ``janela.md`` §3.1 e §5.2.
 
 Operações: ``door.create`` / ``door.delete`` (data: estado completo) e ``door.edit``
-(before/after: campos de ``STATE_KEYS``).
+(before/after: campos de ``STATE_KEYS``); ``window.*`` iguais, para a janela. O que vale
+para as duas fica escrito aqui uma vez só; o que muda é a classe, o Pset comum e o
+conjunto de quantidades (``KINDS``). Na janela, ``foreign["operation_type"]`` guarda o
+``PartitioningType`` da ocorrência.
 
 Estado de uma porta::
 
@@ -33,10 +37,15 @@ import ifcopenshell.util.element
 
 from brasbim.core import fragment, guid, props
 from brasbim.core.document import Document, OpError
-from brasbim.core.fillings import params
+from brasbim.core.fillings import params, window_types
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
 COMMON_PSET = "Pset_DoorCommon"
+# Classe → (classe do tipo, Pset comum, quantidades, prefixo das operações).
+KINDS = {
+    "IfcDoor": ("IfcDoorType", "Pset_DoorCommon", params.QTO, "door"),
+    "IfcWindow": ("IfcWindowType", "Pset_WindowCommon", params.WINDOW_QTO, "window"),
+}
 STATE_KEYS = ("name", "type", "opens_to", "align", "offset", "common", "foreign")
 # Quantidades que o BrasBim grava (porta §8); as demais, de outra origem, ficam intactas.
 _QUANTITIES = ("Width", "Height", "Area", "Perimeter")
@@ -48,6 +57,12 @@ def default_state() -> dict:
 
 
 # --- leitura -----------------------------------------------------------------
+
+
+def kind_of(element) -> tuple[str, str, str, str, str]:
+    """(classe, classe do tipo, Pset comum, quantidades, prefixo) da esquadria."""
+    cls = "IfcWindow" if element.is_a("IfcWindow") else "IfcDoor"
+    return (cls, *KINDS[cls])
 
 
 def is_parametric(door) -> bool:
@@ -62,13 +77,23 @@ def common_defaults(type_name: str) -> dict:
             "IsExternal": False}
 
 
+def type_common_defaults(element_type) -> dict:
+    """Padrão do Pset comum da esquadria com esse tipo. Janela: ``Reference`` é o código
+    do tipo e ``IsExternal`` é verdadeiro (janela §3.3)."""
+    if element_type.is_a("IfcWindowType"):
+        return {"Reference": window_types.code(window_types.read(element_type)),
+                "Status": "NEW", "IsExternal": True}
+    return common_defaults(element_type.Name)
+
+
 def _read_common(door, door_type) -> dict:
-    """``Pset_DoorCommon`` sem o que é padrão do tipo (sem tipo: o Pset inteiro)."""
-    values = ifcopenshell.util.element.get_pset(door, COMMON_PSET, should_inherit=False) or {}
+    """Pset comum sem o que é padrão do tipo (sem tipo: o Pset inteiro)."""
+    pset = kind_of(door)[2]
+    values = ifcopenshell.util.element.get_pset(door, pset, should_inherit=False) or {}
     values = {k: v for k, v in values.items() if k != "id"}
     if isinstance(values.get("Status"), (list, tuple)):
         values["Status"] = values["Status"][0] if values["Status"] else None
-    defaults = common_defaults(door_type.Name) if door_type else {}
+    defaults = type_common_defaults(door_type) if door_type else {}
     return {k: v for k, v in values.items() if defaults.get(k) != v}
 
 
@@ -76,7 +101,7 @@ def _read_foreign(door) -> dict:
     ifc = door.file
     placement = door.ObjectPlacement
     rel = next(iter(door.IsTypedBy), None)
-    qto = ifcopenshell.util.element.get_pset(door, params.QTO, should_inherit=False)
+    qto = ifcopenshell.util.element.get_pset(door, kind_of(door)[3], should_inherit=False)
     return {
         "shape": fragment.dump(ifc, door.Representation),
         "placement": None if placement is None else [
@@ -84,7 +109,8 @@ def _read_foreign(door) -> dict:
             fragment.dump(ifc, placement.RelativePlacement)],
         "overall": [door.OverallWidth, door.OverallHeight],
         "predefined_type": door.PredefinedType,
-        "operation_type": door.OperationType,
+        "operation_type": (door.PartitioningType if door.is_a("IfcWindow")
+                           else door.OperationType),
         "object_type": door.ObjectType,
         "type_rel": rel.GlobalId if rel else None,
         "quantities": None if not qto else {k: qto.get(k) for k in _QUANTITIES},
@@ -150,10 +176,11 @@ def _write_common(doc: Document, door, values: dict) -> None:
     values = dict(values)
     if values.get("Status") is not None:
         values["Status"] = [values["Status"]]
+    pset = kind_of(door)[2]
     if values:
-        props.write_pset(doc, door, COMMON_PSET, values)
+        props.write_pset(doc, door, pset, values)
     else:
-        props.remove_pset(doc, door, COMMON_PSET)
+        props.remove_pset(doc, door, pset)
 
 
 def _restore_foreign(doc: Document, door, foreign: dict) -> None:
@@ -169,10 +196,11 @@ def _restore_foreign(doc: Document, door, foreign: dict) -> None:
         placement.RelativePlacement = fragment.load(ifc, foreign["placement"][1])
         ifcopenshell.util.element.remove_deep2(ifc, old)
     door.OverallWidth, door.OverallHeight = foreign["overall"]
+    qto = kind_of(door)[3]
     if foreign["quantities"] is None:
-        props.remove_pset(doc, door, params.QTO)
+        props.remove_pset(doc, door, qto)
     else:
-        found = ifcopenshell.util.element.get_pset(door, params.QTO, should_inherit=False)
+        found = ifcopenshell.util.element.get_pset(door, qto, should_inherit=False)
         ifcopenshell.api.pset.edit_qto(ifc, qto=ifc.by_id(found["id"]),
                                        properties=foreign["quantities"])
 
@@ -182,7 +210,7 @@ def _write_foreign(doc: Document, door, state: dict) -> None:
     foreign = state["foreign"]
     if is_parametric(door):
         _restore_foreign(doc, door, foreign)
-    door_type = doc.get(state["type"], "IfcDoorType") if state["type"] else None
+    door_type = doc.get(state["type"], kind_of(door)[1]) if state["type"] else None
     if ifcopenshell.util.element.get_type(door) != door_type:
         if door_type is None:
             ifcopenshell.api.type.unassign_type(doc.ifc, related_objects=[door])
@@ -194,7 +222,10 @@ def _write_foreign(doc: Document, door, state: dict) -> None:
                 rel.GlobalId = foreign["type_rel"]
     door.Name = state["name"]
     door.PredefinedType = foreign["predefined_type"]
-    door.OperationType = foreign["operation_type"]
+    if door.is_a("IfcWindow"):
+        door.PartitioningType = foreign["operation_type"]
+    else:
+        door.OperationType = foreign["operation_type"]
     door.ObjectType = foreign["object_type"]
     _write_common(doc, door, state.get("common") or {})
 
@@ -204,12 +235,15 @@ def write_state(doc: Document, door, state: dict) -> None:
     if state.get("foreign") is not None:
         _write_foreign(doc, door, state)
         return
-    door_type = doc.get(state["type"], "IfcDoorType")
+    door_type = doc.get(state["type"], kind_of(door)[1])
     if not is_parametric(door):
         _clear_shape(doc, door)  # conversão de porta de outra origem: o corpo será gerado
     door.Name = state["name"]
     door.PredefinedType = None
-    door.OperationType = None
+    if door.is_a("IfcWindow"):
+        door.PartitioningType = None
+    else:
+        door.OperationType = None
     if ifcopenshell.util.element.get_type(door) != door_type:
         rel = ifcopenshell.api.type.assign_type(
             doc.ifc, related_objects=[door], relating_type=door_type)
@@ -219,18 +253,19 @@ def write_state(doc: Document, door, state: dict) -> None:
         "Alinhamento": doc.ifc.createIfcLabel(params.align_to_pset(state["align"])),
         "Deslocamento": doc.ifc.createIfcLengthMeasure(float(state["offset"])),
     })
-    _write_common(doc, door, {**common_defaults(door_type.Name), **(state.get("common") or {})})
+    _write_common(doc, door, {**type_common_defaults(door_type),
+                              **(state.get("common") or {})})
 
 
 # --- operações ---------------------------------------------------------------
 
 
-def _create(doc: Document, op: Op) -> set[str]:
+def _create(doc: Document, op: Op, ifc_class: str = "IfcDoor") -> set[str]:
     if doc.find(op.id) is not None:
         raise OpError(f"GlobalId {op.id} já existe")
     if op.data.get("foreign") is not None:
-        raise OpError("door.create não recria porta de outra origem")
-    door =ifcopenshell.api.root.create_entity(doc.ifc, ifc_class="IfcDoor")
+        raise OpError(f"{op.op} não recria esquadria de outra origem")
+    door = ifcopenshell.api.root.create_entity(doc.ifc, ifc_class=ifc_class)
     door.GlobalId = op.id
     try:
         write_state(doc, door, {**default_state(), **op.data})
@@ -240,21 +275,21 @@ def _create(doc: Document, op: Op) -> set[str]:
     return {op.id}
 
 
-def _delete(doc: Document, op: Op) -> set[str]:
-    door = doc.get(op.id, "IfcDoor")
+def _delete(doc: Document, op: Op, ifc_class: str = "IfcDoor") -> set[str]:
+    door = doc.get(op.id, ifc_class)
     if door.FillsVoids:
-        raise OpError(f"porta {op.id} ainda preenche uma abertura")
+        raise OpError(f"esquadria {op.id} ainda preenche uma abertura")
     ifcopenshell.api.root.remove_product(doc.ifc, product=door)
     return set()
 
 
-def _edit(doc: Document, op: Op) -> set[str]:
-    door = doc.get(op.id, "IfcDoor")
+def _edit(doc: Document, op: Op, ifc_class: str = "IfcDoor") -> set[str]:
+    door = doc.get(op.id, ifc_class)
     state = read_state(door)
     check_before(op, state)
     unknown = set(op.after or {}) - set(STATE_KEYS)
     if unknown:
-        raise OpError(f"door.edit: campos desconhecidos {sorted(unknown)}")
+        raise OpError(f"{op.op}: campos desconhecidos {sorted(unknown)}")
     state.update(op.after or {})
     write_state(doc, door, state)
     return {op.id}
@@ -262,3 +297,6 @@ def _edit(doc: Document, op: Op) -> set[str]:
 
 register_inverse_pair("door.create", _create, "door.delete", _delete)
 register("door.edit", _edit, invert_swap)
+register_inverse_pair("window.create", lambda doc, op: _create(doc, op, "IfcWindow"),
+                      "window.delete", lambda doc, op: _delete(doc, op, "IfcWindow"))
+register("window.edit", lambda doc, op: _edit(doc, op, "IfcWindow"), invert_swap)

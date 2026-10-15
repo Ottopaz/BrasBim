@@ -373,15 +373,16 @@ def edit_opening(doc: Document, opening, **changes) -> Transaction:
 
 
 def _opening_delete_ops(opening) -> list[Op]:
-    """Exclui a abertura e as portas do BrasBim que a preenchem (porta §6.4). Outros
-    elementos que preenchem (ex.: de outra origem) só são desligados."""
+    """Exclui a abertura e as portas e janelas do BrasBim que a preenchem (porta §6.4).
+    Outros elementos que preenchem (ex.: de outra origem) só são desligados."""
     from brasbim.core.fillings import commands as filling_cmd  # evita import circular
     from brasbim.core.fillings import doors
 
     ops = []
     for rel in opening.HasFillings:
         element = rel.RelatedBuildingElement
-        if element.is_a("IfcDoor") and doors.is_parametric(element):
+        filling = element.is_a("IfcDoor") or element.is_a("IfcWindow")
+        if filling and doors.is_parametric(element):
             ops += filling_cmd.delete_ops(element)
         else:
             ops.append(Op("filling.detach", element.GlobalId,
