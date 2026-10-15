@@ -14,51 +14,51 @@ from __future__ import annotations
 
 import logging
 import math
-import zlib
 from dataclasses import dataclass
 
 import ifcopenshell.geom
 import ifcopenshell.util.element
+import ifcopenshell.util.placement
 import numpy as np
+
+from brasbim.core import clip, geom2d, layers, materials, mesh_layers
+from brasbim.core.document import OpError
+from brasbim.core.walls import rebuild
+from brasbim.core.walls.wall import read_state as read_wall
 
 log = logging.getLogger(__name__)
 
-# Cores por material (RGB 0–1). Materiais sem cor própria recebem uma da paleta, sempre a
-# mesma para o mesmo nome.
-_MATERIAL_COLORS = {
-    "Bloco cerâmico": (0.80, 0.55, 0.42),
-    "Reboco": (0.86, 0.84, 0.80),
-    "Concreto": (0.70, 0.70, 0.68),
-    "Gesso acartonado": (0.92, 0.92, 0.90),
-    "Montante de aço": (0.65, 0.68, 0.72),
-    "Madeira": (0.62, 0.44, 0.27),
-    "Vidro": (0.65, 0.80, 0.88),
-}
-_PALETTE = [(0.79, 0.64, 0.49), (0.62, 0.71, 0.78), (0.66, 0.77, 0.60), (0.83, 0.71, 0.51),
-            (0.73, 0.64, 0.79), (0.79, 0.60, 0.60)]
 _LIGHT = np.array([0.35, 0.5, 0.79]) / np.linalg.norm([0.35, 0.5, 0.79])
 
 
+def color_of(material) -> tuple[float, float, float]:
+    """Cor do 3D: a do estilo gravado no ``IfcMaterial`` ou a padrão pelo nome
+    (spec/ui 06 §4)."""
+    found = materials.read_style(material) if material is not None else None
+    style = found or materials.default_style(material.Name if material is not None else None)
+    return materials.rgb(style["color"])
+
+
 def material_color(element) -> tuple[float, float, float]:
+    """Cor do elemento inteiro: a do material (a camada mais espessa num conjunto)."""
     material = ifcopenshell.util.element.get_material(element)
-    name = None
+    found = None
     if material is not None:
         if material.is_a("IfcMaterialLayerSetUsage"):
             material = material.ForLayerSet
         if material.is_a("IfcMaterialLayerSet"):
             layers = [la for la in material.MaterialLayers if la.Material is not None]
             if layers:
-                name = max(layers, key=lambda la: la.LayerThickness or 0).Material.Name
+                found = max(layers, key=lambda la: la.LayerThickness or 0).Material
         elif material.is_a("IfcMaterialConstituentSet"):
             items = [c for c in material.MaterialConstituents or [] if c.Material is not None]
             if items:
-                name = items[0].Material.Name
+                found = items[0].Material
         elif material.is_a("IfcMaterial"):
-            name = material.Name
-    if name in _MATERIAL_COLORS:
-        return _MATERIAL_COLORS[name]
-    key = name or element.is_a()
-    return _PALETTE[zlib.crc32(key.encode()) % len(_PALETTE)]
+            found = material
+    if found is None:
+        return materials.rgb(materials.default_style(element.is_a())["color"])
+    return color_of(found)
 
 
 @dataclass
@@ -67,6 +67,7 @@ class Mesh:
     colors: np.ndarray  # (n, 3) float32
     edges: np.ndarray  # (m, 3) float32, pares de pontos
     base: tuple[float, float, float]
+    parts: dict | None = None  # parede por camadas: {material: triângulos (n, 3, 3)}
 
 
 def _shaded(vertices: np.ndarray, color) -> np.ndarray:
@@ -84,7 +85,9 @@ class Scene:
     CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam")
 
     def __init__(self):
+        self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
         self.meshes: dict[str, Mesh] = {}
+        self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
         self.tessellations = 0
         self._settings = ifcopenshell.geom.settings()
         self._settings.set("use-world-coords", True)
@@ -108,9 +111,48 @@ class Scene:
             return None
         color = material_color(entity)
         tri = verts[faces]
-        return Mesh(tri, _shaded(tri, color), verts[edges], color)
+        layered = self._split(entity, tri) if entity.is_a("IfcWall") else None
+        if layered is None:
+            return Mesh(tri, _shaded(tri, color), verts[edges], color)
+        names = {m.Name: m for m in self.doc.ifc.by_type("IfcMaterial")}
+        parts_tri, parts_color = [], []
+        for key, part in layered.items():
+            c = color if key is None else color_of(names.get(key))
+            parts_tri.append(part.astype(np.float32).reshape(-1, 3))
+            parts_color.append(_shaded(parts_tri[-1], c))
+        return Mesh(np.concatenate(parts_tri), np.concatenate(parts_color), verts[edges], color,
+                    layered)
 
-    def load(self, ifc) -> None:
+    def _split(self, wall, tri: np.ndarray) -> dict | None:
+        """Triângulos da parede por material, pelas regiões das camadas (as mesmas da
+        planta por camadas); ``None`` sem camadas ou tombada."""
+        if self.doc is None:
+            return None
+        storey = ifcopenshell.util.element.get_container(wall)
+        if storey is None or not storey.is_a("IfcBuildingStorey"):
+            return None
+        regions = self._storey_layers(storey).get(wall.GlobalId)
+        if not regions:
+            return None
+        m = (ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement)
+             if storey.ObjectPlacement is not None else np.eye(4))
+        flat = tri.reshape(-1, 3).astype(np.float64)
+        local = (np.c_[flat, np.ones(len(flat))] @ np.linalg.inv(m).T)[:, :3]
+        out = {}
+        for key, part in mesh_layers.split(local, regions).items():
+            pts = part.reshape(-1, 3)
+            out[key] = (np.c_[pts, np.ones(len(pts))] @ m.T)[:, :3].reshape(-1, 3, 3)
+        return out
+
+    def _storey_layers(self, storey) -> dict:
+        if storey.GlobalId not in self._layers:
+            self._layers[storey.GlobalId] = _wall_layers(self.doc, storey)
+        return self._layers[storey.GlobalId]
+
+    def load(self, ifc, doc=None) -> None:
+        if doc is not None:
+            self.doc = doc
+        self._layers.clear()
         self.meshes.clear()
         for cls in self.CLASSES:
             for entity in ifc.by_type(cls):
@@ -120,6 +162,7 @@ class Scene:
                         self.meshes[entity.GlobalId] = mesh
 
     def update(self, ifc, changed: set[str]) -> None:
+        self._layers.clear()
         for gid in changed:
             try:
                 entity = ifc.by_guid(gid)
@@ -167,6 +210,30 @@ class Scene:
             return None
         return (np.min([m.vertices.min(axis=0) for m in meshes], axis=0),
                 np.max([m.vertices.max(axis=0) for m in meshes], axis=0))
+
+
+def _wall_layers(doc, storey) -> dict:
+    """{parede: [(material, anéis)]} das paredes do pavimento, em coordenadas dele; só
+    paredes com camadas e sem inclinação."""
+    walls, pieces = [], {}
+    for wall in ifcopenshell.util.element.get_decomposition(storey):
+        if not wall.is_a("IfcWall"):
+            continue
+        try:
+            state = read_wall(doc, wall)
+            band = rebuild.band(doc, state)
+            segments = rebuild.profile(doc, wall, band)
+        except (OpError, ValueError):
+            continue
+        if abs(state.get("tilt") or 0.0) > 1e-9:
+            continue
+        walls.append(wall)
+        pieces[wall.GlobalId] = [[band.frame.to_global(p) for p in geom2d.polygon(segments)]]
+    out: dict = {}
+    for r in layers.regions(doc, sorted(walls, key=lambda w: w.GlobalId), pieces):
+        out.setdefault(r.owner, {}).setdefault(r.material, []).extend(r.rings)
+    return {gid: [(m, clip.union(rings)) for m, rings in groups.items()]
+            for gid, groups in out.items()}
 
 
 def _hits_box(origin, direction, low, high, pad=1e-6) -> bool:

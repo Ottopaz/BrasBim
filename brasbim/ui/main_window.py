@@ -88,7 +88,7 @@ class MainWindow(QMainWindow):
         self.ctx = PlanContext(session)
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
-        self.scene.load(session.doc.ifc)
+        self.scene.load(session.doc.ifc, session.doc)
         self.plan = PlanView(self.toolbox)
         self.view3d = View3D(self.scene, self.toolbox)
         self.ctx.input_view = self.plan
@@ -303,13 +303,17 @@ class MainWindow(QMainWindow):
             self.toolbox.reset()
             self.activate_tool("select")
             self.ctx.invalidate()
-            self.scene.load(self.session.doc.ifc)
+            self.scene.load(self.session.doc.ifc, self.session.doc)
             self.plan.fit()
             self.view3d.fit()
             self._refresh_all()
         elif event == "model":
             self.ctx.invalidate()
-            self.scene.update(self.session.doc.ifc, self.session.last_changed)
+            if self.session.last_tx is not None and any(
+                    op.op == "material.edit" for op in self.session.last_tx.ops):
+                self.scene.load(self.session.doc.ifc, self.session.doc)  # cores novas
+            else:
+                self.scene.update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
             if tool.cursor is not None and tool.name in ("door", "split"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo

@@ -102,6 +102,7 @@ class Session:
         self.modified = False
         self.selection: set[str] = set()
         self.last_changed: set[str] = set()
+        self.last_tx = None  # última transação feita, desfeita ou refeita
         storeys = doc.storeys()
         ground = [s for s in storeys if (s.Elevation or 0.0) >= -1e-6]
         self.storey_id = (ground or storeys or [None])[0]
@@ -176,6 +177,7 @@ class Session:
     def _on_history(self, kind: str, tx: Transaction, changed: set[str]) -> None:
         self.modified = True
         self.last_changed = changed
+        self.last_tx = tx
         self.selection = {g for g in self.selection if self.doc.find(g) is not None}
         if self.storey_id and self.doc.find(self.storey_id) is None:
             storeys = self.doc.storeys()
