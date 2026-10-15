@@ -43,25 +43,45 @@ ferramenta, os menus e as mensagens do elemento sempre dizem "janela" junto do c
 7. Na vista 3D, a ferramenta funciona como a porta (spec 07): o ponto vem da parede
    atingida pelo raio; a pré-visualização já aparece na altura do peitoril.
 
-### 2.1 Quadro de medidas (spec 07 §2)
-Diferente da porta, a janela **tem campos** (o peitoril varia muito de uma janela para
-outra). Ordem do Tab:
+### 2.1 Ponto de referência e distância (porta e janela)
+Pedido do revisor em 2026‑10‑15. Vale para as ferramentas **Janela e Porta**.
 
-| Campo | Significado |
+1. **Pegar a referência:** com a ferramenta ativa, o usuário para o cursor sobre um
+   **vértice** (cerca de 0,4 s, para não pegar todos os vértices por onde o cursor passa).
+   O vértice ganha uma marca e passa a ser o **ponto de referência**. Vértices aceitos:
+   pontas e cantos das faces das paredes (inclusive os cantos das junções) e cantos dos
+   vãos já existentes (portas, janelas, aberturas).
+2. **Linha de referência:** ao voltar para a parede, aparece uma linha tracejada fina que
+   sai do ponto de referência na direção da parede, até a **borda do vão mais próxima do
+   ponto**. A distância é medida **ao longo da parede** (projeção do ponto na direção da
+   parede), e só conta essa direção.
+3. **Balão:** o quadro de medidas (spec 07 §2) aparece no meio da linha de referência com
+   a distância atual, que acompanha o cursor.
+4. **Tab** põe o foco no balão para digitar a distância; com ela fixada, a esquadria fica
+   parada ali (o cursor ainda escolhe a parede e o lado). Na janela, Tab de novo vai para o
+   **Peitoril**. Enter ou clique cria.
+5. **Sem referência pegada:** a referência é a ponta da parede (canto da face) mais
+   próxima do cursor, como antes.
+6. Pegar outro vértice troca a referência. Ela é solta ao criar a esquadria, ao trocar de
+   ferramenta ou com Esc (o primeiro Esc solta a referência; o segundo volta a Selecionar).
+7. Planta e 3D usam os mesmos vértices (no 3D, na cota da base das paredes do pavimento).
+
+Campos do balão, na ordem do Tab:
+
+| Ferramenta | Campos |
 |---|---|
-| **Distância** | Da extremidade da parede **mais próxima do cursor** até a borda do vão desse lado. A extremidade de referência aparece destacada na pré-visualização |
-| **Peitoril** | Base do vão, a partir da base da parede (`janela.md` §3.1) |
+| Porta | Distância |
+| Janela | Distância, Peitoril |
 
-- Distância fixada: a janela fica parada ali, mesmo com o cursor andando ao longo da parede
-  (o cursor ainda escolhe o lado e a parede). Peitoril fixado vale para as próximas
-  janelas até ser mudado (vira o valor da barra Opções).
-- Enter (ou clique) cria. Valores digitados são soltos depois de criar, como nas outras
-  ferramentas (spec 07 §2.2, item 7), exceto o peitoril, como dito acima.
+- Peitoril fixado vale para as próximas janelas até ser mudado (vira o valor da barra
+  Opções). A distância é solta depois de criar, como nas outras ferramentas (spec 07 §2.2,
+  item 7).
 
-### 2.2 Mão
-Tipos com mão (`janela.md` §2.4: um caixilho de abrir ou oscilobatente, sem simetria):
-botões **Esquerda / Direita** na barra Opções, como as dobradiças da porta. A janela não usa
-Tab para isso, porque o Tab é do quadro de medidas (§2.1). **Ponto de revisão (a).**
+### 2.2 Mão e dobradiças
+Como o Tab passa a ser do balão (§2.1), **na porta ele deixa de alternar as dobradiças**
+(muda spec 01 §5.5 e §6, spec 03 §4.2 e spec 07 §2.2). A mão da janela e as dobradiças da
+porta ficam nos botões **Esquerda / Direita** da barra Opções; depois de criada, no painel e
+na mini-barra (Inverter mão / Inverter dobradiças). **Ponto de revisão (a).**
 
 ## 3. Barra Opções: Janela (spec 03 §4)
 | Grupo | Controles |
@@ -250,9 +270,15 @@ Parede reta de 5 m, 14 cm, 2,80 m, como em `janela.md` §9.
 - [ ] **UI82** Ferramenta Janela com J1, cursor do lado esquerdo a 2,10 m do início: cria a
       janela com o vão em 1,50–2,70, peitoril 1,10, `opens_to = left`; a transação tem as
       operações de §2, item 4; desfazer volta tudo.
-- [ ] **UI83** Tab, `0,30` Tab `1,20` Enter com o cursor perto do fim da parede: vão a
-      0,30 m do fim (borda direita em 4,70) e peitoril 1,20; a próxima janela já sugere
-      peitoril 1,20.
+- [ ] **UI83** Sem referência pegada, cursor perto do fim da parede, Tab `0,30` Tab `1,20`
+      Enter: vão a 0,30 m do fim (borda direita em 4,70) e peitoril 1,20; a próxima janela
+      já sugere peitoril 1,20.
+- [ ] **UI83a** Parar o cursor 0,4 s sobre a borda de uma porta existente (vão em
+      1,00–1,86) pega a referência; voltar à parede à direita dela, Tab `0,50` Enter: a
+      janela começa em 2,36; a linha de referência e o balão aparecem; Esc solta a
+      referência. Passar rápido pelo vértice não pega.
+- [ ] **UI83b** Porta: o mesmo com Tab `0,15` a partir do canto interno de uma junção em L;
+      Tab não troca mais as dobradiças; os botões da barra Opções trocam.
 - [ ] **UI84** Verga acima do topo (peitoril 2,00 com altura 1,00 numa parede de 2,80) e
       janela sobre a porta: vermelho e recusa com motivo.
 - [ ] **UI85** Tipo de abrir 1 folha, mão Direita na barra Opções: cria a variante uma vez
@@ -295,12 +321,13 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone,
 comando ou layout de diálogo de outro software foi copiado.
 
 ## 12. Pontos de revisão
-(a) Mão da janela só pela barra Opções (e painel/mini-barra), porque o Tab da janela é do
-    quadro de medidas (§2.2). A porta continua com Tab = dobradiças; se preferir, a porta
-    também pode passar a ter o quadro (Distância) e a mesma regra da janela.
+(a) Tab da porta deixa de trocar as dobradiças; dobradiças e mão só pelos botões da barra
+    Opções (§2.2).
 (b) Alças no 3D também para a porta (§4.2).
 (c) Etiqueta do lado oposto ao "abre para" (§6.3): na maxim-ar, que abre para fora, a
     etiqueta fica do lado de dentro.
 (d) `IfcStyledItem` por peça no corpo da janela e da porta, com vidro translúcido (§7).
 (e) "Etiquetas de porta" vira "Etiquetas de esquadrias", um item só (§6.3).
-(f) Distância do quadro de medidas medida da extremidade mais próxima do cursor (§2.1).
+(f) Ponto de referência (§2.1), pedido do revisor: parada de 0,4 s para pegar o vértice;
+    vértices aceitos (faces e junções das paredes, cantos dos vãos); distância até a borda
+    do vão mais próxima do ponto, ao longo da parede; referência solta ao criar.
