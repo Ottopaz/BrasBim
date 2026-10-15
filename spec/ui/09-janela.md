@@ -1,5 +1,5 @@
 ---
-documento: Interface — janela (ferramenta, opções, tipos, planta, 3D, painel, alças)
+documento: Interface — janela (ferramenta, opções, tipos, planta, 3D, painel, alças) e ponto de referência nas ferramentas de criação
 requisito: RF-ELE-06, RF-TIP-06, RF-UI-01, RF-UI-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
@@ -43,14 +43,41 @@ ferramenta, os menus e as mensagens do elemento sempre dizem "janela" junto do c
 7. Na vista 3D, a ferramenta funciona como a porta (spec 07): o ponto vem da parede
    atingida pelo raio; a pré-visualização já aparece na altura do peitoril.
 
-### 2.1 Ponto de referência e distância (porta e janela)
-Pedido do revisor em 2026‑10‑15. Vale para as ferramentas **Janela e Porta**.
+### 2.1 Ponto de referência (todas as ferramentas de criação)
+Pedido do revisor em 2026‑10‑15: vale para **qualquer item a ser adicionado** — parede,
+parede em arco, retângulo, porta, janela e as ferramentas de criação que vierem (laje,
+pilar…). Fica nesta spec porque entra no pacote 3, mas é regra geral da interface.
 
-1. **Pegar a referência:** com a ferramenta ativa, o usuário para o cursor sobre um
-   **vértice** (cerca de 0,4 s, para não pegar todos os vértices por onde o cursor passa).
-   O vértice ganha uma marca e passa a ser o **ponto de referência**. Vértices aceitos:
-   pontas e cantos das faces das paredes (inclusive os cantos das junções) e cantos dos
-   vãos já existentes (portas, janelas, aberturas).
+**Pegar e soltar (igual para todas):**
+- Com uma ferramenta de criação ativa, o usuário para o cursor sobre um **vértice** (cerca
+  de 0,4 s, para não pegar todos os vértices por onde o cursor passa). O vértice ganha uma
+  marca e passa a ser o **ponto de referência**. Vértices aceitos: os pontos de *snap* de
+  extremidade e canto que já existem (pontas e cantos das faces das paredes, inclusive os
+  cantos das junções, centros de arco) e os cantos dos vãos (portas, janelas, aberturas).
+- Pegar outro vértice troca a referência. Ela é solta ao confirmar o ponto que ela ajudou
+  a marcar, ao trocar de ferramenta ou com Esc (o primeiro Esc solta a referência; o
+  seguinte faz o que fazia antes).
+- Planta e 3D usam os mesmos vértices (no 3D, na cota da base dos elementos do pavimento).
+- Mover, Copiar, Girar e Espelhar ficam fora nesta etapa. **Ponto de revisão (g).**
+
+#### 2.1.1 Item com ponto livre (parede, arco, retângulo, futuros)
+1. Com a referência pegada, quando o cursor passa perto (8 px) de uma das **direções
+   ortogonais** que saem dela (0°, 90°, 180°, 270° no pavimento), aparece a linha de
+   referência tracejada, do ponto até o cursor, e o cursor se prende a ela.
+2. O **balão** (quadro de medidas, spec 07 §2) mostra a **distância à referência**. Tab
+   põe o foco nele; o número digitado marca o ponto na linha, a essa distância. Enter ou
+   clique confirma o ponto.
+3. Fora das linhas, o balão volta a ser o da ferramenta (comprimento/ângulo da parede,
+   largura/altura do retângulo, spec 07 §2.1).
+4. Vale para qualquer ponto da ferramenta: o 1º ponto da parede, os seguintes da cadeia,
+   os pontos do arco e os cantos do retângulo. Com a linha de referência ativa, Shift
+   (ortogonal em relação ao ponto anterior) é ignorado; o ponto mais forte é o da
+   referência.
+5. O cruzamento das linhas de referência com a linha ortogonal do ponto anterior (ex.:
+   continuar a parede até alinhar com um canto) também prende o cursor. *(CG)*
+
+#### 2.1.2 Item numa parede (porta, janela, futuras aberturas)
+1. Pegar a referência como acima.
 2. **Linha de referência:** ao voltar para a parede, aparece uma linha tracejada fina que
    sai do ponto de referência na direção da parede, até a **borda do vão mais próxima do
    ponto**. A distância é medida **ao longo da parede** (projeção do ponto na direção da
@@ -61,12 +88,9 @@ Pedido do revisor em 2026‑10‑15. Vale para as ferramentas **Janela e Porta**
    parada ali (o cursor ainda escolhe a parede e o lado). Na janela, Tab de novo vai para o
    **Peitoril**. Enter ou clique cria.
 5. **Sem referência pegada:** a referência é a ponta da parede (canto da face) mais
-   próxima do cursor, como antes.
-6. Pegar outro vértice troca a referência. Ela é solta ao criar a esquadria, ao trocar de
-   ferramenta ou com Esc (o primeiro Esc solta a referência; o segundo volta a Selecionar).
-7. Planta e 3D usam os mesmos vértices (no 3D, na cota da base das paredes do pavimento).
+   próxima do cursor.
 
-Campos do balão, na ordem do Tab:
+Aqui não há linhas ortogonais: a parede já dá a direção. Campos do balão, na ordem do Tab:
 
 | Ferramenta | Campos |
 |---|---|
@@ -279,6 +303,13 @@ Parede reta de 5 m, 14 cm, 2,80 m, como em `janela.md` §9.
       referência. Passar rápido pelo vértice não pega.
 - [ ] **UI83b** Porta: o mesmo com Tab `0,15` a partir do canto interno de uma junção em L;
       Tab não troca mais as dobradiças; os botões da barra Opções trocam.
+- [ ] **UI83c** Parede: pegar a ponta (5, 0) de uma parede existente, levar o cursor para a
+      direita perto do eixo x: linha de referência e balão "distância"; Tab `1,20` Enter
+      põe o 1º ponto da parede nova em (6,20, 0). Longe das linhas, o balão volta a ser
+      comprimento/ângulo.
+- [ ] **UI83d** Retângulo: com a referência num canto (0, 0), o 1º canto por Tab `0,50` na
+      vertical vai a (0, 0,50); continuar a parede até o cruzamento com a linha vertical de
+      outro canto prende o cursor no cruzamento.
 - [ ] **UI84** Verga acima do topo (peitoril 2,00 com altura 1,00 numa parede de 2,80) e
       janela sobre a porta: vermelho e recusa com motivo.
 - [ ] **UI85** Tipo de abrir 1 folha, mão Direita na barra Opções: cria a variante uma vez
@@ -328,6 +359,8 @@ comando ou layout de diálogo de outro software foi copiado.
     etiqueta fica do lado de dentro.
 (d) `IfcStyledItem` por peça no corpo da janela e da porta, com vidro translúcido (§7).
 (e) "Etiquetas de porta" vira "Etiquetas de esquadrias", um item só (§6.3).
-(f) Ponto de referência (§2.1), pedido do revisor: parada de 0,4 s para pegar o vértice;
-    vértices aceitos (faces e junções das paredes, cantos dos vãos); distância até a borda
-    do vão mais próxima do ponto, ao longo da parede; referência solta ao criar.
+(f) Ponto de referência (§2.1), pedido do revisor, para todas as ferramentas de criação:
+    parada de 0,4 s para pegar o vértice; vértices aceitos; linhas só nas 4 direções
+    ortogonais do pavimento (sem 45°) para o ponto livre; na parede, distância até a borda
+    do vão mais próxima, ao longo da parede; referência solta ao confirmar o ponto.
+(g) Mover, Copiar, Girar e Espelhar sem ponto de referência por enquanto (§2.1).
