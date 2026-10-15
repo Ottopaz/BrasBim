@@ -4,7 +4,7 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (pacote 2 concluído: planta por camadas, plano de corte, estilos de material, cor por camada no 3D).*
+*Atualizado em 2026‑10‑15 (pacote 2 concluído; spec/ui 09, janela, em revisão).*
 
 ## Comandos
 | Para | Comando |
@@ -24,6 +24,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/06-planta-por-camadas` | aprovada e implementada (testes UI51–UI60) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
+| `spec/ui/09-janela` | **em revisão** (pacote 3; testes UI82–UI95; pontos de revisão §12) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -97,9 +98,11 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   na planta (`navigating`; relato de 2026‑10‑15).
 
 ## Próximos passos (nesta ordem)
-1. Uso do pacote 2 pelo revisor (planta por camadas, plano de corte, materiais) e
-   ajustes pelo retorno em `feedback/`.
-2. **Pacote 3 (etapa 3c):** janela (`janela.md`), no padrão novo da interface.
+1. Retorno do revisor sobre o pacote 2 (até 2026‑10‑15 só havia o print da caixa na
+   órbita 3D, anterior às correções 2ee0024 e e47a9cc).
+2. Revisão de `spec/ui/09-janela.md`; depois implementar: núcleo (JA01–JA14, código comum
+   porta/janela em `core/fillings`), ferramenta e Opções, tipos de janela, planta e
+   etiqueta, painel e mini-barra, alças, 3D com estilos por peça.
 
 ## Pendências
 - Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
