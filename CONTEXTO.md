@@ -44,6 +44,23 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   menu do botão direito (Mostrar na planta / Mostrar no 3D / Enquadrar). Câmera e raio
   sem Qt em `ui/scene3d.py` (`Camera`, `Scene.pick`, `ray_plane`).
 
+## Spec 08 — o que falta (próxima sessão começa aqui)
+**Etapa 2 — topo (§4):** estado novo da parede `top_shape` (`flat`/`slope`/`gable`/`free`)
+e `top_profile` (lista de [posição, altura a partir da base]) em `walls/params.py`
+(`STATE_KEYS`, `default_state`, Pset `BrasBim_Parede`: `FormaTopo`, `PerfilTopoPosicoes`,
+`PerfilTopoAlturas`). `walls/rebuild.py`: `set_body` extruda até a maior altura e, com
+perfil, grava `Body` `Clipping` (`IfcBooleanClippingResult` DIFFERENCE + um
+`IfcPolygonalBoundedHalfSpace` por trecho; contorno horizontal cobrindo a faixa só no
+trecho). Quantidades com o perfil. `openings.check_fits`: vão abaixo do topo. Mudar o
+comprimento reposiciona os pontos proporcionalmente. Painel (grupo Altura): campo Topo e
+parâmetros; `handles3d`: um vértice de topo por ponto do perfil (vertical; cumeeira
+também anda ao longo da parede). Testes UI77, UI78, UI81 (parte do topo).
+**Etapa 3 — tombada (§5):** `tilt` (graus, −45..45, + para a esquerda); `set_body` com
+`ExtrudedDirection` (0, sen θ, cos θ), profundidade h/cos θ, planta alargada 1/cos θ;
+sem `IfcMaterialLayerSetUsage` (associar o `IfcMaterialLayerSet` do tipo) e restaurar a
+0°; recusar com aberturas; alça "tilt" a 0,30 m da face no topo. Testes UI79–UI81.
+Também atualizar `spec/01-modelo-de-dados.md` com as chaves novas.
+
 ## Pacote 2 em andamento (spec/ui 06)
 Feito:
 - `brasbim/core/clip.py`: booleanos 2D com `pyclipr` (união, interseção, diferença,
