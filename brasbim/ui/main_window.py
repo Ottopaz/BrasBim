@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSplitter,
     QTabWidget,
@@ -40,7 +41,7 @@ from brasbim.ui.session import Session
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
 from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog
-from brasbim.ui.view3d import View3D
+from brasbim.ui.view3d import View3D, storey_of
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
 _LEVEL_COLOR = {"recusa": "#b3261e", "aviso": "#8a5a00", "info": "#333333"}
@@ -89,19 +90,23 @@ class MainWindow(QMainWindow):
         self.scene = Scene()
         self.scene.load(session.doc.ifc)
         self.plan = PlanView(self.toolbox)
-        self.view3d = View3D(self.scene, lambda: self.session.selection)
+        self.view3d = View3D(self.scene, self.toolbox)
+        self.ctx.input_view = self.plan
         self.split = False
         self._build_central()
         self._build_docks()
         self._build_actions()
         self._build_status()
         session.listeners.append(self._on_session)
-        self.plan.cursor_moved.connect(self._show_cursor)
-        self.plan.hint_changed.connect(self.hint.setText)
-        self.plan.tool_finished.connect(lambda: self.activate_tool("select"))
-        self.plan.tool_options_changed.connect(self.options_bar.refresh)
-        self.selection_bar = SelectionBar(self.plan, self.run_selection_action)
-        self.plan.selection_bar = self.selection_bar
+        for view in (self.plan, self.view3d):
+            view.cursor_moved.connect(self._show_cursor)
+            view.hint_changed.connect(self.hint.setText)
+            view.tool_finished.connect(lambda: self.activate_tool("select"))
+            view.tool_options_changed.connect(self.options_bar.refresh)
+            view.context_requested.connect(
+                lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
+            view.selection_bar = SelectionBar(view, self.run_selection_action)
+        self.selection_bar = self.plan.selection_bar
         self.resize(1280, 800)
         self._restore()
         self._refresh_all()
@@ -174,6 +179,10 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
+                                                lambda: self.show_in_plan(), "Ctrl+Shift+P")
+        self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
+                                              "Ctrl+Shift+3")
         view_menu.addSeparator()
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
@@ -225,8 +234,9 @@ class MainWindow(QMainWindow):
         self.plan.update()
 
     def _toggle_selection_bar(self, checked: bool) -> None:
-        self.selection_bar.enabled = checked
-        self.plan.update()
+        for view in (self.plan, self.view3d):
+            view.selection_bar.enabled = checked
+            view.update()
 
     def _build_status(self) -> None:
         self.hint = QLabel()
@@ -276,6 +286,7 @@ class MainWindow(QMainWindow):
             self.properties.refresh()
             self.plan.update()
             self.view3d.update()
+            self._refresh_show_actions()
         elif event == "messages":
             self._show_messages()
 
@@ -293,6 +304,11 @@ class MainWindow(QMainWindow):
         self.undo_action.setToolTip(f"Desfazer {undo[-1].label}" if undo else "Desfazer")
         self.redo_action.setToolTip(f"Refazer {redo[-1].label}" if redo else "Refazer")
         self.hint.setText(self.toolbox.active.hint())
+        self._refresh_show_actions()
+
+    def _refresh_show_actions(self) -> None:
+        for action in (self.show_in_plan_action, self.show_in_3d_action):
+            action.setEnabled(bool(self.session.selection))
 
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
@@ -322,7 +338,8 @@ class MainWindow(QMainWindow):
         self.hint.setText(tool.hint())
         self.properties.refresh()
         self.plan.update()
-        self.plan.setFocus()
+        self.view3d.update()
+        (self.ctx.input_view or self.plan).setFocus()
 
     def undo(self) -> None:
         self.toolbox.active.cancel()
@@ -409,6 +426,53 @@ class MainWindow(QMainWindow):
         door_list = [doc.get(g) for g in sorted(session.selection)]
         flip = fc.flip_opening if key == "flip_opening" else fc.flip_hinges
         session.run(lambda: fc.flip_each(doc, door_list, flip))
+
+    # --- mostrar a seleção na outra vista (spec/ui 07 §4) ------------------------------------
+
+    def context_actions(self, view, gid) -> list[tuple[str, object]]:
+        """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
+        if not gid:
+            return [("Enquadrar tudo", view.fit)]
+        if view is self.view3d:
+            return [("Mostrar na planta", lambda: self.show_in_plan(gid)),
+                    ("Enquadrar a seleção", view.frame_selection)]
+        return [("Mostrar no 3D", self.show_in_3d), ("Enquadrar a seleção", view.frame_selection)]
+
+    def show_context_menu(self, view, gid, pos) -> None:
+        menu = QMenu(self)
+        for text, slot in self.context_actions(view, gid):
+            menu.addAction(text, slot)
+        menu.exec(pos)
+
+    def _bring(self, view) -> None:
+        """Põe a vista à frente (em abas); lado a lado, nada muda."""
+        if not self.split:
+            self.tabs.setCurrentWidget(view)
+        self.ctx.input_view = view
+        view.setFocus()
+
+    def show_in_plan(self, gid: str | None = None) -> bool:
+        """Pavimento do elemento ativo, planta à frente e seleção enquadrada."""
+        session = self.session
+        if gid is None:
+            gid = next(iter(sorted(session.selection)), None)
+        element = session.doc.find(gid) if gid else None
+        if element is None:
+            return False
+        storey = storey_of(element)
+        if storey is not None and storey.GlobalId != session.storey_id:
+            kept = set(session.selection)
+            session.set_storey(storey)  # limpa a seleção: aqui ela continua
+            session.select(kept)
+        self._bring(self.plan)
+        return self.plan.frame_selection()
+
+    def show_in_3d(self) -> bool:
+        """3D à frente, com a órbita na seleção e a mesma direção da câmera."""
+        if not self.session.selection:
+            return False
+        self._bring(self.view3d)
+        return self.view3d.frame_selection()
 
     def fit_all(self) -> None:
         self.plan.fit()

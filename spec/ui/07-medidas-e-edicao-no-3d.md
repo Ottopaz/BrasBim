@@ -178,31 +178,31 @@ seleção sozinha (ponto (e)).
 - Mini-barra: uma instância por vista; aparece só na vista com o cursor ou com o foco.
 
 ## 6. Critérios de aceite (testes)
-- [ ] **UI61** Parede: 1º ponto em (0, 0), Tab, `3` Tab `90` Enter: a parede vai de (0, 0) a
+- [x] **UI61** Parede: 1º ponto em (0, 0), Tab, `3` Tab `90` Enter: a parede vai de (0, 0) a
       (0, 3); o IFC tem `IfcWall` com caminho de 3,00 m no eixo y.
-- [ ] **UI62** Parede com só o comprimento fixado em 2,5 e o cursor em (10, 10): o ponto é
+- [x] **UI62** Parede com só o comprimento fixado em 2,5 e o cursor em (10, 10): o ponto é
       (1,768, 1,768). Só o ângulo fixado em 0° e o cursor em (4, 3): o ponto é (4, 0).
-- [ ] **UI63** Digitar `3` Enter sem Tab continua criando o segmento de 3 m na direção do
+- [x] **UI63** Digitar `3` Enter sem Tab continua criando o segmento de 3 m na direção do
       cursor (comportamento de hoje).
-- [ ] **UI64** Esc no quadro solta os valores fixados; o 2º Esc descarta a parede em
+- [x] **UI64** Esc no quadro solta os valores fixados; o 2º Esc descarta a parede em
       andamento. Comprimento 0 fica em vermelho e nada é criado.
-- [ ] **UI65** Retângulo com largura 4 e altura 3 digitadas: quatro paredes com o
+- [x] **UI65** Retângulo com largura 4 e altura 3 digitadas: quatro paredes com o
       retângulo 4 × 3 a partir do 1º canto, para o lado do cursor.
-- [ ] **UI66** Mover com Distância 2 e Ângulo 180: `wall.edit` desloca o caminho 2 m em −x.
+- [x] **UI66** Mover com Distância 2 e Ângulo 180: `wall.edit` desloca o caminho 2 m em −x.
       Girar com Ângulo 90 gira 90° anti‑horário em torno do centro.
-- [ ] **UI67** `Scene.pick`: raio de cima sobre uma parede devolve a parede; raio que passa
+- [x] **UI67** `Scene.pick`: raio de cima sobre uma parede devolve a parede; raio que passa
       pela porta devolve a porta (mais próxima); raio no vazio devolve nada.
-- [ ] **UI68** Ponto no 3D: raio que atinge o topo do canto de uma parede dá o (x, y) do
+- [x] **UI68** Ponto no 3D: raio que atinge o topo do canto de uma parede dá o (x, y) do
       canto; raio no vazio dá a interseção com o plano do pavimento ativo; raio horizontal
       não dá ponto.
-- [ ] **UI69** Clique no 3D com Selecionar seleciona a parede, e a planta a mostra
+- [x] **UI69** Clique no 3D com Selecionar seleciona a parede, e a planta a mostra
       selecionada; Ctrl+clique acrescenta; clique no vazio limpa. Arrasto de 10 px orbita
       e não seleciona.
-- [ ] **UI70** Mover no 3D: base e destino clicados no 3D geram a mesma transação que os
+- [x] **UI70** Mover no 3D: base e destino clicados no 3D geram a mesma transação que os
       mesmos pontos na planta; o diário reaplicado reproduz o IFC.
-- [ ] **UI71** Mostrar na planta, com o elemento num pavimento que não é o ativo: o
+- [x] **UI71** Mostrar na planta, com o elemento num pavimento que não é o ativo: o
       pavimento ativo muda, a aba Planta fica à frente e a seleção cabe na tela.
-- [ ] **UI72** Mostrar no 3D: o alvo da órbita é o centro da caixa da seleção e a direção
+- [x] **UI72** Mostrar no 3D: o alvo da órbita é o centro da caixa da seleção e a direção
       da câmera não muda.
 
 ## 7. Fontes públicas

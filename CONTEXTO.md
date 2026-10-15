@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15.*
+*Atualizado em 2026‑10‑15 (spec 07 implementada).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (179 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (191 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -21,8 +21,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas (parede e porta implementadas; janela não) |
 | `spec/01-modelo-de-dados.md` | rascunho vivo, atualizado a cada operação nova |
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
-| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (pausada) |
-| `spec/ui/07-medidas-e-edicao-no-3d` | **aprovada**; implementação em andamento, vai antes do restante do pacote 2 |
+| `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (retomar em `core/layers.py`) |
+| `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -32,6 +32,14 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   espelhar, comprimento e ângulo no painel, propriedades comuns.
 - Porta: tipos, alças de largura, etiqueta na planta, propriedades comuns.
 - Operações serializáveis com desfazer/refazer e diário de sessão (`feedback/diarios/`).
+- Quadro de medidas junto ao cursor (`ui/measure_box.py`): Tab digita comprimento/ângulo
+  (parede), largura/altura (retângulo), distância/ângulo (mover, copiar), ângulo (girar,
+  espelhar), distância (dividir). Lógica sem Qt em `tools.py` (`fields`, `fix`, `confirm`,
+  `polar_point`, `rect_corner`).
+- Vista 3D com seleção por clique, as mesmas ferramentas da planta (ponto = x, y do
+  elemento atingido ou do plano do pavimento), fantasma das transformações, mini-barra e
+  menu do botão direito (Mostrar na planta / Mostrar no 3D / Enquadrar). Câmera e raio
+  sem Qt em `ui/scene3d.py` (`Camera`, `Scene.pick`, `ray_plane`).
 
 ## Pacote 2 em andamento (spec/ui 06)
 Feito:
@@ -65,9 +73,6 @@ Falta (desenho combinado):
 - Testes UI51–UI60; atualizar `spec/01-modelo-de-dados.md` (`cut_height`, `material.edit`).
 
 ## Próximos passos (nesta ordem)
-0. **Spec 07** (pedido de 2026‑10‑15): campos de medida com Tab ao desenhar, seleção e
-   edição no 3D, Mostrar na planta / Mostrar no 3D. Revisar e implementar antes das
-   camadas.
 1. **Pacote 2:** implementar `spec/ui/06-planta-por-camadas.md` depois de aprovada:
    detalhe da planta (simplificado e por camadas), prioridade das camadas nas junções,
    plano de corte por pavimento, paredes abaixo e acima do plano, estilos de material
@@ -81,6 +86,11 @@ Falta (desenho combinado):
 - Excluir porta de outra origem.
 - Mover porta deve recalcular as vizinhas da parede do vão.
 - Nicho e vão livre sem ferramenta na interface.
+- 3D, fora da spec 07: seleção por janela, alças, arrastar para mover; parede em arco sem
+  campos de medida.
+- Testes de interface: a planta do `window` mede 464 × 530 px; com a origem do fixture
+  (100, 600), pontos com y < 1,4 m caem fora e `QTest.mouseMove` não chega (os testes da
+  spec 07 mudam a origem).
 
 ## Gosto do usuário
 Interface limpa: ícones, opções só da ferramenta ativa, ações só com seleção; nada fixo

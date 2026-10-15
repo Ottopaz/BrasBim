@@ -6,25 +6,27 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
-    QCursor,
     QFont,
     QPainter,
     QPainterPath,
     QPen,
     QPolygonF,
 )
-from PySide6.QtWidgets import QLineEdit, QWidget
+from PySide6.QtWidgets import QWidget
 
 from brasbim.core.snap import KIND_LABEL
-from brasbim.ui.tools import SELECTION_TOOLS, Mods, PlanContext, ToolBox, parse_number
+from brasbim.ui.measure_box import ToolInput
+from brasbim.ui.tools import Mods, PlanContext, ToolBox
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
 HANDLE_PX = 4  # metade do lado da alça na tela (0.2 §4)
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
+_FRAME_MAX_SCALE = 200.0  # enquadrar a seleção não aproxima mais que isto (spec/ui 07 §4)
+_FRAME_MARGIN = 0.2
 
 # Cores da planta (próprias).
 C = {
@@ -44,11 +46,12 @@ C = {
 }
 
 
-class PlanView(QWidget):
+class PlanView(QWidget, ToolInput):
     cursor_moved = Signal(float, float)
     hint_changed = Signal(str)
     tool_finished = Signal()
     tool_options_changed = Signal()
+    context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
 
     def __init__(self, toolbox: ToolBox, parent=None):
         super().__init__(parent)
@@ -65,12 +68,7 @@ class PlanView(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
-        self.numeric = QLineEdit(self)
-        self.numeric.setFixedWidth(90)
-        self.numeric.setPlaceholderText("comprimento")
-        self.numeric.hide()
-        self.numeric.returnPressed.connect(self._numeric_done)
-        self.numeric.installEventFilter(self)
+        self._init_tool_input()
 
     # --- coordenadas -----------------------------------------------------------------
 
@@ -108,6 +106,26 @@ class PlanView(QWidget):
                                   self.height() / 2 + cy * self.scale)
         self._sync_tol()
         self.update()
+
+    def frame_selection(self) -> bool:
+        """Enquadra a seleção do pavimento ativo com margem (spec/ui 07 §4)."""
+        selection = self.ctx.session.selection
+        pts = [p for s in self.ctx.plan.shapes if s.owner in selection and s.role != "below"
+               for p in s.points]
+        if not pts:
+            return False
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        w = max(x1 - x0, 0.01) * (1 + 2 * _FRAME_MARGIN)
+        h = max(y1 - y0, 0.01) * (1 + 2 * _FRAME_MARGIN)
+        self.scale = min(max(min(self.width() / w, self.height() / h), _MIN_SCALE),
+                         _FRAME_MAX_SCALE)
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        self.origin = QPointF(self.width() / 2 - cx * self.scale,
+                              self.height() / 2 + cy * self.scale)
+        self._sync_tol()
+        self.update()
+        return True
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -292,22 +310,33 @@ class PlanView(QWidget):
                     bool(m & Qt.ControlModifier))
 
     def _refresh_hint(self) -> None:
-        tool = self.toolbox.active
-        if tool.finished:
-            tool.finished = False
-            self.tool_finished.emit()
-        self.hint_changed.emit(self.toolbox.active.hint())
+        self.after_tool_input()
+
+    def _take_input(self) -> None:
+        """A planta passa a ser a vista das ferramentas (tolerância pela escala)."""
+        self.ctx.input_view = self
+        self._sync_tol()
 
     def mousePressEvent(self, event):
+        self.before_press()
         self.setFocus()
+        self._take_input()
         if event.button() == Qt.MiddleButton or (event.button() == Qt.LeftButton and self._space):
             self._pan = event.position()
             return
+        tool = self.toolbox.active
+        p = self.to_world(event.position())
+        if event.button() == Qt.RightButton and tool.name == "select" and not tool.drag:
+            gid = self.ctx.plan.pick(p, self.ctx.tol)
+            session = self.ctx.session
+            if gid and gid not in session.selection:  # spec/ui 07 §4
+                session.select([gid], add=bool(event.modifiers() & Qt.ControlModifier))
+            self.context_requested.emit(gid, event.globalPosition().toPoint())
+            return
         button = {Qt.LeftButton: "left", Qt.RightButton: "right"}.get(event.button())
         if button:
-            self.toolbox.active.press(self.to_world(event.position()), self._mods(event), button)
+            tool.press(p, self._mods(event), button)
             self._refresh_hint()
-            self.update()
 
     def mouseMoveEvent(self, event):
         if self._pan is not None:
@@ -316,11 +345,12 @@ class PlanView(QWidget):
             self.origin += delta
             self.update()
             return
+        self._take_input()
+        self.mouse_pos = event.position()
         p = self.to_world(event.position())
         self.cursor_moved.emit(*p)
         self.toolbox.active.move(p, self._mods(event))
         self._refresh_hint()
-        self.update()
 
     def mouseReleaseEvent(self, event):
         if self._pan is not None and event.button() in (Qt.MiddleButton, Qt.LeftButton):
@@ -329,13 +359,11 @@ class PlanView(QWidget):
         if event.button() == Qt.LeftButton:
             self.toolbox.active.release(self.to_world(event.position()), self._mods(event))
             self._refresh_hint()
-            self.update()
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.toolbox.active.double(self.to_world(event.position()), self._mods(event))
             self._refresh_hint()
-            self.update()
 
     def wheelEvent(self, event):
         factor = 1.15 ** (event.angleDelta().y() / 120)
@@ -348,70 +376,24 @@ class PlanView(QWidget):
         self.update()
 
     def event(self, event):
-        # Tab é da ferramenta (§5.5), não troca o foco.
-        if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Tab, Qt.Key_Backtab):
-            self.toolbox.active.key("tab")
-            self.tool_options_changed.emit()
-            self._refresh_hint()
-            self.update()
+        if self.tool_event(event):
             return True
         return super().event(event)
 
     def keyPressEvent(self, event):
-        key, text = event.key(), event.text()
-        tool = self.toolbox.active
-        if key == Qt.Key_Escape:
-            busy = tool.cancel()
-            session = self.ctx.session
-            if tool.name in SELECTION_TOOLS or not busy:
-                if tool.name == "select" and session.selection:
-                    session.select([])  # Esc com a mini-barra visível (spec/ui 03 §5)
-                else:
-                    self.tool_finished.emit()
-        elif key in (Qt.Key_Return, Qt.Key_Enter):
-            tool.key("enter")
-        elif key == Qt.Key_Home:
+        if self.tool_key(event):
+            return
+        key = event.key()
+        if key == Qt.Key_Home:
             self.fit()
         elif key == Qt.Key_Space and not event.isAutoRepeat():
             self._space = True
             self.setCursor(Qt.OpenHandCursor)
-        elif text and (text.isdigit() or text in ",.-") and tool.wants_number():
-            pos = self.mapFromGlobal(QCursor.pos())
-            self.numeric.setPlaceholderText(tool.number_hint)
-            self.numeric.move(pos.x() + 14, pos.y() + 14)
-            self.numeric.setText(text)
-            self.numeric.show()
-            self.numeric.setFocus()
         else:
             super().keyPressEvent(event)
-            return
-        self._refresh_hint()
-        self.update()
 
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space = False
             self.unsetCursor()
         super().keyReleaseEvent(event)
-
-    def eventFilter(self, obj, event):
-        if obj is self.numeric and event.type() == QEvent.KeyPress \
-                and event.key() == Qt.Key_Escape:
-            self.numeric.hide()
-            self.setFocus()
-            return True
-        return super().eventFilter(obj, event)
-
-    def _numeric_done(self) -> None:
-        text = self.numeric.text()
-        self.numeric.hide()
-        self.setFocus()
-        try:
-            value = parse_number(text)
-        except ValueError:
-            self.ctx.session.message(f"número inválido: {text!r}", "recusa")
-            return
-        if not self.toolbox.active.numeric(value):
-            self.ctx.session.message("a ferramenta não espera um número agora", "recusa")
-        self._refresh_hint()
-        self.update()
