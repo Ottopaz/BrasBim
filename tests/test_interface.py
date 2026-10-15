@@ -177,8 +177,10 @@ def test_ui06_porta_lado_dobradicas_e_arco(window):
     # Parede sul vai de (6,0) a (0,0): a esquerda dela é -y (fora); a faixa fica em y 0..0,14.
     tool.move((3.0, 0.12), Mods())  # lado de dentro = direita da parede
     assert tool.target["wall"] == south.GlobalId and tool.target["opens_to"] == "right"
-    QTest.keyClick(window.plan, Qt.Key_Tab)
-    assert tool.hinges == "right"
+    QTest.keyClick(window.plan, Qt.Key_Tab)  # Tab é do balão de distância (spec/ui 09 §2.2)
+    assert tool.hinges == "left" and window.plan.measure.editing == 0
+    window.plan.measure.escape()
+    tool.hinges = "right"  # botão Dobradiças à direita da barra Opções
     tool.press((3.0, 0.12), Mods())
     door = s.doc.ifc.by_type("IfcDoor")[0]
     assert ue.get_type(door).OperationType == "SINGLE_SWING_RIGHT"

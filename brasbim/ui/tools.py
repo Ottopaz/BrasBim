@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from brasbim.core import geom2d, plan, snap, transform
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
-from brasbim.core.fillings import door_types, doors, params
+from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
@@ -138,11 +138,12 @@ class PlanContext:
         self.input_view = None  # vista (planta ou 3D) que recebeu o último movimento
         self._plan = None
         self._walls = None
+        self._vertices = None
         self.detail = "simple"  # Exibir > Detalhe da planta (spec/ui 06 §2)
         self.show_above = True  # Exibir > Elementos acima do plano de corte (§3.2)
 
     def invalidate(self) -> None:
-        self._plan = self._walls = None
+        self._plan = self._walls = self._vertices = None
 
     @property
     def plan(self) -> plan.Plan:
@@ -159,6 +160,39 @@ class PlanContext:
             storey = self.session.storey
             self._walls = snap.wall_paths(self.session.doc, storey) if storey else []
         return self._walls
+
+    @property
+    def vertices(self) -> list[Point]:
+        """Vértices que podem virar ponto de referência (spec/ui 09 §2.1): pontas dos
+        caminhos, centros de arco, cantos das paredes (com as junções) e dos vãos."""
+        if self._vertices is None:
+            found: dict[tuple, Point] = {}
+
+            def add(q):
+                found.setdefault((round(q[0], 6), round(q[1], 6)), (float(q[0]), float(q[1])))
+
+            doc = self.session.doc
+            for w in self.walls:
+                for q in w.ends():
+                    add(q)
+                if not w.straight:
+                    r = w.path.radius if w.path.ccw else -w.path.radius
+                    add(w.frame.to_global((0.0, r)))
+                wall = doc.find(w.gid)
+                for opening in openings.of_wall(wall) if w.straight and wall else []:
+                    try:
+                        o = openings.read_state(opening)
+                    except OpError:
+                        continue
+                    for x in (o["distance"], o["distance"] + o["width"]):
+                        for y in (w.ymin, w.ymax):
+                            add(w.frame.to_global((x, y)))
+            for s in self.plan.shapes:
+                if s.role in ("wall", "wall_view") and s.closed:
+                    for q in s.points:
+                        add(q)
+            self._vertices = list(found.values())
+        return self._vertices
 
     def snap(self, p: Point, mods: Mods, origin: Point | None = None,
              extra=()) -> snap.Snap:
@@ -182,6 +216,8 @@ class Tool:
         self.finished = False  # a ferramenta terminou: a vista volta para Selecionar
         self.fixed: dict[str, float] = {}  # valores digitados nos campos (spec/ui 07 §2)
         self.mods = Mods()  # modificadores do último movimento (Enter confirma com eles)
+        self.reference: Point | None = None  # ponto de referência (spec/ui 09 §2.1)
+        self.tracking: dict | None = None  # linha de referência em uso: dir, ponto, distância
 
     @property
     def session(self) -> Session:
@@ -203,6 +239,56 @@ class Tool:
     def wants_number(self) -> bool:
         """Digitar um número abre o campo de entrada numérica."""
         return bool(self.fields())
+
+    # ponto de referência (spec/ui 09 §2.1)
+
+    creates = False  # ferramenta de criação: aceita ponto de referência
+
+    def acquire(self, p: Point | None = None) -> bool:
+        """Cursor parado sobre um vértice: ele vira o ponto de referência."""
+        p = p if p is not None else self.cursor
+        if not self.creates or p is None:
+            return False
+        near = [(math.dist(p, q), q) for q in self.ctx.vertices
+                if math.dist(p, q) <= self.ctx.tol]
+        if not near:
+            return False
+        q = min(near)[1]
+        if self.reference is not None and math.dist(q, self.reference) < 1e-9:
+            return False
+        self.reference, self.tracking = q, None
+        self.fixed.pop("ref", None)
+        if self.cursor is not None:
+            self.move(self.cursor, self.mods)
+        return True
+
+    def release_reference(self) -> bool:
+        if self.reference is None:
+            return False
+        self.reference = self.tracking = None
+        self.fixed.pop("ref", None)
+        if self.cursor is not None:
+            self.move(self.cursor, self.mods)
+        return True
+
+    def reference_marks(self) -> list[Mark]:
+        """Marca do ponto de referência (um x) e a linha de referência em uso."""
+        if self.reference is None:
+            return []
+        x, y = self.reference
+        r = max(self.ctx.tol, 0.01) * 0.6
+        marks = [Mark(((x - r, y - r), (x + r, y + r)), False, "reference"),
+                 Mark(((x - r, y + r), (x + r, y - r)), False, "reference")]
+        if self.tracking is not None:
+            marks.append(Mark((self.reference, self.tracking["point"]), False, "guide"))
+        return marks
+
+    def field_anchor(self) -> Point | None:
+        """Onde fica o quadro de medidas (no meio da linha de referência); None = cursor."""
+        if self.tracking is None or self.reference is None:
+            return None
+        (x0, y0), (x1, y1) = self.reference, self.tracking["point"]
+        return ((x0 + x1) / 2, (y0 + y1) / 2)
 
     # campos de medida (spec/ui 07 §2)
 
@@ -333,7 +419,7 @@ class SelectTool(Tool):
                     "inverte o que acompanha; Esc cancela")
         d = self.drag
         if d and d["kind"] == "door" and d["active"]:
-            return "Solte sobre uma parede reta para posicionar a porta (Esc cancela)"
+            return "Solte sobre uma parede reta para posicionar a esquadria (Esc cancela)"
         if d and d["kind"] == "handle":
             return ("Leve a alça e clique ou solte; Ctrl ao soltar leva as vizinhas da "
                     "ponta; digite um número para a medida; Esc cancela")
@@ -403,7 +489,8 @@ class SelectTool(Tool):
         if len(selection) != 1:
             return []
         door = self.session.doc.find(next(iter(selection)))
-        opening = fc.opening_of(door) if door is not None and door.is_a("IfcDoor") else None
+        filling = door is not None and (door.is_a("IfcDoor") or door.is_a("IfcWindow"))
+        opening = fc.opening_of(door) if filling else None
         host = openings.host(opening) if opening is not None else None
         wall = next((w for w in self.ctx.walls if host and w.gid == host.GlobalId), None)
         if wall is None or not wall.straight:
@@ -498,12 +585,10 @@ class SelectTool(Tool):
         distance, width = d["want"]
         door = self.session.doc.get(d["door"])
         state = doors.read_state(door)
-        tstate = (door_types.read(self.session.doc.get(state["type"]))
-                  if state["foreign"] is None else
-                  {**door_types.default_state("NOTDEFINED"),
-                   "lining": {"thickness": 0, "depth": None}})
+        window, tstate = _filling_tstate(self.session.doc, door)
         return door_marks(self.session.doc, d["wall"], distance, max(width, 0.01), tstate,
-                          state["opens_to"], state["align"], state["offset"], style)
+                          state["opens_to"], state["align"], state["offset"], style,
+                          window, d["opening"]["height"])
 
     def _handle_commit(self) -> None:
         d, self.drag = self.drag, None
@@ -573,7 +658,7 @@ class SelectTool(Tool):
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         selection = self.session.selection
         entity = self.session.doc.find(gid) if gid else None
-        is_door = entity is not None and entity.is_a("IfcDoor")
+        is_door = entity is not None and (entity.is_a("IfcDoor") or entity.is_a("IfcWindow"))
         if gid and not mods.ctrl and gid in selection:
             if is_door and len(selection) == 1:
                 self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
@@ -752,12 +837,70 @@ class _WallTool(Tool):
         self.options = options or _WallOptions(ctx.session)
         self.points: list[Point] = []
 
+    creates = True
+
     def _point(self, p, mods) -> Point:
         origin = self.points[-1] if self.points else None
         self.snapped = self.ctx.snap(p, mods, origin, extra=self.points)
-        if self.points and self.fixed:
+        tracked = self._track(p, origin)
+        if tracked is not None:
+            self.snapped = snap.Snap(tracked, "free")
+        elif self.points and self.fixed:
             self.snapped = snap.Snap(self._resolve(self.snapped.point), "free")
         return self.snapped.point
+
+    def _track(self, p: Point, origin: Point | None) -> Point | None:
+        """Ponto na linha de referência (spec/ui 09 §2.1.1): direções ortogonais que saem
+        da referência; o cruzamento com a ortogonal do ponto anterior também prende."""
+        ref, tol = self.reference, self.ctx.tol
+        if ref is None:
+            self.tracking = None
+            return None
+        dx, dy = p[0] - ref[0], p[1] - ref[1]
+        fixed = self.fixed.get("ref")
+        if fixed is not None and self.tracking is not None:  # direção travada
+            ux, uy = self.tracking["dir"]
+            sign = -1.0 if dx * ux + dy * uy < 0 else 1.0
+            q = (ref[0] + sign * fixed * ux, ref[1] + sign * fixed * uy)
+        else:
+            near = [(abs(dy), (1.0, 0.0)), (abs(dx), (0.0, 1.0))]
+            near = [n for n in near if n[0] <= tol and math.hypot(dx, dy) > tol]
+            if not near:
+                self.tracking = None
+                self.fixed.pop("ref", None)
+                return None
+            _, (ux, uy) = min(near)
+            q = (ref[0] + dx * ux * ux, ref[1] + dy * uy * uy)  # projeção na linha
+            if origin is not None:
+                if ux and abs(p[0] - origin[0]) <= tol:
+                    q = (origin[0], ref[1])
+                elif uy and abs(p[1] - origin[1]) <= tol:
+                    q = (ref[0], origin[1])
+        self.tracking = {"dir": (ux, uy), "point": q, "distance": math.dist(ref, q)}
+        return q
+
+    def fields(self):
+        if self.tracking is not None:
+            return [Field("ref", "Distância", "m", self.tracking["distance"],
+                          self.fixed.get("ref"))]
+        return self.point_fields()
+
+    def point_fields(self) -> list[Field]:
+        return []
+
+    def check(self, key, value):
+        if key == "ref":
+            return "a distância não pode ser negativa" if value < 0 else None
+        return self.point_check(key, value)
+
+    def point_check(self, key, value) -> str | None:
+        return None
+
+    def _consume_reference(self) -> None:
+        """O ponto marcado com a linha de referência a solta (spec/ui 09 §2.1)."""
+        if self.tracking is not None:
+            self.reference = self.tracking = None
+            self.fixed.pop("ref", None)
 
     def _resolve(self, q: Point) -> Point:
         """Ponto com os valores fixados nos campos (spec/ui 07 §2.3)."""
@@ -768,11 +911,19 @@ class _WallTool(Tool):
         self._point(p, mods)
 
     def cancel(self):
+        if self.release_reference():
+            return True
         self.fixed.clear()
         if self.points:
             self.points = []
             return True
         return False
+
+    def preview(self):
+        return self.shape_preview() + self.reference_marks()
+
+    def shape_preview(self) -> list[Mark]:
+        return []
 
     def _commit(self, build) -> None:
         if self.options.type is None:
@@ -800,7 +951,7 @@ class WallTool(_WallTool):
         return ("Clique o próximo ponto; Tab digita comprimento e ângulo; Enter, clique duplo "
                 "ou botão direito encerra; Esc descarta")
 
-    def fields(self):
+    def point_fields(self):
         if not self.points:
             return []
         last = self.points[-1]
@@ -810,7 +961,7 @@ class WallTool(_WallTool):
         return [Field("length", "Comprimento", "m", length, self.fixed.get("length")),
                 Field("angle", "Ângulo", "°", angle, self.fixed.get("angle"))]
 
-    def check(self, key, value):
+    def point_check(self, key, value):
         if key == "length" and value <= geom2d.MIN_LENGTH:
             return "comprimento pequeno demais"
         return None
@@ -823,6 +974,7 @@ class WallTool(_WallTool):
             self.finish()
             return
         q = self._point(p, mods)
+        self._consume_reference()
         self.fixed.clear()
         if not self.points:
             self.points = [q]
@@ -851,7 +1003,7 @@ class WallTool(_WallTool):
         self._commit(lambda: cmd.create_chain(doc, options.type, storey, points, closed=closed,
                                               **options.command_options()))
 
-    def preview(self):
+    def shape_preview(self):
         marks = []
         pts = list(self.points)
         if pts and self.snapped:
@@ -880,6 +1032,7 @@ class ArcWallTool(_WallTool):
         if button != "left":
             return
         q = self._point(p, mods)
+        self._consume_reference()
         if len(self.points) < 2:
             if not self.points or math.dist(q, self.points[-1]) > geom2d.MIN_LENGTH:
                 self.points.append(q)
@@ -892,7 +1045,7 @@ class ArcWallTool(_WallTool):
         self._commit(lambda: cmd.create_arc_wall(doc, options.type, storey, a, b, q,
                                                  **options.command_options()))
 
-    def preview(self):
+    def shape_preview(self):
         if not self.points or not self.snapped:
             return []
         end = self.snapped.point
@@ -911,7 +1064,7 @@ class RectangleTool(_WallTool):
         return ("Clique o primeiro canto" if not self.points else
                 "Clique o canto oposto; Tab digita largura e altura")
 
-    def fields(self):
+    def point_fields(self):
         if not self.points:
             return []
         a = self.points[0]
@@ -921,7 +1074,7 @@ class RectangleTool(_WallTool):
                 Field("height", "Altura", "m", abs(q[1] - a[1]) if q else None,
                       self.fixed.get("height"))]
 
-    def check(self, key, value):
+    def point_check(self, key, value):
         if value < geom2d.MIN_LENGTH:
             return "o retângulo precisa de largura e profundidade"
         return None
@@ -933,6 +1086,7 @@ class RectangleTool(_WallTool):
         if button != "left":
             return
         q = self._point(p, mods)
+        self._consume_reference()
         self.fixed.clear()
         if not self.points:
             self.points = [q]
@@ -945,7 +1099,7 @@ class RectangleTool(_WallTool):
         self._commit(lambda: cmd.create_rectangle(doc, options.type, storey, a, q,
                                                   **options.command_options()))
 
-    def preview(self):
+    def shape_preview(self):
         if not self.points or not self.snapped:
             return []
         (x0, y0), (x1, y1) = self.points[0], self.snapped.point
@@ -957,12 +1111,24 @@ class RectangleTool(_WallTool):
         return marks
 
 
-# --- porta (§5.5) -----------------------------------------------------------------------
+# --- porta e janela (spec/ui 01 §5.5; spec/ui 09 §2) ------------------------------------
+
+
+def _filling_tstate(doc, element) -> tuple[bool, dict]:
+    """(é janela, estado do tipo) da esquadria; de outra origem, um tipo vazio."""
+    window = element.is_a("IfcWindow")
+    state = doors.read_state(element)
+    if state["foreign"] is None and state["type"]:
+        module = window_types if window else door_types
+        return window, module.read(doc.get(state["type"]))
+    return False, {**door_types.default_state("NOTDEFINED"),
+                   "lining": {"thickness": 0, "depth": None}}
 
 
 def door_marks(doc, wall: snap.WallPath, distance: float, width: float, tstate: dict,
-               opens_to: str, align: str, offset: float, style: str = "preview") -> list[Mark]:
-    """Pré-visualização da porta no vão (posição de ``porta.md`` §6.1)."""
+               opens_to: str, align: str, offset: float, style: str = "preview",
+               window: bool = False, height: float = 1.0) -> list[Mark]:
+    """Pré-visualização da porta (ou da janela) no vão (posição de ``porta.md`` §6.1)."""
     lining = tstate["lining"]
     depth = lining["depth"] or (wall.ymax - wall.ymin)
     a, b = params.lining_band(align, offset, depth, wall.ymin, wall.ymax)
@@ -976,8 +1142,12 @@ def door_marks(doc, wall: snap.WallPath, distance: float, width: float, tstate: 
     marks = [Mark(tuple(frame.to_global(q) for q in [
         (distance, wall.ymin), (distance + width, wall.ymin),
         (distance + width, wall.ymax), (distance, wall.ymax)]), True, "gap")]
-    for _, pts, closed in plan.door_symbol(width, depth, tstate["operation_type"], lining,
-                                           tstate["panels"]):
+    if window:
+        symbol = plan.window_symbol(width, height, tstate)
+    else:
+        symbol = plan.door_symbol(width, depth, tstate["operation_type"], lining,
+                                  tstate["panels"])
+    for _, pts, closed in symbol:
         marks.append(Mark(tuple(frame.to_global(to_wall(q)) for q in pts), closed, style))
     return marks
 
@@ -990,7 +1160,7 @@ def _edge_labels(wall: snap.WallPath, distance: float, width: float) -> list[tup
 
 
 def _door_target(ctx: PlanContext, door, p: Point) -> dict | None:
-    """Para onde a porta arrastada iria (§5.1): parede reta sob o cursor e distância."""
+    """Para onde a esquadria arrastada iria (§5.1): parede reta sob o cursor e distância."""
     hit = snap.wall_at(ctx.walls, p, ctx.tol)
     if hit is None or not hit.wall.straight:
         return None
@@ -1004,23 +1174,36 @@ def _door_target(ctx: PlanContext, door, p: Point) -> dict | None:
         fc.edit_door(ctx.session.doc, door, wall=hit.wall.gid, distance=distance)
     except OpError as e:
         error = str(e)
-    if state["foreign"] is None:
-        tstate = door_types.read(ctx.session.doc.get(state["type"]))
-    else:
-        tstate = {**door_types.default_state("NOTDEFINED"), "lining": {"thickness": 0,
-                                                                       "depth": None}}
+    window, tstate = _filling_tstate(ctx.session.doc, door)
     marks = door_marks(ctx.session.doc, hit.wall, distance, width, tstate, state["opens_to"],
-                       state["align"], state["offset"], "invalid" if error else "preview")
+                       state["align"], state["offset"], "invalid" if error else "preview",
+                       window, o["height"])
     return {"wall": hit.wall.gid, "distance": distance, "error": error, "marks": marks,
             "labels": _edge_labels(hit.wall, distance, width)}
 
 
-class DoorTool(Tool):
-    name, label = "door", "Porta"
+def face_ends(ctx: PlanContext, wall: snap.WallPath, left: bool) -> tuple[float, float]:
+    """Começo e fim (x local) da face da parede do lado ``left`` (cantos do corpo, já com
+    as junções); sem o desenho, as pontas do caminho (spec/ui 09 §2.1.2, item 5)."""
+    y = wall.ymax if left else wall.ymin
+    xs = [wall.frame.to_local(q)[0] for s in ctx.plan.shapes
+          if s.owner == wall.gid and s.role in ("wall", "wall_view") for q in s.points
+          if abs(wall.frame.to_local(q)[1] - y) < 1e-4]
+    return (min(xs), max(xs)) if xs else (0.0, wall.path.length)
+
+
+class _FillingTool(Tool):
+    """Porta e Janela: tipo, vão, mão e posição no marco; distância por ponto de
+    referência ao longo da parede (spec/ui 09 §2.1.2)."""
+
+    creates = True
+    type_class = ""
+    types = door_types
+    noun = ""
 
     def __init__(self, ctx):
         super().__init__(ctx)
-        types = sorted(ctx.session.doc.ifc.by_type("IfcDoorType"), key=lambda t: t.Name or "")
+        types = sorted(ctx.session.doc.ifc.by_type(self.type_class), key=lambda t: t.Name or "")
         self.type = types[0].GlobalId if types else None
         self.width: float | None = None  # vazio = padrão do tipo
         self.height: float | None = None
@@ -1031,36 +1214,52 @@ class DoorTool(Tool):
         self.target: dict | None = None
 
     def type_state(self) -> dict | None:
-        door_type = self.session.doc.find(self.type) if self.type else None
-        return door_types.read(door_type) if door_type is not None else None
+        found = self.session.doc.find(self.type) if self.type else None
+        return self.types.read(found) if found is not None else None
+
+    def hand(self, tstate: dict) -> str | None:
+        return params.hand_of(tstate["operation_type"])
 
     def handed_state(self) -> dict | None:
-        """Estado do tipo com as dobradiças escolhidas (variante, se for o caso)."""
+        """Estado do tipo com a mão escolhida (variante, se for o caso)."""
         tstate = self.type_state()
         if tstate is None:
             return None
-        hand = params.hand_of(tstate["operation_type"])
+        hand = self.hand(tstate)
         if hand is not None and hand != self.hinges:
-            return door_types.mirrored(tstate, None)
+            return self.types.mirrored(tstate, None)
         return tstate
 
     def hint(self):
-        tstate = self.type_state()
-        if tstate is None:
-            return "Não há tipo de porta no projeto"
-        hinge = ""
-        if params.hand_of(tstate["operation_type"]) is not None:
-            side = "esquerda" if self.hinges == "left" else "direita"
-            hinge = f"; Tab troca as dobradiças (agora: {side})"
-        return "Passe o cursor sobre uma parede reta e clique" + hinge
+        if self.type_state() is None:
+            return f"Não há tipo de {self.noun} no projeto"
+        ref = ("; pare o cursor num vértice para medir a partir dele" if self.reference is None
+               else "; Esc solta a referência")
+        return f"Passe o cursor sobre uma parede reta e clique; Tab digita a distância{ref}"
 
-    def key(self, key):
-        if key == "tab":
-            self.hinges = "right" if self.hinges == "left" else "left"
-            if self.cursor:
-                self.move(self.cursor, Mods())
-            return True
-        return False
+    # campos (spec/ui 09 §2.1)
+
+    def fields(self):
+        t = self.target
+        if not t or "distance" not in t:
+            return []
+        return [Field("ref", "Distância", "m", t["ref_distance"], self.fixed.get("ref"))]
+
+    def check(self, key, value):
+        if value < 0:
+            return "a distância não pode ser negativa"
+        return None
+
+    def cancel(self):
+        self.fixed.clear()
+        return self.release_reference()
+
+    def _reference_x(self, wall: snap.WallPath, hit: snap.WallHit, along: float) -> float:
+        """Abscissa (ao longo da parede) do ponto de referência."""
+        if self.reference is not None:
+            return wall.frame.to_local(self.reference)[0]
+        start, end = face_ends(self.ctx, wall, hit.left)
+        return start if abs(along - start) <= abs(along - end) else end
 
     def move(self, p, mods):
         super().move(p, mods)
@@ -1070,34 +1269,60 @@ class DoorTool(Tool):
         if tstate is None or hit is None:
             return
         if not hit.wall.straight:
-            self.target = {"error": "porta em parede em arco ainda não é suportada (V1)",
+            self.target = {"error": f"{self.noun} em parede em arco ainda não é suportada (V1)",
                            "marks": [], "labels": []}
             return
         defaults = tstate["defaults"]
         width = self.width or defaults["width"]
         height = self.height or defaults["height"]
         base = defaults["base"] if self.base is None else self.base
+        wall = hit.wall
         along = hit.along
-        length = hit.wall.path.length
+        length = wall.path.length
         if not mods.alt and abs(along - length / 2) <= self.ctx.tol:
             along = length / 2  # snap ao meio da parede
-        distance = along - width / 2
+        ref_x = self._reference_x(wall, hit, along)
+        after = along >= ref_x  # a esquadria fica depois da referência
+        fixed = self.fixed.get("ref")
+        if fixed is not None:
+            distance = ref_x + fixed if after else ref_x - fixed - width
+        else:
+            distance = along - width / 2
+        ref_distance = distance - ref_x if after else ref_x - distance - width
+        edge_x = distance if after else distance + width
         opens_to = "left" if hit.left else "right"
         error = None
         try:
-            wall = self.session.doc.get(hit.wall.gid)
-            openings.check_fits(self.session.doc, wall, {
-                **openings.default_state(), "wall": hit.wall.gid, "distance": distance,
+            openings.check_fits(self.session.doc, self.session.doc.get(wall.gid), {
+                **openings.default_state(), "wall": wall.gid, "distance": distance,
                 "width": width, "height": height, "sill": base})
         except OpError as e:
             error = str(e)
+        y = (wall.ymin + wall.ymax) / 2
+        ref_point = (self.reference if self.reference is not None
+                     else wall.frame.to_global((ref_x, wall.ymax if hit.left else wall.ymin)))
+        ref_y = wall.frame.to_local(ref_point)[1]
         self.target = {
-            "wall": hit.wall.gid, "distance": distance, "width": width, "height": height,
+            "wall": wall.gid, "distance": distance, "width": width, "height": height,
             "base": base, "opens_to": opens_to, "error": error,
-            "marks": door_marks(self.session.doc, hit.wall, distance, width, tstate, opens_to,
-                                self.align, self.offset, "invalid" if error else "preview"),
-            "labels": _edge_labels(hit.wall, distance, width),
+            "ref_distance": max(ref_distance, 0.0),
+            "ref_line": (ref_point, wall.frame.to_global((edge_x, ref_y))),
+            "marks": door_marks(self.session.doc, wall, distance, width, tstate, opens_to,
+                                self.align, self.offset, "invalid" if error else "preview",
+                                self.type_class == "IfcWindowType", height),
+            "labels": _edge_labels(wall, distance, width) + self.size_labels(
+                wall, distance, width, height, base, y),
         }
+
+    def size_labels(self, wall, distance, width, height, base, y) -> list:
+        return []
+
+    def field_anchor(self) -> Point | None:
+        t = self.target
+        if not t or "ref_line" not in t:
+            return None
+        (x0, y0), (x1, y1) = t["ref_line"]
+        return ((x0 + x1) / 2, (y0 + y1) / 2)
 
     def press(self, p, mods, button="left"):
         if button != "left":
@@ -1111,19 +1336,63 @@ class DoorTool(Tool):
             self.session.message(target["error"], "recusa")
             return
         tstate = self.type_state()
-        hinges = self.hinges if params.hand_of(tstate["operation_type"]) else None
+        hinges = self.hinges if self.hand(tstate) else None
         doc = self.session.doc
         self.session.run(lambda: fc.create_door(
             doc, self.type, target["wall"], target["distance"], target["width"],
             target["height"], target["base"], hinges=hinges, opens_to=target["opens_to"],
             align=self.align, offset=self.offset))
+        self.fixed.pop("ref", None)
+        self.reference = None  # a referência serviu a este ponto (spec/ui 09 §2.1)
         self.move(p, mods)
 
     def preview(self):
-        return self.target["marks"] if self.target else []
+        if not self.target:
+            return self.reference_marks()
+        marks = list(self.target["marks"])
+        if "ref_line" in self.target:
+            marks.append(Mark(self.target["ref_line"], False, "guide"))
+        return marks + self.reference_marks()
 
     def labels(self):
         return self.target["labels"] if self.target else []
+
+
+class DoorTool(_FillingTool):
+    name, label = "door", "Porta"
+    type_class = "IfcDoorType"
+    types = door_types
+    noun = "porta"
+
+
+class WindowTool(_FillingTool):
+    name, label = "window", "Janela"
+    type_class = "IfcWindowType"
+    types = window_types
+    noun = "janela"
+
+    def hand(self, tstate):
+        return window_types.hand(tstate)
+
+    def fields(self):
+        out = super().fields()
+        if out:
+            out.append(Field("sill", "Peitoril", "m", self.target["base"]))
+        return out
+
+    def fix(self, key, value):
+        if key == "sill":  # vale para as próximas janelas (spec/ui 09 §2.1)
+            if value is not None and value < 0:
+                return "o peitoril não pode ser negativo"
+            self.base = value
+            if self.cursor is not None:
+                self.move(self.cursor, self.mods)
+            return None
+        return super().fix(key, value)
+
+    def size_labels(self, wall, distance, width, height, base, y):
+        at = wall.frame.to_global((distance + width / 2, wall.ymin - 0.25))
+        return [(at, f"peitoril {fmt(base)} · verga {fmt(base + height)}")]
 
 
 # --- dividir (0.2 §5) -----------------------------------------------------------------------
@@ -1540,7 +1809,8 @@ class MirrorTool(_SelectionTool):
                 *_shape_marks(self._shapes(), fn)]
 
 
-TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, SplitTool, MoveTool,
+TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, SplitTool,
+         MoveTool,
          CopyTool, RotateTool, MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
@@ -1639,7 +1909,8 @@ class ToolBox:
         doc = self.ctx.session.doc
         for tool in self.tools.values():
             holder = tool.options if isinstance(tool, _WallTool) else tool
-            ifc_class = "IfcWallType" if isinstance(tool, _WallTool) else "IfcDoorType"
+            ifc_class = ("IfcWallType" if isinstance(tool, _WallTool)
+                         else getattr(tool, "type_class", "IfcDoorType"))
             if not hasattr(holder, "type") or (holder.type and doc.find(holder.type)):
                 continue
             types = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")

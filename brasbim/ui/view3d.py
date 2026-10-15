@@ -37,7 +37,8 @@ except ImportError:  # PyOpenGL ausente: a vista não desenha
 
 _SELECT = np.array([0.11, 0.44, 0.84], dtype=np.float32)
 _BACKGROUND = (0.93, 0.94, 0.95)
-_MARK_COLOR = {"invalid": (0.83, 0.23, 0.18), "guide": (0.45, 0.60, 0.80)}
+_MARK_COLOR = {"invalid": (0.83, 0.23, 0.18), "guide": (0.45, 0.60, 0.80),
+               "reference": (0.10, 0.45, 0.85)}
 _PREVIEW = (0.11, 0.44, 0.84)
 CLICK_PX = 4  # o clique só vale se o cursor andar menos que isto (§3.1)
 HANDLE_PX = 8  # raio de captura das alças na tela (spec/ui 08 §3)
@@ -390,7 +391,13 @@ class View3D(QOpenGLWidget, ToolInput):
             return
         self.cursor_moved.emit(*p)
         tool.move(p, mods)
+        self.restart_dwell()
         self.after_tool_input()
+
+    def anchor_screen(self, p):
+        """Ponto do pavimento ativo projetado na tela (balão da linha de referência)."""
+        q = self.camera.project((p[0], p[1], self.work_z()), self.width(), self.height())
+        return QPointF(*q) if q is not None else None
 
     def mousePressEvent(self, event):
         self.before_press()

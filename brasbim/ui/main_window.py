@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
             else:
                 self.scene.update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
-            if tool.cursor is not None and tool.name in ("door", "split"):
+            if tool.cursor is not None and tool.name in ("door", "window", "split"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo
             self._refresh_all()
         elif event == "storey":

@@ -11,7 +11,7 @@ Ferramenta sem campos que aceita número (alças da seleção) usa um campo úni
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QRectF, Qt
+from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
 
@@ -19,6 +19,7 @@ from brasbim.ui.tools import SELECTION_TOOLS, parse_number
 
 ROWS = 2
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
+DWELL_MS = 400  # cursor parado sobre um vértice: ponto de referência (spec/ui 09 §2.1)
 # Cores do tema (claro ou escuro): o valor do cursor legível, o fixado em negrito.
 _STYLE = {
     "cursor": "QLineEdit { color: palette(text); background: transparent; border: none; }",
@@ -142,7 +143,12 @@ class MeasureBox(QFrame):
         self.raise_()
 
     def _place(self) -> None:
-        pos = self.view.mouse_pos
+        pos = None
+        anchor = self.tool.field_anchor()  # meio da linha de referência (spec/ui 09 §2.1)
+        if anchor is not None:
+            pos = self.view.anchor_screen(anchor)
+        if pos is None:
+            pos = self.view.mouse_pos
         if pos is None:
             pos = self.view.mapFromGlobal(QCursor.pos())
         x = min(max(pos.x() + _CURSOR_GAP, 0), max(self.view.width() - self.width(), 0))
@@ -284,6 +290,22 @@ class ToolInput:
     def _init_tool_input(self) -> None:
         self.mouse_pos = None  # última posição do mouse na vista (QPointF)
         self.measure = MeasureBox(self)
+        self.dwell = QTimer(self)
+        self.dwell.setSingleShot(True)
+        self.dwell.setInterval(DWELL_MS)
+        self.dwell.timeout.connect(self._dwelled)
+
+    def restart_dwell(self) -> None:
+        """Cursor andou: recomeça a contar a parada sobre um vértice."""
+        if self.toolbox.active.creates:
+            self.dwell.start()
+
+    def _dwelled(self) -> None:
+        if self.measure.editing is None and self.toolbox.active.acquire():
+            self.after_tool_input()
+
+    def anchor_screen(self, p):
+        """Ponto do pavimento na tela (QPointF), ou None (a vista que sabe projeta)."""
 
     @property
     def numeric(self) -> QLineEdit:

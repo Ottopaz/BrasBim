@@ -76,6 +76,9 @@ class PlanView(QWidget, ToolInput):
 
     # --- coordenadas -----------------------------------------------------------------
 
+    def anchor_screen(self, p) -> QPointF:
+        return self.to_screen(p)
+
     def to_screen(self, p) -> QPointF:
         return QPointF(self.origin.x() + p[0] * self.scale, self.origin.y() - p[1] * self.scale)
 
@@ -296,6 +299,11 @@ class PlanView(QWidget, ToolInput):
             if mark.style == "gap":
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(QBrush(C["background"]))
+            elif mark.style in ("guide", "reference"):
+                painter.setPen(QPen(C["preview"], 1.6 if mark.style == "reference" else 1,
+                                    Qt.SolidLine if mark.style == "reference"
+                                    else Qt.DashLine))
+                painter.setBrush(Qt.NoBrush)
             elif mark.style in ("window", "crossing"):
                 color = C["preview"] if mark.style == "window" else C["crossing"]
                 fill = QColor(color)
@@ -399,6 +407,7 @@ class PlanView(QWidget, ToolInput):
         p = self.to_world(event.position())
         self.cursor_moved.emit(*p)
         self.toolbox.active.move(p, self._mods(event))
+        self.restart_dwell()
         self._refresh_hint()
 
     def mouseReleaseEvent(self, event):

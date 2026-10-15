@@ -162,8 +162,9 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
     for door in lone:
         wall, distance, o = _lone_target(doc, door, fn, set())
         data = {**o, "wall": wall, "distance": distance}
+        copied = _copy_door_ops(doc, door, data)  # recusa a de outra origem antes
         openings.check_fits(doc, doc.get(wall, "IfcWall"), data)
-        opening_ops += _copy_door_ops(doc, door, data)
+        opening_ops += copied
     ops += opening_ops
     return Transaction("Copiar", ops + connections.sync_ops(doc, new))
 

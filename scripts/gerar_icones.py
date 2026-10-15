@@ -29,6 +29,9 @@ ICONS = {
             '<path d="M5.75 19.25 V6.75"/>'
             '<path d="M5.75 6.75 A12.5 12.5 0 0 1 18.25 19.25" stroke-width="1" '
             'stroke-dasharray="2 1.5"/>',
+    # janela em planta: trechos de parede, marco e dois caixilhos de correr
+    "window": '<path d="M2 8.75 H5.75 V15.25 H2 M22 8.75 H18.25 V15.25 H22"/>'
+              '<path d="M5.75 11 H13.5 M10.5 13 H18.25" stroke-width="1"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

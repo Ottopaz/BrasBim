@@ -127,8 +127,9 @@ def problems(state: dict, band, wall_height: float, profile=None) -> list[str]:
     return out
 
 
-def check_fits(doc: Document, wall, state: dict) -> None:
-    """Rejeita abertura que não cabe na parede. Usada pelos comandos: ao aplicar uma
+def check_fits(doc: Document, wall, state: dict, exclude: str | None = None) -> None:
+    """Rejeita abertura que não cabe na parede ou que cai sobre outro vão dela
+    (``exclude``: a própria abertura, numa edição). Usada pelos comandos: ao aplicar uma
     operação (inclusive desfazer), abertura fora dos limites só gera aviso (spec §6.3)."""
     from brasbim.core.walls.wall import TILT_WITH_OPENINGS
     from brasbim.core.walls.wall import read_state as read_wall
@@ -141,6 +142,10 @@ def check_fits(doc: Document, wall, state: dict) -> None:
     if abs(wall_state["tilt"]) > 1e-9:
         raise OpError(TILT_WITH_OPENINGS)
     found = problems(state, band, wall_height, wall_state["top_profile"])
+    for other in of_wall(wall):
+        if other.GlobalId != exclude and _overlap(state, read_state(other)):
+            found.append("sobre outro vão da parede")
+            break
     if found:
         raise OpError(f"abertura não cabe na parede: {'; '.join(found)}")
 

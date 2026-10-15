@@ -367,7 +367,7 @@ def edit_opening(doc: Document, opening, **changes) -> Transaction:
     state = openings.read_state(opening)
     before = {k: state[k] for k in changes}
     after = {**state, **changes}
-    openings.check_fits(doc, doc.get(after["wall"], "IfcWall"), after)
+    openings.check_fits(doc, doc.get(after["wall"], "IfcWall"), after, exclude=opening.GlobalId)
     return Transaction("Editar abertura", [Op("opening.edit", opening.GlobalId, before=before,
                                               after=dict(changes))])
 

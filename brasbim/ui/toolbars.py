@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar
 from brasbim.core.fillings import params
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons
-from brasbim.ui.tools import DoorTool, _WallTool, fmt, parse_number
+from brasbim.ui.tools import WindowTool, _FillingTool, _WallTool, fmt, parse_number
 
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
 CREATE_TOOLS = [
@@ -23,7 +23,9 @@ CREATE_TOOLS = [
     ("wall", "wall", "Parede",
      "escolha a forma, o tipo e a linha de referência na barra de opções"),
     ("door", "door", "Porta",
-     "passe o cursor sobre uma parede reta e clique; Tab troca as dobradiças"),
+     "passe o cursor sobre uma parede reta e clique; Tab digita a distância"),
+    ("window", "window", "Janela",
+     "passe o cursor sobre uma parede reta e clique; Tab digita a distância e o peitoril"),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -38,6 +40,9 @@ REF_LINES = [("left_face", "ref_left", "Face esquerda",
               "a linha clicada é a face direita de quem anda do início ao fim")]
 HINGES = [("left", "hinge_left", "Dobradiças à esquerda", "vista de quem empurra a folha"),
           ("right", "hinge_right", "Dobradiças à direita", "vista de quem empurra a folha")]
+_SEEN = "vista do lado oposto ao da abertura"
+HANDS = [("left", "hinge_left", "Mão esquerda", f"dobradiças à esquerda, {_SEEN}"),
+         ("right", "hinge_right", "Mão direita", f"dobradiças à direita, {_SEEN}")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 
@@ -125,7 +130,7 @@ class OptionsBar(QToolBar):
         self._clear()
         if isinstance(tool, _WallTool):
             self._wall(tool)
-        elif isinstance(tool, DoorTool):
+        elif isinstance(tool, _FillingTool):
             self._door(tool)
         else:
             self.hide()
@@ -230,33 +235,38 @@ class OptionsBar(QToolBar):
     # --- porta (§4.2) ---------------------------------------------------------------
 
     def _door(self, tool) -> None:
+        """Porta (§4.2) e janela (spec/ui 09 §3)."""
         window = self.window_
+        is_window = isinstance(tool, WindowTool)
+        type_class = tool.type_class
         self._label("Tipo")
-        variants = {t.GlobalId for t in self._types("IfcDoorType")
+        variants = {t.GlobalId for t in self._types(type_class)
                     if params.base_name(t.Name or "") != (t.Name or "")}
-        items = [(t.Name, t.GlobalId) for t in self._types("IfcDoorType")
+        items = [(t.Name, t.GlobalId) for t in self._types(type_class)
                  if t.GlobalId not in variants or t.GlobalId == tool.type]
 
         def set_type(gid):
             tool.type = gid
             self.show_for(tool)
 
-        self._combo(items, tool.type, set_type, "Tipo da próxima porta")
+        self._combo(items, tool.type, set_type, f"Tipo da próxima {tool.noun}")
         edit = make_action(self, "edit_type", "Editar tipo",
-                           "abre o tipo escolhido na janela de tipos de porta")
-        edit.triggered.connect(lambda: window.edit_type("IfcDoorType", tool.type))
+                           f"abre o tipo escolhido na janela de tipos de {tool.noun}")
+        edit.triggered.connect(lambda: window.edit_type(type_class, tool.type))
         self.addAction(edit)
         self.addSeparator()
         tstate = tool.type_state()
         defaults = tstate["defaults"] if tstate else {"width": 0, "height": 0, "base": 0}
-        for key, name in (("width", "Largura"), ("height", "Altura"), ("base", "Base")):
+        base = "Peitoril" if is_window else "Base"
+        for key, name in (("width", "Largura"), ("height", "Altura"), ("base", base)):
             self._label(name)
             self._number(getattr(tool, key), lambda v, k=key: setattr(tool, k, v),
                          f"{name} do vão (vazio = do tipo)",
                          placeholder=fmt(defaults[key]), allow_empty=True)
-        if tstate and params.hand_of(tstate["operation_type"]) is not None:
+        if tstate and tool.hand(tstate) is not None:
             self.addSeparator()
-            self._choices(HINGES, tool.hinges, lambda v: setattr(tool, "hinges", v))
+            self._choices(HANDS if is_window else HINGES, tool.hinges,
+                          lambda v: setattr(tool, "hinges", v))
         self.addSeparator()
         self._label("Marco")
         self._combo(ALIGNS, tool.align, lambda v: setattr(tool, "align", v),
