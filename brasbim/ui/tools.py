@@ -321,8 +321,12 @@ class SelectTool(Tool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.drag: dict | None = None
+        self.drag3d = None  # alça da parede no 3D (handles3d.WallHandle3D, spec/ui 08 §3)
 
     def hint(self) -> str:
+        if self.drag3d is not None:
+            return ("Leve a alça e solte (ou clique); Tab digita a medida; Ctrl ao soltar "
+                    "inverte o que acompanha; Esc cancela")
         d = self.drag
         if d and d["kind"] == "door" and d["active"]:
             return "Solte sobre uma parede reta para posicionar a porta (Esc cancela)"
@@ -338,7 +342,50 @@ class SelectTool(Tool):
                 "por janela; arraste as alças ou a seleção para editar")
 
     def wants_number(self) -> bool:
-        return bool(self.drag and self.drag["kind"] == "handle" and self.drag["active"])
+        return self.drag3d is not None or bool(
+            self.drag and self.drag["kind"] == "handle" and self.drag["active"])
+
+    # alças no 3D (spec/ui 08 §3): o quadro de medidas fala com o arrasto
+
+    def fields(self):
+        return self.drag3d.fields() if self.drag3d is not None else []
+
+    def check(self, key, value):
+        return self.drag3d.check(key, value) if self.drag3d is not None else None
+
+    def fix(self, key, value):
+        h = self.drag3d
+        if h is None:
+            return super().fix(key, value)
+        if value is None:
+            h.fixed.pop(key, None)
+        else:
+            error = h.check(key, value)
+            if error:
+                return error
+            h.fixed[key] = value
+        h.update(ctrl=h.ctrl)
+        return None
+
+    def release_fixed(self):
+        if self.drag3d is not None:
+            self.drag3d.fixed.clear()
+            self.drag3d.update(ctrl=self.drag3d.ctrl)
+        else:
+            super().release_fixed()
+
+    def confirm(self):
+        if self.drag3d is None:
+            return super().confirm()
+        self.commit3d()
+        return True
+
+    def commit3d(self) -> None:
+        h, self.drag3d = self.drag3d, None
+        if h.error:
+            self.session.message(h.error, "recusa")
+        elif h.tx is not None:
+            self.session.run(h.tx)
 
     # alças (§4)
 
@@ -463,6 +510,8 @@ class SelectTool(Tool):
             self.session.run(d["tx"])
 
     def numeric(self, value):
+        if self.drag3d is not None:
+            return super().numeric(value)
         d = self.drag
         if not self.wants_number():
             return False
@@ -618,8 +667,8 @@ class SelectTool(Tool):
             self.session.run(lambda: transform.move_elements(doc, gids, vector))
 
     def cancel(self):
-        if self.drag:
-            self.drag = None
+        if self.drag or self.drag3d is not None:
+            self.drag = self.drag3d = None
             self.snapped = None
             return True
         return False

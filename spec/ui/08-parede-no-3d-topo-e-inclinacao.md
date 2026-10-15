@@ -144,12 +144,12 @@ eixo z é do caso **sem** `IfcMaterialLayerSetUsage`. [IFC-WALL] Por isso, tomba
 ## 7. Critérios de aceite (testes)
 - [x] **UI73** Ponta de parede de retângulo arrastada sem Ctrl: só ela muda e a junção
       daquela ponta some; com Ctrl, a vizinha vai junto (§2; UI15 e UI43).
-- [ ] **UI74** 3D, parede selecionada sozinha: 7 alças (2 pontas, face, topo, base,
-      inclinação); com duas paredes, nenhuma.
-- [ ] **UI75** 3D, arrastar a alça de topo até z = 2,50 numa parede de altura fixa
+- [x] **UI74** 3D, parede selecionada sozinha: alças nas 2 pontas, face, topo e base
+      (mais a de inclinação na etapa do §5); com duas paredes, nenhuma.
+- [x] **UI75** 3D, arrastar a alça de topo até z = 2,50 numa parede de altura fixa
       2,80: `wall.edit` com altura fixa 2,50; digitar `3` com a alça presa dá 3,00. Com
       topo no pavimento de cima, muda o deslocamento do topo.
-- [ ] **UI76** 3D, alça de ponta e de face geram a mesma transação que as alças da planta.
+- [x] **UI76** 3D, alça de ponta e de face geram a mesma transação que as alças da planta.
 - [ ] **UI77** Empena 2,80 nas pontas e 4,00 na cumeeira, numa parede de 6 m: IFC com
       `IfcBooleanClippingResult` e dois `IfcPolygonalBoundedHalfSpace`; o sólido triangulado
       tem z máximo 4,00 em x = 3 e 2,80 nas pontas; `IfcMaterialLayerSetUsage` continua;

@@ -10,6 +10,7 @@ ficam em ``scene3d``, sem Qt."""
 from __future__ import annotations
 
 import logging
+import math
 
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
@@ -17,7 +18,9 @@ import numpy as np
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from brasbim.core import transform
+from brasbim.core import snap, transform
+from brasbim.core.document import OpError
+from brasbim.ui.handles3d import PLANAR, WallHandle3D, wall_handles
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
 from brasbim.ui.tools import Mods, ToolBox
@@ -36,6 +39,7 @@ _BACKGROUND = (0.93, 0.94, 0.95)
 _MARK_COLOR = {"invalid": (0.83, 0.23, 0.18), "guide": (0.45, 0.60, 0.80)}
 _PREVIEW = (0.11, 0.44, 0.84)
 CLICK_PX = 4  # o clique só vale se o cursor andar menos que isto (§3.1)
+HANDLE_PX = 8  # raio de captura das alças na tela (spec/ui 08 §3)
 SNAP_PX = 10
 TRANSFORM_TOOLS = ("move", "copy", "rotate", "mirror")
 
@@ -206,6 +210,7 @@ class View3D(QOpenGLWidget, ToolInput):
                 GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.edges)
                 GL.glDrawArrays(GL.GL_LINES, 0, len(mesh.edges))
         self._paint_tool()
+        self._paint_handles()
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
         if self.selection_bar is not None:
             self.selection_bar.place()
@@ -248,6 +253,110 @@ class View3D(QOpenGLWidget, ToolInput):
         GL.glLineWidth(1.0)
         GL.glEnable(GL.GL_DEPTH_TEST)
 
+    # --- alças da parede (spec/ui 08 §3) -------------------------------------------------
+
+    def selected_wall(self) -> snap.WallPath | None:
+        """Parede selecionada sozinha (de qualquer pavimento), com a ferramenta Selecionar."""
+        tool, selection = self.toolbox.active, self.selection
+        if tool.name != "select" or len(selection) != 1:
+            return None
+        doc = self.ctx.session.doc
+        element = doc.find(next(iter(selection)))
+        if element is None or not element.is_a("IfcWall"):
+            return None
+        storey = storey_of(element)
+        if storey is None:
+            return None
+        walls = self.ctx.walls if storey.GlobalId == self.ctx.session.storey_id \
+            else snap.wall_paths(doc, storey)
+        return next((w for w in walls if w.gid == element.GlobalId), None)
+
+    def handles(self) -> list[tuple[str, tuple[float, float, float]]]:
+        wall = self.selected_wall()
+        if wall is None:
+            return []
+        try:
+            return wall_handles(self.ctx.session.doc, wall)
+        except (OpError, ValueError, KeyError):
+            return []
+
+    def handle_at(self, pos: QPointF) -> str | None:
+        best = None
+        for kind, point in self.handles():
+            q = self.camera.project(point, self.width(), self.height())
+            if q is None:
+                continue
+            d = math.hypot(q[0] - pos.x(), q[1] - pos.y())
+            if d <= HANDLE_PX and (best is None or d < best[0]):
+                best = (d, kind)
+        return best[1] if best else None
+
+    def _start_handle(self, kind: str) -> None:
+        tool = self.toolbox.active
+        tool.drag3d = WallHandle3D(self.ctx, self.selected_wall(), kind)
+        tool.drag3d.anchor = np.array(dict(self.handles())[kind])  # o plano passa pela alça
+        tool.drag3d.update()
+        self.after_tool_input()
+
+    def _feed_handle(self, pos: QPointF, mods: Mods) -> None:
+        """Leva a alça presa ao cursor: ponto no plano (pontas, face) ou cota (topo, base)."""
+        h = self.toolbox.active.drag3d
+        origin, direction = self.ray(pos)
+        if h.kind in PLANAR:
+            z = h.zb + (h.h / 2 if h.kind == "face" else 0.0)
+            hit = ray_plane(origin, direction, z)
+            if hit is None:
+                return
+            self.ctx.tol = SNAP_PX * self.camera.pixel_size(hit, self.height())
+            p = (float(hit[0]), float(hit[1]))
+            if h.kind == "face":
+                p = self.ctx.snap(p, Mods(alt=mods.alt)).point
+            else:
+                fixed = h.wall.path.end if h.kind == "start" else h.wall.path.start
+                p = self.ctx.snap(p, mods, fixed).point
+            h.update(point=p, ctrl=mods.ctrl)
+        else:
+            forward, _, _ = self.camera.axes()
+            normal = np.array([forward[0], forward[1], 0.0])
+            if np.linalg.norm(normal) < 1e-6:
+                return  # olhando de cima: não há plano vertical de frente
+            normal /= np.linalg.norm(normal)
+            anchor = h.anchor
+            denom = float(direction @ normal)
+            if abs(denom) < 1e-9:
+                return
+            t = float((anchor - origin) @ normal) / denom
+            if t <= 0:
+                return
+            hit = origin + t * direction
+            tol = SNAP_PX * self.camera.pixel_size(hit, self.height())
+            h.update(z=h.snap_z(float(hit[2]), mods.alt, tol), ctrl=mods.ctrl)
+        h.moved = True
+        self.after_tool_input()
+
+    def _paint_handles(self) -> None:
+        tool = self.toolbox.active
+        h = getattr(tool, "drag3d", None)
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        if h is not None:
+            GL.glLineWidth(1.5)
+            GL.glColor3f(*(_MARK_COLOR["invalid"] if h.error else _PREVIEW))
+            for line in h.outline():
+                pts = np.array(line, dtype=np.float32)
+                GL.glVertexPointer(3, GL.GL_FLOAT, 0, pts)
+                GL.glDrawArrays(GL.GL_LINE_STRIP, 0, len(pts))
+            GL.glLineWidth(1.0)
+        hot = h.kind if h is not None else (
+            self.handle_at(self.mouse_pos) if self.mouse_pos is not None else None)
+        for size, cold, filled in ((11, _PREVIEW, _PREVIEW), (7, (1.0, 1.0, 1.0), _PREVIEW)):
+            GL.glPointSize(size)
+            for kind, point in self.handles():
+                GL.glColor3f(*(filled if kind == hot else cold))
+                pts = np.array([point], dtype=np.float32)
+                GL.glVertexPointer(3, GL.GL_FLOAT, 0, pts)
+                GL.glDrawArrays(GL.GL_POINTS, 0, 1)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
     # --- mouse -------------------------------------------------------------------------
 
     @staticmethod
@@ -273,6 +382,18 @@ class View3D(QOpenGLWidget, ToolInput):
         self.setFocus()
         self.ctx.input_view = self
         button = event.button()
+        tool = self.toolbox.active
+        h = getattr(tool, "drag3d", None)
+        if button == Qt.LeftButton and h is not None:  # alça presa ao cursor: confirma
+            self._feed_handle(event.position(), self._mods(event))
+            tool.commit3d()
+            self.after_tool_input()
+            return
+        kind = self.handle_at(event.position()) if button == Qt.LeftButton else None
+        if kind is not None:
+            self._start_handle(kind)
+            self._press = ("handle", event.position())
+            return
         if button == Qt.MiddleButton:
             self._drag = ("pan", event.position())
         elif button in (Qt.LeftButton, Qt.RightButton):
@@ -282,6 +403,11 @@ class View3D(QOpenGLWidget, ToolInput):
         self.ctx.input_view = self
         pos = self.mouse_pos = event.position()
         press = self._press
+        h = getattr(self.toolbox.active, "drag3d", None)
+        if h is not None:
+            if press is None or (pos - press[1]).manhattanLength() >= CLICK_PX:
+                self._feed_handle(pos, self._mods(event))
+            return
         if press is not None and press[0] == "left" and self._drag is None \
                 and (pos - press[1]).manhattanLength() >= CLICK_PX:
             self._drag = ("orbit", press[1])
@@ -304,6 +430,16 @@ class View3D(QOpenGLWidget, ToolInput):
 
     def mouseReleaseEvent(self, event):
         press, self._press = self._press, None
+        tool = self.toolbox.active
+        h = getattr(tool, "drag3d", None)
+        if h is not None and press is not None and press[0] == "handle":
+            if h.moved:
+                h.update(ctrl=self._mods(event).ctrl)
+                tool.commit3d()
+            else:
+                h.sticky = True  # clique sem arrastar: a alça segue o cursor
+            self.after_tool_input()
+            return
         if self._drag is not None:
             self._drag = None
             return

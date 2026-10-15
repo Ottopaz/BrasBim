@@ -64,7 +64,7 @@ class SelectionBar(QFrame):
         view = self.plan_view
         tool = view.toolbox.active
         session = view.ctx.session
-        busy = tool.name != "select" or getattr(tool, "drag", None) is not None
+        busy = tool.name != "select" or getattr(tool, "drag", None) is not None             or getattr(tool, "drag3d", None) is not None
         other = view.ctx.input_view not in (None, view)  # só na vista em uso (spec/ui 07 §3.1)
         rect = view.selection_rect() if session.selection else None
         if not self.enabled or busy or other or rect is None:

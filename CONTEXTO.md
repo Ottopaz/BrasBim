@@ -9,7 +9,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (192 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (195 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -23,7 +23,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
 | `spec/ui/06-planta-por-camadas` | **aprovada** (pontos (a)–(h) aceitos); implementação **em andamento** (retomar em `core/layers.py`) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
-| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | **aprovada**; §2 implementado; alças, topo e tombada em andamento |
+| `spec/ui/08-parede-no-3d-topo-e-inclinacao` | **aprovada**; §2 e §3 (alças no 3D, UI73–UI76) implementados; falta §4 topo e §5 tombada |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -37,6 +37,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   (parede), largura/altura (retângulo), distância/ângulo (mover, copiar), ângulo (girar,
   espelhar), distância (dividir). Lógica sem Qt em `tools.py` (`fields`, `fix`, `confirm`,
   `polar_point`, `rect_corner`).
+- Alças da parede no 3D (`ui/handles3d.py`, `View3D.handles`): pontas, face, topo, base;
+  o arrasto vive em `SelectTool.drag3d` e usa o quadro de medidas.
 - Vista 3D com seleção por clique, as mesmas ferramentas da planta (ponto = x, y do
   elemento atingido ou do plano do pavimento), fantasma das transformações, mini-barra e
   menu do botão direito (Mostrar na planta / Mostrar no 3D / Enquadrar). Câmera e raio
