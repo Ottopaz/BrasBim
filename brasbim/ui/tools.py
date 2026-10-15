@@ -302,7 +302,7 @@ def moving_shapes(ctx: PlanContext, gids) -> list[plan.Shape]:
     selected = set(gids)
     doc = ctx.session.doc
     out = [s for s in ctx.plan.shapes if s.owner in selected and s.role != "below"]
-    for owner, shapes in sorted(ctx.plan.owners("door").items()):
+    for owner, shapes in sorted(ctx.plan.owners(("door", "window")).items()):
         if owner in selected:
             continue
         host = transform.host_wall(doc.get(owner))

@@ -228,10 +228,11 @@ class PlanView(QWidget, ToolInput):
                 fill.setAlpha(110)
                 painter.setBrush(QBrush(fill))
             else:
+                thin = role in ("door_swing", "window_sash", "window_glass")
                 color = C["select"] if selected else (C["swing"] if role == "door_swing"
                                                       else C["door"])
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
-                painter.setPen(QPen(color, 0.8 if role == "door_swing" else 1.3, style))
+                painter.setPen(QPen(color, 0.8 if thin else 1.3, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
 

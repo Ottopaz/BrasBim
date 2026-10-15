@@ -10,7 +10,9 @@ o preenchimento vem das regiões), ``wall_view`` (em vista: abaixo do plano, e a
 no peitoril), ``wall_above`` (acima do plano: tracejado), ``below`` (parede do pavimento
 de baixo), ``door_frame`` (marco, preenchido), ``door_leaf`` (folha), ``door_swing`` (arco
 de giro, linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejada) e
-``door`` (contorno de porta de outra origem).
+``door`` (contorno de porta de outra origem). A janela usa os mesmos papéis de porta
+para o marco, a folha aberta, o arco e a seta, e mais ``window_sash`` (faces do perfil do
+caixilho fechado) e ``window_glass`` (vidro), em linha fina (spec/ui 09 §6.2).
 
 Regiões (``Region``) e bordas (``Edge``) desenham as paredes cortadas: no detalhe
 simplificado, uma mancha por tipo (paredes do mesmo tipo unidas, sem linha na junção);
@@ -32,7 +34,7 @@ import numpy as np
 from brasbim.core import clip, geom2d, layers, materials, storeys
 from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
-from brasbim.core.fillings import door_types, doors, params
+from brasbim.core.fillings import door_types, doors, geometry, params, window_types
 from brasbim.core.geom2d import Point
 from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import types as wall_types
@@ -92,7 +94,7 @@ class Plan:
     regions: list[Region] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
 
-    def owners(self, role_prefix: str) -> dict[str, list[Shape]]:
+    def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
         for s in self.shapes:
             if s.role.startswith(role_prefix):
@@ -107,8 +109,8 @@ class Plan:
         return min(xs), min(ys), max(xs), max(ys)
 
     def pick(self, p: Point, tol: float) -> str | None:
-        """Elemento sob o ponto: porta (caixa envolvente) antes de parede (polígono)."""
-        for owner, shapes in sorted(self.owners("door").items()):
+        """Elemento sob o ponto: esquadria (caixa envolvente) antes de parede (polígono)."""
+        for owner, shapes in sorted(self.owners(("door", "window")).items()):
             pts = [q for s in shapes for q in s.points]
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
@@ -136,7 +138,7 @@ class Plan:
             return x0 <= q[0] <= x1 and y0 <= q[1] <= y1
 
         out = []
-        groups = {**self.owners("wall"), **self.owners("door")}
+        groups = {**self.owners("wall"), **self.owners(("door", "window"))}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes:
@@ -426,13 +428,65 @@ def door_symbol(width: float, depth: float, operation: str, lining: dict,
     return out
 
 
+def window_symbol(width: float, height: float, state: dict, cut_z: float | None = None
+                  ) -> list[tuple[str, list[Point], bool]]:
+    """Símbolo da janela no sistema dela (x ao longo do vão, y na profundidade do marco,
+    abrindo para +y; spec/ui 09 §6.2). ``cut_z``: altura do plano de corte a partir do
+    peitoril, que escolhe o caixilho desenhado na divisão um sobre o outro (sem ela, o de
+    baixo)."""
+    w, d = width, state["lining"]["depth"]
+    out: list[tuple[str, list[Point], bool]] = []
+    parts = geometry.window_parts(width, height, state)
+    # Peças verticais do marco e montantes: as que vão de baixo a cima.
+    for x0, x1, y0, y1, z0, z1 in (b for b, role in parts if role == "lining"):
+        if z1 - z0 > height / 2 and x1 - x0 < w - 1e-6:
+            out.append(("door_frame", _rect(x0, x1, y0, y1), True))
+    vertical = params.is_vertical(state["partitioning"])
+    glass = [b for b, role in parts if role == "glazing"]
+    cells = list(zip(state["panels"], glass))
+    if not vertical and cells:
+        z = cut_z if cut_z is not None else -1.0
+        row = [c for c in cells if c[1][4] - 0.05 <= z <= c[1][5] + 0.05]
+        cells = row[:1] or [cells[-1]]
+    t = state["lining"]["thickness"] or 0.0
+    for panel, (gx0, gx1, gy0, gy1, _, _) in cells:
+        op, ft, fd = panel["operation"], panel["frame_thickness"] or 0.0, panel["frame_depth"]
+        x0, x1 = (gx0 - ft, gx1 + ft) if vertical else (t, w - t)
+        yc = (gy0 + gy1) / 2
+        y0, y1 = yc - fd / 2, yc + fd / 2
+        if op in params.WINDOW_SWINGS:
+            pw = x1 - x0
+            if params.panel_hand(op) == "left":
+                out.append(("door_leaf", _rect(x0, x0 + fd, d, d + pw), True))
+                out.append(("door_swing", _arc((x0, d), pw, 0, math.pi / 2), False))
+            else:
+                out.append(("door_leaf", _rect(x1 - fd, x1, d, d + pw), True))
+                out.append(("door_swing", _arc((x1, d), pw, math.pi, math.pi / 2), False))
+            continue
+        out.append(("window_sash", [(x0, y0), (x1, y0)], False))
+        out.append(("window_sash", [(x0, y1), (x1, y1)], False))
+        out.append(("window_glass", [(x0, yc), (x1, yc)], False))
+        if op == "SLIDINGHORIZONTAL" and panel["position"] in ("LEFT", "RIGHT"):
+            to_high = panel["position"] == "LEFT"  # corre para o meio do vão
+            mid = (x0 + x1) / 2
+            tip = mid + (0.15 if to_high else -0.15)
+            head = -0.05 if to_high else 0.05
+            y = d + 0.06
+            out.append(("door_arrow", [(mid, y), (tip, y)], False))
+            out.append(("door_arrow", [(tip + head, y + 0.025), (tip, y),
+                                       (tip + head, y - 0.025)], False))
+    return out
+
+
 def _door_to_storey(door, storey):
     m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement)) \
         @ ifcopenshell.util.placement.get_local_placement(door.ObjectPlacement)
     return lambda p: tuple(float(v) for v in (m @ (p[0], p[1], 0.0, 1.0))[:2])
 
 
-def door_shapes(doc: Document, door, storey) -> list[Shape]:
+def door_shapes(doc: Document, door, storey, cut_z: float | None = None) -> list[Shape]:
+    """Símbolo da porta ou da janela no pavimento. ``cut_z``: plano de corte a partir da
+    base do vão (só a janela usa)."""
     if door.ObjectPlacement is None or not door.OverallWidth:
         return []
     to_storey = _door_to_storey(door, storey)
@@ -444,7 +498,12 @@ def door_shapes(doc: Document, door, storey) -> list[Shape]:
             thickness = rebuild.band(doc, read_wall(doc, wall)).thickness
         except OpError:
             pass
-    if doors.is_parametric(door):
+    if doors.is_parametric(door) and door.is_a("IfcWindow"):
+        state = doors.read_state(door)
+        tstate = window_types.read(doc.get(state["type"], "IfcWindowType"))
+        symbol = window_symbol(float(door.OverallWidth), float(door.OverallHeight or 0.0),
+                               tstate, cut_z)
+    elif doors.is_parametric(door):
         state = doors.read_state(door)
         tstate = door_types.read(doc.get(state["type"], "IfcDoorType"))
         depth = tstate["lining"]["depth"] or thickness
@@ -466,20 +525,49 @@ def _fmt(v: float) -> str:
 def door_label(doc: Document, door, storey) -> Label | None:
     if door.ObjectPlacement is None or not door.OverallWidth:
         return None
-    common = ifcopenshell.util.element.get_pset(door, doors.COMMON_PSET) or {}
+    common = ifcopenshell.util.element.get_pset(door, doors.kind_of(door)[2]) or {}
     code = common.get("Reference") or door.Name
     if not code:
         return None
     width, height = float(door.OverallWidth), float(door.OverallHeight or 0.0)
+    sill = None
     opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
     if opening is not None:
         try:
             o = openings.read_state(opening)
-            width, height = o["width"], o["height"]
+            width, height, sill = o["width"], o["height"], o["sill"]
         except OpError:
             pass
     at = _door_to_storey(door, storey)((float(door.OverallWidth) / 2, -LABEL_GAP))
-    return Label(door.GlobalId, at, str(code), f"{_fmt(width)} × {_fmt(height)}")
+    size = f"{_fmt(width)} × {_fmt(height)}"
+    if door.is_a("IfcWindow") and sill is not None:
+        size += f" / {_fmt(sill)}"  # peitoril (spec/ui 09 §6.3)
+    return Label(door.GlobalId, at, str(code), size)
+
+
+def _cut_in_opening(doc: Document, opening, cut: float) -> float | None:
+    """Plano de corte medido da base do vão (``None`` se não dá para saber)."""
+    if opening is None:
+        return None
+    try:
+        o = openings.read_state(opening)
+        wall = openings.host(opening)
+        return cut - read_wall(doc, wall)["base_offset"] - o["sill"]
+    except (OpError, TypeError, AttributeError):
+        return None
+
+
+def _hidden_window(doc: Document, window, storey) -> list[Shape]:
+    """Contorno do marco tracejado (janela acima do plano de corte)."""
+    if window.ObjectPlacement is None or not window.OverallWidth:
+        return []
+    depth = 0.05
+    if doors.is_parametric(window):
+        state = doors.read_state(window)
+        depth = window_types.read(doc.get(state["type"], "IfcWindowType"))["lining"]["depth"]
+    to_storey = _door_to_storey(window, storey)
+    pts = _rect(0, float(window.OverallWidth), 0, depth)
+    return [Shape(window.GlobalId, "door_hidden", tuple(to_storey(p) for p in pts), True)]
 
 
 def _continuous_last(walls) -> list:
@@ -518,11 +606,18 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     plan.shapes += sorted((s for c in cuts for s in c.shapes), key=lambda s: order.get(s.role, 2))
     _regions(doc, plan, cuts, detail)
     crossed = {o for c in cuts for o in c.crossed}
-    for door in _contained(storey, "IfcDoor"):
+    fillings = sorted(_contained(storey, "IfcDoor") + _contained(storey, "IfcWindow"),
+                      key=lambda e: e.GlobalId)
+    for door in fillings:
         opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
+        cut_z = _cut_in_opening(doc, opening, cut)
         if opening is not None and opening.GlobalId not in crossed:
-            continue  # vão fora do plano de corte: sem símbolo (spec/ui 06 §3.3)
-        plan.shapes += door_shapes(doc, door, storey)
+            # Vão fora do plano de corte: sem símbolo (spec/ui 06 §3.3); a janela acima
+            # do plano aparece tracejada (spec/ui 09 §6.1).
+            if door.is_a("IfcWindow") and show_above and cut_z is not None and cut_z < 0:
+                plan.shapes += _hidden_window(doc, door, storey)
+            continue
+        plan.shapes += door_shapes(doc, door, storey, cut_z)
         label = door_label(doc, door, storey)
         if label is not None:
             plan.labels.append(label)

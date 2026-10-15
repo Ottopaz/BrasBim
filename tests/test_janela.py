@@ -391,3 +391,48 @@ def test_mover_copiar_e_espelhar_com_janela(model):
     assert ue.get_type(model.doc.get(window.GlobalId)).Name == "J7 (D)"
     with pytest.raises(OpError, match="janela"):
         transform.mirror_elements(model.doc, [window.GlobalId], (10, 0), (10, 1))
+
+
+# --- planta (spec/ui 09 §6) ----------------------------------------------------------------
+
+
+def test_ui86_planta_por_plano_de_corte(model):
+    from brasbim.core import plan
+
+    wall = model.wall()
+    j1 = _window(model, wall)
+    j4 = _window(model, wall, 3.5, window_type=_window_type(
+        model, "J4", "SINGLE_PANEL", ["PIVOTHORIZONTAL"],
+        defaults={"width": 0.6, "height": 0.4, "base": 1.7}))
+    p = plan.storey_plan(model.doc, model.terreo)
+    roles = [s.role for s in p.shapes if s.owner == j1.GlobalId]
+    assert roles.count("door_frame") == 2  # sem montante entre os caixilhos de correr
+    assert roles.count("window_glass") == 2 and roles.count("door_arrow") == 4
+    assert [s.role for s in p.shapes if s.owner == j4.GlobalId] == ["door_hidden"]
+    assert p.pick((3.8, -0.07), 0.05) == j4.GlobalId
+    # Faces da parede em vista no peitoril da J1.
+    assert any(s.role == "wall_view" and s.owner == wall.GlobalId for s in p.shapes)
+    p = plan.storey_plan(model.doc, model.terreo, show_above=False)
+    assert not [s for s in p.shapes if s.owner == j4.GlobalId]
+
+
+def test_ui87_etiqueta_com_peitoril(model):
+    from brasbim.core import plan
+
+    j1 = _window(model, model.wall())
+    p = plan.storey_plan(model.doc, model.terreo)
+    (label,) = [la for la in p.labels if la.owner == j1.GlobalId]
+    assert (label.code, label.size) == ("J1", "1,20 × 1,00 / 1,10")
+
+
+def test_simbolo_de_abrir_e_travessa():
+    from brasbim.core import plan
+
+    two = window_types.default_state("DOUBLE_PANEL_VERTICAL",
+                                     ["SIDEHUNGLEFTHAND", "SIDEHUNGRIGHTHAND"])
+    roles = [r for r, _, _ in plan.window_symbol(1.0, 1.2, two)]
+    assert roles.count("door_swing") == 2 and roles.count("door_leaf") == 2
+    stacked = window_types.default_state("DOUBLE_PANEL_HORIZONTAL",
+                                         ["FIXEDCASEMENT", "TOPHUNG"])
+    roles = [r for r, _, _ in plan.window_symbol(1.0, 1.2, stacked, cut_z=0.3)]
+    assert roles.count("window_glass") == 1  # só o caixilho cortado

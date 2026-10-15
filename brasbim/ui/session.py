@@ -48,6 +48,19 @@ _DOOR_TYPES = [
     ("P2 – giro 70", "SINGLE_SWING_LEFT", 0.76),
     ("P3 – correr 2 folhas", "DOUBLE_DOOR_SLIDING", 1.66),
 ]
+# Biblioteca de janelas (spec/ui 09 §5.2): nome, código, divisão, operações, padrões.
+_SLIDE, _SIDE_L, _SIDE_R = "SLIDINGHORIZONTAL", "SIDEHUNGLEFTHAND", "SIDEHUNGRIGHTHAND"
+_WINDOW_TYPES = [
+    ("J1 – correr 2 folhas 120", "J1", "DOUBLE_PANEL_VERTICAL", [_SLIDE, _SLIDE],
+     (1.20, 1.00, 1.10)),
+    ("J2 – correr 2 folhas 150", "J2", "DOUBLE_PANEL_VERTICAL", [_SLIDE, _SLIDE],
+     (1.50, 1.20, 1.10)),
+    ("J3 – maxim-ar 60", "J3", "SINGLE_PANEL", ["TOPHUNG"], (0.60, 0.60, 1.50)),
+    ("J4 – basculante 60", "J4", "SINGLE_PANEL", ["PIVOTHORIZONTAL"], (0.60, 0.40, 1.70)),
+    ("J5 – de abrir 2 folhas", "J5", "DOUBLE_PANEL_VERTICAL", [_SIDE_L, _SIDE_R],
+     (1.00, 1.20, 1.10)),
+    ("J6 – fixa", "J6", "SINGLE_PANEL", ["FIXEDCASEMENT"], (1.00, 1.00, 1.10)),
+]
 
 
 def feedback_dir() -> Path:
@@ -122,6 +135,10 @@ class Session:
         for name, operation, width in _DOOR_TYPES:
             history.commit(fc.create_door_type(doc, name, operation,
                                                defaults={"width": width}))
+        for name, code, partitioning, operations, (w, h, base) in _WINDOW_TYPES:
+            history.commit(fc.create_window_type(
+                doc, name, partitioning, operations, code=code,
+                defaults={"width": w, "height": h, "base": base}))
         self._attach(doc, None)
         # O diário começa com o conteúdo inicial, para que reaplicá-lo reproduza a sessão.
         self.history.journal = list(history.journal)
