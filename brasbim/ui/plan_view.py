@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QWidget
 
 from brasbim.core.snap import KIND_LABEL
 from brasbim.ui.measure_box import ToolInput
+from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
 from brasbim.ui.tools import Mods, PlanContext, ToolBox
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
@@ -60,6 +61,8 @@ class PlanView(QWidget, ToolInput):
         self.scale = 60.0  # pixels por metro
         self.origin = QPointF(200, 400)  # posição na tela do ponto (0, 0) do pavimento
         self._pan: QPointF | None = None
+        self._zooming = QTimer(self, singleShot=True, interval=ZOOM_PAUSE_MS)
+        self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
         self.show_tag_size = False
@@ -87,6 +90,11 @@ class PlanView(QWidget, ToolInput):
             return None
         xs, ys = [q.x() for q in pts], [q.y() for q in pts]
         return min(xs), min(ys), max(xs), max(ys)
+
+    @property
+    def navigating(self) -> bool:
+        """Deslocamento ou zoom em curso (a mini-barra some até parar)."""
+        return self._pan is not None or self._zooming.isActive()
 
     def _sync_tol(self) -> None:
         self.ctx.tol = SNAP_PX / self.scale
@@ -355,6 +363,7 @@ class PlanView(QWidget, ToolInput):
     def mouseReleaseEvent(self, event):
         if self._pan is not None and event.button() in (Qt.MiddleButton, Qt.LeftButton):
             self._pan = None
+            self.update()  # a mini-barra volta junto à seleção
             return
         if event.button() == Qt.LeftButton:
             self.toolbox.active.release(self.to_world(event.position()), self._mods(event))
@@ -373,6 +382,7 @@ class PlanView(QWidget, ToolInput):
         self.scale = new
         self.origin = QPointF(at.x() - world[0] * new, at.y() + world[1] * new)
         self._sync_tol()
+        self._zooming.start()
         self.update()
 
     def event(self, event):

@@ -32,6 +32,9 @@ ACTIONS = {
 }
 
 
+ZOOM_PAUSE_MS = 300  # sem girar a roda por este tempo, o zoom acabou e a barra volta
+
+
 class SelectionBar(QFrame):
     def __init__(self, plan_view, run_action):
         super().__init__(plan_view)
@@ -66,7 +69,7 @@ class SelectionBar(QFrame):
         session = view.ctx.session
         busy = (tool.name != "select" or getattr(tool, "drag", None) is not None
                 or getattr(tool, "drag3d", None) is not None
-                or getattr(view, "navigating", False))  # órbita ou deslocamento no 3D
+                or getattr(view, "navigating", False))  # zoom, deslocamento ou órbita
         other = view.ctx.input_view not in (None, view)  # só na vista em uso (spec/ui 07 §3.1)
         rect = view.selection_rect() if session.selection else None
         if not self.enabled or busy or other or rect is None:

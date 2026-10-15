@@ -23,6 +23,7 @@ from brasbim.core.document import OpError
 from brasbim.ui.handles3d import WallHandle3D, wall_handles
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
+from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
 from brasbim.ui.tools import Mods, ToolBox
 
 log = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ class View3D(QOpenGLWidget, ToolInput):
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
         self._press: tuple[str, QPointF] | None = None  # botão e posição do clique
         self._drag: tuple[str, QPointF] | None = None  # órbita ou deslocamento
+        self._zooming = QTimer(self, singleShot=True, interval=ZOOM_PAUSE_MS)
+        self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.failed = GL is None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -219,8 +222,8 @@ class View3D(QOpenGLWidget, ToolInput):
 
     @property
     def navigating(self) -> bool:
-        """Órbita ou deslocamento em curso (a mini-barra some até soltar)."""
-        return self._drag is not None
+        """Órbita, deslocamento ou zoom em curso (a mini-barra some até parar)."""
+        return self._drag is not None or self._zooming.isActive()
 
     def _paint_tool(self) -> None:
         """Fantasma da seleção transformada e marcas da ferramenta no plano (§3.3)."""
@@ -496,6 +499,9 @@ class View3D(QOpenGLWidget, ToolInput):
         camera = self.camera
         camera.distance = min(max(camera.distance * 0.85 ** (event.angleDelta().y() / 120),
                                   0.5), 5000.0)
+        self._zooming.start()
+        if self.selection_bar is not None:
+            self.selection_bar.hide()
         self.update()
 
     # --- teclado -----------------------------------------------------------------------

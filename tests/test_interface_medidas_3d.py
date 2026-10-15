@@ -349,3 +349,43 @@ def test_orbita_esconde_a_mini_barra(window):
     QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, QPoint(90, 60))
     bar.place()
     assert not view.navigating and bar.isVisible()
+
+
+def _wheel(view, steps=1):
+    from PySide6.QtGui import QWheelEvent
+
+    at = QPointF(view.width() / 2, view.height() / 2)
+    event = QWheelEvent(at, view.mapToGlobal(at), QPoint(), QPoint(0, 120 * steps),
+                        Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+    QApplication.sendEvent(view, event)
+
+
+@pytest.mark.parametrize("which", ["view3d", "plan"])
+def test_zoom_esconde_a_mini_barra(window, which):
+    """Zoom e deslocamento também escondem a mini-barra até parar (relato de
+    2026-10-15: rastros no zoom do 3D)."""
+    s = window.session
+    walls = _rectangle(window)
+    view = getattr(window, which)
+    window.set_view("split")
+    if which == "view3d":
+        view.fit()
+    s.select([_south(s, walls).GlobalId])
+    view.ctx.input_view = view
+    bar = view.selection_bar
+    bar.place()
+    assert bar.isVisible()
+    _wheel(view)
+    bar.place()
+    assert view.navigating and not bar.isVisible()
+    QTest.qWait(400)  # a roda parou
+    bar.place()
+    assert not view.navigating and bar.isVisible()
+    if which == "plan":
+        QTest.mousePress(view, Qt.MiddleButton, Qt.NoModifier, QPoint(20, 20))
+        QTest.mouseMove(view, QPoint(40, 30))
+        bar.place()
+        assert view.navigating and not bar.isVisible()
+        QTest.mouseRelease(view, Qt.MiddleButton, Qt.NoModifier, QPoint(40, 30))
+        bar.place()
+        assert bar.isVisible()
