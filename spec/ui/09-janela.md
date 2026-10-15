@@ -291,51 +291,51 @@ reaproveitam os ícones da porta.
 ## 10. Critérios de aceite (testes)
 Parede reta de 5 m, 14 cm, 2,80 m, como em `janela.md` §9.
 
-- [ ] **UI82** Ferramenta Janela com J1, cursor do lado esquerdo a 2,10 m do início: cria a
+- [x] **UI82** Ferramenta Janela com J1, cursor do lado esquerdo a 2,10 m do início: cria a
       janela com o vão em 1,50–2,70, peitoril 1,10, `opens_to = left`; a transação tem as
       operações de §2, item 4; desfazer volta tudo.
-- [ ] **UI83** Sem referência pegada, cursor perto do fim da parede, Tab `0,30` Tab `1,20`
+- [x] **UI83** Sem referência pegada, cursor perto do fim da parede, Tab `0,30` Tab `1,20`
       Enter: vão a 0,30 m do fim (borda direita em 4,70) e peitoril 1,20; a próxima janela
       já sugere peitoril 1,20.
-- [ ] **UI83a** Parar o cursor 0,4 s sobre a borda de uma porta existente (vão em
+- [x] **UI83a** Parar o cursor 0,4 s sobre a borda de uma porta existente (vão em
       1,00–1,86) pega a referência; voltar à parede à direita dela, Tab `0,50` Enter: a
       janela começa em 2,36; a linha de referência e o balão aparecem; Esc solta a
       referência. Passar rápido pelo vértice não pega.
-- [ ] **UI83b** Porta: o mesmo com Tab `0,15` a partir do canto interno de uma junção em L;
+- [x] **UI83b** Porta: o mesmo com Tab `0,15` a partir do canto interno de uma junção em L;
       Tab não troca mais as dobradiças; os botões da barra Opções trocam.
-- [ ] **UI83c** Parede: pegar a ponta (5, 0) de uma parede existente, levar o cursor para a
+- [x] **UI83c** Parede: pegar a ponta (5, 0) de uma parede existente, levar o cursor para a
       direita perto do eixo x: linha de referência e balão "distância"; Tab `1,20` Enter
       põe o 1º ponto da parede nova em (6,20, 0). Longe das linhas, o balão volta a ser
       comprimento/ângulo.
-- [ ] **UI83d** Retângulo: com a referência num canto (0, 0), o 1º canto por Tab `0,50` na
+- [x] **UI83d** Retângulo: com a referência num canto (0, 0), o 1º canto por Tab `0,50` na
       vertical vai a (0, 0,50); continuar a parede até o cruzamento com a linha vertical de
       outro canto prende o cursor no cruzamento.
-- [ ] **UI84** Verga acima do topo (peitoril 2,00 com altura 1,00 numa parede de 2,80) e
+- [x] **UI84** Verga acima do topo (peitoril 2,00 com altura 1,00 numa parede de 2,80) e
       janela sobre a porta: vermelho e recusa com motivo.
-- [ ] **UI85** Tipo de abrir 1 folha, mão Direita na barra Opções: cria a variante uma vez
+- [x] **UI85** Tipo de abrir 1 folha, mão Direita na barra Opções: cria a variante uma vez
       só; segunda janela com a mesma mão reaproveita a variante.
-- [ ] **UI86** Planta, plano 1,50: J1 com peitoril 1,10 mostra marco preenchido, dois
+- [x] **UI86** Planta, plano 1,50: J1 com peitoril 1,10 mostra marco preenchido, dois
       caixilhos em trilhos paralelos e as faces da parede no peitoril; J4 (peitoril 1,70)
       aparece tracejada, e some com "Elementos acima do plano de corte" desligado.
-- [ ] **UI87** Etiqueta "J1" do lado oposto ao "abre para"; "Medidas na etiqueta" acrescenta
+- [x] **UI87** Etiqueta "J1" do lado oposto ao "abre para"; "Medidas na etiqueta" acrescenta
       "1,20 × 1,00 / 1,10"; desligar "Etiquetas de esquadrias" tira as de porta e janela.
-- [ ] **UI88** Painel: verga 2,30 → altura 1,20, peitoril 1,10 mantido (um
+- [x] **UI88** Painel: verga 2,30 → altura 1,20, peitoril 1,10 mantido (um
       `opening.edit`); com base da parede 0,20, "Peitoril do piso" mostra 1,30.
-- [ ] **UI89** Alças: na planta, a borda direita muda a largura com a esquerda fixa; no 3D,
+- [x] **UI89** Alças: na planta, a borda direita muda a largura com a esquerda fixa; no 3D,
       a alça da base com `1,30` digitado leva o peitoril a 1,30 e mantém a altura; a do
       topo com `2,30` muda só a altura.
-- [ ] **UI90** Mini-barra: Inverter sentido troca `opens_to`; Inverter mão troca para a
+- [x] **UI90** Mini-barra: Inverter sentido troca `opens_to`; Inverter mão troca para a
       variante; arrastar a janela para outra parede gera um único `opening.edit`.
-- [ ] **UI91** Tipos de janela: trocar J1 para "3 lado a lado" cria 3 caixilhos
+- [x] **UI91** Tipos de janela: trocar J1 para "3 lado a lado" cria 3 caixilhos
       (`LEFT`/`MIDDLE`/`RIGHT`) e montantes em 33,3 % e 66,7 %
       (`TRIPLE_PANEL_VERTICAL`); as janelas do tipo são refeitas; o desenho do tipo mostra
       3 caixilhos.
-- [ ] **UI92** 3D: a janela tem peças com as cores de marco, caixilho e vidro; o vidro é
+- [x] **UI92** 3D: a janela tem peças com as cores de marco, caixilho e vidro; o vidro é
       translúcido; cada item do `Body` tem `IfcStyledItem`; clicar na janela a seleciona.
-- [ ] **UI93** Espelhar a parede com janela de abrir 1 folha troca a mão; excluir a parede
+- [x] **UI93** Espelhar a parede com janela de abrir 1 folha troca a mão; excluir a parede
       com uma porta e duas janelas pede confirmação com "1 porta e 2 janelas".
-- [ ] **UI94** Projeto novo tem os tipos J1–J6 de §5.2 e os materiais Alumínio e Vidro.
-- [ ] **UI95** Os diários de UI82–UI93 reaplicados num projeto novo reproduzem o IFC.
+- [x] **UI94** Projeto novo tem os tipos J1–J6 de §5.2 e os materiais Alumínio e Vidro.
+- [x] **UI95** Os diários de UI82–UI93 reaplicados num projeto novo reproduzem o IFC.
 
 ## 11. Fontes públicas
 - **JANELA**, **PORTA** — `spec/elementos/janela.md` e `porta.md` (aprovadas).

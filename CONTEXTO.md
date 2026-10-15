@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (pacote 2 concluído; spec/ui 09, janela, em revisão).*
+*Atualizado em 2026‑10‑15 (pacote 3 concluído: janela e ponto de referência, spec/ui 09).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (239 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (279 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -18,13 +18,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Specs
 | Spec | Situação |
 |---|---|
-| `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas (parede e porta implementadas; janela não) |
+| `spec/elementos/parede.md`, `porta.md`, `janela.md` | aprovadas e implementadas (janela: JA01–JA14 em `tests/test_janela.py`) |
 | `spec/01-modelo-de-dados.md` | rascunho vivo, atualizado a cada operação nova |
 | `spec/ui/01` (0.1), `02-edicao` (0.2), `03-barras-e-icones`, `04-painel-de-propriedades`, `05-acabamento-parede-porta` | aprovadas e implementadas (testes UI01–UI50) |
 | `spec/ui/06-planta-por-camadas` | aprovada e implementada (testes UI51–UI60) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
-| `spec/ui/09-janela` | aprovada em 2026‑10‑15, em implementação (testes UI82–UI95) |
+| `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -97,14 +97,48 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Mini-barra: some durante zoom (300 ms depois da roda), deslocamento e órbita, no 3D e
   na planta (`navigating`; relato de 2026‑10‑15).
 
+## Pacote 3 — como ficou (spec/ui 09)
+- Porta e janela compartilham o código: `doors.py` (ocorrência das duas; `KINDS`,
+  `kind_of`, `type_common_defaults`), `commands.py` (`_Kind` DOOR/WINDOW; as funções
+  `*_door` servem às duas; `create_window`, `*_window_type`, `hand`), `rebuild.py`
+  (`rebuild_door` refaz as duas). Janela: `window_types.py` (estado com `code`,
+  `partitioning`, `lining` com montantes/travessas em fração, `panels`), `params.py`
+  (divisões, operações, mão e espelho dos caixilhos), `geometry.window_parts` (caixas com
+  papel lining/framing/glazing; correr em trilhos alternados, sobrepostos sem montante).
+- Cada peça do `Body` (porta e janela) tem `IfcStyledItem` com o `IfcSurfaceStyle` do
+  material; `materials.ensure_style` grava o estilo padrão ao gravar o tipo. Estilo de
+  material ganhou `transparency` (Vidro 0,6) em `IfcSurfaceStyleShading.Transparency`.
+- Planta: `plan.window_symbol` (papéis `window_sash`, `window_glass` + os de porta),
+  janela acima do plano em `door_hidden`, etiqueta "J1 / 1,20 × 1,00 / 1,10";
+  `plan.window_elevation` desenha o tipo no diálogo. Vão sobre outro vão é recusado
+  (`openings.check_fits(..., exclude=)`).
+- Interface: `WindowTool` e `DoorTool` (`_FillingTool`), Tab = balão Distância (+
+  Peitoril na janela); mão/dobradiças só na barra Opções, painel e mini-barra. Ponto de
+  referência em `Tool` (`acquire`, `release_reference`, `reference_marks`,
+  `field_anchor`) e `_WallTool._track` (linhas 0/90°, cruzamento com o ponto anterior);
+  vértices em `PlanContext.vertices`; a vista chama `acquire` após 0,4 s parada
+  (`measure_box.DWELL_MS`, `restart_dwell`). Painel com Peitoril, Verga, Peitoril do
+  piso, "Lado interno"; `WindowTypesDialog` com desenho; Exibir > Etiquetas de
+  esquadrias (chave `etiquetas_porta` mantida); exclusão avisa "1 porta e 2 janelas".
+- 3D: `scene3d._styled_mesh` (cor por peça pelos `IfcStyledItem`, vidro em
+  `Mesh.glass`, desenhado com transparência em `View3D._paint_glass`);
+  `handles3d.FillingHandle3D` (bordas, peitoril, verga/altura).
+- Biblioteca J1–J6 em `ui/session.py`.
+
 ## Próximos passos (nesta ordem)
-1. Retorno do revisor sobre o pacote 2 (até 2026‑10‑15 só havia o print da caixa na
-   órbita 3D, anterior às correções 2ee0024 e e47a9cc).
-2. Revisão de `spec/ui/09-janela.md`; depois implementar: núcleo (JA01–JA14, código comum
-   porta/janela em `core/fillings`), ferramenta e Opções, tipos de janela, planta e
-   etiqueta, painel e mini-barra, alças, 3D com estilos por peça.
+1. Uso do pacote 3 pelo revisor e ajustes pelo retorno em `feedback/`.
+2. Combinar com o revisor o próximo pacote (candidatos: laje, cotas, nicho/vão livre na
+   interface, pendências abaixo).
 
 ## Pendências
+- Specs 01 §5.5/§6, 03 §4.2 e 07 §2.2 ainda dizem "Tab troca as dobradiças"; a spec 09
+  §2.2 mudou isso (atualizar o texto delas).
+- Peitoril fixado pelo balão não atualiza na hora o campo da barra Opções.
+- Excluir o estilo de um material deixa o `IfcSurfaceStyle` ainda usado pelas peças das
+  esquadrias (fica solto do material); estilo de corte do Vidro da biblioteca aparece
+  como "nenhum" ao ler de volta (conferir `_read_cut` para corte sólido).
+- Ponto de referência fora de Mover/Copiar/Girar/Espelhar (spec 09, ponto (g)).
+- Janela em parede em arco, 4+ caixilhos e `TRIPLE_PANEL_*` laterais: V1.
 - Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
   volta no `wall.merge`).
 - Painel com várias paredes não mostra forma do topo nem inclinação.

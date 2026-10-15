@@ -221,35 +221,35 @@ definições da porta: `Width`, `Height`, `Area = Width × Height`,
 ## 9. Critérios de aceite (testes)
 Mesma base da porta (parede reta de 5 m, 14 cm, 2,80 m).
 
-- [ ] **JA01** Janela de correr 2 folhas 1,20 × 1,00, peitoril 1,10, a 1,50 m do início:
+- [x] **JA01** Janela de correr 2 folhas 1,20 × 1,00, peitoril 1,10, a 1,50 m do início:
       `IfcWindow` com `OverallWidth/Height`; `IfcOpeningElement` com z = 1,10 no
       posicionamento; `IfcRelVoidsElement`, `IfcRelFillsElement` e contenção no
       pavimento.
-- [ ] **JA02** Tipo: `WINDOW`, `DOUBLE_PANEL_VERTICAL`, `ParameterTakesPrecedence =
+- [x] **JA02** Tipo: `WINDOW`, `DOUBLE_PANEL_VERTICAL`, `ParameterTakesPrecedence =
       TRUE`; 1 `IfcWindowLiningProperties` (`LiningDepth = 0,05`,
       `FirstMullionOffset = 0,5`); 2 `IfcWindowPanelProperties` (`LEFT`/`RIGHT`,
       `SLIDINGHORIZONTAL`).
-- [ ] **JA03** Maxim‑ar 0,60 × 0,60 abrindo para a face direita: `SINGLE_PANEL`,
+- [x] **JA03** Maxim‑ar 0,60 × 0,60 abrindo para a face direita: `SINGLE_PANEL`,
       `TOPHUNG`; posicionamento girado 180° (+y da janela = −y da parede).
-- [ ] **JA04** `Profile`: retângulo 1,20 × 1,00 no plano xz, y = 0.
-- [ ] **JA05** `Body`: marco com profundidade 0,05 dentro da parede, centrado no eixo;
+- [x] **JA04** `Profile`: retângulo 1,20 × 1,00 no plano xz, y = 0.
+- [x] **JA05** `Body`: marco com profundidade 0,05 dentro da parede, centrado no eixo;
       trocar a parede para 19 cm mantém a profundidade 0,05 e recentraliza.
-- [ ] **JA06** Tipo com marco de 0,20 numa parede de 0,14: aviso, janela criada.
-- [ ] **JA07** De abrir 1 folha: inverter a mão cria a variante
+- [x] **JA06** Tipo com marco de 0,20 numa parede de 0,14: aviso, janela criada.
+- [x] **JA07** De abrir 1 folha: inverter a mão cria a variante
       (`SIDEHUNGRIGHTHAND`) uma vez só. De abrir 2 folhas (esquerda + direita): sem
       variante.
-- [ ] **JA08** Editar o peitoril para 1,30 → `opening.edit` (`sill`); verga acima do
+- [x] **JA08** Editar o peitoril para 1,30 → `opening.edit` (`sill`); verga acima do
       topo da parede é recusada pelo comando.
-- [ ] **JA09** `Qto_WindowBaseQuantities`: `Area = 1,20`, `Perimeter = 4,40`.
-- [ ] **JA10** `Pset_WindowCommon` com `Status = NEW`, `IsExternal = TRUE`, `Reference`
+- [x] **JA09** `Qto_WindowBaseQuantities`: `Area = 1,20`, `Perimeter = 4,40`.
+- [x] **JA10** `Pset_WindowCommon` com `Status = NEW`, `IsExternal = TRUE`, `Reference`
       do tipo.
-- [ ] **JA11** Excluir a parede com uma porta e uma janela: nenhuma entidade órfã;
+- [x] **JA11** Excluir a parede com uma porta e uma janela: nenhuma entidade órfã;
       desfazer restaura os mesmos `GlobalId`s.
-- [ ] **JA12** Cada ação gera as operações de §5.2; desfazer/refazer e reaplicar o
+- [x] **JA12** Cada ação gera as operações de §5.2; desfazer/refazer e reaplicar o
       diário reproduzem o mesmo IFC.
-- [ ] **JA13** IFC de outra origem (janela com `Body` próprio): corpo preservado;
+- [x] **JA13** IFC de outra origem (janela com `Body` próprio): corpo preservado;
       mover funciona.
-- [ ] **JA14** Arquivo passa na validação de esquema do IfcOpenShell.
+- [x] **JA14** Arquivo passa na validação de esquema do IfcOpenShell.
 
 ## 10. Fontes públicas
 Mesmo repositório, ramo e data de `porta.md` §10 (`S` e `A` idem).
