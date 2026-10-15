@@ -211,7 +211,7 @@ def test_ui94_biblioteca_inicial(window):
 def _placed(window, along=2.1, wall=None, **options):
     s = window.session
     wall = wall or _wall(window)
-    j1 = sorted(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)[0]
+    j1 = min(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)
     tx = fc.create_window(s.doc, j1, wall, along - 0.6, **options)
     s.run(tx)
     return wall, s.doc.get(next(op.id for op in tx.ops if op.op == "window.create"))
@@ -315,8 +315,8 @@ def test_ui91_tipos_de_janela(window):
     assert state["lining"]["mullion_offsets"] == pytest.approx([1 / 3, 2 / 3], abs=1e-3)
     glass = [b for b, r in geometry.window_parts(1.2, 1.0, state) if r == "glazing"]
     assert len(glass) == 3
-    body = [r for r in win.Representation.Representations if r.RepresentationIdentifier
-            == "Body"][0]
+    body = next(r for r in win.Representation.Representations if r.RepresentationIdentifier
+            == "Body")
     assert len(body.Items) == len(geometry.window_parts(1.2, 1.0, state))
     assert plan.window_elevation(1.2, 1.0, state)
     dialog.close()
@@ -327,12 +327,12 @@ def test_ui93_excluir_parede_com_porta_e_janelas(window, monkeypatch):
 
     s = window.session
     wall, _ = _placed(window, 2.1)
-    j1 = sorted(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)[0]
+    j1 = min(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)
     s.run(fc.create_window(s.doc, j1, wall, 3.6))
-    p1 = sorted(s.doc.ifc.by_type("IfcDoorType"), key=lambda t: t.Name)[0]
+    p1 = min(s.doc.ifc.by_type("IfcDoorType"), key=lambda t: t.Name)
     s.run(fc.create_door(s.doc, p1, wall, 0.2))
     s.select([wall.GlobalId])
-    tx, cascade = delete_transaction(s)
+    _tx, cascade = delete_transaction(s)
     assert cascade == "1 porta e 2 janelas"
     asked = []
     monkeypatch.setattr(window, "confirm", lambda text: asked.append(text) or True)
