@@ -24,7 +24,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/06-planta-por-camadas` | aprovada e implementada (testes UI51–UI60) |
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
-| `spec/ui/09-janela` | **em revisão** (pacote 3; testes UI82–UI95; pontos de revisão §12) |
+| `spec/ui/09-janela` | aprovada em 2026‑10‑15, em implementação (testes UI82–UI95) |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra

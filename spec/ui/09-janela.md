@@ -3,8 +3,8 @@ documento: Interface — janela (ferramenta, opções, tipos, planta, 3D, painel
 requisito: RF-ELE-06, RF-TIP-06, RF-UI-01, RF-UI-02
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-15
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-15)
 ---
 
 # Janela na interface
