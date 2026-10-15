@@ -14,6 +14,7 @@ pytest.importorskip("PySide6")
 
 from brasbim.core import snap
 from brasbim.core.fillings import commands as fc
+from brasbim.core.fillings import geometry
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui.tools import Mods
@@ -205,3 +206,136 @@ def test_ui94_biblioteca_inicial(window):
     assert ue.get_pset(j3, "BrasBim_EsquadriaTipo")["BasePadrao"] == pytest.approx(1.5)
     materials = {m.Name for m in doc.ifc.by_type("IfcMaterial")}
     assert {"Alumínio", "Vidro"} <= materials
+
+
+def _placed(window, along=2.1, wall=None, **options):
+    s = window.session
+    wall = wall or _wall(window)
+    j1 = sorted(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)[0]
+    tx = fc.create_window(s.doc, j1, wall, along - 0.6, **options)
+    s.run(tx)
+    return wall, s.doc.get(next(op.id for op in tx.ops if op.op == "window.create"))
+
+
+def test_ui87_etiquetas_de_esquadrias(window):
+    _placed(window)
+    assert window.tags_action.text() == "Etiquetas de esquadrias"
+    labels = window.ctx.plan.labels
+    assert [(la.code, la.size) for la in labels] == [("J1", "1,20 × 1,00 / 1,10")]
+
+
+def test_ui88_painel_verga_e_peitoril_do_piso(window):
+    from PySide6.QtWidgets import QComboBox, QLabel
+    from test_interface import _field
+
+    s = window.session
+    wall, win = _placed(window)
+    s.select([win.GlobalId])
+    verga = _field(window, "Verga")
+    assert verga.text() == "2,10"
+    verga.setText("2,30")
+    verga.editingFinished.emit()
+    tx = s.history.undo_stack[-1]
+    assert [op.op for op in tx.ops] == ["opening.edit"]
+    o = _opening(window, win)
+    assert (o["height"], o["sill"]) == pytest.approx((1.2, 1.1))
+    s.run(lambda: cmd.edit_wall(s.doc, wall, base_offset=0.20))
+    s.select([])
+    s.select([win.GlobalId])
+    assert _field(window, "Peitoril do piso", QLabel).text() == "1,30 m"
+    assert _field(window, "Lado interno", QComboBox)  # correr: sem giro (janela §2.4)
+
+
+def test_ui89_alcas_na_planta(window):
+    s = window.session
+    wall, win = _placed(window)
+    s.select([win.GlobalId])
+    tool = window.toolbox.active
+    assert len(tool.handles()) == 2
+    w = _path(window, wall)
+    y = (w.ymin + w.ymax) / 2
+    end = w.frame.to_global((2.7, y))
+    tool.press(end, Mods())
+    target = w.frame.to_global((3.0, y))
+    tool.move(target, Mods(alt=True))
+    tool.release(target, Mods(alt=True))
+    o = _opening(window, win)
+    assert (o["distance"], o["width"]) == pytest.approx((1.5, 1.5))
+
+
+def test_ui90_mini_barra(window):
+    from brasbim.ui.tools import selection_actions
+
+    s = window.session
+    s.run(lambda: fc.create_window_type(s.doc, "J7", "SINGLE_PANEL", ["SIDEHUNGLEFTHAND"]))
+    j7 = next(t for t in s.doc.ifc.by_type("IfcWindowType") if t.Name == "J7")
+    wall = _wall(window)
+    tx = fc.create_window(s.doc, j7, wall, 1.0)
+    s.run(tx)
+    win = s.doc.get(next(op.id for op in tx.ops if op.op == "window.create"))
+    s.select([win.GlobalId])
+    actions = selection_actions(s.doc, s.selection)
+    assert "flip_opening" in actions and "flip_hinges" in actions
+    window.run_selection_action("flip_opening")
+    assert fc.doors.read_state(win)["opens_to"] == "right"
+    window.run_selection_action("flip_hinges")
+    assert ue.get_type(win).Name == "J7 (D)"
+    other = _wall(window, (0, 6), (5, 6))
+    tool = window.toolbox.active
+    start = _inside(window, wall, 1.4)
+    tool.press(start, Mods())
+    dest = _inside(window, other, 2.5)
+    tool.move(dest, Mods())
+    tool.release(dest, Mods())
+    tx = s.history.undo_stack[-1]
+    assert [op.op for op in tx.ops] == ["opening.edit"]
+    assert openings.host(fc.opening_of(win)) == other
+
+
+def test_ui91_tipos_de_janela(window):
+    from brasbim.core import plan
+    from brasbim.core.fillings import window_types
+    from brasbim.ui.types_dialog import WindowTypesDialog
+
+    s = window.session
+    _, win = _placed(window)
+    j1 = ue.get_type(win)
+    dialog = WindowTypesDialog(s, window, select=j1.GlobalId)
+    assert dialog.list.count() == 6
+    dialog.partitioning.setCurrentIndex(
+        dialog.partitioning.findData("TRIPLE_PANEL_VERTICAL"))
+    assert len(dialog.operations) == 3
+    assert [f.text() for f in dialog.bar_positions] == ["33,3", "66,7"]
+    roles = [r for r, _, _ in dialog.preview.drawing]
+    assert roles.count("glass") == 3
+    assert dialog.apply()
+    state = window_types.read(j1)
+    assert state["partitioning"] == "TRIPLE_PANEL_VERTICAL"
+    assert [p["position"] for p in state["panels"]] == ["LEFT", "MIDDLE", "RIGHT"]
+    assert state["lining"]["mullion_offsets"] == pytest.approx([1 / 3, 2 / 3], abs=1e-3)
+    glass = [b for b, r in geometry.window_parts(1.2, 1.0, state) if r == "glazing"]
+    assert len(glass) == 3
+    body = [r for r in win.Representation.Representations if r.RepresentationIdentifier
+            == "Body"][0]
+    assert len(body.Items) == len(geometry.window_parts(1.2, 1.0, state))
+    assert plan.window_elevation(1.2, 1.0, state)
+    dialog.close()
+
+
+def test_ui93_excluir_parede_com_porta_e_janelas(window, monkeypatch):
+    from brasbim.ui.main_window import delete_transaction
+
+    s = window.session
+    wall, _ = _placed(window, 2.1)
+    j1 = sorted(s.doc.ifc.by_type("IfcWindowType"), key=lambda t: t.Name)[0]
+    s.run(fc.create_window(s.doc, j1, wall, 3.6))
+    p1 = sorted(s.doc.ifc.by_type("IfcDoorType"), key=lambda t: t.Name)[0]
+    s.run(fc.create_door(s.doc, p1, wall, 0.2))
+    s.select([wall.GlobalId])
+    tx, cascade = delete_transaction(s)
+    assert cascade == "1 porta e 2 janelas"
+    asked = []
+    monkeypatch.setattr(window, "confirm", lambda text: asked.append(text) or True)
+    window.delete_selection()
+    assert "1 porta e 2 janelas" in asked[0]
+    assert not s.doc.ifc.by_type("IfcWindow") and not s.doc.ifc.by_type("IfcDoor")

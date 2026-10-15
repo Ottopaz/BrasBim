@@ -1827,7 +1827,7 @@ def selection_actions(doc, gids) -> list[str]:
     if not elements:
         return []
     walls = [e for e in elements if e.is_a("IfcWall")]
-    door_list = [e for e in elements if e.is_a("IfcDoor")]
+    door_list = [e for e in elements if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
     out = ["move", "copy"]
     if walls:
         out += ["rotate", "mirror"]
@@ -1837,13 +1837,7 @@ def selection_actions(doc, gids) -> list[str]:
         out += _join_actions(doc, *walls)
     if door_list and len(door_list) == len(elements):
         out.append("flip_opening")
-        hands = []
-        for door in door_list:
-            state = doors.read_state(door)
-            tstate = (door_types.read(doc.get(state["type"]))
-                      if state["type"] and state["foreign"] is None else None)
-            hands.append(tstate and params.hand_of(tstate["operation_type"]))
-        if all(hands):
+        if all(fc.hand(doc, d) for d in door_list):
             out.append("flip_hinges")
     out.append("delete")
     return out

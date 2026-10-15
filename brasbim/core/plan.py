@@ -478,6 +478,48 @@ def window_symbol(width: float, height: float, state: dict, cut_z: float | None 
     return out
 
 
+def window_elevation(width: float, height: float, state: dict
+                     ) -> list[tuple[str, list[Point], bool]]:
+    """Desenho do tipo de janela visto de frente (spec/ui 09 §5.1), em (x, z): peças do
+    marco (``lining``), perfis (``framing``), vidros (``glass``) e o símbolo de abertura
+    de cada caixilho (``symbol``: triângulo com a ponta no lado do eixo de giro, seta no
+    de correr, linha tracejada no pivotante)."""
+    out: list[tuple[str, list[Point], bool]] = []
+    parts = geometry.window_parts(width, height, state)
+    for (x0, x1, _, _, z0, z1), role in parts:
+        out.append(("glass" if role == "glazing" else role, _rect(x0, x1, z0, z1), True))
+    glass = [b for b, role in parts if role == "glazing"]
+    for panel, (x0, x1, _, _, z0, z1) in zip(state["panels"], glass):
+        op = panel["operation"]
+        xm, zm = (x0 + x1) / 2, (z0 + z1) / 2
+        hand = params.panel_hand(op)
+        if hand is not None:  # de abrir e oscilobatente: ponta no lado das dobradiças
+            hinge, free = (x0, x1) if hand == "left" else (x1, x0)
+            out.append(("symbol", [(free, z0), (hinge, zm), (free, z1)], False))
+        if op in ("TOPHUNG", "TILTANDTURNLEFTHAND", "TILTANDTURNRIGHTHAND", "BOTTOMHUNG"):
+            apex = z1 if op == "TOPHUNG" else z0
+            base = z0 if op == "TOPHUNG" else z1
+            out.append(("symbol", [(x0, base), (xm, apex), (x1, base)], False))
+        elif op == "PIVOTHORIZONTAL":
+            out.append(("axis", [(x0, zm), (x1, zm)], False))
+        elif op == "PIVOTVERTICAL":
+            out.append(("axis", [(xm, z0), (xm, z1)], False))
+        elif op in params.WINDOW_SLIDES:
+            if op == "SLIDINGHORIZONTAL":
+                to_high = panel["position"] != "RIGHT"
+                a, b = ((x0 + 0.25 * (x1 - x0), zm), (x1 - 0.25 * (x1 - x0), zm))
+                tip, tail = (b, a) if to_high else (a, b)
+                k = 0.06 if to_high else -0.06
+                head = [(tip[0] - k, tip[1] + 0.04), tip, (tip[0] - k, tip[1] - 0.04)]
+            else:
+                a, b = (xm, z0 + 0.25 * (z1 - z0)), (xm, z1 - 0.25 * (z1 - z0))
+                tip, tail = b, a
+                head = [(tip[0] - 0.04, tip[1] - 0.06), tip, (tip[0] + 0.04, tip[1] - 0.06)]
+            out.append(("symbol", [tail, tip], False))
+            out.append(("symbol", head, False))
+    return out
+
+
 def _door_to_storey(door, storey):
     m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement)) \
         @ ifcopenshell.util.placement.get_local_placement(door.ObjectPlacement)

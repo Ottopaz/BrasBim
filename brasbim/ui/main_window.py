@@ -41,7 +41,7 @@ from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
-from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog
+from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog, WindowTypesDialog
 from brasbim.ui.view3d import View3D, storey_of
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
@@ -53,16 +53,23 @@ def _settings() -> QSettings:
     return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim")
 
 
-def delete_transaction(session: Session) -> tuple[Transaction, int]:
-    """Exclusão da seleção numa transação (§5.1): portas antes das paredes; operações
+def cascade_text(doors_n: int, windows_n: int) -> str:
+    """"1 porta e 2 janelas" (spec/ui 09 §4.1)."""
+    parts = [f"{n} {one if n == 1 else many}" for n, one, many in
+             ((doors_n, "porta", "portas"), (windows_n, "janela", "janelas")) if n]
+    return " e ".join(parts)
+
+
+def delete_transaction(session: Session) -> tuple[Transaction, str]:
+    """Exclusão da seleção numa transação (§5.1): esquadrias antes das paredes; operações
     repetidas (abertura, junção entre duas paredes excluídas) entram uma vez. Devolve a
-    transação e quantas portas saem junto com paredes."""
+    transação e o que sai junto com as paredes ("1 porta e 2 janelas"; vazio se nada)."""
     doc = session.doc
     entities = [doc.find(g) for g in sorted(session.selection)]
     entities = [e for e in entities if e is not None]
-    door_list = [e for e in entities if e.is_a("IfcDoor")]
+    door_list = [e for e in entities if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
     wall_list = [e for e in entities if e.is_a("IfcWall")]
-    ops, seen, cascade = [], set(), 0
+    ops, seen, cascade = [], set(), {"IfcDoor": 0, "IfcWindow": 0}
     for door in door_list:
         for op in fc.delete_door(doc, door).ops:
             if (op.op, op.id) not in seen:
@@ -70,16 +77,20 @@ def delete_transaction(session: Session) -> tuple[Transaction, int]:
                 ops.append(op)
     for wall in wall_list:
         for opening in openings.of_wall(wall):
-            cascade += sum(1 for r in opening.HasFillings
-                           if r.RelatedBuildingElement.is_a("IfcDoor")
-                           and r.RelatedBuildingElement not in door_list
-                           and doors.is_parametric(r.RelatedBuildingElement))
+            for r in opening.HasFillings:
+                element = r.RelatedBuildingElement
+                cls = doors.kind_of(element)[0] if (element.is_a("IfcDoor")
+                                                     or element.is_a("IfcWindow")) else None
+                if cls and element not in door_list and doors.is_parametric(element):
+                    cascade[cls] += 1
         for op in cmd.delete_wall(doc, wall).ops:
             if (op.op, op.id) not in seen:
                 seen.add((op.op, op.id))
                 ops.append(op)
-    label = "Excluir porta" if len(entities) == 1 and door_list else "Excluir"
-    return Transaction(label, ops), cascade
+    label = "Excluir"
+    if len(entities) == 1 and door_list:
+        label = f"Excluir {fc.kind(door_list[0]).noun}"
+    return Transaction(label, ops), cascade_text(cascade["IfcDoor"], cascade["IfcWindow"])
 
 
 class MainWindow(QMainWindow):
@@ -192,7 +203,7 @@ class MainWindow(QMainWindow):
         self.selection_bar_action.setCheckable(True)
         self.selection_bar_action.setChecked(True)
         view_menu.addSeparator()
-        self.tags_action = self._action(view_menu, "Etiquetas de porta",
+        self.tags_action = self._action(view_menu, "Etiquetas de esquadrias",
                                         lambda v: self._set_plan_option("show_tags", v))
         self.tag_size_action = self._action(view_menu, "Medidas na etiqueta",
                                             lambda v: self._set_plan_option("show_tag_size", v))
@@ -217,6 +228,8 @@ class MainWindow(QMainWindow):
         project_menu = bar.addMenu("&Projeto")
         self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
+        self._action(project_menu, "Tipos de janela…",
+                     lambda: self.edit_type("IfcWindowType"))
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
@@ -399,7 +412,7 @@ class MainWindow(QMainWindow):
             self.session.message(str(e), "recusa")
             return
         if cascade and not self.confirm(
-                f"A exclusão leva junto {cascade} porta(s) das paredes selecionadas. Continuar?"):
+                f"A exclusão leva junto {cascade} das paredes selecionadas. Continuar?"):
             return
         self.session.run(tx)
 
@@ -429,8 +442,9 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
 
     def edit_type(self, ifc_class: str, gid: str | None = None) -> None:
-        """Janela de tipos de parede ou de porta, aberta no tipo ``gid``."""
-        dialog_class = WallTypesDialog if ifc_class == "IfcWallType" else DoorTypesDialog
+        """Janela de tipos de parede, porta ou janela, aberta no tipo ``gid``."""
+        dialog_class = {"IfcWallType": WallTypesDialog, "IfcDoorType": DoorTypesDialog,
+                        "IfcWindowType": WindowTypesDialog}[ifc_class]
         self.toolbox.active.cancel()
         dialog_class(self.session, self, select=gid).exec()
         self.toolbox.check_types()

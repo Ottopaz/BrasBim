@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Janela de tipos de parede e de porta (``spec/ui/02-edicao.md`` §8).
+"""Janela de tipos de parede, de porta (``spec/ui/02-edicao.md`` §8) e de janela
+(``spec/ui/09-janela.md`` §5).
 
 Lista à esquerda (nome e quantidade de elementos que usam o tipo) e editor à direita.
 Novo, Duplicar e Excluir são transações imediatas; as mudanças do editor só entram ao
@@ -34,10 +35,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import materials
+from brasbim.core import materials, plan
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
-from brasbim.core.fillings import door_types, params
+from brasbim.core.fillings import door_types, params, window_types
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons
@@ -589,3 +590,259 @@ class DoorTypesDialog(TypesDialog):
 
     def delete_transaction(self, gid):
         return fc.delete_door_type(self.session.doc, gid)
+
+
+# --- janela (spec/ui 09 §5) -----------------------------------------------------------
+
+PARTITIONINGS = [("1 caixilho", "SINGLE_PANEL"), ("2 lado a lado", "DOUBLE_PANEL_VERTICAL"),
+                 ("2 um sobre o outro", "DOUBLE_PANEL_HORIZONTAL"),
+                 ("3 lado a lado", "TRIPLE_PANEL_VERTICAL"),
+                 ("3 um sobre o outro", "TRIPLE_PANEL_HORIZONTAL")]
+WINDOW_OPERATIONS = [
+    ("Fixo", "FIXEDCASEMENT"),
+    ("De abrir — dobradiças à esquerda", "SIDEHUNGLEFTHAND"),
+    ("De abrir — dobradiças à direita", "SIDEHUNGRIGHTHAND"),
+    ("Oscilobatente — dobradiças à esquerda", "TILTANDTURNLEFTHAND"),
+    ("Oscilobatente — dobradiças à direita", "TILTANDTURNRIGHTHAND"),
+    ("Maxim-ar (eixo no topo)", "TOPHUNG"),
+    ("Tombar (eixo na base)", "BOTTOMHUNG"),
+    ("Basculante (eixo horizontal)", "PIVOTHORIZONTAL"),
+    ("Pivotante (eixo vertical)", "PIVOTVERTICAL"),
+    ("De correr", "SLIDINGHORIZONTAL"),
+    ("Guilhotina", "SLIDINGVERTICAL"),
+]
+POSITION_NAMES = {"MIDDLE": "Caixilho", "LEFT": "Esquerda", "RIGHT": "Direita",
+                  "TOP": "Superior", "BOTTOM": "Inferior"}
+
+
+class WindowPreview(QWidget):
+    """Desenho do tipo, visto de frente (``plan.window_elevation``)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(200, 200)
+        self.drawing: list = []
+        self.size_ = (1.0, 1.0)
+
+    def show_state(self, state: dict | None) -> None:
+        self.drawing = []
+        if state is not None:
+            d = state["defaults"]
+            try:
+                self.drawing = plan.window_elevation(d["width"], d["height"], state)
+                self.size_ = (d["width"], d["height"])
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                self.drawing = []
+        self.update()
+
+    def paintEvent(self, event):
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QBrush, QPainter, QPainterPath, QPen
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+        if not self.drawing:
+            return
+        w, h = self.size_
+        margin = 16
+        k = min((self.width() - 2 * margin) / max(w, 1e-6),
+                (self.height() - 2 * margin) / max(h, 1e-6))
+        ox = (self.width() - w * k) / 2
+        oy = (self.height() + h * k) / 2
+
+        def screen(p):
+            return QPointF(ox + p[0] * k, oy - p[1] * k)
+
+        styles = {"lining": (QColor("#2b2a27"), QColor("#9da1a8"), Qt.SolidLine),
+                  "framing": (QColor("#2b2a27"), QColor("#c4c7cc"), Qt.SolidLine),
+                  "glass": (QColor("#6d8fa3"), QColor("#dcebf3"), Qt.SolidLine),
+                  "symbol": (QColor("#6d6a62"), None, Qt.SolidLine),
+                  "axis": (QColor("#6d6a62"), None, Qt.DashLine)}
+        for role, points, closed in self.drawing:
+            line, fill, style = styles[role]
+            path = QPainterPath(screen(points[0]))
+            for q in points[1:]:
+                path.lineTo(screen(q))
+            if closed:
+                path.closeSubpath()
+            painter.setPen(QPen(line, 1, style))
+            painter.setBrush(QBrush(fill) if fill is not None and closed else Qt.NoBrush)
+            painter.drawPath(path)
+
+
+class WindowTypesDialog(TypesDialog):
+    ifc_class = "IfcWindowType"
+    title = "Tipos de janela"
+
+    def types(self) -> list:
+        """Só os tipos de origem: a variante de mão acompanha o seu (janela §2.4)."""
+        out = []
+        for window_type in super().types():
+            state = window_types.read(window_type)
+            partner = self.session.doc.find(state["variant"]) if state["variant"] else None
+            is_variant = (partner is not None and params.base_name(window_type.Name)
+                          != window_type.Name and window_types.read(partner)["variant"]
+                          == window_type.GlobalId and params.base_name(partner.Name)
+                          == partner.Name)
+            if not is_variant:
+                out.append(window_type)
+        return out
+
+    def uses(self, window_type) -> int:
+        n = super().uses(window_type)
+        variant = window_types.read(window_type)["variant"]
+        partner = self.session.doc.find(variant) if variant else None
+        return n + (super().uses(partner) if partner is not None else 0)
+
+    def build_editor(self, window_type) -> None:
+        self.state = window_types.read(window_type)
+        if not hasattr(self, "preview"):
+            self.preview = WindowPreview()
+            self.layout().addWidget(self.preview, 3)
+        self._build(copy.deepcopy(self.state))
+
+    def _section(self, text: str) -> None:
+        self.form.addRow(QLabel(f"<span style='color:#666'>{text}</span>"))
+
+    def _build(self, state: dict) -> None:
+        """Campos do editor a partir de ``state`` (refeitos quando a divisão muda)."""
+        lining, defaults = state["lining"], state["defaults"]
+        vertical = params.is_vertical(state["partitioning"])
+        self.form_partitioning = state["partitioning"]  # a dos campos de caixilho
+        self.name = self._line("Nome", state["name"] or "")
+        self.code = self._line("Código", state["code"] or "")
+        self.code.setPlaceholderText(params.base_name(state["name"] or ""))
+        self.partitioning = self._combo("Divisão", PARTITIONINGS, state["partitioning"])
+        self.partitioning.currentIndexChanged.connect(self._repartition)
+        self._section("Caixilhos")
+        self.operations = []
+        for panel in state["panels"]:
+            combo = self._combo(POSITION_NAMES[panel["position"]], WINDOW_OPERATIONS,
+                                panel["operation"])
+            self.operations.append(combo)
+        self._section("Dimensões padrão")
+        self.width = self._line("Largura", exact(defaults["width"]))
+        self.height = self._line("Altura", exact(defaults["height"]))
+        self.base = self._line("Peitoril", exact(defaults["base"]))
+        self._section("Marco")
+        self.lining_depth = self._line("Profundidade", exact(lining["depth"]))
+        self.lining_thickness = self._line("Espessura", exact(lining["thickness"]))
+        offsets = lining["mullion_offsets"] if vertical else lining["transom_offsets"]
+        self.bar_thickness = self.bar_positions = None
+        if offsets:
+            noun = "Montante" if vertical else "Travessa"
+            key = "mullion_thickness" if vertical else "transom_thickness"
+            self._section(f"{noun}s" if len(offsets) > 1 else noun)
+            self.bar_thickness = self._line("Espessura", exact(lining[key]))
+            self.bar_positions = [
+                self._line(f"Posição {i + 1} (%)", f"{f * 100:.1f}".replace(".", ","))
+                for i, f in enumerate(offsets)]
+        self._section("Perfil do caixilho")
+        first = state["panels"][0]
+        self.frame_depth = self._line("Profundidade", exact(first["frame_depth"]))
+        self.frame_thickness = self._line("Largura", exact(first["frame_thickness"] or 0.0))
+        self._section("Materiais")
+        self.materials = {}
+        for key, label in (("lining", "Marco"), ("framing", "Caixilho"), ("glazing", "Vidro")):
+            field = QLineEdit(state["materials"].get(key) or "")
+            field.textEdited.connect(self.touched)
+            button = QToolButton()
+            button.setText("…")
+            button.setToolTip("Estilo do material (cor e corte)")
+            button.clicked.connect(lambda _=False, f=field: self.edit_material(f))
+            row = QHBoxLayout()
+            row.addWidget(field, 1)
+            row.addWidget(button)
+            self.form.addRow(label, row)
+            self.materials[key] = field
+        for i in range(self.form.rowCount()):
+            item = self.form.itemAt(i, QFormLayout.FieldRole)
+            widget = item.widget() if item is not None else None
+            if isinstance(widget, QLineEdit):
+                widget.textEdited.connect(self._redraw)
+            elif isinstance(widget, QComboBox):
+                widget.currentIndexChanged.connect(self._redraw)
+        self.preview.show_state(state)
+
+    def edit_material(self, field: QLineEdit) -> None:
+        name = field.text().strip()
+        if not materials.named(self.session.doc, name):
+            self.session.message(f"o material {name!r} ainda não existe: aplique o tipo antes",
+                                 "recusa")
+            return
+        self.materials_dialog = MaterialsDialog(self.session, self, select=name)
+        self.materials_dialog.exec()
+
+    def collect(self) -> dict:
+        """Estado do tipo como está nos campos (``ValueError`` se algum número é inválido)."""
+        state = copy.deepcopy(self.state)
+        partitioning = self.form_partitioning
+        if partitioning != state["partitioning"]:
+            state = window_types.with_partitioning(state, partitioning)
+        vertical = params.is_vertical(partitioning)
+        frame = {"frame_depth": parse_number(self.frame_depth.text()),
+                 "frame_thickness": parse_number(self.frame_thickness.text())}
+        state["panels"] = [{**p, **frame, "operation": combo.currentData()}
+                           for p, combo in zip(state["panels"], self.operations)]
+        lining = {**state["lining"], "depth": parse_number(self.lining_depth.text()),
+                  "thickness": parse_number(self.lining_thickness.text())}
+        if self.bar_positions is not None:
+            key = "mullion" if vertical else "transom"
+            lining[f"{key}_thickness"] = parse_number(self.bar_thickness.text())
+            lining[f"{key}_offsets"] = [round(parse_number(f.text()) / 100, 9)
+                                        for f in self.bar_positions]
+        state["lining"] = lining
+        state["name"] = self.name.text().strip()
+        state["code"] = self.code.text().strip() or None
+        state["defaults"] = {"width": parse_number(self.width.text()),
+                             "height": parse_number(self.height.text()),
+                             "base": parse_number(self.base.text())}
+        state["materials"] = {k: f.text().strip() or None for k, f in self.materials.items()}
+        chosen = self.partitioning.currentData()
+        if chosen != partitioning:  # divisão trocada agora: caixilhos refeitos
+            state = window_types.with_partitioning(state, chosen)
+        return state
+
+    def _repartition(self, *_args) -> None:
+        """Nova divisão: refaz os caixilhos (spec/ui 09 §5.1) e o formulário."""
+        try:
+            state = self.collect()
+        except ValueError:
+            return
+        self._clear_form()
+        self._build(state)
+        self.dirty = True
+
+    def _redraw(self, *_args) -> None:
+        try:
+            self.preview.show_state(self.collect())
+        except ValueError:
+            pass
+
+    def changes(self) -> dict:
+        new = self.collect()
+        if not new["name"]:
+            raise ValueError("nome vazio")
+        keys = ("name", "code", "partitioning", "lining", "panels", "materials", "defaults")
+        return {k: new[k] for k in keys if new[k] != self.state[k]}
+
+    def edit(self, changes):
+        return fc.edit_window_type(self.session.doc, self.current, **changes)
+
+    def new_transaction(self):
+        names = {t.Name for t in super().types()}
+        return fc.create_window_type(self.session.doc, _unique(names, "Novo tipo de janela"))
+
+    def copy_transaction(self):
+        state = window_types.read(self.session.doc.get(self.current))
+        names = {t.Name for t in super().types()}
+        name = _unique(names, f"{params.base_name(state['name'])} (cópia)")
+        tx = fc.create_window_type(self.session.doc, name, state["partitioning"])
+        data = tx.ops[0].data
+        data.update({k: copy.deepcopy(state[k]) for k in ("lining", "panels", "materials",
+                                                           "defaults")}, code=None)
+        return tx
+
+    def delete_transaction(self, gid):
+        return fc.delete_window_type(self.session.doc, gid)

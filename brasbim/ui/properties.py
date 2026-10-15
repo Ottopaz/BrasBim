@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import geom2d
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
-from brasbim.core.fillings import door_types, doors, params
+from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings, rebuild, top
@@ -72,7 +72,39 @@ DOOR_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "statu
                ("AcousticRating", "Desempenho acústico", "text"),
                ("HandicapAccessible", "Acessível", "bool"),
                ("FireExit", "Saída de emergência", "bool")]
+WINDOW_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "status"),
+                 ("IsExternal", "Externa", "bool"),
+                 ("HasSillExternal", "Peitoril externo (pingadeira)", "bool"),
+                 ("HasSillInternal", "Peitoril interno", "bool"),
+                 ("FireRating", "Resistência ao fogo", "text"),
+                 ("AcousticRating", "Desempenho acústico", "text"),
+                 ("ThermalTransmittance", "Transmitância térmica (W/m²K)", "number")]
+HANDS = [("Esquerda", "left"), ("Direita", "right")]
+# Caixilhos sem giro: o "abre para" é o lado interno (janela §2.4).
+_NO_SWING = ("FIXEDCASEMENT", "SLIDINGHORIZONTAL", "SLIDINGVERTICAL")
 YES_NO = [("Sim", True), ("Não", False)]
+
+
+def _filling_info(doc, element) -> tuple[bool, dict | None]:
+    """(é janela, estado do tipo do BrasBim ou None)."""
+    window = element.is_a("IfcWindow")
+    state = doors.read_state(element)
+    found = doc.find(state["type"]) if state["type"] else None
+    if found is None or state["foreign"] is not None:
+        return window, None
+    return window, (window_types if window else door_types).read(found)
+
+
+def _hand(window: bool, tstate: dict | None) -> str | None:
+    if tstate is None:
+        return None
+    return window_types.hand(tstate) if window else params.hand_of(tstate["operation_type"])
+
+
+def _opens_label(window: bool, tstate: dict | None) -> str:
+    if window and tstate and all(p["operation"] in _NO_SWING for p in tstate["panels"]):
+        return "Lado interno"
+    return "Abre para"
 
 
 ROW_HEIGHT = 27  # altura de uma linha de campo no arranjo deitado (px)
@@ -164,18 +196,22 @@ class PropertiesPanel(QScrollArea):
         selection = [e for e in selection if e is not None]
         if len(selection) == 1 and selection[0].is_a("IfcWall"):
             self._wall(selection[0])
-        elif len(selection) == 1 and selection[0].is_a("IfcDoor"):
+        elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
+                                      or selection[0].is_a("IfcWindow")):
             self._door(selection[0])
         elif selection:
             self._title(f"{len(selection)} elementos selecionados")
             walls = [e for e in selection if e.is_a("IfcWall")]
             door_list = [e for e in selection if e.is_a("IfcDoor")]
+            window_list = [e for e in selection if e.is_a("IfcWindow")]
             if walls:
                 self._walls(walls)
             if door_list:
                 self._doors(door_list)
+            if window_list:
+                self._doors(window_list)
             others = Counter(e.is_a() for e in selection
-                             if not e.is_a("IfcWall") and not e.is_a("IfcDoor"))
+                             if not any(e.is_a(c) for c in ("IfcWall", "IfcDoor", "IfcWindow")))
             for cls, n in sorted(others.items()):
                 self._add(cls, QLabel(str(n)))
         else:
@@ -520,36 +556,39 @@ class PropertiesPanel(QScrollArea):
         self._wall_common(walls)
 
     def _doors(self, door_list) -> None:
+        """Várias portas, ou várias janelas (spec/ui 02 §9; spec/ui 09 §4.4)."""
         doc = self.session.doc
+        window = door_list[0].is_a("IfcWindow")
+        type_class = "IfcWindowType" if window else "IfcDoorType"
         states = [doors.read_state(d) for d in door_list]
         found = [fc.opening_of(d) for d in door_list]
         spans = [openings.read_state(o) for o in found if o is not None]
-        self._section(f"<b>Portas ({len(door_list)})</b>")
+        self._section(f"<b>{'Janelas' if window else 'Portas'} ({len(door_list)})</b>")
 
         def edit(**changes):
             self._run(lambda: fc.edit_doors(doc, door_list, **changes))
 
-        self._combo("Tipo", self._types("IfcDoorType"), _common(s["type"] for s in states),
+        self._combo("Tipo", self._types(type_class), _common(s["type"] for s in states),
                     lambda v: edit(type=v))
         if len(spans) == len(door_list):
             self._number("Largura", _common(o["width"] for o in spans),
                          lambda v: edit(width=v), placeholder=MIXED)
             self._number("Altura", _common(o["height"] for o in spans),
                          lambda v: edit(height=v), placeholder=MIXED)
-            self._number("Base", _common(o["sill"] for o in spans),
+            self._number("Peitoril" if window else "Base", _common(o["sill"] for o in spans),
                          lambda v: edit(base=v), placeholder=MIXED)
-        self._combo("Abre para", OPENS_TO, _common(s["opens_to"] for s in states),
-                    lambda v: edit(opens_to=v))
-        hands = []
-        for s in states:
-            door_type = doc.find(s["type"]) if s["type"] else None
-            tstate = door_types.read(door_type) if door_type and s["foreign"] is None else None
-            hands.append(params.hand_of(tstate["operation_type"]) if tstate else None)
+        infos = [_filling_info(doc, d) for d in door_list]
+        labels = {_opens_label(w, t) for w, t in infos}
+        self._combo(labels.pop() if len(labels) == 1 else "Abre para", OPENS_TO,
+                    _common(s["opens_to"] for s in states), lambda v: edit(opens_to=v))
+        hands = [_hand(w, t) for w, t in infos]
         buttons = [("Inverter sentido", lambda: self._run(
             lambda: fc.flip_each(doc, door_list, fc.flip_opening)))]
         if all(hands):
-            self._combo("Dobradiças", HINGES, _common(hands), lambda v: edit(hinges=v))
-            buttons.append(("Inverter dobradiças", lambda: self._run(
+            name = "Mão" if window else "Dobradiças"
+            self._combo(name, HANDS if window else HINGES, _common(hands),
+                        lambda v: edit(hinges=v))
+            buttons.append((f"Inverter {'mão' if window else 'dobradiças'}", lambda: self._run(
                 lambda: fc.flip_each(doc, door_list, fc.flip_hinges))))
         self._buttons(*buttons)
         self._combo("Alinhamento", ALIGNS, _common(s["align"] for s in states),
@@ -565,57 +604,77 @@ class PropertiesPanel(QScrollArea):
     # --- porta (§7.3) -------------------------------------------------------------------
 
     def _door(self, door) -> None:
+        """Porta (spec/ui 01 §7.3) ou janela (spec/ui 09 §4.4) selecionada sozinha."""
         doc = self.session.doc
         state = doors.read_state(door)
         opening = fc.opening_of(door)
         o = openings.read_state(opening) if opening is not None else None
-        door_type = doc.find(state["type"]) if state["type"] else None
-        tstate = (door_types.read(door_type)
-                  if door_type is not None and state["foreign"] is None else None)
-        common = ifcopenshell.util.element.get_pset(door, "Pset_DoorCommon") or {}
-        self._title(f"Porta {door.Name or ''}".strip())
+        window, tstate = _filling_info(doc, door)
+        _, type_class, common_pset, qto, _ = doors.kind_of(door)
+        noun = "Janela" if window else "Porta"
+        common = ifcopenshell.util.element.get_pset(door, common_pset) or {}
+        self._title(f"{noun} {door.Name or ''}".strip())
 
         def edit(**changes):
             self._run(lambda: fc.edit_door(doc, door, **changes))
 
-        self._combo("Tipo", self._types("IfcDoorType"), state["type"], lambda v: edit(type=v))
+        self._combo("Tipo", self._types(type_class), state["type"], lambda v: edit(type=v))
         if state["type"] and state["foreign"] is None:
-            self._edit_type_button("IfcDoorType", state["type"])
+            self._edit_type_button(type_class, state["type"])
         self._read("Código", str(common.get("Reference") or "—"))
         if o is not None:
             self._section("Vão")
             self._number("Largura", o["width"], lambda v: edit(width=v))
             self._number("Altura", o["height"], lambda v: edit(height=v))
-            self._number("Base", o["sill"], lambda v: edit(base=v))
+            self._number("Peitoril" if window else "Base", o["sill"], lambda v: edit(base=v))
+            if window:  # a verga muda a altura e mantém o peitoril (janela §3.1)
+                self._number("Verga", o["sill"] + o["height"],
+                             lambda v: edit(height=v - o["sill"]))
             self._number("Distância ao início", o["distance"], lambda v: edit(distance=v))
+            host = openings.host(opening)
+            base_offset = read_wall(doc, host)["base_offset"] if host is not None else 0.0
+            if window and abs(base_offset) > 1e-9:
+                self._read("Peitoril do piso", f"{fmt(o['sill'] + base_offset)} m")
         self._section("Abertura")
-        self._combo("Abre para", OPENS_TO, state["opens_to"], lambda v: edit(opens_to=v))
-        hand = params.hand_of(tstate["operation_type"]) if tstate else None
+        self._combo(_opens_label(window, tstate), OPENS_TO, state["opens_to"],
+                    lambda v: edit(opens_to=v))
+        hand = _hand(window, tstate)
+        hand_name = "Mão" if window else "Dobradiças"
         if hand is not None:
-            self._combo("Dobradiças", HINGES, hand, lambda v: edit(hinges=v))
+            self._combo(hand_name, HANDS if window else HINGES, hand,
+                        lambda v: edit(hinges=v))
         buttons = [("Inverter sentido",
                     lambda: self._run(lambda: fc.flip_opening(doc, door)))]
         if hand is not None:
-            buttons.append(("Inverter dobradiças",
+            buttons.append((f"Inverter {hand_name.lower()}",
                             lambda: self._run(lambda: fc.flip_hinges(doc, door))))
         self._buttons(*buttons)
         self._section("Posição no marco")
         self._combo("Alinhamento", ALIGNS, state["align"], lambda v: edit(align=v))
         self._number("Deslocamento", state["offset"], lambda v: edit(offset=v))
-        q = ifcopenshell.util.element.get_pset(door, params.QTO) or {}
+        if window and tstate and o is not None:
+            host = openings.host(opening)
+            band, _ = openings.wall_info(doc, host)
+            if tstate["lining"]["depth"] > band.thickness + 1e-6:
+                note = QLabel("O marco é mais profundo que a parede.")
+                note.setStyleSheet("color: #8a5a00")
+                self._add(note)
+        q = ifcopenshell.util.element.get_pset(door, qto) or {}
         if q:
             self._section("Quantidades")
             self._read("Largura", f"{fmt(q.get('Width', 0))} m")
             self._read("Altura", f"{fmt(q.get('Height', 0))} m")
             self._read("Área", f"{fmt(q.get('Area', 0))} m²")
+            if window:
+                self._read("Perímetro", f"{fmt(q.get('Perimeter', 0))} m")
         self._door_common([door])
         self._section("Identificação")
         self._read("GlobalId", door.GlobalId)
         self._read("Origem", "outro programa" if state["foreign"] is not None else "BrasBim")
         if state["foreign"] is not None:
-            warning = QLabel("Porta de outro programa: mudar tamanho, tipo, sentido, "
-                             "dobradiças ou alinhamento a converte em porta do BrasBim, e o "
-                             "corpo original é substituído.")
+            warning = QLabel(f"{noun} de outro programa: mudar tamanho, tipo, sentido, "
+                             f"{hand_name.lower()} ou alinhamento a converte em "
+                             f"{noun.lower()} do BrasBim, e o corpo original é substituído.")
             warning.setWordWrap(True)
             warning.setStyleSheet("color: #8a5a00")
             self._add(warning)
@@ -699,12 +758,13 @@ class PropertiesPanel(QScrollArea):
             state = doors.read_state(door)
             if state["foreign"] is not None or not state["type"]:
                 return {}
-            return doors.common_defaults(doc.get(state["type"]).Name)
+            return doors.type_common_defaults(doc.get(state["type"]))
 
         def effective(door):
             return {**defaults(door), **doors.read_state(door)["common"]}
 
-        self._common_group(door_list, DOOR_COMMON, effective, defaults,
+        fields = WINDOW_COMMON if door_list[0].is_a("IfcWindow") else DOOR_COMMON
+        self._common_group(door_list, fields, effective, defaults,
                            lambda d, common: fc.edit_door(doc, d, common=common))
 
     def _edit_type_button(self, ifc_class: str, gid: str) -> None:
