@@ -143,11 +143,17 @@ def _validate(state: dict) -> None:
 
 
 def material_named(doc: Document, name: str):
-    """Material com esse nome, criado se faltar."""
+    """Material com esse nome, criado se faltar (com o estilo da biblioteca, se houver;
+    spec/ui 06 §4.4)."""
+    from brasbim.core import materials
+
     for m in doc.ifc.by_type("IfcMaterial"):
         if m.Name == name:
             return m
-    return ifcopenshell.api.material.add_material(doc.ifc, name=name)
+    material = ifcopenshell.api.material.add_material(doc.ifc, name=name)
+    if name in materials.LIBRARY:
+        materials.write_style(doc, material, materials.default_style(name))
+    return material
 
 
 def _write_layers(doc: Document, lset, layers: list[dict]) -> None:

@@ -19,7 +19,7 @@ class OpError(ValueError):
 class Document:
     def __init__(self, ifc: ifcopenshell.file):
         self.ifc = ifc
-        self._body = self._axis = self._profile = None
+        self._body = self._axis = self._profile = self._plan_body = None
         # GlobalIds recalculados durante a transação em curso (ver ``ops.history.run``).
         self.changed: set[str] = set()
 
@@ -131,6 +131,13 @@ class Document:
         if self._profile is None:
             self._profile = self._subcontext("Model", "Profile", "ELEVATION_VIEW")
         return self._profile
+
+    @property
+    def plan_body_context(self):
+        """Estilos de corte da planta (spec/ui 06 §4.3), criado quando for preciso."""
+        if self._plan_body is None:
+            self._plan_body = self._subcontext("Plan", "Body", "PLAN_VIEW")
+        return self._plan_body
 
     def _subcontext(self, context_type: str, identifier: str, target_view: str):
         for sub in self.ifc.by_type("IfcGeometricRepresentationSubContext"):

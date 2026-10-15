@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (spec 08 implementada).*
+*Atualizado em 2026‑10‑15 (pacote 2: camadas e estilos de material no núcleo).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (209 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (217 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -70,24 +70,37 @@ Feito:
 - `brasbim/core/clip.py`: booleanos 2D com `pyclipr` (união, interseção, diferença,
   afastamento, recorte de polilinhas, semiplano). `pyclipr` instalado e em `pyproject.toml`.
 - `storey.*` com `cut_height` (Pset `BrasBim_Pavimento`, `AlturaPlanoCorte`;
-  `storeys.cut_height()`); `edit_storey` lê o estado completo. 179 testes passando.
+  `storeys.cut_height()`); `edit_storey` lê o estado completo.
+- `core/layers.py` (`wall_layers`, `regions(doc, walls, pieces)`, `by_material`):
+  base = faixa da camada (prolongada) ∩ peças da parede; extensão nas pontas com junção =
+  retângulo da faixa (de `reach` antes a `reach` depois do nó) ∩ peças da vizinha,
+  cortado antes da primeira camada da vizinha com prioridade ≥ (projeção medida só dentro
+  da faixa). Testes em `tests/test_camadas.py` (L, T, prioridades invertidas).
+- `core/materials.py`: `style(doc, nome)` (com `"default"`), `read_style`, `write_style`,
+  operação `material.edit` (id = nome; registrada em `HANDLER_MODULES`), `LIBRARY` (§4.4),
+  `edit_op`. `walls.types.material_named` grava o estilo da biblioteca ao criar o
+  material. `Document.plan_body_context` (Plan/Body/PLAN_VIEW). Remoção própria das
+  representações (`remove_deep2` apagava o contexto). Testes em `tests/test_materiais.py`
+  (UI56, UI57, UI59 no núcleo).
 
 Falta (desenho combinado):
-- `core/layers.py`: regiões por camada. Base de cada camada = faixa crua da camada
-  (prolongada pela tangente nas pontas) ∩ peças da própria parede. Nas pontas com junção
-  (ATSTART/ATEND), extensão = faixa ∩ peças da vizinha, cortada no semiplano antes da
-  primeira camada da vizinha com prioridade ≥ (menor projeção ao longo da tangente de
-  saída). Atribuir por prioridade decrescente (desempate: contínua em X, mais espessa,
-  GlobalId, índice), cada uma = (base ∪ extensão) − já atribuído. Prioridade vazia = 0.
 - `core/plan.py`: corte relativo à base da parede (hoje usa 1,50 fixo sem descontar
   `base_offset`); papéis `wall` (cortada), `wall_view` (abaixo), `wall_above`
   (tracejada), linhas de peitoril e vão acima; nicho recortado; `Region` (mancha por
   tipo no simplificado; por material no por camadas) e `Edge` (contorno externo por tipo).
   Na vista, `wall` só desenha quando selecionada (sobreposição).
-- `core/materials.py`: estilos (spec 06 §4), operação `material.edit` (id = nome),
-  `IfcMaterialDefinitionRepresentation` com `IfcSurfaceStyle` (Model/Body) e
-  `IfcFillAreaStyle` (contexto novo Plan/Body); biblioteca §4.4 gravada no projeto novo
-  e no exemplo; registrar em `ops/base.HANDLER_MODULES`.
+- `core/plan.py` (desenho pensado): `storey_plan(doc, storey, show_below, detail,
+  show_above)`; por parede, `c_rel = corte − base_offset`; acima se `c_rel < 0`; abaixo
+  onde o topo ≤ `c_rel` (por trecho com `top.at`); vãos atravessados interrompem
+  (peitoril > 0: linhas das faces em `wall_view` aberto); vão acima: retângulo
+  `wall_above`; nicho: diferença do retângulo na face (`side` left = face ymax).
+  `Region(key, rings, fill, line)` e `Edge(rings, weight, color)`; no simplificado,
+  região por tipo = união das peças − peças de outros tipos que vêm depois (contínua em
+  X por último); no por camadas, `layers.regions` + `by_material` com o corte de
+  `materials.style`, e paredes sem camadas pelo tipo. A vista desenha `wall` só
+  selecionada; hachura ancorada na origem do pavimento. Opções no `PlanContext`
+  (`detail`, `show_above`).
+- 3D: `scene3d.material_color` passar a usar `materials.read_style`/`default_style`.
 - 3D: recorte dos triângulos do corpo pelas regiões das camadas (faces verticais por
   intervalos ao longo da aresta, recuadas 1 mm para dentro; demais por interseção em xy);
   `Scene` precisa do `Document`.
@@ -116,6 +129,8 @@ Falta (desenho combinado):
 - Nicho e vão livre sem ferramenta na interface.
 - 3D, fora da spec 07: seleção por janela, alças, arrastar para mover; parede em arco sem
   campos de medida.
+- Vista 3D: a mini-barra é filha do `QOpenGLWidget`; nunca movê-la dentro do `paintGL`
+  (deixava rastros ao orbitar; corrigido em 2ee0024).
 - Testes de interface: a planta do `window` mede 464 × 530 px; com a origem do fixture
   (100, 600), pontos com y < 1,4 m caem fora e `QTest.mouseMove` não chega (os testes da
   spec 07 mudam a origem).

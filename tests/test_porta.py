@@ -229,7 +229,8 @@ def test_po14_excluir_porta(model):
     model.commit(fc.delete_door_type(model.doc, door_type))
     # O material continua no modelo (biblioteca, RF-TIP-03); só o conjunto sai com o tipo.
     assert [m.Name for m in model.doc.ifc.by_type("IfcMaterial")][-1] == "Madeira"
-    assert len(list(model.doc.ifc)) == empty + 1
+    # O material vem com o estilo da biblioteca (spec/ui 06 §4.4): mais 12 entidades.
+    assert len(list(model.doc.ifc)) == empty + 1 + 12
     model.history.undo()
     assert len(list(model.doc.ifc)) == with_type
 

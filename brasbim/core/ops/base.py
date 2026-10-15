@@ -58,6 +58,7 @@ _DERIVE: list[DeriveFn] = []
 HANDLER_MODULES = (
     "brasbim.core.storeys",
     "brasbim.core.walls.types",
+    "brasbim.core.materials",
     "brasbim.core.walls.wall",
     "brasbim.core.walls.connections",
     "brasbim.core.walls.openings",
