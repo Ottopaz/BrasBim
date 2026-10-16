@@ -211,13 +211,13 @@ class PlanView(QWidget, ToolInput):
         rest = []
         for shape in plan.shapes:
             role = shape.role
-            if role not in ("below", "wall_above", "wall_view"):
+            if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above"):
                 rest.append(shape)
                 continue
             selected = shape.owner in selection
             if role == "below":
                 pen = QPen(C["below"], 1, Qt.DashLine)
-            elif role == "wall_above":
+            elif role in ("wall_above", "slab_above"):
                 pen = QPen(C["select"] if selected else C["wall_line"],
                            max(1.0, self._px(ABOVE_WEIGHT)), Qt.DashLine)
             else:
@@ -236,13 +236,22 @@ class PlanView(QWidget, ToolInput):
             selected = shape.owner in selection
             path = self._path(shape.points, shape.closed)
             role = shape.role
-            if role == "wall":
-                if not selected:  # o desenho vem das regiões (sobreposição nas junções)
+            if role in ("wall", "column", "beam", "slab"):
+                # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
+                # destaque da seleção.
+                if not selected:
                     continue
                 painter.setPen(QPen(C["select"], 2))
                 fill = QColor(C["select"])
-                fill.setAlpha(110)
+                fill.setAlpha(110 if role != "slab" else 40)
                 painter.setBrush(QBrush(fill))
+            elif role in ("column_view", "beam_view", "column_above", "beam_above"):
+                above = role.endswith("above")
+                painter.setPen(QPen(C["select"] if selected else C["wall_line"],
+                                    2 if selected else max(1.0, self._px(
+                                        ABOVE_WEIGHT if above else VIEW_WEIGHT)),
+                                    Qt.DashLine if above else Qt.SolidLine))
+                painter.setBrush(Qt.NoBrush)
             else:
                 thin = role in ("door_swing", "window_sash", "window_glass")
                 color = C["select"] if selected else (C["swing"] if role == "door_swing"

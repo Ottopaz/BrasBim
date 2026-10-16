@@ -7,14 +7,23 @@ Barras comuns do Qt: vão para qualquer borda da janela ou ficam soltas. A barra
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
 
 from brasbim.core.fillings import params
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
-from brasbim.ui.tools import WindowTool, _FillingTool, _WallTool, fmt, parse_number
+from brasbim.ui.tools import (
+    BeamTool,
+    ColumnTool,
+    SlabTool,
+    WindowTool,
+    _FillingTool,
+    _WallTool,
+    fmt,
+    parse_number,
+)
 
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
 ICON_PX = 20  # ícones das barras (spec/ui 11 §3)
@@ -28,6 +37,13 @@ CREATE_TOOLS = [
      "passe o cursor sobre uma parede reta e clique; Tab digita a distância"),
     ("window", "window", "Janela",
      "passe o cursor sobre uma parede reta e clique; Tab digita a distância e o peitoril"),
+    # Estrutura na ordem em que se costuma lançar (spec/ui 10 §2).
+    ("column", "column", "Pilar",
+     "clique o ponto de inserção; barra de espaço gira 90°"),
+    ("beam", "beam", "Viga",
+     "clique o início e o fim; continua do último ponto; Esc ou clique duplo encerra"),
+    ("slab", "slab", "Laje",
+     "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -47,6 +63,56 @@ HANDS = [("left", "hinge_left", "Mão esquerda", f"dobradiças à esquerda, {_SE
          ("right", "hinge_right", "Mão direita", f"dobradiças à direita, {_SEEN}")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
+SLAB_MODES = [("polygon", "slab", "Polígono",
+               "clique os vértices; feche no primeiro ponto, com clique duplo ou Enter"),
+              ("rectangle", "wall_rect", "Retângulo", "clique dois cantos opostos")]
+BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
+
+
+class InsertionPicker(QWidget):
+    """Quadradinho de 9 pontos: ponto de inserção do pilar na seção, como visto na planta
+    (spec/ui 10 §3). Na seção circular, só o centro."""
+
+    SIZE = 26
+
+    def __init__(self, current: tuple[int, int], commit, center_only: bool = False):
+        super().__init__()
+        self.current, self.commit, self.center_only = current, commit, center_only
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setToolTip("Ponto de inserção do pilar na seção")
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _point(self, col: int, row: int) -> QPointF:
+        m = 5
+        step = (self.SIZE - 2 * m) / 2
+        return QPointF(m + col * step, self.SIZE - m - row * step)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(theme.INK_SOFT), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(QRectF(self._point(0, 2), self._point(2, 0)))
+        for col in range(3):
+            for row in range(3):
+                on = (col, row) == self.current
+                usable = not self.center_only or (col, row) == (1, 1)
+                color = QColor(theme.ACCENT if on else theme.INK if usable else theme.RULE_SOFT)
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(color))
+                r = 3.2 if on else 2.0
+                painter.drawEllipse(self._point(col, row), r, r)
+        painter.end()
+
+    def mousePressEvent(self, event):
+        if self.center_only:
+            return
+        p = event.position()
+        best = min(((col, row) for col in range(3) for row in range(3)),
+                   key=lambda c: (self._point(*c) - p).manhattanLength())
+        self.current = best
+        self.update()
+        self.commit(best)
 
 
 def make_action(parent, icon_name: str, name: str, usage: str = "",
@@ -132,8 +198,14 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
-        if isinstance(tool, _WallTool):
+        if isinstance(tool, BeamTool):
+            self._beam(tool)
+        elif isinstance(tool, SlabTool):
+            self._slab(tool)
+        elif isinstance(tool, _WallTool):
             self._wall(tool)
+        elif isinstance(tool, ColumnTool):
+            self._column(tool)
         elif isinstance(tool, _FillingTool):
             self._door(tool)
         else:
@@ -278,3 +350,95 @@ class OptionsBar(QToolBar):
                     "Alinhamento do marco na parede")
         self._number(tool.offset, lambda v: setattr(tool, "offset", v),
                      "Deslocamento do marco (m)")
+
+    # --- pilar, viga e laje (spec/ui 10 §3) ----------------------------------------------
+
+    def _type_group(self, ifc_class: str, holder, commit, noun: str) -> None:
+        """Tipo e Editar tipo; ``holder.type`` é o tipo escolhido."""
+        window = self.window_
+        self._label("Tipo")
+        self._combo([(t.Name, t.GlobalId) for t in self._types(ifc_class)], holder.type,
+                    commit, f"Tipo {noun}")
+        edit = make_action(self, "edit_type", "Editar tipo",
+                           f"abre o tipo escolhido na janela de tipos {noun}")
+        edit.triggered.connect(lambda: window.edit_type(ifc_class, holder.type))
+        self.addAction(edit)
+
+    def _column(self, tool) -> None:
+        def set_type(gid):
+            tool.type = gid
+            self.show_for(tool)
+
+        self._type_group("IfcColumnType", tool, set_type, "do próximo pilar")
+        self.addSeparator()
+        self._label("Inserção")
+        section = tool.section()
+        circle = section is not None and section["shape"] == "circle"
+        self.addWidget(InsertionPicker(tool.insertion, lambda v: setattr(tool, "insertion", v),
+                                       center_only=circle))
+        self._label("Ângulo")
+        self.angle_field = self._number(tool.angle, lambda v: setattr(tool, "angle", v),
+                                        "Ângulo do pilar (graus, anti-horário)")
+        self.addSeparator()
+        self._label("Base")
+        self._number(tool.base_offset, lambda v: setattr(tool, "base_offset", v),
+                     "Deslocamento da base (m)")
+        self._label("Topo")
+
+        def set_top(value):
+            tool.top = value
+            self.show_for(tool)
+
+        self._combo(TOPS, tool.top, set_top, "Topo do próximo pilar")
+        if tool.top == "fixed":
+            self._number(tool.fixed_height, lambda v: setattr(tool, "fixed_height", v),
+                         "Altura do pilar (m)")
+        else:
+            self._number(tool.top_offset, lambda v: setattr(tool, "top_offset", v),
+                         "Deslocamento do topo (m)")
+
+    def _beam(self, tool) -> None:
+        options = tool.options
+
+        def set_type(gid):
+            options.type = gid
+            self.show_for(tool)
+
+        self._type_group("IfcBeamType", options, set_type, "da próxima viga")
+        self.addSeparator()
+        self._choices(REF_LINES, options.ref_line, lambda v: setattr(options, "ref_line", v))
+        self.addSeparator()
+        self._label("Topo")
+
+        def set_top(value):
+            options.top = value
+            self.show_for(tool)
+
+        self._combo(BEAM_TOPS, options.top, set_top, "Topo da próxima viga")
+        if options.top == "fixed":
+            self._number(options.top_elevation, lambda v: setattr(options, "top_elevation", v),
+                         "Cota do topo, a partir do pavimento (m)")
+        else:
+            self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),
+                         "Deslocamento do topo (m)")
+
+    def _slab(self, tool) -> None:
+        options = tool.options
+
+        def set_type(gid):
+            options.type = gid
+            self.show_for(tool)
+
+        self._type_group("IfcSlabType", options, set_type, "da próxima laje")
+        self.addSeparator()
+
+        def set_mode(value):
+            tool.cancel()
+            tool.points = []
+            options.mode = value
+
+        self._choices(SLAB_MODES, options.mode, set_mode)
+        self.addSeparator()
+        self._label("Deslocamento do topo")
+        self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),
+                     "Cota da face de cima em relação ao pavimento (m)")

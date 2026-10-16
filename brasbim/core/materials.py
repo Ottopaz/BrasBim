@@ -142,7 +142,9 @@ def _read_cut(material) -> dict | None:
     for rep, _, style in _styled(material):
         if not (style.is_a("IfcFillAreaStyle") and _is_plan(rep)):
             continue
-        colors = [_colour(s) for s in style.FillStyles or [] if s.is_a("IfcColour")]
+        # IfcColour é um SELECT: as entidades são IfcColourRgb e as cores predefinidas.
+        colors = [_colour(s) for s in style.FillStyles or []
+                  if s.is_a("IfcColourSpecification") or s.is_a("IfcPreDefinedColour")]
         hatches = [s for s in style.FillStyles or [] if s.is_a("IfcFillAreaStyleHatching")]
         background = colors[0] if colors else None
         if not hatches:

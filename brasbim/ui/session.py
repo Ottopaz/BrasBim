@@ -18,12 +18,13 @@ from pathlib import Path
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import History, Transaction
+from brasbim.core.structure import commands as sc
 from brasbim.core.walls import commands as cmd
 
 MAX_MESSAGES = 200
 
 # Biblioteca mínima do projeto novo (spec/ui §2.2; valores de parede §3.4 e porta §3.5;
-# representação na planta, spec/ui 03 §6.4).
+# representação na planta, spec/ui 03 §6.4; estrutura, spec/ui 10 §5).
 _WALL_STYLES = {
     "Alvenaria 14": {"fill": "solid", "fill_color": "#9C9A93", "hatch_angle": 45.0,
                      "hatch_spacing": 0.10, "line_weight": 0.0005, "line_color": "#2B2A27"},
@@ -61,6 +62,22 @@ _WINDOW_TYPES = [
      (1.00, 1.20, 1.10)),
     ("J6 – fixa", "J6", "SINGLE_PANEL", ["FIXEDCASEMENT"], (1.00, 1.00, 1.10)),
 ]
+
+# Estrutura (laje.md, pilar.md e viga.md §3.4): seções em metros, de concreto.
+_COLUMN_TYPES = [(0.14, 0.30), (0.20, 0.20), (0.20, 0.40), (0.25, 0.50)]
+_COLUMN_ROUND = [0.30]
+_BEAM_TYPES = [(0.12, 0.30), (0.14, 0.40), (0.15, 0.40), (0.20, 0.50)]
+_SLAB_TYPES = [
+    ("Laje maciça 10 cm", "FLOOR", [("Concreto", 0.10)]),
+    ("Laje 12 cm com contrapiso", "FLOOR",
+     [("Contrapiso", 0.03), ("Concreto", 0.10), ("Reboco", 0.015)]),
+    ("Laje pré-moldada 12 cm", "FLOOR", [("Laje pré-moldada", 0.12)]),
+    ("Radier 15 cm", "BASESLAB", [("Concreto", 0.15)]),
+]
+
+
+def _cm(value: float) -> str:
+    return f"{round(value * 100)}"
 
 
 def feedback_dir() -> Path:
@@ -139,6 +156,17 @@ class Session:
             history.commit(fc.create_window_type(
                 doc, name, partitioning, operations, code=code,
                 defaults={"width": w, "height": h, "base": base}))
+        for b, h in _COLUMN_TYPES:
+            history.commit(sc.create_column_type(doc, f"Pilar {_cm(b)}×{_cm(h)}",
+                                                 {"shape": "rect", "b": b, "h": h}))
+        for d in _COLUMN_ROUND:
+            history.commit(sc.create_column_type(doc, f"Pilar Ø{_cm(d)}",
+                                                 {"shape": "circle", "d": d}))
+        for b, h in _BEAM_TYPES:
+            history.commit(sc.create_beam_type(doc, f"Viga {_cm(b)}×{_cm(h)}", b, h))
+        for name, predefined, layers in _SLAB_TYPES:
+            history.commit(sc.create_slab_type(
+                doc, name, [{"material": m, "thickness": t} for m, t in layers], predefined))
         self._attach(doc, None)
         # O diário começa com o conteúdo inicial, para que reaplicá-lo reproduza a sessão.
         self.history.journal = list(history.journal)

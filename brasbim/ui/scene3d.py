@@ -40,13 +40,20 @@ def color_of(material) -> tuple[float, float, float]:
 
 
 def material_color(element) -> tuple[float, float, float]:
-    """Cor do elemento inteiro: a do material (a camada mais espessa num conjunto)."""
+    """Cor do elemento inteiro: a do material (a camada mais espessa num conjunto; o
+    material do perfil no pilar e na viga)."""
     material = ifcopenshell.util.element.get_material(element)
     found = None
     if material is not None:
         if material.is_a("IfcMaterialLayerSetUsage"):
             material = material.ForLayerSet
-        if material.is_a("IfcMaterialLayerSet"):
+        elif material.is_a("IfcMaterialProfileSetUsage"):
+            material = material.ForProfileSet
+        if material.is_a("IfcMaterialProfileSet"):
+            profiles = [p for p in material.MaterialProfiles or [] if p.Material is not None]
+            if profiles:
+                found = profiles[0].Material
+        elif material.is_a("IfcMaterialLayerSet"):
             layers = [la for la in material.MaterialLayers if la.Material is not None]
             if layers:
                 found = max(layers, key=lambda la: la.LayerThickness or 0).Material
@@ -173,7 +180,8 @@ class Scene:
             styled = _styled_mesh(entity, g, tri, verts[edges], color)
             if styled is not None:
                 return styled
-        layered = self._split(entity, tri) if entity.is_a("IfcWall") else None
+        layered = (self._split(entity, tri) if entity.is_a("IfcWall")
+                   else _slab_layers(entity, tri) if entity.is_a("IfcSlab") else None)
         if layered is None:
             return Mesh(tri, _shaded(tri, color), verts[edges], color)
         names = {m.Name: m for m in self.doc.ifc.by_type("IfcMaterial")}
@@ -297,6 +305,54 @@ def _wall_layers(doc, storey) -> dict:
         out.setdefault(r.owner, {}).setdefault(r.material, []).extend(r.rings)
     return {gid: [(m, clip.union(rings)) for m, rings in groups.items()]
             for gid, groups in out.items()}
+
+
+def _clip_z(poly: list, z: float, keep_above: bool) -> list:
+    """Polígono 3D cortado pelo plano horizontal ``z`` (fica a parte de cima ou de baixo)."""
+    out = []
+    for i, p in enumerate(poly):
+        q = poly[(i + 1) % len(poly)]
+        p_in = p[2] >= z if keep_above else p[2] <= z
+        q_in = q[2] >= z if keep_above else q[2] <= z
+        if p_in:
+            out.append(p)
+        if p_in != q_in:
+            t = (z - p[2]) / (q[2] - p[2])
+            out.append(p + t * (q - p))
+    return out
+
+
+def _slab_layers(slab, tri: np.ndarray) -> dict | None:
+    """Laje com camadas (spec/ui 10 §7): triângulos por material, cortados nas cotas das
+    divisas, de baixo (camada 1) para cima. ``None`` com uma camada só."""
+    usage = ifcopenshell.util.element.get_material(slab, should_inherit=False)
+    if usage is None or not usage.is_a("IfcMaterialLayerSetUsage"):
+        return None
+    found = [(la.Material.Name if la.Material else None, float(la.LayerThickness or 0.0))
+             for la in usage.ForLayerSet.MaterialLayers]
+    if len(found) < 2:
+        return None
+    flat = tri.reshape(-1, 3, 3).astype(np.float64)
+    z, top = float(flat[:, :, 2].min()), float(flat[:, :, 2].max())
+    total = sum(t for _, t in found)
+    if total <= 0 or abs((top - z) - total) > 1e-3:
+        return None  # o corpo não é a pilha de camadas (outra origem)
+    out: dict = {}
+    for k, (name, thickness) in enumerate(found):
+        z0, z1 = z, z + thickness
+        z = z1
+        lo, hi = (-np.inf if k == 0 else z0), (np.inf if k == len(found) - 1 else z1)
+        pieces = []
+        for t in flat:
+            poly = _clip_z(_clip_z(list(t), lo, True), hi, False)
+            if len(poly) < 3:
+                continue
+            pieces += [np.array([poly[0], poly[i], poly[i + 1]])
+                       for i in range(1, len(poly) - 1)]
+        if pieces:
+            stacked = np.array(pieces)
+            out[name] = (np.concatenate([out[name], stacked]) if name in out else stacked)
+    return out or None
 
 
 def _hits_box(origin, direction, low, high, pad=1e-6) -> bool:

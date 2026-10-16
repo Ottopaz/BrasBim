@@ -351,6 +351,8 @@ class ToolInput:
                     self.tool_finished.emit()
         elif key in (Qt.Key_Return, Qt.Key_Enter):
             tool.key("enter")
+        elif key == Qt.Key_Space and not event.isAutoRepeat() and tool.key("space"):
+            self.tool_options_changed.emit()  # o pilar girou: a barra Opções mostra o ângulo
         elif text and (text.isdigit() or text in ",.-") and tool.wants_number():
             if tool.fields():
                 self.measure.start(0, text)

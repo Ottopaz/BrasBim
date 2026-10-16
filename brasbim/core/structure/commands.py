@@ -221,6 +221,10 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     if "outline" in changes:
         changes["outline"] = slabs.clean(changes["outline"])
+    # O pilar circular só tem o centro como ponto de inserção (pilar.md §3.1).
+    if (element.is_a("IfcColumn") and changes.get("type") and state["foreign"] is None
+            and st_types.section(doc.get(changes["type"]))["shape"] == "circle"):
+        changes.setdefault("cardinal", 5)
     for key in ("point", "start", "end"):
         if key in changes:
             changes[key] = [float(changes[key][0]), float(changes[key][1])]

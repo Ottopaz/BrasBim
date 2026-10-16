@@ -32,6 +32,16 @@ ICONS = {
     # janela em planta: trechos de parede, marco e dois caixilhos de correr
     "window": '<path d="M2 8.75 H5.75 V15.25 H2 M22 8.75 H18.25 V15.25 H22"/>'
               '<path d="M5.75 11 H13.5 M10.5 13 H18.25" stroke-width="1"/>',
+    # pilar em planta: seção quadrada cortada, com hachura (spec/ui 10 §10)
+    "column": '<rect x="6.75" y="6.75" width="10.5" height="10.5"/>'
+              '<path d="M7 11 L11 7 M7 15 L15 7 M9 17 L17 9 M13 17 L17 13" stroke-width="1"/>',
+    # viga: duas linhas tracejadas sobre dois apoios
+    "beam": '<path d="M2.5 9.25 H21.5 M2.5 14.75 H21.5" stroke-dasharray="2.5 1.75"/>'
+            '<rect x="3.25" y="7.25" width="3.5" height="9.5" fill="currentColor"/>'
+            '<rect x="17.25" y="7.25" width="3.5" height="9.5" fill="currentColor"/>',
+    # laje: placa em perspectiva, com a espessura
+    "slab": '<path d="M2.75 12.25 L9 7.25 H21.25 L15 12.25 Z"/>'
+            '<path d="M2.75 12.25 V15.75 H15 L21.25 10.75 V7.25 M15 12.25 V15.75"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

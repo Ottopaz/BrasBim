@@ -97,3 +97,13 @@ def test_ui57_material_de_outra_origem_com_textura(model):
     _edit(model, "Pedra", new)
     assert any(s.is_a("IfcSurfaceStyleWithTextures") for s in surface.Styles)
     assert materials.style(model.doc, "Pedra")["cut"]["pattern"] == "lines"
+
+
+@pytest.mark.parametrize("name", ["Concreto", "Vidro", "Alumínio"])
+def test_corte_solido_da_biblioteca_lido_de_volta(model, name):
+    """O fundo sólido do corte volta como gravado (o ``IfcColour`` é um SELECT; antes o
+    corte sólido voltava como "nenhum")."""
+    from brasbim.core.walls import types as wall_types
+
+    material = wall_types.material_named(model.doc, name)
+    assert materials.read_style(material)["cut"] == materials.LIBRARY[name]["cut"]

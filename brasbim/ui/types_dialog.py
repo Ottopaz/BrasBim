@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Janela de tipos de parede, de porta (``spec/ui/02-edicao.md`` §8) e de janela
-(``spec/ui/09-janela.md`` §5).
+"""Janela de tipos de parede, de porta (``spec/ui/02-edicao.md`` §8), de janela
+(``spec/ui/09-janela.md`` §5) e de pilar, viga e laje (``spec/ui/10-laje-pilar-viga.md``
+§5).
 
 Lista à esquerda (nome e quantidade de elementos que usam o tipo) e editor à direita.
 Novo, Duplicar e Excluir são transações imediatas; as mudanças do editor só entram ao
@@ -12,8 +13,8 @@ from __future__ import annotations
 import copy
 
 import ifcopenshell.util.element
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QColorDialog,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -39,9 +41,12 @@ from brasbim.core import materials, plan
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params, window_types
+from brasbim.core.ops import Transaction
+from brasbim.core.structure import commands as sc
+from brasbim.core.structure import profiles
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
-from brasbim.ui import icons
+from brasbim.ui import icons, theme
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.tools import fmt, parse_number
 from brasbim.ui.tools import fmt_exact as exact
@@ -266,45 +271,8 @@ class TypesDialog(QDialog):
     def delete_transaction(self, gid: str): ...
 
 
-class WallTypesDialog(TypesDialog):
-    ifc_class = "IfcWallType"
-    title = "Tipos de parede"
-
-    def build_editor(self, wall_type) -> None:
-        state = wall_types.read(wall_type)
-        self.state = state
-        self.name = self._line("Nome", state["name"] or "")
-        uses = list(WALL_USES)
-        if state["predefined_type"] not in [v for _, v in uses]:
-            uses.append((state["predefined_type"], state["predefined_type"]))
-        self.use = self._combo("Uso", uses, state["predefined_type"])
-        self.form.addRow(QLabel("Camadas, da face esquerda para a direita:"))
-        self.layers = QTableWidget(0, 5)
-        self.layers.setHorizontalHeaderLabels(["Material", "Espessura", "Função", "Prioridade",
-                                               ""])
-        self.layers.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.layers.verticalHeader().hide()
-        self.layers.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.layers.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.layers.itemChanged.connect(self._layers_changed)
-        self.form.addRow(self.layers)
-        row = QHBoxLayout()
-        for text, slot in (("Acrescentar", self.add_layer), ("Remover", self.remove_layer),
-                           ("Subir", lambda: self.shift_layer(-1)),
-                           ("Descer", lambda: self.shift_layer(1))):
-            button = QPushButton(text)
-            button.clicked.connect(slot)
-            row.addWidget(button)
-        holder = QWidget()
-        holder.setLayout(row)
-        row.setContentsMargins(0, 0, 0, 0)
-        self.form.addRow(holder)
-        self.total = QLabel()
-        self.form.addRow("Espessura total", self.total)
-        for layer in state["layers"]:
-            self._append_layer(layer)
-        self._update_total()
-        self._plan_style_editor(wall_type)
+class _PlanStyleDialog(TypesDialog):
+    """Tipos com representação na planta (Pset ``BrasBim_RepresentacaoPlanta``)."""
 
     # representação na planta (spec/ui 03 §6.3)
 
@@ -370,6 +338,48 @@ class WallTypesDialog(TypesDialog):
         super().touched()
         if getattr(self, "sample", None) is not None:
             self._update_sample()
+
+
+
+class WallTypesDialog(_PlanStyleDialog):
+    ifc_class = "IfcWallType"
+    title = "Tipos de parede"
+
+    def build_editor(self, wall_type) -> None:
+        state = wall_types.read(wall_type)
+        self.state = state
+        self.name = self._line("Nome", state["name"] or "")
+        uses = list(WALL_USES)
+        if state["predefined_type"] not in [v for _, v in uses]:
+            uses.append((state["predefined_type"], state["predefined_type"]))
+        self.use = self._combo("Uso", uses, state["predefined_type"])
+        self.form.addRow(QLabel("Camadas, da face esquerda para a direita:"))
+        self.layers = QTableWidget(0, 5)
+        self.layers.setHorizontalHeaderLabels(["Material", "Espessura", "Função", "Prioridade",
+                                               ""])
+        self.layers.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.layers.verticalHeader().hide()
+        self.layers.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.layers.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.layers.itemChanged.connect(self._layers_changed)
+        self.form.addRow(self.layers)
+        row = QHBoxLayout()
+        for text, slot in (("Acrescentar", self.add_layer), ("Remover", self.remove_layer),
+                           ("Subir", lambda: self.shift_layer(-1)),
+                           ("Descer", lambda: self.shift_layer(1))):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        holder = QWidget()
+        holder.setLayout(row)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.form.addRow(holder)
+        self.total = QLabel()
+        self.form.addRow("Espessura total", self.total)
+        for layer in state["layers"]:
+            self._append_layer(layer)
+        self._update_total()
+        self._plan_style_editor(wall_type)
 
     def _append_layer(self, layer: dict, at: int | None = None) -> None:
         self.layers.blockSignals(True)
@@ -846,3 +856,347 @@ class WindowTypesDialog(TypesDialog):
 
     def delete_transaction(self, gid):
         return fc.delete_window_type(self.session.doc, gid)
+
+
+# --- pilar, viga e laje (spec/ui 10 §5) --------------------------------------------------
+
+SECTIONS = (("Retangular", "rect"), ("Circular", "circle"))
+SLAB_USES = [("Laje de piso", "FLOOR"), ("Laje sobre o solo", "BASESLAB")]
+PLAN_SOURCES = [("Padrão", "default"), ("Própria", "own")]
+
+
+class SectionPreview(QWidget):
+    """Desenho da seção cotado (spec/ui 10 §5)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.section: dict | None = None
+        self.setMinimumSize(200, 150)
+
+    def show_section(self, section: dict | None) -> None:
+        self.section = section
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor(theme.PAPER))
+        section = self.section
+        if section is None:
+            painter.end()
+            return
+        w, h = profiles.size(section)
+        k = min((self.width() - 80) / w, (self.height() - 60) / h)
+        cx, cy = self.width() / 2, self.height() / 2 - 8
+        rect = QRectF(cx - w * k / 2, cy - h * k / 2, w * k, h * k)
+        painter.setPen(QPen(QColor(theme.INK), 1.5))
+        if section["shape"] == "circle":
+            painter.drawEllipse(rect)
+            text = f"Ø {fmt(section['d'])}"
+            painter.drawText(QRectF(0, rect.bottom() + 6, self.width(), 20), Qt.AlignCenter,
+                             text)
+        else:
+            painter.drawRect(rect)
+            painter.drawText(QRectF(0, rect.bottom() + 6, self.width(), 20), Qt.AlignCenter,
+                             f"b = {fmt(section['b'])}")
+            painter.save()
+            painter.translate(QPointF(rect.right() + 18, cy))
+            painter.rotate(-90)
+            painter.drawText(QRectF(-60, -10, 120, 20), Qt.AlignCenter,
+                             f"h = {fmt(section['h'])}")
+            painter.restore()
+        painter.end()
+
+
+class _StructureTypesDialog(_PlanStyleDialog):
+    """Base de pilar, viga e laje: representação na planta padrão ou própria, e excluir
+    um tipo em uso pede o tipo que fica no lugar (spec/ui 10 §5)."""
+
+    noun = ""
+
+    def _plan_source(self, element_type) -> None:
+        own = wall_types.read_plan_style(element_type) is not None
+        self.plan_source = self._combo("Representação na planta", PLAN_SOURCES,
+                                       "own" if own else "default")
+        self._plan_style_editor(element_type)
+        self.plan_source.currentIndexChanged.connect(self._plan_enabled)
+        self._plan_enabled()
+
+    def _plan_enabled(self, *_args) -> None:
+        own = self.plan_source.currentData() == "own"
+        for field in (self.fill, self.fill_color, self.hatch_angle, self.hatch_spacing,
+                      self.line_weight, self.line_color):
+            field.setEnabled(own)
+
+    def plan_changes(self) -> dict:
+        new = self.read_plan_style() if self.plan_source.currentData() == "own" else None
+        return {"plan_style": new} if new != self.state["plan_style"] else {}
+
+    def _material(self, current: str) -> QLineEdit:
+        field = QLineEdit(current)
+        field.textEdited.connect(self.touched)
+        button = QToolButton()
+        button.setText("…")
+        button.setToolTip("Estilo do material (cor e corte)")
+        button.clicked.connect(lambda: self._edit_material(field.text().strip()))
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(field, 1)
+        row.addWidget(button)
+        holder = QWidget()
+        holder.setLayout(row)
+        self.form.addRow("Material", holder)
+        return field
+
+    def _edit_material(self, name: str) -> None:
+        if not materials.named(self.session.doc, name):
+            self.session.message(f"o material {name!r} ainda não existe: aplique o tipo antes",
+                                 "recusa")
+            return
+        self.materials_dialog = MaterialsDialog(self.session, self, select=name)
+        self.materials_dialog.exec()
+
+    def _unique_name(self, name: str) -> str:
+        if not name:
+            raise ValueError("nome vazio")
+        names = {t.Name for t in self.types() if t.GlobalId != self.current}
+        if name in names:
+            raise ValueError(f"já existe um tipo chamado {name}")
+        return name
+
+    def edit(self, changes):
+        return sc.edit_type(self.session.doc, self.current, **changes)
+
+    def delete_transaction(self, gid):
+        doc = self.session.doc
+        element_type = doc.get(gid)
+        if not self.uses(element_type):
+            return sc.delete_type(doc, gid)
+        others = [t for t in self.types() if t.GlobalId != gid]
+        if not others:
+            raise OpError(f"o tipo {element_type.Name} está em uso e não há outro para pôr "
+                          "no lugar")
+        names = [t.Name for t in others]
+        name, ok = QInputDialog.getItem(
+            self, "Tipo em uso",
+            f"{self.uses(element_type)} {self.noun} usam {element_type.Name}. "
+            "Que tipo fica no lugar?", names, 0, False)
+        if not ok:
+            return Transaction("", [])  # desistiu: nada a fazer
+        return sc.delete_type(doc, gid, others[names.index(name)].GlobalId)
+
+
+class _ProfileTypesDialog(_StructureTypesDialog):
+    shapes = SECTIONS
+
+    def build_editor(self, element_type) -> None:
+        state = sc.read_type(element_type)
+        self.state = state
+        self.name = self._line("Nome", state["name"] or "")
+        section = state["section"]
+        self.shape = self._combo("Seção", self.shapes, section["shape"])
+        self.b = self._line("b (largura)", exact(section.get("b", section.get("d", 0.2))))
+        self.h = self._line("h (altura)", exact(section.get("h", section.get("d", 0.4))))
+        self.d = self._line("Diâmetro", exact(section.get("d", section.get("b", 0.3))))
+        self.material = self._material(state["material"] or "")
+        self.preview = SectionPreview()
+        self.form.addRow(self.preview)
+        for field in (self.b, self.h, self.d):
+            field.textEdited.connect(self._redraw)
+        self.shape.currentIndexChanged.connect(self._redraw)
+        self._plan_source(element_type)
+        self._redraw()
+
+    def read_section(self) -> dict:
+        if self.shape.currentData() == "circle":
+            return {"shape": "circle", "d": parse_number(self.d.text())}
+        return {"shape": "rect", "b": parse_number(self.b.text()),
+                "h": parse_number(self.h.text())}
+
+    def _redraw(self, *_args) -> None:
+        circle = self.shape.currentData() == "circle"
+        for field, visible in ((self.b, not circle), (self.h, not circle), (self.d, circle)):
+            field.setVisible(visible)
+            self.form.labelForField(field).setVisible(visible)
+        try:
+            section = self.read_section()
+            profiles.validate(section)
+        except (ValueError, KeyError):
+            section = None
+        self.preview.show_section(section)
+
+    def changes(self) -> dict:
+        section = self.read_section()
+        try:
+            profiles.validate(section)
+        except ValueError as e:
+            raise ValueError(str(e)) from e
+        new = {"name": self._unique_name(self.name.text().strip()), "section": section,
+               "material": self.material.text().strip()}
+        if not new["material"]:
+            raise ValueError("material vazio")
+        out = {k: v for k, v in new.items() if v != self.state[k]}
+        return {**out, **self.plan_changes()}
+
+
+class ColumnTypesDialog(_ProfileTypesDialog):
+    ifc_class = "IfcColumnType"
+    title = "Tipos de pilar"
+    noun = "pilares"
+
+    def new_transaction(self):
+        names = {t.Name for t in self.types()}
+        return sc.create_column_type(self.session.doc, _unique(names, "Novo tipo de pilar"),
+                                     {"shape": "rect", "b": 0.20, "h": 0.40})
+
+    def copy_transaction(self):
+        state = sc.read_type(self.session.doc.get(self.current))
+        names = {t.Name for t in self.types()}
+        return sc.create_column_type(self.session.doc,
+                                     _unique(names, f"{state['name']} (cópia)"),
+                                     state["section"], state["material"], state["plan_style"])
+
+
+class BeamTypesDialog(_ProfileTypesDialog):
+    ifc_class = "IfcBeamType"
+    title = "Tipos de viga"
+    noun = "vigas"
+    shapes = SECTIONS[:1]
+
+    def new_transaction(self):
+        names = {t.Name for t in self.types()}
+        return sc.create_beam_type(self.session.doc, _unique(names, "Novo tipo de viga"),
+                                   0.14, 0.40)
+
+    def copy_transaction(self):
+        state = sc.read_type(self.session.doc.get(self.current))
+        names = {t.Name for t in self.types()}
+        section = state["section"]
+        return sc.create_beam_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
+                                   section["b"], section["h"], state["material"],
+                                   state["plan_style"])
+
+
+class SlabTypesDialog(_StructureTypesDialog):
+    """Camadas de cima para baixo, como se lê um corte (laje.md §2.3)."""
+
+    ifc_class = "IfcSlabType"
+    title = "Tipos de laje"
+    noun = "lajes"
+
+    def build_editor(self, slab_type) -> None:
+        state = sc.read_type(slab_type)
+        self.state = state
+        self.name = self._line("Nome", state["name"] or "")
+        self.use = self._combo("Função", SLAB_USES, state["predefined_type"])
+        self.form.addRow(QLabel("Camadas, de cima para baixo:"))
+        self.layers = QTableWidget(0, 3)
+        self.layers.setHorizontalHeaderLabels(["Material", "Espessura", ""])
+        self.layers.verticalHeader().hide()
+        self.layers.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.layers.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.layers.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.layers.itemChanged.connect(self._layers_changed)
+        self.form.addRow(self.layers)
+        row = QHBoxLayout()
+        for text, slot in (("Acrescentar", self.add_layer), ("Remover", self.remove_layer),
+                           ("Subir", lambda: self.shift_layer(-1)),
+                           ("Descer", lambda: self.shift_layer(1))):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        holder = QWidget()
+        holder.setLayout(row)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.form.addRow(holder)
+        self.total = QLabel()
+        self.form.addRow("Espessura total", self.total)
+        for layer in state["layers"]:
+            self._append_layer(layer)
+        self._update_total()
+        self._plan_source(slab_type)
+
+    def _append_layer(self, layer: dict, at: int | None = None) -> None:
+        self.layers.blockSignals(True)
+        row = self.layers.rowCount() if at is None else at
+        self.layers.insertRow(row)
+        material = QTableWidgetItem(layer.get("material") or "")
+        self.layers.setItem(row, 0, material)
+        self.layers.setItem(row, 1, QTableWidgetItem(_number_text(layer.get("thickness"))))
+        style = QToolButton()
+        style.setText("…")
+        style.setToolTip("Estilo do material (cor e corte)")
+        style.clicked.connect(lambda _=False, item=material: self._edit_material(
+            item.text().strip()))
+        self.layers.setCellWidget(row, 2, style)
+        self.layers.blockSignals(False)
+
+    def _layers_changed(self, *_args) -> None:
+        self.touched()
+        self._update_total()
+
+    def _update_total(self) -> None:
+        try:
+            total = sum(layer["thickness"] for layer in self.read_layers())
+            self.total.setText(f"{fmt(total)} m")
+        except ValueError:
+            self.total.setText("—")
+
+    def read_layers(self) -> list[dict]:
+        out = []
+        for row in range(self.layers.rowCount()):
+            material = self.layers.item(row, 0).text().strip()
+            if not material:
+                raise ValueError(f"camada {row + 1} sem material")
+            out.append({"material": material,
+                        "thickness": parse_number(self.layers.item(row, 1).text())})
+        return out
+
+    def add_layer(self) -> None:
+        row = self.layers.currentRow()
+        self._append_layer({"material": "Concreto", "thickness": 0.10},
+                           None if row < 0 else row + 1)
+        self.touched()
+        self._update_total()
+
+    def remove_layer(self) -> None:
+        row = self.layers.currentRow()
+        if row >= 0 and self.layers.rowCount() > 1:
+            self.layers.removeRow(row)
+            self.touched()
+            self._update_total()
+
+    def shift_layer(self, step: int) -> None:
+        row = self.layers.currentRow()
+        target = row + step
+        if row < 0 or not 0 <= target < self.layers.rowCount():
+            return
+        try:
+            layers = self.read_layers()
+        except ValueError as e:
+            self.session.message(f"valor inválido: {e}", "recusa")
+            return
+        layers[row], layers[target] = layers[target], layers[row]
+        self.layers.setRowCount(0)
+        for layer in layers:
+            self._append_layer(layer)
+        self.layers.selectRow(target)
+        self.touched()
+
+    def changes(self) -> dict:
+        new = {"name": self._unique_name(self.name.text().strip()),
+               "predefined_type": self.use.currentData(), "layers": self.read_layers()}
+        out = {k: v for k, v in new.items() if v != self.state[k]}
+        return {**out, **self.plan_changes()}
+
+    def new_transaction(self):
+        names = {t.Name for t in self.types()}
+        return sc.create_slab_type(self.session.doc, _unique(names, "Novo tipo de laje"),
+                                   [{"material": "Concreto", "thickness": 0.10}])
+
+    def copy_transaction(self):
+        state = sc.read_type(self.session.doc.get(self.current))
+        names = {t.Name for t in self.types()}
+        return sc.create_slab_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
+                                   state["layers"], state["predefined_type"],
+                                   state["plan_style"])

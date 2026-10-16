@@ -29,6 +29,7 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import doors
 from brasbim.core.ops import Transaction
+from brasbim.core.structure import commands as sc
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui import feedback, theme
@@ -41,7 +42,14 @@ from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
-from brasbim.ui.types_dialog import DoorTypesDialog, WallTypesDialog, WindowTypesDialog
+from brasbim.ui.types_dialog import (
+    BeamTypesDialog,
+    ColumnTypesDialog,
+    DoorTypesDialog,
+    SlabTypesDialog,
+    WallTypesDialog,
+    WindowTypesDialog,
+)
 from brasbim.ui.view3d import View3D, storey_of
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
@@ -61,7 +69,8 @@ def cascade_text(doors_n: int, windows_n: int) -> str:
 
 
 def delete_transaction(session: Session) -> tuple[Transaction, str]:
-    """Exclusão da seleção numa transação (§5.1): esquadrias antes das paredes; operações
+    """Exclusão da seleção numa transação (§5.1): esquadrias antes das paredes, depois
+    pilares, vigas e lajes (spec/ui 10 §4.1); operações
     repetidas (abertura, junção entre duas paredes excluídas) entram uma vez. Devolve a
     transação e o que sai junto com as paredes ("1 porta e 2 janelas"; vazio se nada)."""
     doc = session.doc
@@ -87,9 +96,14 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
             if (op.op, op.id) not in seen:
                 seen.add((op.op, op.id))
                 ops.append(op)
+    for element in entities:
+        if sc.is_structure(element):
+            ops += sc.delete_ops(doc, element)
     label = "Excluir"
     if len(entities) == 1 and door_list:
         label = f"Excluir {fc.kind(door_list[0]).noun}"
+    elif len(entities) == 1 and sc.is_structure(entities[0]):
+        label = f"Excluir {sc.ELEMENTS[entities[0].is_a()][2]}"
     return Transaction(label, ops), cascade_text(cascade["IfcDoor"], cascade["IfcWindow"])
 
 
@@ -230,6 +244,9 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
         self._action(project_menu, "Tipos de janela…",
                      lambda: self.edit_type("IfcWindowType"))
+        self._action(project_menu, "Tipos de pilar…", lambda: self.edit_type("IfcColumnType"))
+        self._action(project_menu, "Tipos de viga…", lambda: self.edit_type("IfcBeamType"))
+        self._action(project_menu, "Tipos de laje…", lambda: self.edit_type("IfcSlabType"))
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
@@ -330,7 +347,7 @@ class MainWindow(QMainWindow):
             else:
                 self.scene.update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
-            if tool.cursor is not None and tool.name in ("door", "window", "split"):
+            if tool.cursor is not None and tool.name in ("door", "window", "split", "column"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo
             self._refresh_all()
         elif event == "storey":
@@ -442,9 +459,10 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
 
     def edit_type(self, ifc_class: str, gid: str | None = None) -> None:
-        """Janela de tipos de parede, porta ou janela, aberta no tipo ``gid``."""
+        """Janela de tipos (parede, porta, janela, pilar, viga, laje), aberta no ``gid``."""
         dialog_class = {"IfcWallType": WallTypesDialog, "IfcDoorType": DoorTypesDialog,
-                        "IfcWindowType": WindowTypesDialog}[ifc_class]
+                        "IfcWindowType": WindowTypesDialog, "IfcColumnType": ColumnTypesDialog,
+                        "IfcBeamType": BeamTypesDialog, "IfcSlabType": SlabTypesDialog}[ifc_class]
         self.toolbox.active.cancel()
         dialog_class(self.session, self, select=gid).exec()
         self.toolbox.check_types()

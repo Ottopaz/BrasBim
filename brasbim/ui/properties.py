@@ -2,7 +2,8 @@
 """Painel de propriedades (``spec/ui/01-janela-e-ferramentas.md`` §7 e
 ``spec/ui/02-edicao.md`` §9).
 
-Mostra a seleção (parede, porta, ou vários elementos com edição em lote). As opções da
+Mostra a seleção (parede, porta, janela, pilar, viga, laje, ou vários elementos com
+edição em lote; spec/ui 10 §4.3). As opções da
 ferramenta ativa ficam na barra Opções (``spec/ui/03-barras-e-icones.md`` §4.3).
 
 Os campos são montados como grupos (título + linhas) e desenhados em pé (painel nas
@@ -41,6 +42,9 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
+from brasbim.core.structure import beams, columns, profiles, slabs
+from brasbim.core.structure import commands as sc
+from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import params as wall_params
@@ -82,6 +86,19 @@ WINDOW_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "sta
                  ("AcousticRating", "Desempenho acústico", "text"),
                  ("ThermalTransmittance", "Transmitância térmica (W/m²K)", "number")]
 HANDS = [("Esquerda", "left"), ("Direita", "right")]
+STRUCTURE_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+                    ("LoadBearing", "Estrutural", "bool"), ("IsExternal", "Externa", "bool"),
+                    ("FireRating", "Resistência ao fogo", "text")]
+SLAB_COMMON = [*STRUCTURE_COMMON, ("AcousticRating", "Desempenho acústico", "text")]
+BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
+# Ponto de inserção do pilar como visto na planta (spec/ui 10 §3).
+INSERTIONS = [("Centro", (1, 1)), ("Canto inferior esquerdo", (0, 0)),
+              ("Meio de baixo", (1, 0)), ("Canto inferior direito", (2, 0)),
+              ("Meio da esquerda", (0, 1)), ("Meio da direita", (2, 1)),
+              ("Canto superior esquerdo", (0, 2)), ("Meio de cima", (1, 2)),
+              ("Canto superior direito", (2, 2))]
+STRUCTURE_NOUNS = {"IfcColumn": ("Pilar", "Pilares"), "IfcBeam": ("Viga", "Vigas"),
+                   "IfcSlab": ("Laje", "Lajes")}
 # Caixilhos sem giro: o "abre para" é o lado interno (janela §2.4).
 _NO_SWING = ("FIXEDCASEMENT", "SLIDINGHORIZONTAL", "SLIDINGVERTICAL")
 YES_NO = [("Sim", True), ("Não", False)]
@@ -202,6 +219,9 @@ class PropertiesPanel(QScrollArea):
         elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
                                       or selection[0].is_a("IfcWindow")):
             self._door(selection[0])
+        elif len(selection) == 1 and sc.is_structure(selection[0]):
+            {"IfcColumn": self._column, "IfcBeam": self._beam,
+             "IfcSlab": self._slab}[selection[0].is_a()](selection[0])
         elif selection:
             self._title(f"{len(selection)} elementos selecionados")
             walls = [e for e in selection if e.is_a("IfcWall")]
@@ -213,8 +233,13 @@ class PropertiesPanel(QScrollArea):
                 self._doors(door_list)
             if window_list:
                 self._doors(window_list)
+            for cls in ("IfcColumn", "IfcBeam", "IfcSlab"):
+                found = [e for e in selection if e.is_a(cls)]
+                if found:
+                    self._structures(found)
+            known = ("IfcWall", "IfcDoor", "IfcWindow", "IfcColumn", "IfcBeam", "IfcSlab")
             others = Counter(e.is_a() for e in selection
-                             if not any(e.is_a(c) for c in ("IfcWall", "IfcDoor", "IfcWindow")))
+                             if not any(e.is_a(c) for c in known))
             for cls, n in sorted(others.items()):
                 self._add(cls, QLabel(str(n)))
         else:
@@ -695,6 +720,191 @@ class PropertiesPanel(QScrollArea):
             warning.setWordWrap(True)
             warning.setStyleSheet(f"color: {theme.WARN}")
             self._add(warning)
+
+    # --- pilar, viga e laje (spec/ui 10 §4.3) -----------------------------------------------
+
+    def _structure_head(self, element, state: dict, type_class: str) -> None:
+        """Nome, tipo e Editar tipo…"""
+        doc = self.session.doc
+        if element.is_a("IfcColumn") or element.is_a("IfcBeam"):
+            self._text("Nome", element.Name, lambda v: self._run(
+                lambda: sc.edit_element(doc, element, name=v)))
+        self._combo("Tipo", self._types(type_class), state["type"],
+                    lambda v: self._run(lambda: sc.edit_element(doc, element, type=v)))
+        if state["type"]:
+            self._edit_type_button(type_class, state["type"])
+
+    def _structure_tail(self, element, state: dict) -> None:
+        self._structure_common([element])
+        self._section("Identificação")
+        self._read("GlobalId", element.GlobalId)
+        foreign = state["foreign"] is not None
+        self._read("Origem", "outro programa" if foreign else "BrasBim")
+        if foreign:
+            note = QLabel("Elemento de outro programa: o corpo é mantido; mover e girar "
+                          "mudam só a posição.")
+            note.setWordWrap(True)
+            note.setStyleSheet(f"color: {theme.WARN}")
+            self._add(note)
+
+    def _top_fields(self, element, state: dict, fixed_key: str, fixed_label: str,
+                    current_top: float, tops) -> None:
+        """Topo ligado ao pavimento de cima ou fixo (altura do pilar, cota da viga)."""
+        doc = self.session.doc
+
+        def edit(**changes):
+            self._run(lambda: sc.edit_element(doc, element, **changes))
+
+        def top(mode):
+            if mode == "fixed":
+                edit(top_mode="fixed", **{fixed_key: current_top})
+                return
+            above = doc.storey_above(doc.get(state["storey"]))
+            if above is None:
+                self.session.message("não há pavimento acima deste", "recusa")
+                self.refresh()
+                return
+            edit(top_mode="storey", top_storey=above.GlobalId, top_offset=0.0)
+
+        self._combo("Topo", tops, state["top_mode"], top)
+        if state["top_mode"] == "fixed":
+            self._number(fixed_label, state[fixed_key], lambda v: edit(**{fixed_key: v}))
+        else:
+            self._number("Deslocamento do topo", state["top_offset"],
+                         lambda v: edit(top_offset=v))
+
+    def _column(self, column) -> None:
+        doc = self.session.doc
+        state = columns.read_state(doc, column)
+        self._title(f"Pilar {column.Name or ''}".strip())
+        self._structure_head(column, state, "IfcColumnType")
+        if state["foreign"] is not None:
+            self._structure_tail(column, state)
+            return
+        section = columns.section(doc, state)
+        self._read("Seção", profiles.label(section))
+
+        def edit(**changes):
+            self._run(lambda: sc.edit_element(doc, column, **changes))
+
+        self._section("Posição")
+        x, y = state["point"]
+        self._number("X", x, lambda v: edit(point=[v, y]))
+        self._number("Y", y, lambda v: edit(point=[x, v]))
+        self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+        if section["shape"] == "rect":
+            plan_pos = {c: pos for pos, c in profiles.PLAN_CARDINAL.items()}
+            self._combo("Inserção", INSERTIONS, plan_pos.get(state["cardinal"]),
+                        lambda v: edit(cardinal=profiles.PLAN_CARDINAL[v]))
+        self._section("Altura")
+        self._number("Base", state["base_offset"], lambda v: edit(base_offset=v))
+        height = columns.height(doc, state)
+        self._top_fields(column, state, "fixed_height", "Altura fixa", height, TOPS)
+        q = ifcopenshell.util.element.get_pset(column, "Qto_ColumnBaseQuantities") or {}
+        self._section("Quantidades")
+        self._read("Altura", f"{fmt(q.get('Length', 0))} m")
+        self._read("Área da seção", f"{fmt(q.get('CrossSectionArea', 0))} m²")
+        self._read("Área lateral", f"{fmt(q.get('OuterSurfaceArea', 0))} m²")
+        self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
+        self._structure_tail(column, state)
+
+    def _beam(self, beam) -> None:
+        doc = self.session.doc
+        state = beams.read_state(doc, beam)
+        self._title(f"Viga {beam.Name or ''}".strip())
+        self._structure_head(beam, state, "IfcBeamType")
+        if state["foreign"] is not None:
+            self._structure_tail(beam, state)
+            return
+        self._read("Seção", profiles.label(beams.section(doc, state)))
+
+        def edit(**changes):
+            self._run(lambda: sc.edit_element(doc, beam, **changes))
+
+        self._section("Geometria")
+        (x0, y0), (x1, y1) = state["start"], state["end"]
+        length = beams.length(state)
+        angle = math.atan2(y1 - y0, x1 - x0)
+
+        def to_end(new_length, new_angle):
+            edit(end=[x0 + new_length * math.cos(new_angle),
+                      y0 + new_length * math.sin(new_angle)])
+
+        self._number("Comprimento", length, lambda v: to_end(v, angle))
+        self._number("Ângulo (°)", math.degrees(angle) % 360.0,
+                     lambda v: to_end(length, math.radians(v)))
+        self._combo("Linha de referência", REF_LINES, state["ref_line"],
+                    lambda v: edit(ref_line=v))
+        self._section("Altura")
+        self._top_fields(beam, state, "top_elevation", "Cota do topo", beams.top_z(doc, state),
+                         BEAM_TOPS)
+        q = ifcopenshell.util.element.get_pset(beam, "Qto_BeamBaseQuantities") or {}
+        self._section("Quantidades")
+        self._read("Comprimento", f"{fmt(q.get('Length', 0))} m")
+        self._read("Área da seção", f"{fmt(q.get('CrossSectionArea', 0))} m²")
+        self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
+        self._structure_tail(beam, state)
+
+    def _slab(self, slab) -> None:
+        doc = self.session.doc
+        state = slabs.read_state(doc, slab)
+        self._title("Laje")
+        self._structure_head(slab, state, "IfcSlabType")
+        if state["foreign"] is not None:
+            self._structure_tail(slab, state)
+            return
+        thickness = slabs.thickness(doc, state)
+        self._read("Espessura", f"{fmt(thickness)} m")
+        self._section("Altura")
+        self._number("Deslocamento do topo", state["top_offset"], lambda v: self._run(
+            lambda: sc.edit_element(doc, slab, top_offset=v)))
+        self._read("Cota do topo", f"{fmt(state['top_offset'])} m")
+        self._read("Cota do fundo", f"{fmt(state['top_offset'] - thickness)} m")
+        q = ifcopenshell.util.element.get_pset(slab, "Qto_SlabBaseQuantities") or {}
+        self._section("Quantidades")
+        self._read("Área", f"{fmt(q.get('NetArea', 0))} m²")
+        self._read("Perímetro", f"{fmt(q.get('Perimeter', 0))} m")
+        self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
+        self._structure_tail(slab, state)
+
+    def _structures(self, elements) -> None:
+        """Vários pilares, várias vigas ou várias lajes (spec/ui 10 §4.3)."""
+        doc = self.session.doc
+        _, plural = STRUCTURE_NOUNS[elements[0].is_a()]
+        type_class = f"{elements[0].is_a()}Type"
+        states = [sc.read_state(doc, e) for e in elements]
+        self._section(f"<b>{plural} ({len(elements)})</b>")
+        self._combo("Tipo", self._types(type_class), _common(s["type"] for s in states),
+                    lambda v: self._run(lambda: sc.edit_elements(doc, elements, type=v)))
+        if elements[0].is_a("IfcSlab"):
+            self._number("Deslocamento do topo", _common(s["top_offset"] for s in states),
+                         lambda v: self._run(lambda: sc.edit_elements(doc, elements,
+                                                                      top_offset=v)),
+                         placeholder=MIXED)
+        names = Counter(doc.get(s["type"]).Name if s["type"] else "sem tipo" for s in states)
+        for name, n in sorted(names.items()):
+            self._read(name, str(n))
+        self._structure_common(elements)
+
+    def _structure_common(self, elements) -> None:
+        doc = self.session.doc
+
+        def foreign(element):
+            return sc.read_state(doc, element)["foreign"] is not None
+
+        def defaults(element):
+            if foreign(element):
+                return {}
+            state = sc.read_state(doc, element)
+            return structure_common.common_defaults(doc.find(state["type"]) if state["type"]
+                                                    else None)
+
+        def effective(element):
+            return {**defaults(element), **sc.read_state(doc, element)["common"]}
+
+        fields = SLAB_COMMON if elements[0].is_a("IfcSlab") else STRUCTURE_COMMON
+        self._common_group(elements, fields, effective, defaults,
+                           lambda e, common: sc.edit_element(doc, e, common=common))
 
     # --- opções da ferramenta (§7.1) ------------------------------------------------------
 

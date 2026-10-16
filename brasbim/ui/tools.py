@@ -19,6 +19,10 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
+from brasbim.core.structure import beams, columns, profiles, slabs
+from brasbim.core.structure import commands as sc
+from brasbim.core.structure import common as structure_common
+from brasbim.core.structure import types as st_types
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.core.walls import params as wall_params
@@ -139,11 +143,12 @@ class PlanContext:
         self._plan = None
         self._walls = None
         self._vertices = None
+        self._columns = None
         self.detail = "simple"  # Exibir > Detalhe da planta (spec/ui 06 §2)
         self.show_above = True  # Exibir > Elementos acima do plano de corte (§3.2)
 
     def invalidate(self) -> None:
-        self._plan = self._walls = self._vertices = None
+        self._plan = self._walls = self._vertices = self._columns = None
 
     @property
     def plan(self) -> plan.Plan:
@@ -193,6 +198,20 @@ class PlanContext:
                         add(q)
             self._vertices = list(found.values())
         return self._vertices
+
+    @property
+    def column_points(self) -> list[Point]:
+        """Cantos e centro dos pilares do pavimento (pontos de atração, spec/ui 10 §2)."""
+        if self._columns is None:
+            found: list[Point] = []
+            for shapes in self.plan.owners("column").values():
+                pts = [q for s in shapes if s.closed for q in s.points]
+                if pts:
+                    found += pts
+                    found.append((sum(q[0] for q in pts) / len(pts),
+                                  sum(q[1] for q in pts) / len(pts)))
+            self._columns = found
+        return self._columns
 
     def snap(self, p: Point, mods: Mods, origin: Point | None = None,
              extra=()) -> snap.Snap:
@@ -383,6 +402,29 @@ def _band_marks_of(ctx: PlanContext, tx, style="preview") -> list[Mark]:
     return marks
 
 
+def _structure_marks(doc, tx, style="preview") -> list[Mark]:
+    """Pilares, vigas e lajes da transação na forma nova (operações ``*.edit``)."""
+    marks = []
+    for op in tx.ops:
+        prefix, _, kind = op.op.partition(".")
+        if kind != "edit" or prefix not in ("column", "beam", "slab"):
+            continue
+        element = doc.find(op.id)
+        if element is None:
+            continue
+        state = {**sc.read_state(doc, element), **(op.after or {})}
+        if state["foreign"] is not None:
+            continue
+        try:
+            ring = (columns.outline(doc, state) if prefix == "column" else
+                    beams.outline(doc, state) if prefix == "beam" else
+                    [tuple(q) for q in state["outline"]])
+        except (OpError, ValueError, ZeroDivisionError):
+            continue
+        marks.append(Mark(tuple(ring), True, style))
+    return marks
+
+
 def moving_shapes(ctx: PlanContext, gids) -> list[plan.Shape]:
     """Desenho da seleção na planta, com as portas das paredes selecionadas."""
     selected = set(gids)
@@ -403,6 +445,42 @@ def _shape_marks(shapes, fn, style="preview") -> list[Mark]:
 
 def _handle_points(w: snap.WallPath) -> list[tuple[str, Point]]:
     return [("start", w.path.start), ("end", w.path.end), ("mid", w.middle())]
+
+
+@dataclass(frozen=True)
+class _Grip:
+    """Dono de uma alça de pilar, viga ou laje (as paredes usam ``snap.WallPath``)."""
+
+    gid: str
+
+
+def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
+    """Alças na planta (spec/ui 10 §4.1): ponto de inserção do pilar, pontas e meio da
+    viga, vértices e meio dos lados da laje. Elementos de outra origem não têm alças."""
+    element = doc.find(gid)
+    if element is None or not sc.is_structure(element):
+        return []
+    state = sc.read_state(doc, element)
+    if state["foreign"] is not None:
+        return []
+    if element.is_a("IfcColumn"):
+        return [("column", tuple(state["point"]))]
+    if element.is_a("IfcBeam"):
+        (x0, y0), (x1, y1) = state["start"], state["end"]
+        return [("beam_start", (x0, y0)), ("beam_end", (x1, y1)),
+                ("beam_mid", ((x0 + x1) / 2, (y0 + y1) / 2))]
+    pts = [tuple(q) for q in state["outline"]]
+    n = len(pts)
+    return ([(f"slab_v{i}", q) for i, q in enumerate(pts)]
+            + [(f"slab_e{i}", ((pts[i][0] + pts[(i + 1) % n][0]) / 2,
+                               (pts[i][1] + pts[(i + 1) % n][1]) / 2)) for i in range(n)])
+
+
+def _edge_offset(outline, index: int, q: Point) -> float:
+    """Afastamento de ``q`` à reta do lado ``index`` da laje, positivo para fora."""
+    a, b = outline[index], outline[(index + 1) % len(outline)]
+    length = math.dist(a, b)
+    return ((q[0] - a[0]) * (b[1] - a[1]) - (q[1] - a[1]) * (b[0] - a[0])) / length
 
 
 class SelectTool(Tool):
@@ -502,12 +580,17 @@ class SelectTool(Tool):
                  door.GlobalId)]
 
     def _all_handles(self) -> list[tuple]:
-        """(parede, alça, ponto, porta) de todas as alças visíveis."""
+        """(dono, alça, ponto, porta) de todas as alças visíveis: paredes, portas e
+        janelas, pilares, vigas e lajes."""
+        doc = self.session.doc
+        grips = [(_Grip(g), which, q, None) for g in sorted(self.session.selection)
+                 for which, q in _structure_handles(doc, g)]
         return [(w, which, q, None) for w in self._selected_walls()
-                for which, q in _handle_points(w)] + self._door_handles()
+                for which, q in _handle_points(w)] + self._door_handles() + grips
 
     def _handle_at(self, p: Point) -> dict | None:
-        found = [(math.dist(p, q), which == "mid", w.gid, which, w, door)
+        found = [(math.dist(p, q), which in ("mid", "beam_mid") or which.startswith(
+                      "slab_e"), w.gid, which, w, door)
                  for w, which, q, door in self._all_handles() if math.dist(p, q) <= self.ctx.tol]
         if not found:
             return None
@@ -537,10 +620,38 @@ class SelectTool(Tool):
         at = d["wall"].frame.to_global((distance + width / 2, d["wall"].ymax + 0.15))
         return build, at, f"{fmt(width)} m"
 
+    def _structure_build(self, p: Point, mods: Mods):
+        """Alça de pilar, viga ou laje (spec/ui 10 §4.1)."""
+        d = self.drag
+        gid, which, doc = d["wall"].gid, d["which"], self.session.doc
+        state = sc.read_state(doc, doc.get(gid))
+        extra = self.ctx.column_points
+        if which in ("beam_start", "beam_end"):
+            fixed = tuple(state["end" if which == "beam_start" else "start"])
+            self.snapped = self.ctx.snap(p, mods, fixed, extra=extra)
+            q = self.snapped.point
+            return (lambda: sc.move_beam_end(doc, gid, which[5:], q), q,
+                    f"{fmt(math.dist(fixed, q))} m")
+        if which.startswith("slab_e"):
+            index = int(which[6:])
+            self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
+            offset = _edge_offset(state["outline"], index, self.snapped.point)
+            return (lambda: sc.offset_slab_edge(doc, gid, index, offset), self.snapped.point,
+                    f"{fmt(abs(offset))} m")
+        self.snapped = self.ctx.snap(p, mods, extra=extra)
+        q = self.snapped.point
+        if which.startswith("slab_v"):
+            return lambda: sc.move_slab_vertex(doc, gid, int(which[6:]), q), q, ""
+        base = dict(_structure_handles(doc, gid))[which]
+        vector = (q[0] - base[0], q[1] - base[1])
+        return lambda: transform.move_elements(doc, [gid], vector), q, ""
+
     def _handle_build(self, p: Point, mods: Mods):
         """(função que monta a transação, ponto do rótulo, texto) para a alça em ``p``."""
         d = self.drag
         w, which, doc = d["wall"], d["which"], self.session.doc
+        if isinstance(w, _Grip):
+            return self._structure_build(p, mods)
         # Ponta: só esta parede; Ctrl leva as vizinhas (decisão de 2026-10-15, spec/ui 08
         # §2). Meio: as vizinhas acompanham; Ctrl solta (spec/ui 02 §4.2).
         carry = mods.ctrl if which in ("start", "end") else not mods.ctrl
@@ -568,13 +679,16 @@ class SelectTool(Tool):
     def _handle_update(self, p: Point, mods: Mods) -> None:
         d = self.drag
         build, at, text = self._handle_build(p, mods)
+        doc = self.session.doc
         try:
             d["tx"], d["error"] = build(), None
-            d["marks"] = _band_marks_of(self.ctx, d["tx"])
+            d["marks"] = (_band_marks_of(self.ctx, d["tx"])
+                          + _structure_marks(doc, d["tx"]))
         except OpError as e:
             w = d["wall"]
             d["tx"], d["error"] = None, str(e)
-            d["marks"] = [_band_mark(w.path, w.ymin, w.ymax, "invalid")]
+            d["marks"] = ([] if isinstance(w, _Grip)
+                          else [_band_mark(w.path, w.ymin, w.ymax, "invalid")])
         if d["which"].startswith("door"):
             d["marks"] = self._door_marks("invalid" if d["error"] else "preview")
         d["labels"] = [(at, text)] if text else []
@@ -606,6 +720,8 @@ class SelectTool(Tool):
             return False
         w, which, doc = d["wall"], d["which"], self.session.doc
         cursor = self.snapped.point if self.snapped else self.cursor
+        if isinstance(w, _Grip):
+            return self._structure_numeric(value, cursor)
         if which.startswith("door"):
             o = d["opening"]
             distance = o["distance"] if which == "door_end" else (
@@ -630,6 +746,31 @@ class SelectTool(Tool):
         elif w.straight:
             side = -1.0 if cursor and w.frame.to_local(cursor)[1] < 0 else 1.0
             build = lambda: cmd.offset_wall(doc, w.gid, side * value)
+        else:
+            return False
+        self.drag = None
+        self.session.run(build)
+        return True
+
+    def _structure_numeric(self, value: float, cursor: Point | None) -> bool:
+        """Medida digitada no arrasto de uma alça: comprimento da viga, afastamento do
+        lado da laje."""
+        d = self.drag
+        gid, which, doc = d["wall"].gid, d["which"], self.session.doc
+        state = sc.read_state(doc, doc.get(gid))
+        if which in ("beam_start", "beam_end"):
+            fixed = state["end" if which == "beam_start" else "start"]
+            moving = state["start" if which == "beam_start" else "end"]
+            target = cursor if cursor and math.dist(cursor, fixed) > 1e-9 else moving
+            dx, dy = target[0] - fixed[0], target[1] - fixed[1]
+            n = math.hypot(dx, dy)
+            q = (fixed[0] + value * dx / n, fixed[1] + value * dy / n)
+            build = lambda: sc.move_beam_end(doc, gid, which[5:], q)
+        elif which.startswith("slab_e"):
+            index = int(which[6:])
+            side = (-1.0 if cursor and _edge_offset(state["outline"], index, cursor) < 0
+                    else 1.0)
+            build = lambda: sc.offset_slab_edge(doc, gid, index, side * value)
         else:
             return False
         self.drag = None
@@ -797,6 +938,8 @@ class SelectTool(Tool):
 class _WallOptions:
     """Opções comuns de criação de parede (§5.2, item 5)."""
 
+    type_class = "IfcWallType"
+
     def __init__(self, session: Session):
         types = sorted(session.doc.ifc.by_type("IfcWallType"), key=lambda t: t.Name or "")
         self.type = types[0].GlobalId if types else None
@@ -832,16 +975,22 @@ def _guide(origin: Point, angle: float, tol: float) -> Mark:
 
 
 class _WallTool(Tool):
-    def __init__(self, ctx, options: _WallOptions | None = None):
+    options_class = _WallOptions
+
+    def __init__(self, ctx, options=None):
         super().__init__(ctx)
-        self.options = options or _WallOptions(ctx.session)
+        self.options = options or self.options_class(ctx.session)
         self.points: list[Point] = []
 
     creates = True
 
+    def _extra(self) -> list[Point]:
+        """Pontos de atração além dos das paredes."""
+        return list(self.points)
+
     def _point(self, p, mods) -> Point:
         origin = self.points[-1] if self.points else None
-        self.snapped = self.ctx.snap(p, mods, origin, extra=self.points)
+        self.snapped = self.ctx.snap(p, mods, origin, extra=self._extra())
         tracked = self._track(p, origin)
         if tracked is not None:
             self.snapped = snap.Snap(tracked, "free")
@@ -1108,6 +1257,361 @@ class RectangleTool(_WallTool):
         marks = []
         for a, b in itertools.pairwise(corners):
             marks += self._band(a, b)
+        return marks
+
+
+# --- pilar, viga e laje (spec/ui 10 §2) --------------------------------------------------
+
+
+def _first_type(session: Session, ifc_class: str) -> str | None:
+    types = sorted(session.doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+    preferred = {"IfcColumnType": "Pilar 20×40", "IfcBeamType": "Viga 14×40",
+                 "IfcSlabType": "Laje maciça 10 cm"}.get(ifc_class)
+    found = next((t for t in types if t.Name == preferred), types[0] if types else None)
+    return found.GlobalId if found is not None else None
+
+
+def _top_options(tool, fixed_key: str) -> dict:
+    """Topo ligado ao pavimento de cima (com deslocamento) ou fixo (spec/ui 10 §3)."""
+    if tool.top == "fixed":
+        return {"top_mode": "fixed", fixed_key: getattr(tool, fixed_key)}
+    return {"top_offset": tool.top_offset}
+
+
+class ColumnTool(Tool):
+    """Pilar (spec/ui 10 §2.1): um clique no ponto de inserção; barra de espaço gira 90°."""
+
+    name, label = "column", "Pilar"
+    type_class = "IfcColumnType"
+    creates = True
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.type = _first_type(ctx.session, self.type_class)
+        self.insertion = (1, 1)  # quadradinho de 9 pontos: (coluna, linha), centro
+        self.angle = 0.0
+        self.base_offset = 0.0
+        self.top = "storey"  # "storey" (pavimento de cima) ou "fixed"
+        self.top_offset = 0.0
+        self.fixed_height = structure_common.DEFAULT_TOP
+        self.point: Point | None = None
+
+    def section(self) -> dict | None:
+        found = self.session.doc.find(self.type) if self.type else None
+        return st_types.section(found) if found is not None else None
+
+    @property
+    def cardinal(self) -> int:
+        section = self.section()
+        if section is not None and section["shape"] == "circle":
+            return 5
+        return profiles.PLAN_CARDINAL[self.insertion]
+
+    def hint(self):
+        if self.type is None:
+            return "Não há tipo de pilar no projeto"
+        ref = ("; Tab digita X e Y a partir dele" if self.reference is not None
+               else "; pare o cursor num vértice para medir a partir dele")
+        return f"Clique o ponto de inserção; barra de espaço gira 90°{ref}"
+
+    def fields(self):
+        if self.cursor is None:
+            return []
+        if self.reference is not None and self.point is not None:
+            rx, ry = self.reference
+            return [Field("dx", "X", "m", self.point[0] - rx, self.fixed.get("dx")),
+                    Field("dy", "Y", "m", self.point[1] - ry, self.fixed.get("dy"))]
+        return [Field("angle", "Ângulo", "°", self.angle)]
+
+    def fix(self, key, value):
+        if key == "angle":  # vale para os próximos pilares, como a barra Opções
+            if value is not None:
+                self.angle = (value + 180.0) % 360.0 - 180.0
+            if self.cursor is not None:
+                self.move(self.cursor, self.mods)
+            return None
+        return super().fix(key, value)
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self.snapped = self.ctx.snap(p, mods, extra=self.ctx.vertices + self.ctx.column_points)
+        q = self.snapped.point
+        if self.reference is not None and ("dx" in self.fixed or "dy" in self.fixed):
+            rx, ry = self.reference
+            q = (rx + self.fixed.get("dx", q[0] - rx), ry + self.fixed.get("dy", q[1] - ry))
+            self.snapped = snap.Snap(q, "free")
+        self.point = q
+
+    def key(self, key):
+        if key == "space":
+            self.angle = (self.angle + 90.0 + 180.0) % 360.0 - 180.0
+            return True
+        return False
+
+    def cancel(self):
+        self.fixed.clear()
+        return self.release_reference()
+
+    def _outline(self) -> list[Point] | None:
+        section = self.section()
+        if section is None or self.point is None:
+            return None
+        state = {"point": list(self.point), "cardinal": self.cardinal, "angle": self.angle,
+                 "type": self.type}
+        return columns.outline(self.session.doc, state)
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        if self.type is None or self.session.storey is None:
+            self.session.message("não há tipo de pilar ou pavimento ativo", "recusa")
+            return
+        doc, storey, q = self.session.doc, self.session.storey, self.point
+        options = {"cardinal": self.cardinal, "angle": self.angle,
+                   "base_offset": self.base_offset, **_top_options(self, "fixed_height")}
+        self.session.run(lambda: sc.create_column(doc, self.type, storey, q, **options))
+        self.fixed.clear()
+        self.reference = self.tracking = None  # a referência serviu a este ponto
+        self.move(p, mods)
+
+    def preview(self):
+        ring = self._outline()
+        marks = [Mark(tuple(ring), True)] if ring else []
+        return marks + self.reference_marks()
+
+
+class _BeamOptions:
+    """Opções da ferramenta Viga (spec/ui 10 §3)."""
+
+    type_class = "IfcBeamType"
+
+    def __init__(self, session: Session):
+        self.type = _first_type(session, self.type_class)
+        self.ref_line = "axis"
+        self.top = "storey"
+        self.top_offset = 0.0
+        self.top_elevation = structure_common.DEFAULT_TOP
+
+    def command_options(self) -> dict:
+        return {"ref_line": self.ref_line, **_top_options(self, "top_elevation")}
+
+    def band(self, doc) -> tuple[float, float]:
+        beam_type = doc.find(self.type) if self.type else None
+        b = st_types.section(beam_type)["b"] if beam_type is not None else 0.14
+        return {"axis": (-b / 2, b / 2), "left_face": (-b, 0.0),
+                "right_face": (0.0, b)}[self.ref_line]
+
+
+class BeamTool(WallTool):
+    """Viga (spec/ui 10 §2.2): como a parede reta, mas cada trecho clicado já é uma viga
+    e a cadeia segue do último ponto."""
+
+    name, label = "beam", "Viga"
+    options_class = _BeamOptions
+
+    def hint(self):
+        if self.options.type is None:
+            return "Não há tipo de viga no projeto"
+        if not self.points:
+            return "Clique o início da viga"
+        return ("Clique o fim; a próxima viga começa nele; Tab digita comprimento e ângulo; "
+                "Esc ou clique duplo encerra")
+
+    def _extra(self):
+        return list(self.points) + self.ctx.column_points
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            self.cancel()
+            return
+        q = self._point(p, mods)
+        self._consume_reference()
+        self.fixed.clear()
+        if not self.points:
+            self.points = [q]
+            return
+        a = self.points[-1]
+        if math.dist(a, q) <= beams.MIN_LENGTH:
+            return
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if options.type is None or storey is None:
+            self.session.message("não há tipo de viga ou pavimento ativo", "recusa")
+            return
+        if self.session.run(lambda: sc.create_beam(doc, options.type, storey, a, q,
+                                                   **options.command_options())):
+            self.points = [q]
+
+    def double(self, p, mods):
+        self.points = []
+
+    def key(self, key):
+        if key == "enter":
+            self.points = []
+            return True
+        return False
+
+    def shape_preview(self):
+        if not self.points or not self.snapped:
+            return []
+        a, b = self.points[-1], self.snapped.point
+        marks = self._band(a, b)
+        if marks:
+            marks.append(Mark((a, b), False, "guide"))  # a linha de referência
+        if "angle" in self.fixed:
+            marks.append(_guide(a, self.fixed["angle"], self.ctx.tol))
+        return marks
+
+
+class _SlabOptions:
+    """Opções da ferramenta Laje (spec/ui 10 §3)."""
+
+    type_class = "IfcSlabType"
+
+    def __init__(self, session: Session):
+        self.type = _first_type(session, self.type_class)
+        self.mode = "polygon"  # ou "rectangle"
+        self.top_offset = 0.0
+
+
+class SlabTool(_WallTool):
+    """Laje (spec/ui 10 §2.3): polígono (fecha no primeiro ponto, com clique duplo ou
+    Enter) ou retângulo por dois cantos."""
+
+    name, label = "slab", "Laje"
+    options_class = _SlabOptions
+
+    def hint(self):
+        if self.options.type is None:
+            return "Não há tipo de laje no projeto"
+        if self.options.mode == "rectangle":
+            return ("Clique o primeiro canto" if not self.points else
+                    "Clique o canto oposto; Tab digita largura e altura")
+        if not self.points:
+            return "Clique o primeiro vértice da laje"
+        return ("Clique o próximo vértice; feche no primeiro ponto, com clique duplo ou "
+                "Enter; Tab digita comprimento e ângulo; Esc tira o último vértice")
+
+    def _extra(self):
+        return list(self.points) + self.ctx.vertices + self.ctx.column_points
+
+    def point_fields(self):
+        if not self.points:
+            return []
+        q = self.snapped.point if self.snapped else None
+        if self.options.mode == "rectangle":
+            a = self.points[0]
+            return [Field("width", "Largura", "m", abs(q[0] - a[0]) if q else None,
+                          self.fixed.get("width")),
+                    Field("height", "Altura", "m", abs(q[1] - a[1]) if q else None,
+                          self.fixed.get("height"))]
+        last = self.points[-1]
+        length = math.dist(last, q) if q else None
+        angle = _degrees(q[0] - last[0], q[1] - last[1]) if q and length > 1e-9 else None
+        return [Field("length", "Comprimento", "m", length, self.fixed.get("length")),
+                Field("angle", "Ângulo", "°", angle, self.fixed.get("angle"))]
+
+    def point_check(self, key, value):
+        if value <= geom2d.MIN_LENGTH:
+            return "medida pequena demais"
+        return None
+
+    def _resolve(self, q):
+        if self.options.mode == "rectangle":
+            return rect_corner(self.points[0], q, self.fixed.get("width"),
+                               self.fixed.get("height"))
+        return polar_point(self.points[-1], q, self.fixed.get("length"),
+                           self.fixed.get("angle"))
+
+    def _closes(self, q: Point) -> bool:
+        return len(self.points) >= 3 and math.dist(q, self.points[0]) <= max(self.ctx.tol,
+                                                                              1e-6)
+
+    def _problem(self, points) -> str | None:
+        """Motivo para o contorno não fechar, ou None."""
+        try:
+            slabs.clean(points)
+        except OpError as e:
+            return str(e)
+        return None
+
+    def finish(self) -> None:
+        points = list(self.points)
+        if len(points) < 3:
+            return
+        problem = self._problem(points)
+        if problem:
+            self.session.message(problem, "recusa")
+            return
+        self._create(points)
+
+    def _create(self, points) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if options.type is None or storey is None:
+            self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
+        else:
+            self.session.run(lambda: sc.create_slab(doc, options.type, storey, points,
+                                                    top_offset=options.top_offset))
+        self.points = []
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        q = self._point(p, mods)
+        self._consume_reference()
+        self.fixed.clear()
+        if self.options.mode == "rectangle":
+            if not self.points:
+                self.points = [q]
+                return
+            (x0, y0), (x1, y1) = self.points[0], q
+            if abs(x1 - x0) < geom2d.MIN_LENGTH or abs(y1 - y0) < geom2d.MIN_LENGTH:
+                self.session.message("o retângulo precisa de largura e profundidade", "recusa")
+                return
+            self._create([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
+            return
+        if self._closes(q):
+            self.finish()
+        elif not self.points or math.dist(q, self.points[-1]) > geom2d.MIN_LENGTH:
+            self.points.append(q)
+
+    def double(self, p, mods):
+        if self.options.mode == "polygon":
+            self.finish()
+
+    def key(self, key):
+        if key == "enter" and self.options.mode == "polygon":
+            self.finish()
+            return True
+        return False
+
+    def cancel(self):
+        """Esc tira o último vértice; sem vértices, cancela (spec/ui 10 §2.3)."""
+        if self.release_reference():
+            return True
+        self.fixed.clear()
+        if self.points:
+            if self.options.mode == "rectangle":
+                self.points = []
+            else:
+                self.points.pop()
+            return True
+        return False
+
+    def shape_preview(self):
+        if not self.points or not self.snapped:
+            return []
+        q = self.snapped.point
+        if self.options.mode == "rectangle":
+            (x0, y0), (x1, y1) = self.points[0], q
+            return [Mark(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), True)]
+        pts = list(self.points)
+        if not self._closes(q):
+            pts.append(q)
+        style = "invalid" if len(pts) >= 3 and slabs.self_intersects(pts) else "preview"
+        marks = [Mark(tuple(pts), len(pts) >= 3, style)]
+        if "angle" in self.fixed:
+            marks.append(_guide(self.points[-1], self.fixed["angle"], self.ctx.tol))
         return marks
 
 
@@ -1785,11 +2289,15 @@ class MirrorTool(_SelectionTool):
         if math.dist(q, self.points[0]) <= geom2d.MIN_LENGTH:
             return
         doc, gids, a = self.session.doc, self._gids(), self.points[0]
-        before = {w.GlobalId for w in doc.ifc.by_type("IfcWall")}
+        classes = ("IfcWall", "IfcColumn", "IfcBeam", "IfcSlab")
+
+        def found():
+            return {e.GlobalId for c in classes for e in doc.ifc.by_type(c)}
+
+        before = found()
         if self.session.run(lambda: transform.mirror_elements(doc, gids, a, q, keep=mods.ctrl)) \
                 and mods.ctrl:
-            created = {w.GlobalId for w in doc.ifc.by_type("IfcWall")} - before
-            self.session.select(created)
+            self.session.select(found() - before)
         self.points = []
         self.finished = True
 
@@ -1809,9 +2317,8 @@ class MirrorTool(_SelectionTool):
                 *_shape_marks(self._shapes(), fn)]
 
 
-TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, SplitTool,
-         MoveTool,
-         CopyTool, RotateTool, MirrorTool)
+TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
+         BeamTool, SlabTool, SplitTool, MoveTool, CopyTool, RotateTool, MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split")
@@ -1828,8 +2335,9 @@ def selection_actions(doc, gids) -> list[str]:
         return []
     walls = [e for e in elements if e.is_a("IfcWall")]
     door_list = [e for e in elements if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
+    structure = [e for e in elements if sc.is_structure(e)]
     out = ["move", "copy"]
-    if walls:
+    if walls or structure:
         out += ["rotate", "mirror"]
     if len(elements) == 1 and walls:
         out.append("split")
@@ -1889,10 +2397,15 @@ class ToolBox:
 
     def reset(self) -> None:
         """Recria as ferramentas (documento novo: tipos diferentes)."""
-        wall_options = _WallOptions(self.ctx.session)
+        shared = {}  # as formas de parede dividem as mesmas opções
         self.tools = {}
         for cls in TOOLS:
-            tool = cls(self.ctx, wall_options) if issubclass(cls, _WallTool) else cls(self.ctx)
+            if issubclass(cls, _WallTool):
+                options = shared.setdefault(cls.options_class,
+                                            cls.options_class(self.ctx.session))
+                tool = cls(self.ctx, options)
+            else:
+                tool = cls(self.ctx)
             self.tools[cls.name] = tool
         name = self.active.name if self.active else "select"
         self.active = self.tools[name]
@@ -1903,8 +2416,7 @@ class ToolBox:
         doc = self.ctx.session.doc
         for tool in self.tools.values():
             holder = tool.options if isinstance(tool, _WallTool) else tool
-            ifc_class = ("IfcWallType" if isinstance(tool, _WallTool)
-                         else getattr(tool, "type_class", "IfcDoorType"))
+            ifc_class = getattr(holder, "type_class", "IfcDoorType")
             if not hasattr(holder, "type") or (holder.type and doc.find(holder.type)):
                 continue
             types = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
