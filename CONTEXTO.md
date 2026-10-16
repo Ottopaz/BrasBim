@@ -348,8 +348,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
 4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
 4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora tabelas: spec
-   `spec/ui/17-tabelas.md` em revisão (pontos §9 a–e); depois quantitativos e tabelas (RF-QTD-01 a 03, 05);
-   em seguida mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
+   `spec/ui/17-tabelas.md` em revisão (RF-QTD-01 a 03 e 05; pontos §9 a–e); em seguida
+   mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
 6. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
