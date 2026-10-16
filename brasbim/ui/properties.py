@@ -38,12 +38,14 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import geom2d
+from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.document import OpError
+from brasbim.core.drawings import views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
@@ -188,6 +190,7 @@ class PropertiesPanel(QScrollArea):
         self.setFont(theme.font(width=92))  # um pouco estreita: painel denso (spec/ui 11 §3)
         self._pending = False
         self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
+        self.open_view = None  # abre um corte ou fachada (posto pela janela principal)
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
@@ -227,6 +230,8 @@ class PropertiesPanel(QScrollArea):
             self._door(selection[0])
         elif len(selection) == 1 and selection[0].is_a("IfcSpace"):
             self._space(selection[0])
+        elif len(selection) == 1 and views.is_view(selection[0]):
+            self._view(selection[0])
         elif len(selection) == 1 and annotation_base.kind_of(selection[0]) is not None:
             self._annotation(selection[0])
         elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
@@ -1014,6 +1019,27 @@ class PropertiesPanel(QScrollArea):
             self._read("Pontos presos", f"{held} de {len(state['points'])}")
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
+
+    def _view(self, view) -> None:
+        """Corte ou fachada (spec/ui 14 §7)."""
+        doc = self.session.doc
+        state = views.read_state(view)
+
+        def edit(**changes):
+            self._run(lambda: ac.edit_element(doc, view, **changes))
+
+        self._title(state["name"] or "Vista")
+        self._text("Nome", state["name"], lambda v: v and edit(name=v))
+        self._combo("Lado olhado", [("Esquerda de A→B", "left"), ("Direita de A→B", "right")],
+                    state["side"], lambda v: edit(side=v))
+        self._number("Profundidade", state["depth"], lambda v: edit(depth=v),
+                     placeholder="tudo", allow_empty=True)
+        self._combo("Escala", [(f"1:{v}", v) for v in storeys_.SCALES], state["scale"],
+                    lambda v: edit(scale=v))
+        if self.open_view is not None:
+            self._buttons(("Abrir a vista", lambda: self.open_view(view.GlobalId)))
+        self._section("Identificação")
+        self._read("GlobalId", view.GlobalId)
 
     def _slab_opening(self, opening) -> None:
         """Abertura na laje (spec/ui 12 §3.3)."""

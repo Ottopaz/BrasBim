@@ -14,7 +14,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
-from brasbim.core import geom2d, plan, snap, transform
+from brasbim.core import geom2d, plan, snap, storeys, transform
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
@@ -2032,6 +2032,70 @@ class NorthTool(_PointTool):
         return [Mark((self.points[0], self.snapped.point), False)]
 
 
+class ViewTool(_PointTool):
+    """Corte ou fachada (spec/ui 14 §7): clique A, clique B e clique do lado olhado."""
+
+    kind = "section"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.points: list[Point] = []
+
+    def hint(self):
+        noun = "do corte" if self.kind == "section" else "da fachada"
+        return [f"Clique o primeiro ponto da linha {noun}",
+                f"Clique o segundo ponto da linha {noun}",
+                "Clique do lado para onde se olha"][min(len(self.points), 2)]
+
+    def _side(self, q) -> str:
+        (ax, ay), (bx, by) = self.points[:2]
+        cross = (bx - ax) * (q[1] - ay) - (by - ay) * (q[0] - ax)
+        return "left" if cross >= 0 else "right"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        q = self.snapped.point
+        if len(self.points) < 2:
+            if not self.points or math.dist(q, self.points[0]) > geom2d.MIN_LENGTH:
+                self.points.append(q)
+            return
+        a, b = self.points
+        side, doc = self._side(q), self.session.doc
+        self.points = []
+        self.session.run(lambda: ac.create_view(doc, self.kind, a, b, side))
+
+    def cancel(self):
+        if self.points:
+            self.points = []
+            return True
+        return False
+
+    def preview(self):
+        if not self.points or not self.snapped:
+            return []
+        if len(self.points) == 1:
+            return [Mark((self.points[0], self.snapped.point), False)]
+        from brasbim.core.drawings import views
+
+        state = {**views.default_state(), "kind": self.kind, "a": list(self.points[0]),
+                 "b": list(self.points[1]), "side": self._side(self.snapped.point),
+                 "letter": "?", "name": "?",
+                 "scale": storeys.scale(self.session.storey) if self.session.storey else 50}
+        return [Mark(s.points, s.closed) for s in views.symbol(state).strokes]
+
+
+class SectionTool(ViewTool):
+    name, label = "section", "Corte"
+    kind = "section"
+
+
+class ElevationTool(ViewTool):
+    name, label = "elevation", "Fachada"
+    kind = "elevation"
+
+
 DIM_DIRECTIONS = {"aligned": ("aligned", 0.0), "horizontal": ("fixed", 0.0),
                   "vertical": ("fixed", 90.0)}
 
@@ -2843,7 +2907,7 @@ class MirrorTool(_SelectionTool):
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
          BeamTool, SlabTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
-         LineTool, HatchTool, NorthTool, SplitTool, MoveTool, CopyTool, RotateTool,
+         LineTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.

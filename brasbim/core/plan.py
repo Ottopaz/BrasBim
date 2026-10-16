@@ -114,6 +114,7 @@ class Plan:
     edges: list[Edge] = field(default_factory=list)
     # Anotações (spec/ui 13): (GlobalId, primitivas) — traços, textos e preenchimentos.
     annotations: list = field(default_factory=list)
+    views: set = field(default_factory=set)  # donos dos símbolos de corte e fachada
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -981,5 +982,6 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             continue
         prims = views.symbol(state)
         plan.annotations.append((view.GlobalId, prims))
+        plan.views.add(view.GlobalId)
         plan.shapes += [Shape(view.GlobalId, "annotation", st.points, st.closed)
                         for st in prims.strokes]

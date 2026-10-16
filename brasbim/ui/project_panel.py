@@ -13,6 +13,9 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -52,6 +55,13 @@ class ProjectPanel(QWidget):
                                    | QAbstractItemView.EditKeyPressed)
         self.table.cellClicked.connect(self._activate)
         self.table.itemChanged.connect(self._edited)
+        self.views = QListWidget()  # cortes e fachadas (spec/ui 14 §7)
+        self.views.setToolTip("Clique duplo abre a vista")
+        self.views.itemDoubleClicked.connect(
+            lambda item: self.open_view and self.open_view(item.data(Qt.UserRole)))
+        self.views.itemClicked.connect(
+            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        self.open_view = None  # posto pela janela principal
         self.add_button = QPushButton("Novo pavimento")
         self.add_button.clicked.connect(self.add_storey)
         self.delete_button = QPushButton("Excluir pavimento")
@@ -63,6 +73,8 @@ class ProjectPanel(QWidget):
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addWidget(self.table)
         layout.addLayout(buttons)
+        layout.addWidget(QLabel("Vistas"))
+        layout.addWidget(self.views)
         self.refresh()
 
     def refresh(self) -> None:
@@ -94,6 +106,13 @@ class ProjectPanel(QWidget):
             self.table.setItem(row, 3, scale)
         self.delete_button.setEnabled(len(storeys) > 1)
         self.table.blockSignals(False)
+        from brasbim.core.drawings import views as views_
+
+        self.views.clear()
+        for view in views_.all_views(self.session.doc):
+            item = QListWidgetItem(views_.read_state(view)["name"] or view.GlobalId)
+            item.setData(Qt.UserRole, view.GlobalId)
+            self.views.addItem(item)
 
     def storey_at(self, row: int):
         item = self.table.item(row, 0)

@@ -98,22 +98,22 @@ Térreo (0,00) e Superior (2,80); retângulo de paredes de 14 cm (0, 0)–(6, 4)
 Superior, uma porta de 0,80 × 2,10 na parede de baixo a 1,00 do início, laje de 10 cm no
 Superior sobre o retângulo.
 
-- [ ] **CF01** Corte de (3, −1) a (3, 5), olhando para a esquerda (−x): `IfcAnnotation`
+- [x] **CF01** Corte de (3, −1) a (3, 5), olhando para a esquerda (−x): `IfcAnnotation`
       "VistaDeCorte" na edificação; o desenho tem as seções das duas paredes de baixo e
       de cima (largura 0,14, altura 2,70: a laje do Superior corta o topo delas, pelos
       recortes do pacote 5) e da laje (0,10 de altura, de 0 a 4 na direção do corte).
-- [ ] **CF02** A seção da parede tem o preenchimento do estilo do material (por camadas:
+- [x] **CF02** A seção da parede tem o preenchimento do estilo do material (por camadas:
       3 regiões).
-- [ ] **CF03** A face interna da parede da esquerda (x = 0,14) aparece em vista entre as
+- [x] **CF03** A face interna da parede da esquerda (x = 0,14) aparece em vista entre as
       duas seções; nada do que fica atrás das paredes cortadas aparece por cima delas.
-- [ ] **CF04** Cotas de nível "+0,00" e "+2,80" e o título "CORTE A".
-- [ ] **CF05** Fachada de (−1, −2) a (7, −2) olhando para +y: a porta aparece na parede
+- [x] **CF04** Cotas de nível "+0,00" e "+2,80" e o título "CORTE A".
+- [x] **CF05** Fachada de (−1, −2) a (7, −2) olhando para +y: a porta aparece na parede
       (contorno do vão); nada é cortado.
-- [ ] **CF06** Mover a parede de cima para y = 5: o corte aberto mostra a seção em
+- [x] **CF06** Mover a parede de cima para y = 5: o corte aberto mostra a seção em
       *u* = 5,07; desfazer volta.
-- [ ] **CF07** Símbolo do corte nas plantas do Térreo e do Superior, com a letra A e as
+- [x] **CF07** Símbolo do corte nas plantas do Térreo e do Superior, com a letra A e as
       setas para −x.
-- [ ] **CF08** O arquivo passa na validação de esquema; o diário reaplicado reproduz o
+- [x] **CF08** O arquivo passa na validação de esquema; o diário reaplicado reproduz o
       IFC (as vistas inclusive).
 
 ## 9. Fontes públicas

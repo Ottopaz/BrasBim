@@ -28,6 +28,7 @@ from brasbim.ui.tools import (
     SlabTool,
     SpaceTool,
     TextTool,
+    ViewTool,
     WindowTool,
     _FillingTool,
     _WallTool,
@@ -65,6 +66,9 @@ DOC_TOOLS = [
     ("line2d", "line2d", "Linha", "clique os pontos; Enter ou clique duplo encerra"),
     ("hatch", "hatch", "Hachura", "polígono ou retângulo"),
     ("north", "north", "Norte", "clique a posição e a direção"),
+    ("section", "section", "Corte", "clique os dois pontos da linha e o lado olhado"),
+    ("elevation", "elevation", "Fachada",
+     "clique os dois pontos da linha, fora do edifício, e o lado olhado"),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -251,7 +255,7 @@ class OptionsBar(QToolBar):
         elif isinstance(tool, DimensionTool):
             self._choices(DIM_DIRECTIONS, tool.direction,
                           lambda v: setattr(tool, "direction", v))
-        elif isinstance(tool, NorthTool):
+        elif isinstance(tool, (NorthTool, ViewTool)):
             self.hide()
             return
         elif isinstance(tool, BeamTool):

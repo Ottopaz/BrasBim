@@ -67,6 +67,7 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `storey.edit` com `scale` | denominador da escala da planta (`None` = 1:50, Pset `BrasBim_Pavimento`, `Escala`) | spec/ui 13 §2 |
 | `space.create` / `.delete` / `.edit` | `storey`, `outline[]`, `number` (`Name`), `name` (`LongName`), `height` (`None` = calculado), `label_at` | spec/ui 13 §3.2 |
 | `dimension.*`, `level_mark.*`, `text.*`, `line2d.*`, `hatch.*`, `north.*` | `storey` e os parâmetros de cada tipo (spec/ui 13 §4–§7), guardados em JSON no Pset `BrasBim_Anotacao` (`Tipo`, `Parametros`); na cota, cada ponto `{"at", "ref"}` | spec/ui 13; a geometria `Annotation` é derivada; a posição dos pontos presos (`at`, `lost`) é atualizada pela derivação |
+| `view.create` / `.delete` / `.edit` | `name`, `letter`, `kind` (`section`/`elevation`), `a`, `b`, `side` (`left`/`right`), `depth`, `zmin`, `zmax`, `scale` (JSON no Pset `BrasBim_Vista`; `IfcAnnotation` na edificação) | spec/ui 14 §3; o desenho do corte é calculado, não gravado |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`

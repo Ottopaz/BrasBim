@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 6 concluído: documentação da planta).*
+*Atualizado em 2026‑10‑16 (pacote 7 concluído: cortes e fachadas).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (400 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (411 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -27,7 +27,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
 | `spec/ui/12-estrutura-refinamento` | aprovada e implementada (pacote 5; RC01–10 em `tests/test_recortes.py`, AL01–05 e LC01–03 em `test_laje.py` e `test_interface_estrutura.py`, ET01–02) |
 | `spec/ui/13-documentacao-planta` | aprovada e implementada (pacote 6; `tests/test_documentacao.py`, `test_interface_documentacao.py`) |
-| `spec/ui/14-cortes-e-fachadas` | **em revisão** (pacote 7) |
+| `spec/ui/14-cortes-e-fachadas` | aprovada e implementada (pacote 7; `tests/test_cortes.py`, `test_interface_cortes.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -219,6 +219,24 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   num texto edita (`SelectTool.ask_text`); mini-barra Cotar; escala na barra de estado e
   no painel do projeto; Exibir > Número dos ambientes e Espessuras de linha.
 
+## Pacote 7 — como ficou (spec/ui 14)
+- `core/drawings/views.py`: vista = `IfcAnnotation` "VistaDeCorte"/"VistaDeFachada" na
+  edificação, estado em JSON no Pset `BrasBim_Vista`, símbolo (`symbol`) gravado como
+  `Annotation` e mostrado nas plantas (`plan.views`). Entra nos comandos e nas
+  transformações das anotações (`annotations.commands`: `create_view`, `prefix_of`
+  "view"; espelhar troca o lado).
+- `core/drawings/section.py`: `draw(doc, view)` → `Drawing(items, texts)`; seção pela
+  interseção dos triângulos com o plano (anéis por `_chain` + `clip.union`), camadas da
+  parede pelas regiões de `layers.regions` cortadas pela linha da vista, camadas da laje
+  por faixas de cota; vista além pelo pintor (faces brancas + arestas do sólido, do mais
+  longe para o mais perto); `_annotate`: linha de piso, níveis, título. `pick` para a
+  escolha na aba.
+- Interface: `ui/section_view.py` (aba com zoom, deslocamento e clique; usa
+  `PlanView._draw_region` para as hachuras), ferramentas Corte e Fachada (`ViewTool`),
+  lista Vistas no painel do projeto (clique duplo abre), painel da vista, Exibir >
+  Símbolos de corte (`simbolos_corte`). As abas são refeitas a cada mudança do modelo e
+  fechadas quando a vista é excluída.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -230,7 +248,7 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    03), cotas lineares associativas e cota automática de paredes e vãos, cota de nível
    (RF-DOC-05), textos, linhas e hachuras 2D (RF-DOC-06), norte e símbolo de nível
    (RF-DOC-07), escala da vista (RF-DOC-04), espessuras de linha por categoria (RF-DOC-03).
-3. **Pacote 7** — documentação 2: cortes e fachadas gerados do modelo, com linhas ocultas
+3. ~~Pacote 7~~ concluído — documentação 2: cortes e fachadas gerados do modelo, com linhas ocultas
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
 4. **Pacote 8** — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
@@ -249,6 +267,9 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   elementos dos pavimentos vizinhos (medir em projeto grande); `NetSideArea` da parede
   não desconta recortes; abertura de porta sob um recorte pode ser descontada duas vezes.
 - Laje pelo cômodo: a laje não fica ligada às paredes (V1).
+- Cortes: o desenho é refeito inteiro a cada mudança do modelo (medir em projeto
+  grande); sobreposição cíclica no pintor fica como está; sem cotas nem textos dentro do
+  corte; zmin/zmax só decidem em que plantas o símbolo aparece.
 - Documentação: cota só prende em parede reta; pontos livres da cota sem alça (só o
   afastamento); texto de várias linhas só pelo clique duplo; vários ambientes ou
   anotações selecionados não têm painel próprio; as espessuras da NBR 8403 e as

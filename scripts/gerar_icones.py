@@ -67,6 +67,14 @@ ICONS = {
              '<path d="M4 12 L10 6 M4 18 L16 6 M10 18 L20 8 M16 18 L20 14" stroke-width="1"/>',
     "north": '<path d="M12 3 L16.5 15 L12 12.5 L7.5 15 Z"/>'
              '<path d="M9.5 21 V17 L14.5 21 V17" stroke-width="1"/>',
+    # corte e fachada (spec/ui 14 §7)
+    "section": '<path d="M12 3 V21" stroke-dasharray="4 2 1 2" stroke-width="1"/>'
+               '<path d="M12 3 V6.5 M12 17.5 V21" stroke-width="2.5"/>'
+               '<path d="M12 4.5 H6.5 M8.5 2.5 L6.5 4.5 L8.5 6.5"/>'
+               '<path d="M12 19.5 H6.5 M8.5 17.5 L6.5 19.5 L8.5 21.5"/>',
+    "elevation": '<path d="M3 20 H21" stroke-width="2"/>'
+                 '<path d="M5 20 V10 L12 5 L19 10 V20"/>'
+                 '<rect x="9.75" y="13.75" width="4.5" height="6.25" stroke-width="1"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

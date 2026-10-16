@@ -72,6 +72,7 @@ class PlanView(QWidget, ToolInput):
         self.show_structure_tags = True  # etiquetas de pilar e viga (spec/ui 12 §5)
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
+        self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -360,6 +361,8 @@ class PlanView(QWidget, ToolInput):
         selection = self.ctx.session.selection
         dashes = {"solid": Qt.SolidLine, "dashed": Qt.DashLine, "dashdot": Qt.DashDotLine}
         for owner, prims in self.ctx.plan.annotations:
+            if owner in self.ctx.plan.views and not self.show_view_symbols:
+                continue
             color = C["select"] if owner in selection else C["wall_line"]
             painter.setBrush(Qt.NoBrush)
             for stroke in prims.strokes:

@@ -42,6 +42,7 @@ from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
 from brasbim.ui.scene3d import Scene
+from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
@@ -122,6 +123,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.session = session
         self.ctx = PlanContext(session)
+        self.section_views: dict[str, SectionView] = {}  # abas de corte e fachada
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
         self.scene.load(session.doc.ifc, session.doc)
@@ -172,10 +174,12 @@ class MainWindow(QMainWindow):
 
     def _build_docks(self) -> None:
         self.project = ProjectPanel(self.session)
+        self.project.open_view = self.open_view
         self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
+        self.properties.open_view = self.open_view
         self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
         self.messages = QListWidget()
         self.messages.setWordWrap(True)
@@ -239,10 +243,14 @@ class MainWindow(QMainWindow):
             view_menu, "Número dos ambientes",
             lambda v: self._set_plan_option("show_space_numbers", v))
         self.weights_action = self._action(
-            view_menu, "Espessuras de linha", lambda v: self._set_plan_option("show_weights", v))
+            view_menu, "Espessuras de linha", lambda v: self._set_weights(v))
+        self.view_symbols_action = self._action(
+            view_menu, "Símbolos de corte",
+            lambda v: self._set_plan_option("show_view_symbols", v))
         for action, value in ((self.tags_action, True), (self.tag_size_action, False),
                               (self.structure_tags_action, True),
-                              (self.space_numbers_action, False), (self.weights_action, True)):
+                              (self.space_numbers_action, False), (self.weights_action, True),
+                              (self.view_symbols_action, True)):
             action.setCheckable(True)
             action.setChecked(value)
         view_menu.addSeparator()
@@ -348,7 +356,9 @@ class MainWindow(QMainWindow):
                                      "show_structure_tags"),
                                     (self.space_numbers_action, "numeros_ambientes",
                                      "show_space_numbers"),
-                                    (self.weights_action, "espessuras_linha", "show_weights")):
+                                    (self.weights_action, "espessuras_linha", "show_weights"),
+                                    (self.view_symbols_action, "simbolos_corte",
+                                     "show_view_symbols")):
             value = settings.value(key)
             if value is not None:
                 action.setChecked(str(value).lower() == "true")
@@ -367,6 +377,7 @@ class MainWindow(QMainWindow):
         if event == "document":
             self.toolbox.reset()
             self._hook_tools()
+            self._refresh_section_views(reset=True)
             self.activate_tool("select")
             self.ctx.invalidate()
             self.scene.load(self.session.doc.ifc, self.session.doc)
@@ -375,6 +386,7 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "model":
             self.ctx.invalidate()
+            self._refresh_section_views()
             if self.session.last_tx is not None and any(
                     op.op == "material.edit" for op in self.session.last_tx.ops):
                 self.scene.load(self.session.doc.ifc, self.session.doc)  # cores novas
@@ -389,6 +401,8 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "selection":
             self.properties.refresh()
+            for view in self.section_views.values():
+                view.update()
             self.plan.update()
             self.view3d.update()
             self._refresh_show_actions()
@@ -428,6 +442,37 @@ class MainWindow(QMainWindow):
         value = self.scale_combo.itemData(index)
         if storey is not None and value != storeys_.scale(storey):
             self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    def _set_weights(self, value: bool) -> None:
+        self._set_plan_option("show_weights", value)
+        for view in self.section_views.values():
+            view.show_weights = bool(value)
+            view.update()
+
+    def open_view(self, gid: str) -> SectionView | None:
+        """Abre o corte ou a fachada numa aba própria (spec/ui 14 §7)."""
+        if self.session.doc.find(gid) is None:
+            return None
+        view = self.section_views.get(gid)
+        if view is None:
+            view = SectionView(self.session, gid)
+            view.show_weights = self.weights_action.isChecked()
+            self.section_views[gid] = view
+            self.tabs.addTab(view, view.title)
+        if self.split:
+            self.set_view("plan")
+        self.tabs.setCurrentWidget(view)
+        return view
+
+    def _refresh_section_views(self, reset: bool = False) -> None:
+        for gid, view in list(self.section_views.items()):
+            if reset or self.session.doc.find(gid) is None:
+                self.tabs.removeTab(self.tabs.indexOf(view))
+                view.deleteLater()
+                del self.section_views[gid]
+                continue
+            view.invalidate()
+            self.tabs.setTabText(self.tabs.indexOf(view), view.title)
 
     def ask_text(self, current: str = "") -> str | None:
         """Texto da ferramenta Texto e da edição por clique duplo (spec/ui 13 §6)."""
@@ -688,6 +733,7 @@ class MainWindow(QMainWindow):
         settings.setValue("etiquetas_estrutura", self.structure_tags_action.isChecked())
         settings.setValue("numeros_ambientes", self.space_numbers_action.isChecked())
         settings.setValue("espessuras_linha", self.weights_action.isChecked())
+        settings.setValue("simbolos_corte", self.view_symbols_action.isChecked())
         settings.setValue("detalhe_planta", self.ctx.detail)
         settings.setValue("acima_do_corte", self.ctx.show_above)
         self.session.close()
