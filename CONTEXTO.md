@@ -31,6 +31,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
+| `spec/ui/17-tabelas` | **em revisão** (pacote 11: quadro de esquadrias, quadro de áreas, tabelas configuráveis, CSV/XLSX) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -346,7 +347,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
 4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
-4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora quantitativos e tabelas (RF-QTD-01 a 03, 05);
+4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora tabelas: spec
+   `spec/ui/17-tabelas.md` em revisão (pontos §9 a–e); depois quantitativos e tabelas (RF-QTD-01 a 03, 05);
    em seguida mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
