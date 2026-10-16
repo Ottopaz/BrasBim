@@ -5,18 +5,24 @@
 - Viga: posicionamento (cota do topo), ``Body`` e ``Qto_BeamBaseQuantities`` (viga.md §2.3,
   §8)
 - Laje: ``Body`` (espessura do tipo) e ``Qto_SlabBaseQuantities`` (laje.md §2.2, §8)
+- Recortes por prioridade (spec/ui 12 §2, ``cuts``): o corpo vira ``Clipping``, o
+  ``NetVolume`` desconta a parte retirada e a ``IfcRelInterferesElements`` é refeita.
+  Quando um elemento muda, os que ele corta (antes e agora) também são refeitos, inclusive
+  as paredes.
 
 Elementos de outra origem não são refeitos (corpo preservado).
 """
 
 from __future__ import annotations
 
+import math
+
 import ifcopenshell.util.element
 
 from brasbim.core import props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.structure import beams, columns, profiles, slabs
+from brasbim.core.structure import beams, columns, cuts, profiles, slabs
 from brasbim.core.structure import types as st_types
 
 _CLASSES = {"IfcColumn": columns, "IfcBeam": beams, "IfcSlab": slabs}
@@ -34,8 +40,13 @@ def _solid(doc: Document, profile, insertion, depth: float):
 
 
 def _body(doc: Document, element, solid) -> None:
-    rep = doc.ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", [solid])
+    kind = "Clipping" if solid.is_a("IfcBooleanClippingResult") else "SweptSolid"
+    rep = doc.ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, [solid])
     props.replace_representation(doc, element, "Body", rep)
+
+
+def _elevation(doc: Document, state: dict) -> float:
+    return float(doc.get(state["storey"], "IfcBuildingStorey").Elevation or 0.0)
 
 
 def rebuild_column(doc: Document, column) -> None:
@@ -54,11 +65,20 @@ def rebuild_column(doc: Document, column) -> None:
     props.replace_representation(doc, column, "Axis", ifc.createIfcShapeRepresentation(
         doc.model_axis_context, "Axis", "Curve3D", [curve]))
     insertion = profiles.insertion(section, state["cardinal"])
-    _body(doc, column, _solid(doc, st_types.profile(column_type), insertion, h))
+    solid = _solid(doc, st_types.profile(column_type), insertion, h)
+    own = cuts.piece(doc, column)
+    found = cuts.cuts_of(doc, column, own) if own is not None else []
+    if found:
+        frame = cuts.Frame(ifc, state["point"], math.radians(state["angle"]),
+                           _elevation(doc, state) + state["base_offset"])
+        solid = cuts.clipped(ifc, solid, frame, found, own)
+    _body(doc, column, solid)
+    cuts.sync_relations(doc, column, found)
     a, p = profiles.area(section), profiles.perimeter(section)
+    net = a * h - (cuts.removed_volume(own, found) if own is not None else 0.0)
     props.write_qto(doc, column, "Qto_ColumnBaseQuantities", {
         "Length": h, "CrossSectionArea": a, "OuterSurfaceArea": p * h,
-        "GrossVolume": a * h, "NetVolume": a * h})
+        "GrossVolume": a * h, "NetVolume": net})
 
 
 def rebuild_beam(doc: Document, beam) -> None:
@@ -71,11 +91,21 @@ def rebuild_beam(doc: Document, beam) -> None:
     section = st_types.section(beam_type)
     length = beams.length(state)
     insertion = profiles.insertion(section, beams.CARDINAL[state["ref_line"]])
-    _body(doc, beam, _solid(doc, st_types.profile(beam_type), insertion, length))
+    solid = _solid(doc, st_types.profile(beam_type), insertion, length)
+    own = cuts.piece(doc, beam)
+    found = cuts.cuts_of(doc, beam, own) if own is not None else []
+    if found:
+        (x0, y0), (x1, y1) = state["start"], state["end"]
+        frame = cuts.Frame(doc.ifc, (x0, y0), math.atan2(y1 - y0, x1 - x0),
+                           _elevation(doc, state) + beams.top_z(doc, state), beam=True)
+        solid = cuts.clipped(doc.ifc, solid, frame, found, own)
+    _body(doc, beam, solid)
+    cuts.sync_relations(doc, beam, found)
     a, p = profiles.area(section), profiles.perimeter(section)
+    net = a * length - (cuts.removed_volume(own, found) if own is not None else 0.0)
     props.write_qto(doc, beam, "Qto_BeamBaseQuantities", {
         "Length": length, "CrossSectionArea": a, "OuterSurfaceArea": p * length,
-        "GrossVolume": a * length, "NetVolume": a * length})
+        "GrossVolume": a * length, "NetVolume": net})
 
 
 def rebuild_slab(doc: Document, slab) -> None:
@@ -85,10 +115,20 @@ def rebuild_slab(doc: Document, slab) -> None:
     doc.changed.add(slab.GlobalId)
     t = slabs.thickness(doc, state)
     outline = state["outline"]
-    slabs.set_body(doc, slab, outline, t)
+    body = slabs.solid(doc, outline, t)
+    own = cuts.piece(doc, slab)
+    found = cuts.cuts_of(doc, slab, own) if own is not None else []
+    if found:
+        frame = cuts.Frame(doc.ifc, outline[0], 0.0,
+                           _elevation(doc, state) + state["top_offset"])
+        body = cuts.clipped(doc.ifc, body, frame, found, own)
+    slabs.set_body(doc, slab, outline, t, body)
+    cuts.sync_relations(doc, slab, found)
     a, p = slabs.area(outline), slabs.perimeter(outline)
-    quantities = {"Width": t, "Perimeter": p, "GrossArea": a, "NetArea": a,
-                  "GrossVolume": a * t, "NetVolume": a * t}
+    removed = cuts.removed_volume(own, found) if own is not None else 0.0
+    area_out = cuts.removed_area(own, found) if own is not None else 0.0
+    quantities = {"Width": t, "Perimeter": p, "GrossArea": a, "NetArea": a - area_out,
+                  "GrossVolume": a * t, "NetVolume": a * t - removed}
     sides = slabs.rectangle_sides(outline)
     quantities.update({"Length": sides[0], "Depth": sides[1]} if sides
                       else {"Length": None, "Depth": None})
@@ -126,8 +166,32 @@ def affected(doc: Document, dirty: set[str]) -> list:
 
 
 def derive(doc: Document, dirty: set[str]) -> None:
-    for element in affected(doc, dirty):
+    """Refaz os elementos alterados e, depois, os que eles cortam (de maior para menor
+    prioridade, para que o recorte veja o estado novo de quem corta)."""
+    from brasbim.core.walls import rebuild as wall_rebuild  # evita import circular
+
+    changed = affected(doc, dirty)
+    for element in changed:
         _REBUILD[element.is_a()](doc, element)
+    victims = {}
+    for element in changed:
+        for other in cuts.cut_by(doc, element):
+            victims[other.GlobalId] = other
+    # Quem um elemento excluído cortava (guardado por ``common.remove``).
+    for gid in sorted(doc.cut_victims):
+        found = doc.find(gid)
+        if found is not None:
+            victims[gid] = found
+    doc.cut_victims.clear()
+    order = sorted(victims.values(), key=lambda e: (-cuts.PRIORITY[e.is_a()], e.GlobalId))
+    done = {e.GlobalId for e in changed}
+    for element in order:
+        if element.GlobalId in done or doc.find(element.GlobalId) is None:
+            continue
+        if element.is_a("IfcWall"):
+            wall_rebuild.rebuild_wall(doc, element)
+        else:
+            _REBUILD[element.is_a()](doc, element)
     while doc.orphan_profiles:
         profile = doc.orphan_profiles.pop()
         if profile.id() and not doc.ifc.get_total_inverses(profile):

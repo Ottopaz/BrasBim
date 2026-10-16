@@ -93,9 +93,10 @@ def _top_cut(doc: Document, x0: float, x1: float, a, b, y0: float, y1: float):
 
 
 def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
-             profile=None, tilt: float = 0.0) -> None:
+             profile=None, tilt: float = 0.0, cut=None) -> None:
     """Corpo: extrusão da planta (vertical, ou inclinada na parede tombada) e, com topo
-    inclinado, recorte por um semiespaço limitado por trecho (spec/ui 08 §4.2, §5.2)."""
+    inclinado, recorte por um semiespaço limitado por trecho (spec/ui 08 §4.2, §5.2).
+    ``cut`` = (referencial, recortes, prisma) dos recortes por prioridade (spec/ui 12 §2)."""
     ifc = doc.ifc
     area = ifc.createIfcArbitraryClosedProfileDef("AREA", None, _indexed_curve(doc, segments))
     t = math.radians(tilt)
@@ -116,6 +117,12 @@ def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
             solid = ifc.createIfcBooleanClippingResult(
                 "DIFFERENCE", solid,
                 _top_cut(doc, xs[k], xs[k + 1], profile[k], profile[k + 1], ymin, ymax))
+        kind = "Clipping"
+    if cut is not None:
+        from brasbim.core.structure import cuts  # evita import circular
+
+        frame, found, own = cut
+        solid = cuts.clipped(ifc, solid, frame, found, own)
         kind = "Clipping"
     rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, [solid])
     props.replace_representation(doc, wall, "Body", rep)
@@ -233,7 +240,19 @@ def rebuild_wall(doc: Document, wall) -> None:
     except ValueError as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
     top_profile = state["top_profile"]
-    set_body(doc, wall, segments, h, top_profile, tilt)
+    # Recortes por pilar, viga e laje (spec/ui 12 §2); topo inclinado e parede tombada
+    # ficam sem (``cuts.piece`` devolve None).
+    from brasbim.core.structure import cuts  # evita import circular
+
+    prism = cuts.piece(doc, wall)
+    found = cuts.cuts_of(doc, wall, prism) if prism is not None else []
+    cut = None
+    if found:
+        storey = doc.get(state["storey"], "IfcBuildingStorey")
+        z = float(storey.Elevation or 0.0) + state["base_offset"]
+        cut = (cuts.Frame(doc.ifc, own.frame.origin, own.frame.angle, z), found, prism)
+    set_body(doc, wall, segments, h, top_profile, tilt, cut)
+    cuts.sync_relations(doc, wall, found)
     openings.refresh(doc, wall, own, h, top_profile)
     cut = openings.deductions(wall, own, h, segments)
     if tilt:
@@ -248,6 +267,8 @@ def rebuild_wall(doc: Document, wall) -> None:
         net_volume = top.volume(geom2d.polygon(segments), top_profile)
     else:
         side, net_volume = length * h, footprint * h
+    if found:
+        net_volume -= cuts.removed_volume(prism, found)
     props.write_qto(
         doc,
         wall,

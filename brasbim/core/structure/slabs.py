@@ -128,9 +128,14 @@ def rectangle_sides(outline) -> tuple[float, float] | None:
 
 def _read_outline(slab, placement: dict) -> list[list[float]] | None:
     body = props.representation(slab, "Body")
-    if body is None or not body.Items or not body.Items[0].is_a("IfcExtrudedAreaSolid"):
+    if body is None or not body.Items:
         return None
-    area_ = body.Items[0].SweptArea
+    item = body.Items[0]
+    while item.is_a("IfcBooleanResult"):  # recortes (spec/ui 12 §2.3)
+        item = item.FirstOperand
+    if not item.is_a("IfcExtrudedAreaSolid"):
+        return None
+    area_ = item.SweptArea
     if not area_.is_a("IfcArbitraryClosedProfileDef") or not area_.OuterCurve.is_a(
             "IfcPolyline"):
         return None
@@ -178,19 +183,25 @@ def _place(doc: Document, slab, storey, origin, z: float) -> None:
     ifcopenshell.util.element.remove_deep2(doc.ifc, old)
 
 
-def set_body(doc: Document, slab, outline, depth: float) -> None:
+def solid(doc: Document, outline, depth: float):
     """Contorno extrudado para cima a partir de z = −espessura (topo em z = 0)."""
     ifc = doc.ifc
     ox, oy = outline[0]
     pts = [ifc.createIfcCartesianPoint((float(x - ox), float(y - oy))) for x, y in outline]
     curve = ifc.createIfcPolyline([*pts, pts[0]])
     profile = ifc.createIfcArbitraryClosedProfileDef("AREA", None, curve)
-    solid = ifc.createIfcExtrudedAreaSolid(
+    return ifc.createIfcExtrudedAreaSolid(
         profile,
         ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, -float(depth))),
                                       None, None),
         ifc.createIfcDirection((0.0, 0.0, 1.0)), float(depth))
-    rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", "SweptSolid", [solid])
+
+
+def set_body(doc: Document, slab, outline, depth: float, body=None) -> None:
+    """Corpo da laje; ``body`` é o sólido já recortado (spec/ui 12 §2.3), se houver."""
+    item = body if body is not None else solid(doc, outline, depth)
+    kind = "Clipping" if item.is_a("IfcBooleanClippingResult") else "SweptSolid"
+    rep = doc.ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, [item])
     props.replace_representation(doc, slab, "Body", rep)
 
 

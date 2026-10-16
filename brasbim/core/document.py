@@ -24,6 +24,8 @@ class Document:
         self.changed: set[str] = set()
         # Perfis trocados num tipo de pilar ou viga, apagados depois de refeitos os corpos.
         self.orphan_profiles: list = []
+        # Elementos que um pilar, viga ou laje excluído cortava: refeitos na derivação.
+        self.cut_victims: set[str] = set()
 
     # --- criação e arquivo ---------------------------------------------------
 

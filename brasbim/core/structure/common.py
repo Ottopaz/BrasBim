@@ -170,6 +170,12 @@ def write_foreign(doc: Document, element, state: dict) -> None:
 def remove(doc: Document, element) -> None:
     """Apaga o elemento. O corpo de outra origem sai com o que só ele usa, sem levar o
     perfil, que pode ser do tipo."""
+    doc.cut_victims.update(r.RelatingElement.GlobalId
+                           for r in getattr(element, "IsInterferedByElements", ()) or ()
+                           if r.is_a("IfcRelInterferesElements"))
+    for rel in list(getattr(element, "InterferesElements", ()) or ()) + list(
+            getattr(element, "IsInterferedByElements", ()) or ()):
+        doc.ifc.remove(rel)
     shape = element.Representation
     element.Representation = None
     ifcopenshell.api.root.remove_product(doc.ifc, product=element)

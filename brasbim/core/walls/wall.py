@@ -265,6 +265,8 @@ def _create(doc: Document, op: Op) -> set[str]:
 
 
 def remove(doc: Document, wall) -> None:
+    for rel in list(getattr(wall, "InterferesElements", ()) or ()):  # recortes (spec/ui 12)
+        doc.ifc.remove(rel)
     ifcopenshell.api.root.remove_product(doc.ifc, product=wall)
 
 

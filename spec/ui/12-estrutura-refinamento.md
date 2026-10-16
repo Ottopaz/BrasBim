@@ -3,8 +3,8 @@ documento: Estrutura, refinamento 1 — recortes por prioridade, aberturas na la
 requisito: RF-ELE-01, RF-ELE-02, RF-ELE-03, RF-ELE-04, RF-UI-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-16)
 ---
 
 # Estrutura: refinamento 1 (pacote 5)
@@ -94,8 +94,9 @@ não vira operação no diário.
 O `NetVolume` passa a descontar a parte retirada; o `GrossVolume` não muda. Como todos os
 elementos são prismas verticais (pilar, laje, parede) ou caixas (viga), a parte comum é
 a área da interseção das plantas × a sobreposição das cotas, calculada com
-`core/clip.py`. Nas lajes, `NetArea` desconta os pilares que a atravessam (§3.4 para as
-aberturas). Na parede, `NetSideArea` e `NetFootprintArea` não mudam nesta etapa.
+`core/clip.py`. Nas lajes, `NetArea` desconta o que a atravessa na espessura toda, os
+pilares e as vigas de topo no nível dela (§3.4 para as aberturas; ajuste da
+implementação, 2026‑10‑16: a viga também atravessa a laje pela regra de §2.1). Na parede, `NetSideArea` e `NetFootprintArea` não mudam nesta etapa.
 
 ### 2.6 Planta e 3D
 - 3D: os corpos já vêm recortados do IFC (o `ifcopenshell.geom` aplica o `Clipping`); a

@@ -673,24 +673,6 @@ def _slab_fill(element_type) -> dict:
     return _fill_of_type(style) if style else {"pattern": "none", "source": "type"}
 
 
-def _hull(points: list[Point]) -> list[Point]:
-    pts = sorted({(round(x, 9), round(y, 9)) for x, y in points})
-    if len(pts) < 3:
-        return pts
-
-    def half(seq):
-        out: list[Point] = []
-        for q in seq:
-            while len(out) >= 2 and geom2d._cross(geom2d._sub(out[-1], out[-2]),
-                                                   geom2d._sub(q, out[-2])) <= 0:
-                out.pop()
-            out.append(q)
-        return out
-
-    lower, upper = half(pts), half(list(reversed(pts)))
-    return lower[:-1] + upper[:-1]
-
-
 def _foreign_element(element, storey, kind: str) -> _Element | None:
     """Elemento de outra origem: contorno convexo do corpo, visto de cima."""
     import ifcopenshell.geom
@@ -704,7 +686,7 @@ def _foreign_element(element, storey, kind: str) -> _Element | None:
     verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
     m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement))
     local = (m @ np.c_[verts, np.ones(len(verts))].T).T[:, :3]
-    ring = _hull([(float(x), float(y)) for x, y, _ in local])
+    ring = geom2d.convex_hull([(float(x), float(y)) for x, y, _ in local])
     if len(ring) < 3:
         return None
     z = (float(local[:, 2].min()), float(local[:, 2].max()))

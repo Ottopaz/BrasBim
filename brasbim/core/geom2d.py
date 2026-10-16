@@ -576,3 +576,21 @@ def reflection(a: Point, b: Point):
         return (2 * foot[0] - p[0], 2 * foot[1] - p[1])
 
     return fn
+
+
+def convex_hull(points: list[Point]) -> list[Point]:
+    """Fecho convexo, anti-horário (cadeia monótona)."""
+    pts = sorted({(round(x, 9), round(y, 9)) for x, y in points})
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        out: list[Point] = []
+        for q in seq:
+            while len(out) >= 2 and _cross(_sub(out[-1], out[-2]), _sub(q, out[-2])) <= 0:
+                out.pop()
+            out.append(q)
+        return out
+
+    lower, upper = half(pts), half(list(reversed(pts)))
+    return lower[:-1] + upper[:-1]
