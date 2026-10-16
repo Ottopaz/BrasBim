@@ -970,3 +970,16 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             plan.shapes += [Shape(e.GlobalId, "annotation", tuple(text_box(t)), True)
                             for t in prims.texts]
     plan.regions[:0] = hatches  # as hachuras ficam sob as paredes
+    from brasbim.core.drawings import views  # símbolos de corte e fachada (spec/ui 14 §6)
+
+    for view in views.all_views(doc):
+        try:
+            state = views.read_state(view)
+        except OpError:
+            continue
+        if not views.shown_on(state, storey):
+            continue
+        prims = views.symbol(state)
+        plan.annotations.append((view.GlobalId, prims))
+        plan.shapes += [Shape(view.GlobalId, "annotation", st.points, st.closed)
+                        for st in prims.strokes]

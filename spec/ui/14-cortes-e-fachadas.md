@@ -3,8 +3,8 @@ documento: Documentação 2 — cortes e fachadas gerados do modelo
 requisito: RF-DOC-02, RF-DOC-03, RF-DOC-04, RF-DOC-07
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-16)
 ---
 
 # Documentação 2: cortes e fachadas (pacote 7)
@@ -100,7 +100,8 @@ Superior sobre o retângulo.
 
 - [ ] **CF01** Corte de (3, −1) a (3, 5), olhando para a esquerda (−x): `IfcAnnotation`
       "VistaDeCorte" na edificação; o desenho tem as seções das duas paredes de baixo e
-      de cima (largura 0,14, altura 2,80) e da laje (0,10 de altura, de 0 a 4 em *u*).
+      de cima (largura 0,14, altura 2,70: a laje do Superior corta o topo delas, pelos
+      recortes do pacote 5) e da laje (0,10 de altura, de 0 a 4 na direção do corte).
 - [ ] **CF02** A seção da parede tem o preenchimento do estilo do material (por camadas:
       3 regiões).
 - [ ] **CF03** A face interna da parede da esquerda (x = 0,14) aparece em vista entre as

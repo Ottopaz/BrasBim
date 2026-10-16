@@ -76,6 +76,7 @@ HANDLER_MODULES = (
     "brasbim.core.annotations.drafting",
     "brasbim.core.annotations.dimensions",
     "brasbim.core.annotations.rebuild",
+    "brasbim.core.drawings.views",
 )
 _loaded = False
 

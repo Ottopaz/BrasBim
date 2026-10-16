@@ -20,20 +20,35 @@ def _gid(obj) -> str:
 
 
 def is_annotation(entity) -> bool:
-    """Ambiente ou anotação do BrasBim."""
-    return entity is not None and (entity.is_a("IfcSpace") or base.kind_of(entity) is not None)
+    """Ambiente, anotação ou vista (corte, fachada) do BrasBim."""
+    from brasbim.core.drawings import views
+
+    return entity is not None and (entity.is_a("IfcSpace") or base.kind_of(entity) is not None
+                                   or views.is_view(entity))
 
 
 def read_state(doc: Document, element) -> dict:
-    return spaces.read_state(element) if element.is_a("IfcSpace") else base.read_state(element)
+    from brasbim.core.drawings import views
+
+    if element.is_a("IfcSpace"):
+        return spaces.read_state(element)
+    return views.read_state(element) if views.is_view(element) else base.read_state(element)
 
 
 def prefix_of(element) -> str:
-    return "space" if element.is_a("IfcSpace") else base.kind_of(element).prefix
+    from brasbim.core.drawings import views
+
+    if element.is_a("IfcSpace"):
+        return "space"
+    return "view" if views.is_view(element) else base.kind_of(element).prefix
 
 
 def noun_of(element) -> str:
-    return "ambiente" if element.is_a("IfcSpace") else base.kind_of(element).noun
+    from brasbim.core.drawings import views
+
+    if element.is_a("IfcSpace"):
+        return "ambiente"
+    return "vista" if views.is_view(element) else base.kind_of(element).noun
 
 
 # --- ambientes -------------------------------------------------------------------------
@@ -112,10 +127,12 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     element = doc.get(_gid(element))
     if not is_annotation(element):
         raise OpError(f"{element.GlobalId} não é ambiente nem anotação")
+    from brasbim.core.drawings import views
+
     state = read_state(doc, element)
     prefix = prefix_of(element)
-    keys = spaces.STATE_KEYS if prefix == "space" else (*base.KINDS[prefix].defaults,
-                                                         "storey")
+    keys = (spaces.STATE_KEYS if prefix == "space" else views.STATE_KEYS if prefix == "view"
+            else (*base.KINDS[prefix].defaults, "storey"))
     unknown = set(changes) - set(keys)
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
@@ -124,7 +141,7 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
 
         changes["outline"] = slabs.clean(changes["outline"])
     _clean(prefix, changes)
-    if prefix != "space":
+    if prefix not in ("space", "view"):
         base.KINDS[prefix].validate({**state, **changes})
     changes = {k: v for k, v in changes.items() if v != state.get(k)}
     noun = noun_of(element)
@@ -147,12 +164,37 @@ def delete_element(doc: Document, element) -> Transaction:
     return Transaction(f"Excluir {noun_of(element)}", delete_ops(doc, element))
 
 
+# --- vistas (spec/ui 14) -----------------------------------------------------------------
+
+
+def create_view(doc: Document, kind: str, a, b, side: str = "left",
+                **options) -> Transaction:
+    """Corte ou fachada pela linha ``a``–``b``, olhando para ``side`` (spec/ui 14 §2)."""
+    from brasbim.core.drawings import views
+
+    data = {**views.default_state(), "kind": kind, "a": [float(a[0]), float(a[1])],
+            "b": [float(b[0]), float(b[1])], "side": side, **options}
+    if data["kind"] == "section" and not data.get("letter"):
+        data["letter"] = views.next_letter(doc)
+    if not data.get("name"):
+        data["name"] = (f"Corte {data['letter']}" if data["kind"] == "section"
+                        else views.next_elevation_name(doc))
+    views._validate(data)
+    noun = "corte" if kind == "section" else "fachada"
+    return Transaction(f"Criar {noun}", [Op("view.create", guid.new(), data=data)])
+
+
 # --- transformações (spec/ui 13 §6) -----------------------------------------------------
 
 
 def mapped(doc: Document, element, fn, turn, mirrored: bool, moving: set[str]) -> dict:
     """Campos do estado levados pela transformação da planta."""
     state = read_state(doc, element)
+    if prefix_of(element) == "view":
+        out = {"a": list(fn(tuple(state["a"]))), "b": list(fn(tuple(state["b"])))}
+        if mirrored:  # o lado olhado continua o mesmo em relação ao edifício
+            out["side"] = "right" if state["side"] == "left" else "left"
+        return out
     if element.is_a("IfcSpace"):
         out = {"outline": [list(fn(tuple(p))) for p in state["outline"]]}
         if state["label_at"] is not None:

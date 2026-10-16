@@ -455,6 +455,16 @@ def _anno_ops(doc: Document, annos, fn, turn, mirrored: bool, moving: set[str],
         changes = anno_cmd.mapped(doc, e, fn, turn, mirrored, moving)
         if copy_:
             state = {**copy.deepcopy(anno_cmd.read_state(doc, e)), **changes}
+            if anno_cmd.prefix_of(e) == "view":  # a cópia ganha letra e nome novos
+                from brasbim.core.drawings import views
+
+                taken = {o.data.get("letter") for o in ops if o.op == "view.create"}
+                letter = views.next_letter(doc)
+                while letter in taken:
+                    letter = chr(ord(letter[-1]) + 1) if letter[-1] < "Z" else letter + "A"
+                state["letter"] = letter if state["kind"] == "section" else None
+                state["name"] = (f"Corte {letter}" if state["kind"] == "section"
+                                 else f"{state['name']} (cópia)")
             if e.is_a("IfcSpace"):  # a cópia ganha o próximo número livre
                 state["outline"] = slabs.clean(state["outline"])
                 storey = doc.get(state["storey"])
