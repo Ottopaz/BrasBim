@@ -309,7 +309,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
 4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
-4b. Cobertura simples (RF-ELE-07) e depois quantitativos e tabelas (RF-QTD-01 a 03, 05);
+4b. Cobertura simples (RF-ELE-07): spec `spec/elementos/cobertura.md` em revisão
+   (pontos §12 a–f); depois quantitativos e tabelas (RF-QTD-01 a 03, 05);
    em seguida mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
