@@ -25,7 +25,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.base import same_value
 from brasbim.core.ops.history import combine
-from brasbim.core.structure import beams, columns, common, profiles, slab_openings, slabs
+from brasbim.core.structure import beams, columns, common, profiles, roofs, slab_openings, slabs
 from brasbim.core.structure import types as st_types
 
 gid = common.gid
@@ -35,12 +35,19 @@ ELEMENTS = {
     "IfcColumn": (columns, "column", "pilar", "pilares"),
     "IfcBeam": (beams, "beam", "viga", "vigas"),
     "IfcSlab": (slabs, "slab", "laje", "lajes"),
+    "IfcRoof": (roofs, "roof", "cobertura", "coberturas"),
 }
 TYPE_CLASSES = {"IfcColumnType": "column", "IfcBeamType": "beam", "IfcSlabType": "slab"}
 
 
 def is_structure(entity) -> bool:
-    return entity.is_a() in ELEMENTS
+    """Pilar, viga, laje ou cobertura do BrasBim. A peça (água) da cobertura não conta:
+    quem se seleciona, move e exclui é a cobertura (cobertura.md §5)."""
+    if entity.is_a() not in ELEMENTS:
+        return False
+    if entity.is_a("IfcRoof"):
+        return roofs.is_roof(entity)
+    return not (entity.is_a("IfcSlab") and roofs.is_part(entity))
 
 
 def module_of(entity):
@@ -54,7 +61,7 @@ def read_state(doc: Document, element) -> dict:
 def _element(doc: Document, element, ifc_class: str | None = None):
     element = doc.get(gid(element), ifc_class)
     if not is_structure(element):
-        raise OpError(f"{element.GlobalId} não é pilar, viga nem laje")
+        raise OpError(f"{element.GlobalId} não é pilar, viga, laje nem cobertura")
     return element
 
 
@@ -120,7 +127,11 @@ def delete_type(doc: Document, element_type, replacement=None) -> Transaction:
     """Exclui o tipo. Em uso, os elementos passam para ``replacement`` (spec/ui 10 §5)."""
     element_type = _type(doc, element_type)
     prefix = TYPE_CLASSES[element_type.is_a()]
-    used = sorted(ifcopenshell.util.element.get_types(element_type), key=lambda e: e.GlobalId)
+    owners = {}
+    for e in ifcopenshell.util.element.get_types(element_type):
+        owner = roofs.roof_of(e) or e  # as águas trocam de tipo pela cobertura
+        owners[owner.GlobalId] = owner
+    used = [owners[g] for g in sorted(owners)]
     ops = []
     if used:
         if replacement is None:
@@ -128,6 +139,8 @@ def delete_type(doc: Document, element_type, replacement=None) -> Transaction:
         other = _type(doc, replacement)
         if other.is_a() != element_type.is_a() or other == element_type:
             raise OpError("escolha outro tipo do mesmo elemento")
+        if any(e.is_a("IfcRoof") for e in used) and other.PredefinedType != "ROOF":
+            raise OpError("as coberturas precisam de um tipo de cobertura")
         ops = [op for e in used for op in edit_element(doc, e, type=other.GlobalId).ops]
     ops.append(Op(f"{prefix}_type.delete", element_type.GlobalId, data=read_type(element_type)))
     return Transaction(f"Excluir tipo de {_TYPE_NOUN[prefix]}", ops)
@@ -284,6 +297,51 @@ def create_slab_rectangle(doc: Document, slab_type, storey, corner, opposite, **
                        **options)
 
 
+def create_roof(doc: Document, slab_type, storey, outline, shape: str = "gable",
+                slope: float = roofs.DEFAULT_SLOPE, overhang: float = roofs.DEFAULT_OVERHANG,
+                base_height: float | None = None, side: int | None = None,
+                name: str | None = None) -> Transaction:
+    """Cobertura pelo contorno de apoio (cobertura.md §4); sem ``base_height``, no topo
+    das paredes do pavimento; sem ``side``, o lado maior."""
+    storey = doc.get(gid(storey), "IfcBuildingStorey")
+    if shape not in roofs.SHAPES:
+        raise OpError(f"forma de cobertura inválida: {shape!r}")
+    data = {**roofs.default_state(), "type": gid(slab_type), "storey": storey.GlobalId,
+            "outline": roofs.clean(outline), "shape": shape, "slope": float(slope),
+            "overhang": float(overhang),
+            "base_height": float(roofs.wall_top(doc, storey) if base_height is None
+                                 else base_height),
+            "side": side, "parts": roofs.part_ids(shape),
+            "name": name or next_roof_name(doc)}
+    data = roofs.normalized(data)
+    roofs.validate(data)
+    if doc.get(data["type"], "IfcSlabType").PredefinedType != "ROOF":
+        raise OpError("escolha um tipo de cobertura")
+    return Transaction("Criar cobertura", [Op("roof.create", guid.new(), data=data)])
+
+
+def next_roof_name(doc: Document, taken=()) -> str:
+    used = {e.Name for e in doc.ifc.by_type("IfcRoof")} | set(taken)
+    return next(f"Cobertura {n}" for n in itertools.count(1)
+                if f"Cobertura {n}" not in used)
+
+
+def create_roof_over_walls(doc: Document, slab_type, storey, point=None,
+                           **options) -> Transaction:
+    """Cobertura sobre o contorno externo das paredes em volta de ``point`` (§4); sem
+    ``point``, sobre a maior edificação do pavimento."""
+    from brasbim.core.structure import rooms
+
+    outline = rooms.building_outline(doc, doc.get(gid(storey), "IfcBuildingStorey"), point)
+    return create_roof(doc, slab_type, storey, outline, **options)
+
+
+def create_roof_rectangle(doc: Document, slab_type, storey, corner, opposite, **options):
+    (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
+    return create_roof(doc, slab_type, storey, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
+                       **options)
+
+
 # --- edição ----------------------------------------------------------------------------
 
 
@@ -310,7 +368,20 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     if "outline" in changes:
-        changes["outline"] = slabs.clean(changes["outline"])
+        changes["outline"] = (roofs.clean if prefix == "roof" else slabs.clean)(
+            changes["outline"])
+    if prefix == "roof":
+        if "shape" in changes and "parts" not in changes:
+            changes["parts"] = roofs.part_ids(changes["shape"], state["parts"])
+        for key in ("slope", "overhang", "base_height"):
+            if key in changes:
+                changes[key] = float(changes[key])
+        new = roofs.normalized({**state, **changes})
+        roofs.validate(new)
+        if "type" in changes and doc.get(changes["type"]).PredefinedType != "ROOF":
+            raise OpError("escolha um tipo de cobertura")
+        if new["side"] != state["side"]:
+            changes["side"] = new["side"]
     # O pilar circular só tem o centro como ponto de inserção (pilar.md §3.1).
     if (element.is_a("IfcColumn") and changes.get("type") and not pre
             and state["foreign"] is None
@@ -405,6 +476,8 @@ def outline_of(doc: Document, element) -> list:
         from brasbim.core.annotations import spaces
 
         return spaces.read_state(entity)["outline"]
+    if entity.is_a("IfcRoof"):
+        return roofs.read_state(doc, entity)["outline"]
     return slabs.read_state(doc, _element(doc, entity, "IfcSlab"))["outline"]
 
 
@@ -416,6 +489,8 @@ def edit_outline(doc: Document, element, outline) -> Transaction:
         from brasbim.core.annotations import commands as anno_cmd
 
         return anno_cmd.edit_element(doc, entity, outline=outline)
+    if entity.is_a("IfcRoof"):  # o lado escolhido segue o mesmo índice (cobertura.md §5)
+        return edit_element(doc, entity, outline=outline)
     outline = slabs.clean(outline)
     for opening in slab_openings.of_slab(entity):  # spec/ui 12 §3.2
         if not slab_openings.inside(slab_openings.read_state(opening)["outline"], outline):

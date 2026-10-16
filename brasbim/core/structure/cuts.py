@@ -149,9 +149,16 @@ def nearby(doc: Document, element, classes) -> list:
     out = []
     for storey in _storeys_near(doc, element):
         for e in ifcopenshell.util.element.get_decomposition(storey):
-            if e != element and any(e.is_a(c) for c in classes):
+            if e != element and any(e.is_a(c) for c in classes) and not _roof_part(e):
                 out.append(e)
     return sorted(set(out), key=lambda e: e.GlobalId)
+
+
+def _roof_part(e) -> bool:
+    """As águas da cobertura não entram nos recortes (cobertura.md §6)."""
+    from brasbim.core.structure import roofs
+
+    return roofs.is_part(e)
 
 
 def _mode(c: Piece, e: Piece) -> str | None:

@@ -23,7 +23,7 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
-from brasbim.core.structure import beams, columns, profiles, rooms, slab_openings, slabs
+from brasbim.core.structure import beams, columns, profiles, roofs, rooms, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.structure import types as st_types
@@ -414,7 +414,7 @@ def _structure_marks(doc, tx, style="preview") -> list[Mark]:
         if op.op == "slab_opening.edit":
             marks.append(Mark(tuple(tuple(q) for q in op.after["outline"]), True, style))
             continue
-        if kind != "edit" or prefix not in ("column", "beam", "slab"):
+        if kind != "edit" or prefix not in ("column", "beam", "slab", "roof"):
             continue
         element = doc.find(op.id)
         if element is None:
@@ -1318,6 +1318,8 @@ class RectangleTool(_WallTool):
 
 def _first_type(session: Session, ifc_class: str) -> str | None:
     types = sorted(session.doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+    if ifc_class == "IfcSlabType":  # os de cobertura ficam com a ferramenta Cobertura
+        types = [t for t in types if t.PredefinedType != "ROOF"]
     preferred = {"IfcColumnType": "Pilar 20×40", "IfcBeamType": "Viga 14×40",
                  "IfcSlabType": "Laje maciça 10 cm"}.get(ifc_class)
     found = next((t for t in types if t.Name == preferred), types[0] if types else None)
@@ -1725,6 +1727,155 @@ class SlabTool(_WallTool):
         marks = [Mark(tuple(pts), len(pts) >= 3, style)]
         if "angle" in self.fixed:
             marks.append(_guide(self.points[-1], self.fixed["angle"], self.ctx.tol))
+        return marks
+
+
+def roof_types(doc) -> list:
+    """Tipos de laje de cobertura (``ROOF``), para a ferramenta Cobertura."""
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType == "ROOF"),
+                  key=lambda t: t.Name or "")
+
+
+def floor_types(doc) -> list:
+    """Tipos de laje que não são de cobertura, para a ferramenta Laje."""
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType != "ROOF"),
+                  key=lambda t: t.Name or "")
+
+
+class _RoofOptions:
+    """Opções da ferramenta Cobertura (cobertura.md §4)."""
+
+    type_class = "IfcSlabType"
+
+    def __init__(self, session: Session):
+        found = roof_types(session.doc)
+        preferred = next((t for t in found if t.Name == "Telha cerâmica"),
+                         found[0] if found else None)
+        self.type = preferred.GlobalId if preferred is not None else None
+        self.mode = "room"  # pelas paredes; polygon, rectangle
+        self.boundary = "outer"  # contorno externo das paredes (§4)
+        self.shape = "gable"
+        self.slope = roofs.DEFAULT_SLOPE
+        self.overhang = roofs.DEFAULT_OVERHANG
+        self.base_height: float | None = None  # None: topo das paredes do pavimento
+
+
+class RoofTool(SlabTool):
+    """Cobertura (cobertura.md §4): contorno por polígono, retângulo ou pelas paredes;
+    na uma e na duas águas, um clique escolhe o lado (Enter aceita o lado maior)."""
+
+    name, label = "roof", "Cobertura"
+    options_class = _RoofOptions
+
+    def __init__(self, ctx, options=None):
+        super().__init__(ctx, options)
+        self.pending: list | None = None  # contorno à espera do lado
+        self.side: int | None = None  # lado sob o cursor
+
+    def base_height(self) -> float:
+        if self.options.base_height is not None:
+            return self.options.base_height
+        storey = self.session.storey
+        return roofs.wall_top(self.session.doc, storey) if storey is not None \
+            else roofs.DEFAULT_BASE
+
+    def hint(self):
+        if self.options.type is None:
+            return "Não há tipo de cobertura no projeto"
+        if self.pending is not None:
+            what = ("o lado mais baixo" if self.options.shape == "shed"
+                    else "um lado paralelo à cumeeira")
+            return f"Clique {what}; Enter aceita o lado maior; Esc volta"
+        if self.options.mode == "room":
+            return "Clique dentro da edificação: a cobertura apoia no contorno externo das paredes"
+        return super().hint().replace("da laje", "do contorno")
+
+    def _nearest_side(self, p) -> int:
+        pts = self.pending
+        n = len(pts)
+        return min(range(n), key=lambda i: plan.distance_to_segment(
+            tuple(p), tuple(pts[i]), tuple(pts[(i + 1) % n])))
+
+    def _room(self, p) -> list | None:
+        """Contorno externo das paredes em volta do cursor (§4), ou None."""
+        storey = self.session.storey
+        if storey is None:
+            return None
+        try:
+            return rooms.building_outline(self.session.doc, storey, p)
+        except OpError:
+            return None
+
+    def move(self, p, mods):
+        if self.pending is not None:
+            Tool.move(self, p, mods)
+            self.snapped = snap.Snap(tuple(p), "free")
+            self.side = self._nearest_side(p)
+            return
+        super().move(p, mods)
+
+    def _create(self, points) -> None:
+        self.points = []
+        options = self.options
+        if options.type is None or self.session.storey is None:
+            self.session.message("não há tipo de cobertura ou pavimento ativo", "recusa")
+            return
+        try:
+            outline = roofs.clean(points)
+        except OpError as e:
+            self.session.message(str(e), "recusa")
+            return
+        if options.shape in ("gable", "hip") and not roofs.is_rectangle(outline):
+            self.session.message(roofs.RECT_ONLY, "recusa")
+            return
+        if options.shape in ("shed", "gable"):
+            self.pending, self.side = outline, None
+            return
+        self._commit(outline, None)
+
+    def _create_in_room(self, p) -> None:
+        if self.session.storey is None:
+            return
+        outline = self._room(p)
+        if outline is None:
+            self.session.message("clique dentro de uma área fechada por paredes", "recusa")
+            return
+        self._create(outline)
+
+    def _commit(self, outline, side) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        self.pending = self.side = None
+        self.session.run(lambda: sc.create_roof(
+            doc, options.type, storey, outline, shape=options.shape, slope=options.slope,
+            overhang=options.overhang, base_height=self.base_height(), side=side))
+
+    def press(self, p, mods, button="left"):
+        if self.pending is not None:
+            if button == "left":
+                self._commit(self.pending, self._nearest_side(p))
+            return
+        super().press(p, mods, button)
+
+    def key(self, key):
+        if self.pending is not None and key == "enter":
+            self._commit(self.pending, None)
+            return True
+        return super().key(key)
+
+    def cancel(self):
+        if self.pending is not None:
+            self.pending = self.side = None
+            return True
+        return super().cancel()
+
+    def shape_preview(self):
+        if self.pending is None:
+            return super().shape_preview()
+        pts = tuple(tuple(q) for q in self.pending)
+        marks = [Mark(pts, True)]
+        if self.side is not None:
+            a, b = pts[self.side], pts[(self.side + 1) % len(pts)]
+            marks.append(Mark((a, b), False, "reference"))
         return marks
 
 
@@ -2877,7 +3028,7 @@ class MirrorTool(_SelectionTool):
         if math.dist(q, self.points[0]) <= geom2d.MIN_LENGTH:
             return
         doc, gids, a = self.session.doc, self._gids(), self.points[0]
-        classes = ("IfcWall", "IfcColumn", "IfcBeam", "IfcSlab")
+        classes = ("IfcWall", "IfcColumn", "IfcBeam", "IfcSlab", "IfcRoof")
 
         def found():
             return {e.GlobalId for c in classes for e in doc.ifc.by_type(c)}
@@ -2906,7 +3057,7 @@ class MirrorTool(_SelectionTool):
 
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
-         BeamTool, SlabTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+         BeamTool, SlabTool, RoofTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com

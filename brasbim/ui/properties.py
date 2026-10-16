@@ -49,7 +49,7 @@ from brasbim.core.drawings import sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
-from brasbim.core.structure import beams, columns, profiles, slab_openings, slabs
+from brasbim.core.structure import beams, columns, profiles, roofs, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
@@ -97,6 +97,11 @@ STRUCTURE_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "
                     ("LoadBearing", "Estrutural", "bool"), ("IsExternal", "Externa", "bool"),
                     ("FireRating", "Resistência ao fogo", "text")]
 SLAB_COMMON = [*STRUCTURE_COMMON, ("AcousticRating", "Desempenho acústico", "text")]
+ROOF_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+               ("IsExternal", "Externa", "bool"), ("FireRating", "Resistência ao fogo", "text"),
+               ("AcousticRating", "Desempenho acústico", "text")]
+ROOF_SHAPES = [("Plana", "flat"), ("Uma água", "shed"), ("Duas águas", "gable"),
+               ("Quatro águas", "hip")]
 BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
 # Ponto de inserção do pilar como visto na planta (spec/ui 10 §3).
 INSERTIONS = [("Centro", (1, 1)), ("Canto inferior esquerdo", (0, 0)),
@@ -241,8 +246,8 @@ class PropertiesPanel(QScrollArea):
         elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
             self._slab_opening(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
-            {"IfcColumn": self._column, "IfcBeam": self._beam,
-             "IfcSlab": self._slab}[selection[0].is_a()](selection[0])
+            {"IfcColumn": self._column, "IfcBeam": self._beam, "IfcSlab": self._slab,
+             "IfcRoof": self._roof}[selection[0].is_a()](selection[0])
         elif selection:
             self._title(f"{len(selection)} elementos selecionados")
             walls = [e for e in selection if e.is_a("IfcWall")]
@@ -934,6 +939,54 @@ class PropertiesPanel(QScrollArea):
         self._read("Perímetro", f"{fmt(q.get('Perimeter', 0))} m")
         self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
         self._structure_tail(slab, state)
+
+    def _roof(self, roof) -> None:
+        """Cobertura (cobertura.md §5): forma, tipo, inclinação, beiral, apoio e lado."""
+        doc = self.session.doc
+        state = roofs.read_state(doc, roof)
+
+        def edit(**changes):
+            self._run(lambda: sc.edit_element(doc, roof, **changes))
+
+        self._title(state["name"] or "Cobertura")
+        self._text("Nome", state["name"], lambda v: edit(name=v or state["name"]))
+        self._combo("Forma", ROOF_SHAPES, state["shape"], lambda v: edit(shape=v))
+        types = [(t.Name or t.GlobalId, t.GlobalId)
+                 for t in sorted(doc.ifc.by_type("IfcSlabType"), key=lambda t: t.Name or "")
+                 if t.PredefinedType == "ROOF"]
+        self._combo("Tipo", types, state["type"], lambda v: edit(type=v))
+        self._edit_type_button("IfcSlabType", state["type"])
+        self._read("Espessura", f"{fmt(roofs.thickness(doc, state))} m")
+        self._section("Geometria")
+        if state["shape"] != "flat":
+            degrees = math.degrees(roofs.slope_angle(state))
+            self._number("Inclinação (%)", state["slope"], lambda v: edit(slope=v))
+            self._read("Em graus", f"{fmt(degrees)}°")
+        self._number("Beiral", state["overhang"], lambda v: edit(overhang=v))
+        self._number("Altura de apoio", state["base_height"], lambda v: edit(base_height=v))
+        if state["shape"] in ("shed", "gable"):
+            n = len(state["outline"])
+            label = "Lado mais baixo" if state["shape"] == "shed" else "Cumeeira paralela a"
+            sides = []
+            for i in range(n):
+                a, b = state["outline"][i], state["outline"][(i + 1) % n]
+                sides.append((f"Lado {i + 1} ({fmt(math.dist(a, b))} m)", i))
+            self._combo(label, sides, state["side"], lambda v: edit(side=v))
+        q = ifcopenshell.util.element.get_pset(roof, "Qto_RoofBaseQuantities") or {}
+        own = ifcopenshell.util.element.get_pset(roof, roofs.PSET) or {}
+        self._section("Quantidades")
+        self._read("Águas", str(len(state["parts"])))
+        self._read("Área do telhado", f"{fmt(q.get('NetArea', 0))} m²")
+        self._read("Área em planta", f"{fmt(own.get('AreaProjecao', 0))} m²")
+
+        def defaults(_element):
+            return roofs._common_defaults(doc.find(state["type"]) if state["type"] else None)
+
+        self._common_group([roof], ROOF_COMMON,
+                           lambda e: {**defaults(e), **roofs.read_state(doc, e)["common"]},
+                           defaults, lambda e, common: sc.edit_element(doc, e, common=common))
+        self._section("Identificação")
+        self._read("GlobalId", roof.GlobalId)
 
     # --- ambientes e anotações (spec/ui 13) --------------------------------------------
 

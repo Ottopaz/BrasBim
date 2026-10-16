@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 9: assistente com IA, com memória e edição; spec em revisão).*
+*Atualizado em 2026‑10‑16 (pacote 10: cobertura simples implementada; a seguir, tabelas).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (446 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (466 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -30,6 +30,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/14-cortes-e-fachadas` | aprovada e implementada (pacote 7; `tests/test_cortes.py`, `test_interface_cortes.py`) |
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
+| `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -291,6 +292,42 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   (`_dispose`): `removeRow` corrompia a memória (0xc0000374) de vez em quando no UI91, o
   que apareceu quando a largura do painel Projeto mudou.
 
+## Pacote 10 — como ficou (cobertura simples, RF-ELE-07)
+- Núcleo em `core/structure/roofs.py`: `IfcRoof` sem corpo, agregando uma `IfcSlab` por
+  água (tipo `IfcSlabType` `ROOF`), peças posicionadas em relação à cobertura, sem
+  contenção própria. Estado em JSON no Pset `BrasBim_Cobertura` (`Parametros`, com a
+  lista `parts` em ordem) e `AreaProjecao`. Operações `roof.create/delete/edit`;
+  `roofs.derive` refaz as coberturas quando o tipo muda.
+- Geometria (`faces`): cada água é o plano por um lado do contorno de apoio; a
+  superfície é o plano mais baixo em cada ponto (Sutherland–Hodgman em polígono
+  convexo), então cumeeira e espigões saem sozinhos. Perfil no topo da água, extrusão
+  perpendicular para baixo (`_part_frame`). Duas e quatro águas só em retângulo; quatro
+  águas em quadrado = `PAVILION_ROOF`.
+- **Peças fora das listas de laje**: `roofs.is_part` filtra `plan._contained`,
+  `cuts.nearby` (senão a água "cortava" o topo das paredes), `dimensions.candidates`,
+  `rebuild.affected`, `assistant.tools._contained`; `sc.is_structure` é falso para a
+  peça e verdadeiro para a cobertura (que entrou em `sc.ELEMENTS` como `roof`). Corte:
+  a peça responde pela cobertura (`section._owner`). 3D: `Scene` monta uma malha só para
+  a `IfcRoof` (`_roof_mesh`) e ignora as peças.
+- `sc.create_roof`, `create_roof_over_walls` (`rooms.building_outline`: contorno externo
+  da união das paredes, a edificação toda), `create_roof_rectangle`, `next_roof_name`;
+  `edit_element` acerta `parts` quando a forma muda e o `side`; `delete_type` troca o tipo
+  pela cobertura. Mover/girar/espelhar remapeiam o lado (`roofs.mapped_side`); copiar dá
+  peças novas e "Cobertura N".
+- Planta (`plan._roofs`, `roof_prims`): acima do plano, beiral tracejado (escolha só
+  perto da linha, papel `roof_edge`); abaixo do plano, planta de cobertura com cumeeira,
+  espigões, seta e "i = 30%" (papel `roof`); no pavimento de baixo, o beiral da
+  cobertura de cima tracejado (não se escolhe).
+- Interface: ferramenta Cobertura (`RoofTool`, depois da Laje; modo inicial Pelas
+  paredes; etapa do lado na uma/duas águas com Enter = lado maior), barra Opções
+  (forma, modo, inclinação %, beiral, apoio vazio = topo das paredes), painel
+  (`PropertiesPanel._roof`), ícones `roof*.svg`. A ferramenta Laje não lista os tipos
+  `ROOF`. Biblioteca: Telha cerâmica 5 cm, fibrocimento 3, metálica sanduíche 5, laje
+  impermeabilizada 12 (materiais novos em `core/materials.py`).
+- Assistente: `create_roof` (sem contorno = sobre as paredes), `edit_roof`,
+  `describe_model` lista coberturas e separa tipos de laje e de cobertura; lados contados
+  a partir de 1 para a IA.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -309,8 +346,7 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
 4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
-4b. Cobertura simples (RF-ELE-07): spec `spec/elementos/cobertura.md` em revisão
-   (pontos §12 a–f); depois quantitativos e tabelas (RF-QTD-01 a 03, 05);
+4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora quantitativos e tabelas (RF-QTD-01 a 03, 05);
    em seguida mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
@@ -319,6 +355,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- Cobertura: sem ajuste das paredes ao telhado (oitão: usar o topo em empena da parede);
+  telhados em L/T, mansarda e beiral por lado ficam para o V1; a água com várias
+  camadas aparece de uma cor só no 3D; alça do contorno numa cobertura de duas/quatro
+  águas que deixa de ser retângulo é recusada.
 - Assistente: a conversa não sobrevive a fechar o BrasBim; sem aviso de privacidade; só
   o conector Claude Code; a IA não cria pavimentos, estrutura nem cobertura; edição
   manual durante o pedido impede o agrupamento no desfazer; ambientes só acompanham a

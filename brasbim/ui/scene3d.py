@@ -23,6 +23,7 @@ import numpy as np
 
 from brasbim.core import clip, geom2d, layers, materials, mesh_layers
 from brasbim.core.document import OpError
+from brasbim.core.structure import roofs
 from brasbim.core.walls import rebuild
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -147,7 +148,7 @@ def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh |
 class Scene:
     """Malhas por GlobalId."""
 
-    CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam")
+    CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof")
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
@@ -158,10 +159,24 @@ class Scene:
         self._settings.set("use-world-coords", True)
 
     def _wanted(self, entity) -> bool:
-        return (entity is not None and any(entity.is_a(c) for c in self.CLASSES)
-                and entity.Representation is not None)
+        if entity is None:
+            return False
+        if entity.is_a("IfcRoof"):  # a cobertura é a soma das águas (cobertura.md §2.1)
+            return roofs.is_roof(entity)
+        return (any(entity.is_a(c) for c in self.CLASSES) and entity.Representation is not None
+                and not roofs.is_part(entity))
+
+    def _roof_mesh(self, roof) -> Mesh | None:
+        found = [m for m in (self._mesh(p) for p in roofs.parts_of(roof)) if m is not None]
+        if not found:
+            return None
+        return Mesh(np.concatenate([m.vertices for m in found]),
+                    np.concatenate([m.colors for m in found]),
+                    np.concatenate([m.edges for m in found]), found[0].base)
 
     def _mesh(self, entity) -> Mesh | None:
+        if entity.is_a("IfcRoof"):
+            return self._roof_mesh(entity)
         self.tessellations += 1
         try:
             shape = ifcopenshell.geom.create_shape(self._settings, entity)

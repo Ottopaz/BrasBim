@@ -56,7 +56,7 @@ COLUMN = ProfileKind("column", "IfcColumnType", "IfcColumn", ("COLUMN",), profil
 BEAM = ProfileKind("beam", "IfcBeamType", "IfcBeam", ("BEAM",), ("rect",), "viga", "vigas")
 PROFILE_KINDS = {k.prefix: k for k in (COLUMN, BEAM)}
 
-SLAB_TYPES = ("FLOOR", "BASESLAB")
+SLAB_TYPES = ("FLOOR", "BASESLAB", "ROOF")  # ROOF: peças da cobertura (cobertura.md §3.2)
 
 
 def profile_kind(entity) -> ProfileKind:

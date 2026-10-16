@@ -283,8 +283,16 @@ def _slab_layers(doc: Document, slab) -> list[tuple[str | None, float, float]]:
     return out
 
 
+def _owner(element) -> str:
+    """Quem a peça representa: a água da cobertura responde pela cobertura."""
+    from brasbim.core.structure import roofs
+
+    roof = roofs.roof_of(element) if element.is_a("IfcSlab") else None
+    return (roof or element).GlobalId
+
+
 def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
-    gid = element.GlobalId
+    gid = _owner(element)
     if element.is_a("IfcDoor") or element.is_a("IfcWindow"):
         return [Item("cut", rings=rings, owner=gid, fill={"pattern": "none", "source": "type"},
                      weight=OPENING_WEIGHT)]
@@ -332,7 +340,7 @@ def draw(doc: Document, view) -> Drawing:
             w = uvw[:, 2]
             if w.max() < 0 or (depth is not None and w.min() > depth):
                 continue
-            gid = element.GlobalId
+            gid = _owner(element)
             if section and w.min() < -_EPS and w.max() > _EPS:
                 rings = _section_rings(uvw, faces)
                 if rings:

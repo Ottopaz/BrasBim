@@ -47,7 +47,7 @@ from brasbim.core.assistant.tools import (
 from brasbim.ui import theme
 
 # O que fica selecionado ao fim do pedido (spec/ui 16 §5).
-_SELECTABLE = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam",
+_SELECTABLE = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof",
                "IfcSpace")
 
 # --- execução na thread da interface ----------------------------------------------------

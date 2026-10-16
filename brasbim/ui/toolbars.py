@@ -7,6 +7,8 @@ Barras comuns do Qt: vão para qualquer borda da janela ou ficam soltas. A barra
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
@@ -14,7 +16,7 @@ from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
-from brasbim.core.structure import profiles
+from brasbim.core.structure import profiles, roofs
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.tools import (
@@ -24,6 +26,7 @@ from brasbim.ui.tools import (
     HatchTool,
     LineTool,
     NorthTool,
+    RoofTool,
     SlabOpeningTool,
     SlabTool,
     SpaceTool,
@@ -32,8 +35,10 @@ from brasbim.ui.tools import (
     WindowTool,
     _FillingTool,
     _WallTool,
+    floor_types,
     fmt,
     parse_number,
+    roof_types,
 )
 
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
@@ -55,6 +60,8 @@ CREATE_TOOLS = [
      "clique o início e o fim; continua do último ponto; Esc ou clique duplo encerra"),
     ("slab", "slab", "Laje",
      "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
+    ("roof", "roof", "Cobertura",
+     "clique dentro da edificação, ou desenhe o contorno de apoio; escolha a forma na barra"),
 ]
 # Grupo Documentação (spec/ui 13 §9): anotação da planta.
 DOC_TOOLS = [
@@ -93,6 +100,14 @@ SLAB_MODES = [("polygon", "slab", "Polígono",
               ("rectangle", "wall_rect", "Retângulo", "clique dois cantos opostos")]
 SLAB_ROOM = ("room", "slab_room", "Pelo cômodo",
              "clique dentro de um cômodo fechado por paredes")
+ROOF_MODES = [("room", "slab_room", "Pelas paredes",
+               "clique dentro da edificação: apoia no contorno externo das paredes"),
+              *SLAB_MODES]
+ROOF_SHAPES = [("flat", "roof_flat", "Plana", "uma peça horizontal"),
+               ("shed", "roof_shed", "Uma água", "depois do contorno, clique o lado mais baixo"),
+               ("gable", "roof_gable", "Duas águas",
+                "depois do contorno, clique um lado paralelo à cumeeira (só retângulo)"),
+               ("hip", "roof_hip", "Quatro águas", "cumeeira no meio do lado maior (só retângulo)")]
 ROOM_BOUNDARIES = [("Face externa", "outer"), ("Eixo das paredes", "axis"),
                    ("Face interna", "inner")]
 BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
@@ -263,6 +278,8 @@ class OptionsBar(QToolBar):
         elif isinstance(tool, SlabOpeningTool):
             self._choices(SLAB_MODES, tool.options.mode,
                           lambda v: setattr(tool.options, "mode", v))
+        elif isinstance(tool, RoofTool):
+            self._roof(tool)
         elif isinstance(tool, SlabTool):
             self._slab(tool)
         elif isinstance(tool, _WallTool):
@@ -416,12 +433,12 @@ class OptionsBar(QToolBar):
 
     # --- pilar, viga e laje (spec/ui 10 §3) ----------------------------------------------
 
-    def _type_group(self, ifc_class: str, holder, commit, noun: str) -> None:
+    def _type_group(self, ifc_class: str, holder, commit, noun: str, types=None) -> None:
         """Tipo e Editar tipo; ``holder.type`` é o tipo escolhido."""
         window = self.window_
         self._label("Tipo")
-        self._combo([(t.Name, t.GlobalId) for t in self._types(ifc_class)], holder.type,
-                    commit, f"Tipo {noun}")
+        types = self._types(ifc_class) if types is None else types
+        self._combo([(t.Name, t.GlobalId) for t in types], holder.type, commit, f"Tipo {noun}")
         edit = make_action(self, "edit_type", "Editar tipo",
                            f"abre o tipo escolhido na janela de tipos {noun}")
         edit.triggered.connect(lambda: window.edit_type(ifc_class, holder.type))
@@ -507,7 +524,8 @@ class OptionsBar(QToolBar):
             options.type = gid
             self.show_for(tool)
 
-        self._type_group("IfcSlabType", options, set_type, "da próxima laje")
+        self._type_group("IfcSlabType", options, set_type, "da próxima laje",
+                         floor_types(self.window_.session.doc))
         self.addSeparator()
 
         def set_mode(value):
@@ -526,6 +544,67 @@ class OptionsBar(QToolBar):
         self._label("Deslocamento do topo")
         self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),
                      "Cota da face de cima em relação ao pavimento (m)")
+
+    def _roof(self, tool) -> None:
+        """Cobertura (cobertura.md §4): tipo, forma, modo do contorno, inclinação, beiral e
+        altura de apoio."""
+        options = tool.options
+
+        def set_type(gid):
+            options.type = gid
+            self.show_for(tool)
+
+        self._type_group("IfcSlabType", options, set_type, "da próxima cobertura",
+                         roof_types(self.window_.session.doc))
+        self.addSeparator()
+
+        def set_shape(value):
+            tool.cancel()
+            options.shape = value
+            self.show_for(tool)
+
+        self._choices(ROOF_SHAPES, options.shape, set_shape)
+        self.addSeparator()
+
+        def set_mode(value):
+            tool.cancel()
+            tool.points = []
+            options.mode = value
+            self.show_for(tool)
+
+        self._choices(ROOF_MODES, options.mode, set_mode)
+        self.addSeparator()
+        if options.shape != "flat":
+            self._label("Inclinação (%)")
+
+            def set_slope(value):
+                if not roofs.MIN_SLOPE <= value <= roofs.MAX_SLOPE:
+                    self.window_.session.message(
+                        f"a inclinação deve ficar entre {roofs.MIN_SLOPE:.0f} e "
+                        f"{roofs.MAX_SLOPE:.0f} %", "recusa")
+                    self.show_for(tool)
+                    return
+                options.slope = value
+
+            degrees = math.degrees(math.atan(options.slope / 100.0))
+            self._number(options.slope, set_slope,
+                         f"Inclinação das águas em % ({fmt(degrees)}°)")
+        self._label("Beiral")
+
+        def set_overhang(value):
+            if not 0.0 <= value <= roofs.MAX_OVERHANG:
+                self.window_.session.message(
+                    f"o beiral deve ficar entre 0 e {roofs.MAX_OVERHANG:.0f} m", "recusa")
+                self.show_for(tool)
+                return
+            options.overhang = value
+
+        self._number(options.overhang, set_overhang,
+                     "Quanto a cobertura passa do contorno de apoio (m)")
+        self._label("Apoio")
+        self._number(options.base_height, lambda v: setattr(options, "base_height", v),
+                     "Cota da face de baixo sobre o contorno de apoio, a partir do pavimento "
+                     "(m); vazio: topo das paredes", fmt(tool.base_height()), allow_empty=True)
 
     # --- documentação da planta (spec/ui 13) ----------------------------------------------
 

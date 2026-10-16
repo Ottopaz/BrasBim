@@ -30,7 +30,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import commands as sc
-from brasbim.core.structure import slabs
+from brasbim.core.structure import roofs, slabs
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings, params
 from brasbim.core.walls import types as wall_types
@@ -131,10 +131,14 @@ def _storey(ctx: Context, args: dict):
     return storey
 
 
-def _type(doc: Document, ifc_class: str, name: str | None, what: str):
-    """Tipo pelo nome (exato, sem caixa, ou pelo começo: "P1", "J2"); o primeiro se
-    ``name`` vazio."""
-    found = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+def _type(doc: Document, ifc_class: str, name: str | None, what: str, where=None,
+          default: str | None = None):
+    """Tipo pelo nome (exato, sem caixa, ou pelo começo: "P1", "J2"); sem ``name``, o
+    ``default`` ou o primeiro. ``where`` filtra (laje de piso ou de cobertura)."""
+    found = sorted((t for t in doc.ifc.by_type(ifc_class) if where is None or where(t)),
+                   key=lambda t: t.Name or "")
+    if not name and default:
+        name = default if any(t.Name == default for t in found) else None
     if not found:
         raise OpError(f"o projeto não tem tipos de {what}")
     if not name:
@@ -149,7 +153,10 @@ def _type(doc: Document, ifc_class: str, name: str | None, what: str):
 
 
 def _contained(storey, ifc_class: str) -> list:
-    return [e for e in ifcopenshell.util.element.get_decomposition(storey) if e.is_a(ifc_class)]
+    from brasbim.core.structure import roofs
+
+    return [e for e in ifcopenshell.util.element.get_decomposition(storey)
+            if e.is_a(ifc_class) and not roofs.is_part(e)]
 
 
 def _wall_info(doc: Document, wall) -> dict | None:
@@ -240,8 +247,25 @@ def describe_model(ctx: Context, args: dict) -> dict:
         stype = doc.find(state["type"]) if state.get("type") else None
         slab_list.append({"id": slab.GlobalId, "tipo": stype.Name if stype else None,
                           "contorno": [_pt(p) for p in state["outline"]]})
-    def names(cls):
-        return [t.Name for t in sorted(doc.ifc.by_type(cls), key=lambda t: t.Name or "")]
+    roof_list = []
+    for roof in _contained(storey, "IfcRoof"):
+        if not roofs.is_roof(roof):
+            continue
+        state = roofs.read_state(doc, roof)
+        stype = doc.find(state["type"])
+        q = ifcopenshell.util.element.get_pset(roof, "Qto_RoofBaseQuantities") or {}
+        roof_list.append({"id": roof.GlobalId, "nome": state["name"],
+                          "forma": state["shape"], "tipo": stype.Name if stype else None,
+                          "inclinacao_pct": _r(state["slope"]),
+                          "beiral": _r(state["overhang"]),
+                          "altura_apoio": _r(state["base_height"]),
+                          "lado": None if state["side"] is None else state["side"] + 1,
+                          "contorno_apoio": [_pt(p) for p in state["outline"]],
+                          "area_telhado": _r(q.get("NetArea", 0.0))})
+
+    def names(cls, where=None):
+        return [t.Name for t in sorted(doc.ifc.by_type(cls), key=lambda t: t.Name or "")
+                if where is None or where(t)]
 
     return {
         "pavimento": {"id": storey.GlobalId, "nome": storey.Name,
@@ -252,8 +276,10 @@ def describe_model(ctx: Context, args: dict) -> dict:
                              for t in sorted(doc.ifc.by_type("IfcWallType"),
                                              key=lambda t: t.Name or "")],
                   "porta": names("IfcDoorType"), "janela": names("IfcWindowType"),
-                  "laje": names("IfcSlabType")},
+                  "laje": names("IfcSlabType", _floor),
+                  "cobertura": names("IfcSlabType", _roof_type)},
         "paredes": walls, "esquadrias": fillings, "ambientes": rooms, "lajes": slab_list,
+        "coberturas": roof_list,
     }
 
 
@@ -370,15 +396,82 @@ def insert_window(ctx: Context, args: dict) -> dict:
     return _filling(ctx, args, "IfcWindowType", "janela")
 
 
+def _floor(t) -> bool:
+    return t.PredefinedType != "ROOF"
+
+
+def _roof_type(t) -> bool:
+    return t.PredefinedType == "ROOF"
+
+
 def create_slab(ctx: Context, args: dict) -> dict:
     doc = ctx.doc
     storey = _storey(ctx, args)
-    stype = _type(doc, "IfcSlabType", args.get("type"), "laje")
+    stype = _type(doc, "IfcSlabType", args.get("type"), "laje", _floor)
     outline = [_point(p, "contorno") for p in args["outline"]]
     tx = sc.create_slab(doc, stype, storey, outline)
     ctx.commit(tx)
     return {"id": tx.ops[-1].id, "tipo": stype.Name,
             "area": _r(abs(geom2d.polygon_area(outline)))}
+
+
+def _roof_options(args: dict) -> dict:
+    out = {}
+    for key in ("shape", "slope", "overhang", "base_height", "side"):
+        if args.get(key) is not None:
+            out[key] = args[key]
+    if "side" in out:
+        out["side"] = int(out["side"]) - 1  # a IA conta os lados a partir de 1
+    return out
+
+
+def _roof_result(doc: Document, roof) -> dict:
+    state = roofs.read_state(doc, roof)
+    q = ifcopenshell.util.element.get_pset(roof, "Qto_RoofBaseQuantities") or {}
+    own = ifcopenshell.util.element.get_pset(roof, roofs.PSET) or {}
+    faces = roofs.faces(state)
+    top = max(roofs.bottom_z(state, f, p) for f in faces for p in f.ring)
+    low = min(roofs.bottom_z(state, f, p) for f in faces for p in f.ring)
+    return {"id": roof.GlobalId, "forma": state["shape"], "aguas": len(state["parts"]),
+            "contorno_apoio": [_pt(p) for p in state["outline"]],
+            "cota_beiral": _r(low), "cota_cumeeira": _r(top),
+            "area_telhado": _r(q.get("NetArea", 0.0)),
+            "area_em_planta": _r(own.get("AreaProjecao", 0.0))}
+
+
+def create_roof(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    storey = _storey(ctx, args)
+    stype = _type(doc, "IfcSlabType", args.get("type"), "cobertura", _roof_type,
+                  default="Telha cerâmica")
+    options = _roof_options(args)
+    if args.get("outline"):
+        outline = [_point(p, "contorno") for p in args["outline"]]
+        tx = sc.create_roof(doc, stype, storey, outline, **options)
+    else:
+        at = _point(args["at"], "at") if args.get("at") else None
+        tx = sc.create_roof_over_walls(doc, stype, storey, at, **options)
+    ctx.commit(tx)
+    return _roof_result(doc, doc.get(tx.ops[-1].id))
+
+
+def edit_roof(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    roof = doc.get(args["id"])
+    if not roofs.is_roof(roof):
+        raise OpError(f"{args['id']} não é uma cobertura")
+    changes = _roof_options(args)
+    if args.get("type"):
+        changes["type"] = _type(doc, "IfcSlabType", args["type"], "cobertura",
+                                _roof_type).GlobalId
+    if args.get("outline"):
+        changes["outline"] = [_point(p, "contorno") for p in args["outline"]]
+    if not changes:
+        raise OpError("nada a mudar")
+    tx = sc.edit_element(doc, roof, **changes)
+    if tx.ops:
+        ctx.commit(tx)
+    return _roof_result(doc, roof)
 
 
 def create_space(ctx: Context, args: dict) -> dict:
@@ -607,7 +700,8 @@ def edit_space(ctx: Context, args: dict) -> dict:
 
 _TYPE_CLASS = {"IfcWall": ("IfcWallType", "parede"), "IfcDoor": ("IfcDoorType", "porta"),
                "IfcWindow": ("IfcWindowType", "janela"), "IfcSlab": ("IfcSlabType", "laje"),
-               "IfcColumn": ("IfcColumnType", "pilar"), "IfcBeam": ("IfcBeamType", "viga")}
+               "IfcColumn": ("IfcColumnType", "pilar"), "IfcBeam": ("IfcBeamType", "viga"),
+               "IfcRoof": ("IfcSlabType", "cobertura")}
 
 
 def set_type(ctx: Context, args: dict) -> dict:
@@ -618,7 +712,8 @@ def set_type(ctx: Context, args: dict) -> dict:
         raise OpError("troque o tipo de uma classe por vez (só paredes, só portas, …)")
     cls = classes.pop()
     type_class, noun = _TYPE_CLASS[cls]
-    new = _type(doc, type_class, args["type"], noun)
+    where = {"IfcSlab": _floor, "IfcRoof": _roof_type}.get(cls)
+    new = _type(doc, type_class, args["type"], noun, where)
     if cls == "IfcWall":
         tx = cmd.edit_walls(doc, ids, type=new.GlobalId)
     elif cls in ("IfcDoor", "IfcWindow"):
@@ -649,6 +744,11 @@ def selection_note(doc: Document, storey, selection) -> str:
                 continue
         if e.is_a("IfcSpace"):
             parts.append(f"ambiente {gid} ({spaces.read_state(e)['name']})")
+        elif roofs.is_roof(e):
+            state = roofs.read_state(doc, e)
+            stype = doc.find(state["type"])
+            parts.append(f"cobertura {gid} ({roofs.SHAPE_NAMES[state['shape']]}, "
+                         f"{_r(state['slope']):g} %, tipo {stype.Name if stype else '?'})")
         elif e.is_a("IfcDoor") or e.is_a("IfcWindow"):
             parts.append(f"{'janela' if e.is_a('IfcWindow') else 'porta'} {gid}{tname}")
         else:
@@ -674,9 +774,10 @@ def default_registry() -> Registry:
     reg = Registry()
     reg.add(Tool(
         "describe_model", "Lendo o modelo",
-        "Descreve o pavimento: tipos disponíveis (parede, porta, janela, laje), paredes "
-        "(eixo, espessura), portas e janelas (centro, largura), ambientes (nome, área útil "
-        "em m²) e lajes. Use no começo e para conferir o resultado.",
+        "Descreve o pavimento: tipos disponíveis (parede, porta, janela, laje, "
+        "cobertura), paredes (eixo, espessura), portas e janelas (centro, largura), "
+        "ambientes (nome, área útil em m²), lajes e coberturas. Use no começo e para "
+        "conferir o resultado.",
         _obj({"storey": _STOREY}), describe_model, changes=False))
     reg.add(Tool(
         "layout_rooms", "Desenhando os ambientes",
@@ -736,6 +837,33 @@ def default_registry() -> Registry:
         _obj({"outline": {"type": "array", "items": _XY, "minItems": 3},
               "type": {"type": "string"}, "storey": _STOREY}, ["outline"]),
         create_slab))
+    _ROOF = {
+        "shape": {"type": "string", "enum": list(roofs.SHAPES),
+                  "description": "flat (plana), shed (uma água), gable (duas águas), "
+                                 "hip (quatro águas); duas e quatro só em retângulo"},
+        "slope": {"type": "number", "description": "inclinação em % (padrão 30)"},
+        "overhang": {"type": "number", "description": "beiral em m (padrão 0,60)"},
+        "base_height": {"type": "number", "description": "cota da face de baixo sobre o "
+                        "contorno de apoio, a partir do pavimento (padrão: topo das paredes)"},
+        "side": {"type": "integer", "description": "lado do contorno de apoio, contado a "
+                 "partir de 1 no sentido anti-horário: na uma água, o mais baixo; na duas "
+                 "águas, um paralelo à cumeeira (padrão: o lado maior)"},
+        "type": {"type": "string", "description": "tipo de cobertura (telha)"}}
+    reg.add(Tool(
+        "create_roof", "Criando cobertura",
+        "Cria a cobertura (telhado). Sem outline, apoia no contorno externo das paredes "
+        "do pavimento (da edificação que contém 'at', ou da maior). outline: contorno de "
+        "apoio [x, y], normalmente a face externa das paredes; o beiral sai dele.",
+        _obj({**_ROOF, "outline": {"type": "array", "items": _XY, "minItems": 3},
+              "at": _XY, "storey": _STOREY}),
+        create_roof))
+    reg.add(Tool(
+        "edit_roof", "Editando cobertura",
+        "Muda forma, inclinação, beiral, altura de apoio, lado, tipo ou contorno de uma "
+        "cobertura existente (mantém as peças quando a quantidade de águas não muda).",
+        _obj({"id": {"type": "string"}, **_ROOF,
+              "outline": {"type": "array", "items": _XY, "minItems": 3}}, ["id"]),
+        edit_roof))
     reg.add(Tool(
         "create_space", "Criando ambiente",
         "Cria um ambiente (IfcSpace) com nome: pelo cômodo fechado por paredes que contém "

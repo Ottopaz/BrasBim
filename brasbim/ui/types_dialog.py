@@ -881,7 +881,8 @@ class WindowTypesDialog(TypesDialog):
 # --- pilar, viga e laje (spec/ui 10 §5) --------------------------------------------------
 
 SECTIONS = (("Retangular", "rect"), ("Circular", "circle"))
-SLAB_USES = [("Laje de piso", "FLOOR"), ("Laje sobre o solo", "BASESLAB")]
+SLAB_USES = [("Laje de piso", "FLOOR"), ("Laje sobre o solo", "BASESLAB"),
+             ("Cobertura (telhado)", "ROOF")]
 PLAN_SOURCES = [("Padrão", "default"), ("Própria", "own")]
 
 

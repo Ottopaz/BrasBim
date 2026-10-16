@@ -23,7 +23,7 @@ from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
 from brasbim.core.structure import commands as structure_cmd
 from brasbim.core.structure import common as structure_common
-from brasbim.core.structure import profiles, slab_openings, slabs
+from brasbim.core.structure import profiles, roofs, slab_openings, slabs
 from brasbim.core.walls import connections, openings, rebuild, top
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -309,7 +309,15 @@ def _moved_state(doc: Document, element, fn, angle: float) -> dict:
                 "angle": (state["angle"] + math.degrees(angle) + 180.0) % 360.0 - 180.0}
     if element.is_a("IfcBeam"):
         return {"start": list(fn(state["start"])), "end": list(fn(state["end"]))}
+    if element.is_a("IfcRoof"):
+        return _roof_mapped(state, fn)
     return {"outline": [list(fn(p)) for p in state["outline"]]}
+
+
+def _roof_mapped(state: dict, fn) -> dict:
+    """Contorno levado por ``fn`` e o lado que continua o mesmo (cobertura.md §5.1)."""
+    outline = roofs.clean([fn(p) for p in state["outline"]])
+    return {"outline": outline, "side": roofs.mapped_side(state, fn, outline)}
 
 
 def _mirrored_state(doc: Document, element, fn, a, b) -> dict:
@@ -326,6 +334,8 @@ def _mirrored_state(doc: Document, element, fn, a, b) -> dict:
         swap = {"left_face": "right_face", "right_face": "left_face", "axis": "axis"}
         return {"start": list(fn(state["start"])), "end": list(fn(state["end"])),
                 "ref_line": swap[state["ref_line"]]}
+    if element.is_a("IfcRoof"):
+        return _roof_mapped(state, fn)
     return {"outline": [list(fn(p)) for p in state["outline"]]}
 
 
@@ -347,9 +357,13 @@ def _copy_ops(doc: Document, elements, changes_of, fn=None, lone=()) -> list[Op]
         module, prefix, _, _ = structure_cmd.ELEMENTS[e.is_a()]
         state = copy.deepcopy(module.read_state(doc, e))
         changes = changes_of(e)
-        if "outline" in changes:
+        if "outline" in changes and not e.is_a("IfcRoof"):
             changes["outline"] = slabs.clean(changes["outline"])
         state.update(changes)
+        if e.is_a("IfcRoof"):  # cópia com peças novas e o próximo nome livre
+            state["parts"] = [guid.new() for _ in state["parts"]]
+            taken = {o.data["name"] for o in ops if o.op == "roof.create"}
+            state["name"] = structure_cmd.next_roof_name(doc, taken)
         if e.is_a() in taken and state["foreign"] is None:
             letter = "P" if e.is_a("IfcColumn") else "V"
             used = {x.Name for x in doc.ifc.by_type(e.is_a())} | taken[e.is_a()]

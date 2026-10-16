@@ -139,7 +139,8 @@ class Plan:
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
         for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("wall",),
-                      ("wall_view", "wall_above"), _OPENING_ROLES, ("space",), _SLAB_ROLES):
+                      ("wall_view", "wall_above"), _OPENING_ROLES, ("space",), _SLAB_ROLES,
+                      _ROOF_ROLES):
             found = [s for s in self.shapes if s.role in roles]
             for s in found:
                 if s.closed and _inside(s.points, p):
@@ -164,14 +165,14 @@ class Plan:
         out = []
         groups = {**self.owners("wall"),
                   **self.owners(("door", "window", "column", "beam", "slab", "space",
-                                 "annotation"))}
+                                 "annotation", "roof"))}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes:
                 continue
             # A laje (e a abertura nela) só entra inteira, mesmo no cruzamento (spec/ui 10
             # §4.1).
-            if not crossing or shapes[0].role.startswith(("slab", "space")):
+            if not crossing or shapes[0].role.startswith(("slab", "space", "roof")):
                 if all(inside(q) for s in shapes for q in s.points):
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
@@ -183,6 +184,7 @@ _COLUMN_ROLES = ("column", "column_view", "column_above")
 _BEAM_ROLES = ("beam", "beam_view", "beam_above")
 _SLAB_ROLES = ("slab", "slab_view", "slab_above")
 _OPENING_ROLES = ("slab_opening",)
+_ROOF_ROLES = ("roof", "roof_edge")
 
 
 def _segments(points, closed: bool):
@@ -873,8 +875,12 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
 
 
 def _contained(storey, ifc_class: str) -> list:
+    """Elementos da classe no pavimento; as águas da cobertura ficam de fora (quem aparece
+    é a cobertura, ``_roofs``)."""
+    from brasbim.core.structure import roofs
+
     return sorted((e for e in ifcopenshell.util.element.get_decomposition(storey)
-                   if e.is_a(ifc_class)), key=lambda e: e.GlobalId)
+                   if e.is_a(ifc_class) and not roofs.is_part(e)), key=lambda e: e.GlobalId)
 
 
 def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "simple",
@@ -920,8 +926,102 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
         label = door_label(doc, door, storey)
         if label is not None:
             plan.labels.append(label)
+    _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     return plan
+
+
+# --- cobertura (cobertura.md §7) -----------------------------------------------------------
+
+ROOF_ARROW_MM, ROOF_HEAD_MM = 10.0, 2.0  # seta da água, no papel (CG)
+ROOF_VIEW_MM, ROOF_ABOVE_MM = 0.18, 0.18  # espessura das linhas (spec/ui 13 §8)
+
+
+def _percent(value: float) -> str:
+    text = f"{value:.1f}".rstrip("0").rstrip(".")
+    return text.replace(".", ",")
+
+
+def roof_prims(doc: Document, state: dict, storey, view: bool):
+    """Desenho da cobertura: só o contorno do beiral tracejado (acima do plano) ou a
+    planta de cobertura (``view``): beiral, cumeeira e espigões, e uma seta em cada água
+    apontando para baixo com a inclinação."""
+    from brasbim.core.annotations.prims import Prims, Stroke, Text
+    from brasbim.core.structure import roofs
+
+    eave = tuple(tuple(p) for p in roofs.eave_outline(state))
+    if not view:
+        return Prims([Stroke(eave, True, ROOF_ABOVE_MM, "dashed")])
+    out = Prims([Stroke(eave, True, ROOF_VIEW_MM)])
+    out.strokes += [Stroke(tuple(line), False, ROOF_VIEW_MM)
+                    for line in roofs.ridge_lines(state)]
+    if state["shape"] == "flat":
+        return out
+    length = storeys.paper(storey, ROOF_ARROW_MM)
+    head = storeys.paper(storey, ROOF_HEAD_MM)
+    height = storeys.paper(storey, LABEL_MM)
+    label = f"i = {_percent(state['slope'])}%"
+    for face in roofs.faces(state):
+        ring = face.ring
+        cx = sum(p[0] for p in ring) / len(ring)
+        cy = sum(p[1] for p in ring) / len(ring)
+        dx, dy = -face.inward[0], -face.inward[1]  # morro abaixo
+        a = (cx - dx * length / 2, cy - dy * length / 2)
+        b = (cx + dx * length / 2, cy + dy * length / 2)
+        left = (b[0] - dx * head - dy * head / 2, b[1] - dy * head + dx * head / 2)
+        right = (b[0] - dx * head + dy * head / 2, b[1] - dy * head - dx * head / 2)
+        out.strokes += [Stroke((a, b), False, ROOF_VIEW_MM),
+                        Stroke((left, b, right), False, ROOF_VIEW_MM)]
+        angle = math.degrees(math.atan2(dy, dx))
+        from brasbim.core.annotations.prims import readable
+
+        side = (-dy * height * 0.6, dx * height * 0.6)
+        out.texts.append(Text((cx + side[0], cy + side[1]), label, height,
+                              readable(angle)))
+    return out
+
+
+def _roofs(doc: Document, storey, plan: Plan, cut: float, show_above: bool) -> None:
+    """Coberturas do pavimento (§7) e, tracejado, o beiral das coberturas do pavimento de
+    cima (projeção da cobertura)."""
+    from brasbim.core.structure import roofs
+
+    for roof in _contained(storey, "IfcRoof"):
+        if not roofs.is_roof(roof):
+            continue
+        try:
+            state = roofs.read_state(doc, roof)
+            low = min(roofs.bottom_z(state, f, p) for f in roofs.faces(state) for p in f.ring)
+        except (OpError, ValueError, KeyError, TypeError) as e:
+            log.warning("cobertura %s fora da planta: %s", roof.GlobalId, e)
+            continue
+        view = low < cut
+        if not view and not show_above:
+            continue
+        prims = roof_prims(doc, state, storey, view)
+        plan.annotations.append((roof.GlobalId, prims))
+        eave = tuple(tuple(p) for p in roofs.eave_outline(state))
+        if view:  # escolha por dentro, como a laje
+            plan.shapes.append(Shape(roof.GlobalId, "roof", eave, True))
+        else:  # acima do plano: só perto do contorno
+            plan.shapes.append(Shape(roof.GlobalId, "roof_edge", (*eave, eave[0]), False))
+    if not show_above:
+        return
+    storeys_ = doc.storeys()
+    i = storeys_.index(storey) if storey in storeys_ else -1
+    if i < 0 or i + 1 >= len(storeys_):
+        return
+    from brasbim.core.annotations.prims import Prims, Stroke
+
+    for roof in _contained(storeys_[i + 1], "IfcRoof"):
+        if not roofs.is_roof(roof):
+            continue
+        try:
+            eave = tuple(tuple(p) for p in roofs.eave_outline(roofs.read_state(doc, roof)))
+        except (OpError, ValueError, KeyError, TypeError):
+            continue
+        plan.annotations.append((roof.GlobalId, Prims([Stroke(eave, True, ROOF_ABOVE_MM,
+                                                               "dashed")])))
 
 
 # --- documentação (spec/ui 13) ------------------------------------------------------------

@@ -161,11 +161,14 @@ def candidates(doc: Document, storey) -> list[tuple[dict, tuple[float, float]]]:
     """Pontos que uma cota pode prender no pavimento: (referência, posição)."""
     import ifcopenshell.util.element
 
+    from brasbim.core.structure import roofs
     from brasbim.core.walls import openings
 
     out = []
     for e in ifcopenshell.util.element.get_decomposition(storey):
         refs = []
+        if roofs.is_part(e):
+            continue
         if e.is_a("IfcWall"):
             refs = [{"kind": "wall", "gid": e.GlobalId, "end": end, "face": face}
                     for end in ("start", "end") for face in ("left", "right", "axis")]

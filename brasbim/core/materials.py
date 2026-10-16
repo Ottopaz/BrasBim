@@ -53,6 +53,11 @@ LIBRARY = {
     # Laje (spec/ui 10 §5)
     "Contrapiso": {"color": "#C7C2B8", "cut": _cut("lines", angle=45.0, spacing=0.02)},
     "Laje pré-moldada": {"color": "#BDB8AE", "cut": _cut("cross", angle=45.0, spacing=0.04)},
+    # Cobertura (cobertura.md §3.2)
+    "Telha cerâmica": {"color": "#B5653F", "cut": _cut("solid", background="#A65A38")},
+    "Telha de fibrocimento": {"color": "#A9ADA8", "cut": _cut("solid", background="#8F938E")},
+    "Telha metálica": {"color": "#9AA3AD", "cut": _cut("solid", background="#7F8892")},
+    "Impermeabilização": {"color": "#4A4A48", "cut": _cut("solid", background="#3A3A38")},
 }
 _PALETTE = ("#C9A37D", "#9EB5C7", "#A8C499", "#D4B582", "#BAA3C9", "#C99999")
 

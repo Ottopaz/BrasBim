@@ -244,16 +244,16 @@ class PlanView(QWidget, ToolInput):
             selected = shape.owner in selection
             path = self._path(shape.points, shape.closed)
             role = shape.role
-            if role == "annotation":
+            if role in ("annotation", "roof_edge"):
                 continue  # desenhada por ``_draw_annotations``
-            if role in ("wall", "column", "beam", "slab", "space"):
+            if role in ("wall", "column", "beam", "slab", "space", "roof"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
                 if not selected:
                     continue
                 painter.setPen(QPen(C["select"], 2 * self.unit))
                 fill = QColor(C["select"])
-                fill.setAlpha(40 if role in ("slab", "space") else 110)
+                fill.setAlpha(40 if role in ("slab", "space", "roof") else 110)
                 painter.setBrush(QBrush(fill))
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")

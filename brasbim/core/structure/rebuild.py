@@ -22,7 +22,7 @@ import ifcopenshell.util.element
 from brasbim.core import props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.structure import beams, columns, cuts, profiles, slab_openings, slabs
+from brasbim.core.structure import beams, columns, cuts, profiles, roofs, slab_openings, slabs
 from brasbim.core.structure import types as st_types
 
 _CLASSES = {"IfcColumn": columns, "IfcBeam": beams, "IfcSlab": slabs}
@@ -157,13 +157,16 @@ def affected(doc: Document, dirty: set[str]) -> list:
             continue
         cls = entity.is_a()
         if cls in _REBUILD:
-            found[gid] = entity
+            if not roofs.is_part(entity):
+                found[gid] = entity
         elif cls in _TYPE_CLASSES:
-            found.update({e.GlobalId: e for e in ifcopenshell.util.element.get_types(entity)})
+            # As águas da cobertura são refeitas por ``roofs.derive``.
+            found.update({e.GlobalId: e for e in ifcopenshell.util.element.get_types(entity)
+                          if not roofs.is_part(e)})
         elif cls == "IfcBuildingStorey":
             for ifc_class in _REBUILD:
                 found.update({e.GlobalId: e for e in doc.ifc.by_type(ifc_class)
-                              if _linked(e, gid)})
+                              if not roofs.is_part(e) and _linked(e, gid)})
     return sorted(found.values(), key=lambda e: e.GlobalId)
 
 

@@ -4,8 +4,8 @@ entidade_ifc: IfcRoof (agregado) + IfcSlab (ROOF, via IfcSlabType)
 requisito: RF-ELE-07 (MVP, simples)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-16)
 ---
 
 # Cobertura
@@ -66,8 +66,10 @@ Como na laje (laje.md §2.3): `IfcMaterialLayerSet` no tipo e
   `IsExternal = TRUE`, os demais só se preenchidos) [IFC-PSET-R];
   `Qto_RoofBaseQuantities` (§8) [IFC-QTO-R]; Pset próprio `BrasBim_Cobertura` com os
   parâmetros (§3.1), em JSON, como nas vistas.
-- **Em cada peça:** `Pset_SlabCommon` com `PitchAngle` (inclinação da água em graus,
-  0 na plana) e `IsExternal = TRUE`; `Qto_SlabBaseQuantities` (§8). [IFC-PSET-S]
+- **Em cada peça:** `Pset_SlabCommon` com `PitchAngle` (inclinação da água na unidade
+  de ângulo do projeto, que é o radiano; 0 na plana) e `IsExternal = TRUE`;
+  `Qto_SlabBaseQuantities` (§8). [IFC-PSET-S] A interface mostra a inclinação em % e
+  em graus.
 - As peças não têm `BrasBim_Laje`: o estado delas vem da cobertura, e elas são
   refeitas a partir dela.
 
@@ -104,13 +106,14 @@ A inclinação usual não é verificada no MVP: depende do fabricante da telha. 
 verificação pela inclinação mínima fica para o V1, junto com a verificação por norma.
 
 ## 4. Criação
-Ferramenta **Cobertura**, no grupo da laje. A barra de opções tem forma, tipo,
+Ferramenta **Cobertura**, logo depois da Laje. A barra de opções tem forma, tipo,
 inclinação (%), beiral e altura de apoio. Há três modos de contorno *(CG)*:
 - **Retângulo:** dois cantos opostos.
 - **Polígono:** como na laje (clique nos vértices; Enter, duplo-clique ou o primeiro
   ponto fecham; Esc desfaz o último ponto).
-- **Pelas paredes:** um clique dentro da edificação usa o contorno **externo** das
-  paredes em volta do ponto (`rooms.room_outline`, `outer`), como a laje pelo cômodo.
+- **Pelas paredes** (modo inicial): um clique dentro da edificação usa o contorno
+  **externo** da união das paredes em volta do ponto (`rooms.building_outline`). É a
+  face externa da edificação inteira, não a de um cômodo.
 
 Depois do contorno:
 - **Plana e quatro águas:** a cobertura é criada na hora.
@@ -212,39 +215,48 @@ de telha cerâmica a 30 % com beiral de 60 cm, e que o contorno das paredes é u
 padrão.
 
 ## 10. Critérios de aceite (testes)
-- [ ] **CB01** Duas águas sobre o retângulo 10 × 6 (cumeeira paralela ao lado de 10),
+- [x] **CB01** Duas águas sobre o retângulo 10 × 6 (cumeeira paralela ao lado de 10),
       h = 2,80, i = 30 %, b = 0,60: `IfcRoof` `GABLE_ROOF` no pavimento, sem `Body`;
       `IfcRelAggregates` com duas `IfcSlab` de tipo `ROOF`, sem contenção própria;
       cumeeira na cota 2,80 + 0,30 × 3 = 3,70 (face de baixo); beiral na cota
       2,80 − 0,18 = 2,62.
-- [ ] **CB02** As peças são posicionadas em relação à cobertura; cada uma tem
+- [x] **CB02** As peças são posicionadas em relação à cobertura; cada uma tem
       `IfcExtrudedAreaSolid` perpendicular ao plano da água, com
       `IfcMaterialLayerSetUsage` `AXIS3` e `TotalThickness` = `Depth`.
-- [ ] **CB03** Quatro águas sobre 10 × 6: dois trapézios e dois triângulos, cumeeira de
+- [x] **CB03** Quatro águas sobre 10 × 6: dois trapézios e dois triângulos, cumeeira de
       4 m; sobre 6 × 6: quatro triângulos e `PAVILION_ROOF`.
-- [ ] **CB04** Uma água em polígono em L, com o lado mais baixo escolhido: uma peça,
+- [x] **CB04** Uma água em polígono em L, com o lado mais baixo escolhido: uma peça,
       com as áreas certas; a plana dá uma peça horizontal com `PitchAngle` 0.
-- [ ] **CB05** Duas ou quatro águas sobre um contorno não retangular: recusado, modelo
+- [x] **CB05** Duas ou quatro águas sobre um contorno não retangular: recusado, modelo
       intacto.
-- [ ] **CB06** Quantidades: área inclinada de cada água = área em planta ÷ cos α;
+- [x] **CB06** Quantidades: área inclinada de cada água = área em planta ÷ cos α;
       `Qto_RoofBaseQuantities.GrossArea` = soma; `AreaProjecao` = área de B;
-      `PitchAngle` = atan(i) em graus.
-- [ ] **CB07** Pelas paredes: quatro paredes formando 8 × 5 pelos eixos, espessura 14
+      `PitchAngle` = atan(i) (radianos).
+- [x] **CB07** Pelas paredes: quatro paredes formando 8 × 5 pelos eixos, espessura 14
       → contorno de apoio 8,14 × 5,14.
-- [ ] **CB08** Editar a inclinação ou o beiral: peças com os mesmos `GlobalId`s;
+- [x] **CB08** Editar a inclinação ou o beiral: peças com os mesmos `GlobalId`s;
       mudar de duas para quatro águas: quatro peças; desfazer volta às duas peças
       originais, com os mesmos `GlobalId`s.
-- [ ] **CB09** Mover, girar e espelhar: `roof.edit`; a uma água continua baixa no mesmo
+- [x] **CB09** Mover, girar e espelhar: `roof.edit`; a uma água continua baixa no mesmo
       lado físico; desfazer, refazer e reaplicar o diário reproduzem o mesmo IFC.
-- [ ] **CB10** Excluir e desfazer: cobertura e peças com os mesmos `GlobalId`s, sem
+- [x] **CB10** Excluir e desfazer: cobertura e peças com os mesmos `GlobalId`s, sem
       entidades órfãs.
-- [ ] **CB11** Planta: acima do plano, só o contorno tracejado; abaixo do plano,
+- [x] **CB11** Planta: acima do plano, só o contorno tracejado; abaixo do plano,
       cumeeira, espigões, setas e `i = 30%`. Corte transversal da duas águas mostra
       as duas peças cortadas.
-- [ ] **CB12** Assistente: `create_roof` com `over_walls` sobre uma casa gera a
+- [x] **CB12** Assistente: `create_roof` com `over_walls` sobre uma casa gera a
       cobertura e `describe_model` a lista.
-- [ ] **CB13** O arquivo passa na validação de esquema do IfcOpenShell, e reabrir o
+- [x] **CB13** O arquivo passa na validação de esquema do IfcOpenShell, e reabrir o
       arquivo reproduz a cobertura editável.
+- [x] **CB14** Interface: a ferramenta pelas paredes mostra o contorno sob o cursor; o
+      clique pede o lado e Enter aceita o maior; a altura de apoio padrão é o topo das
+      paredes; acima do plano de corte só o beiral aparece e ele escolhe a cobertura.
+- [x] **CB15** Uma água por retângulo com clique no lado mais baixo; duas águas em L é
+      recusada antes de pedir o lado.
+- [x] **CB16** Painel: inclinação e forma editáveis (as peças se mantêm quando a
+      quantidade de águas não muda); a ferramenta Laje não lista os tipos de cobertura.
+- [x] **CB17** 3D: a cobertura é uma malha só (as águas juntas), escolhida pelo clique e
+      refeita quando a forma muda.
 
 ## 11. Fontes públicas
 IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
@@ -268,6 +280,10 @@ Outras:
 Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 ## 12. Fora do escopo / pendências
+Implementado em 2026-10-16 (`brasbim/core/structure/roofs.py`, `tests/test_cobertura.py`,
+`tests/test_interface_cobertura.py`). A água de cada lado é o plano mais baixo naquele
+ponto; num contorno convexo, isso já dá cumeeira e espigões sem esqueleto reto.
+
 - **V1:** telhados de forma livre em qualquer contorno (L, T, com várias cumeeiras, por
   esqueleto reto); mansarda, borboleta, meia-água encostada; beiral diferente por lado;
   águas com inclinações diferentes; ajuste e recorte automáticos das paredes sob o

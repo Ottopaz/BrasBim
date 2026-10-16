@@ -73,6 +73,12 @@ _SLAB_TYPES = [
      [("Contrapiso", 0.03), ("Concreto", 0.10), ("Reboco", 0.015)]),
     ("Laje pré-moldada 12 cm", "FLOOR", [("Laje pré-moldada", 0.12)]),
     ("Radier 15 cm", "BASESLAB", [("Concreto", 0.15)]),
+    # Cobertura (cobertura.md §3.2): a espessura representa o telhado no desenho.
+    ("Telha cerâmica", "ROOF", [("Telha cerâmica", 0.05)]),
+    ("Telha de fibrocimento", "ROOF", [("Telha de fibrocimento", 0.03)]),
+    ("Telha metálica sanduíche", "ROOF", [("Telha metálica", 0.05)]),
+    ("Laje impermeabilizada 12 cm", "ROOF",
+     [("Impermeabilização", 0.02), ("Concreto", 0.10)]),
 ]
 
 

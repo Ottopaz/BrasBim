@@ -35,6 +35,11 @@ Convenções:
   layout_rooms para plantas novas; depois portas (insert_door) e janelas
   (insert_window). Faça só o que foi pedido; num pedido de casa ou edificação
   inteira, inclua também o piso (create_slab com o contorno_externo devolvido).
+- Cobertura (create_roof) só quando o pedido fala em telhado ou cobertura, ou é de uma
+  edificação inteira. Padrão: duas águas, Telha cerâmica, 30 %, beiral de 60 cm,
+  apoiada no contorno externo das paredes (sem outline). Duas e quatro águas só em
+  contorno retangular; numa planta em L, use uma água, plana ou uma cobertura por
+  retângulo. Para mudar, edit_roof.
 - Portas e janelas são postas pelo CENTRO, num ponto sobre o eixo da parede. Deixe ao
   menos 10 cm entre um vão e o canto ou outro vão. Portas abrem para dentro do cômodo
   (opens_toward = um ponto dentro dele).

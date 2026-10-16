@@ -145,3 +145,25 @@ def room_outline(doc: Document, storey, point, boundary: str = "outer") -> list:
         else:
             points.append(corner)
     return [list(p) for p in points]
+
+
+def building_outline(doc: Document, storey, point=None) -> list:
+    """Contorno externo das paredes em volta de ``point`` (a face externa da edificação,
+    para a cobertura pelas paredes, cobertura.md §4); sem ``point``, o da maior
+    edificação do pavimento. Anti-horário."""
+    walls = _walls(doc, storey)
+    if not walls:
+        raise OpError("não há paredes no pavimento")
+    union = clip.union([list(r) for r, _ in walls])
+    outer = math.copysign(1.0, clip.signed_area(max(union, key=lambda r: abs(
+        clip.signed_area(r)))))
+    rings = [r for r in union if clip.signed_area(r) * outer > 0]
+    if point is not None:
+        rings = [r for r in rings if _inside(r, point)]
+        if not rings:
+            raise OpError("o ponto não está dentro de uma edificação fechada por paredes")
+    ring = list(min(rings, key=lambda r: abs(clip.signed_area(r))) if point is not None
+                else max(rings, key=lambda r: abs(clip.signed_area(r))))
+    if clip.signed_area(ring) < 0:
+        ring.reverse()
+    return [list(p) for p in ring]
