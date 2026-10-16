@@ -84,6 +84,21 @@ def _parse_optional(text: str):
     return None if not text else parse_number(text)
 
 
+def _dispose(item) -> None:
+    """Esconde e manda apagar (``deleteLater``) o widget ou o layout de um item tirado de
+    um layout, com o que houver dentro."""
+    if item is None:
+        return
+    widget, layout = item.widget(), item.layout()
+    if widget is not None:
+        widget.hide()
+        widget.deleteLater()
+    elif layout is not None:
+        while layout.count():
+            _dispose(layout.takeAt(0))
+        layout.deleteLater()
+
+
 def _unique(names, base: str) -> str:
     if base not in names:
         return base
@@ -189,8 +204,13 @@ class TypesDialog(QDialog):
     # --- editor ------------------------------------------------------------------------
 
     def _clear_form(self) -> None:
+        """Tira as linhas e apaga os widgets pelo laço de eventos: ``removeRow`` apagava
+        na hora widgets que o Python ainda segurava (campos em layouts aninhados) e a
+        memória era liberada duas vezes (queda intermitente no UI91)."""
         while self.form.rowCount():
-            self.form.removeRow(0)
+            row = self.form.takeRow(0)
+            for item in (row.labelItem, row.fieldItem):
+                _dispose(item)
 
     def touched(self, *_args) -> None:
         self.dirty = True

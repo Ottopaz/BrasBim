@@ -20,6 +20,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import ifcopenshell.util.element
 from PySide6.QtCore import QBuffer, QByteArray, QObject, QPointF, QProcess, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 from PySide6.QtWidgets import (
@@ -34,9 +35,20 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import plan as plan_mod
+from brasbim.core.annotations import spaces
 from brasbim.core.assistant import mcp
-from brasbim.core.assistant.tools import Context, Registry, Tool, default_registry
+from brasbim.core.assistant.tools import (
+    Context,
+    Registry,
+    Tool,
+    default_registry,
+    selection_note,
+)
 from brasbim.ui import theme
+
+# O que fica selecionado ao fim do pedido (spec/ui 16 §5).
+_SELECTABLE = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam",
+               "IfcSpace")
 
 # --- execução na thread da interface ----------------------------------------------------
 
@@ -153,12 +165,15 @@ class ClaudeCode:
     def available(self) -> bool:
         return self.program is not None
 
-    def arguments(self, config_path: str) -> list[str]:
-        return ["-p", "--output-format", "stream-json", "--verbose",
+    def arguments(self, config_path: str, resume: str | None = None) -> list[str]:
+        """``resume``: código da conversa a continuar (memória, spec/ui 16 §2.1)."""
+        args = ["-p", "--output-format", "stream-json", "--verbose",
                 "--tools", "", "--strict-mcp-config", "--mcp-config", config_path,
                 "--allowedTools", f"mcp__{mcp.SERVER_NAME}",
-                "--no-session-persistence",
                 "--append-system-prompt", mcp.INSTRUCTIONS]
+        if resume:
+            args += ["--resume", resume]
+        return args
 
 
 def tool_label(name: str) -> str:
@@ -187,6 +202,9 @@ class AssistantPanel(QWidget):
         self._buffer = b""
         self._config: str | None = None
         self._prompt = ""
+        self.conversation: str | None = None  # código da conversa (memória entre pedidos)
+        self._resumed = False
+        session.listeners.append(self._on_session)
 
         self.log = QListWidget()
         self.log.setWordWrap(True)
@@ -200,10 +218,15 @@ class AssistantPanel(QWidget):
         self.stop_button = QPushButton("Parar")
         self.stop_button.clicked.connect(self.stop)
         self.stop_button.setEnabled(False)
+        self.new_button = QPushButton("Nova conversa")
+        self.new_button.setToolTip("Esquece os pedidos anteriores; o modelo continua igual")
+        self.new_button.clicked.connect(self.new_conversation)
+        self.new_button.setEnabled(False)
         self.status = QLabel()
         self.status.setWordWrap(True)
         buttons = QHBoxLayout()
         buttons.addWidget(self.status, 1)
+        buttons.addWidget(self.new_button)
         buttons.addWidget(self.stop_button)
         buttons.addWidget(self.send_button)
         layout = QVBoxLayout(self)
@@ -219,11 +242,30 @@ class AssistantPanel(QWidget):
         return self.process is not None
 
     def _idle_status(self) -> None:
-        if self.connector.available:
-            self.status.setText(f"IA: {self.connector.name}")
-        else:
+        if not self.connector.available:
             self.status.setText(f"{self.connector.name} não encontrado neste PC")
+        elif self.conversation:
+            self.status.setText(f"IA: {self.connector.name} · continuando a conversa")
+        else:
+            self.status.setText(f"IA: {self.connector.name}")
         self.send_button.setEnabled(self.connector.available)
+        self.new_button.setEnabled(self.conversation is not None)
+
+    def new_conversation(self) -> None:
+        """Esquece a conversa: o próximo pedido começa do zero (o modelo fica)."""
+        if self.running:
+            return
+        if self.conversation is not None:
+            self.conversation = None
+            self._add("— nova conversa —", "info")
+        self._idle_status()
+
+    def _on_session(self, event: str) -> None:
+        if event == "document":  # outro projeto: a conversa não passa de um para outro
+            self.stop()
+            self.conversation = None
+            self.log.clear()
+            self._idle_status()
 
     def _add(self, text: str, level: str = "info") -> None:
         item = QListWidgetItem(text)
@@ -280,9 +322,11 @@ class AssistantPanel(QWidget):
         self._ours, self._buffer, self._prompt = [], b"", text
         self._add(text, "pedido")
         self.prompt.clear()
+        self._resumed = self.conversation is not None
+        message = f"{self.context_note()}\n\n{text}"
         process = QProcess(self)
         process.setProgram(self.connector.program)
-        process.setArguments(self.connector.arguments(self._config))
+        process.setArguments(self.connector.arguments(self._config, self.conversation))
         process.setWorkingDirectory(tempfile.gettempdir())
         process.readyReadStandardOutput.connect(self._read)
         process.finished.connect(self._done)
@@ -292,8 +336,12 @@ class AssistantPanel(QWidget):
         self.stop_button.setEnabled(True)
         self.status.setText("Trabalhando…")
         process.start()
-        process.write(text.encode("utf-8"))
+        process.write(message.encode("utf-8"))
         process.closeWriteChannel()
+
+    def context_note(self) -> str:
+        """Pavimento ativo e seleção, que vão junto do pedido (spec/ui 16 §2.1)."""
+        return selection_note(self.session.doc, self.session.storey, self.session.selection)
 
     def stop(self) -> None:
         if self.process is not None:
@@ -313,6 +361,8 @@ class AssistantPanel(QWidget):
     def handle_event(self, event: dict) -> None:
         """Um evento do ``stream-json`` do Claude Code."""
         kind = event.get("type")
+        if event.get("session_id"):
+            self.conversation = event["session_id"]
         if kind == "system" and event.get("subtype") == "init":
             servers = {s.get("name"): s.get("status") for s in event.get("mcp_servers", [])}
             if servers.get(mcp.SERVER_NAME) not in (None, "connected"):
@@ -340,8 +390,13 @@ class AssistantPanel(QWidget):
             return
         self._read()
         err = bytes(self.process.readAllStandardError()).decode("utf-8", "replace").strip()
-        if self.process.exitCode() != 0 and err:
-            self._add(err[-500:], "erro")
+        if self.process.exitCode() != 0:
+            if err:
+                self._add(err[-500:], "erro")
+            if self._resumed and not self._ours:
+                self.conversation = None  # a conversa não pôde ser retomada
+                self._add("A conversa anterior não pôde ser continuada; envie de novo "
+                          "para começar outra.", "erro")
         self.process.deleteLater()
         self.process = None
         if self._config:
@@ -362,7 +417,24 @@ class AssistantPanel(QWidget):
             else:
                 stack[-1].label = label
             self.session.message(f"{label} ({n} alterações; Ctrl+Z desfaz tudo)")
+            self.session.select(self.touched())  # o que a IA criou ou mudou fica à vista
         self._ours = []
+
+    def touched(self) -> set[str]:
+        """Elementos criados ou alterados no pedido que ainda existem no pavimento ativo."""
+        doc, storey, found = self.session.doc, self.session.storey, set()
+        for tx in self._ours:
+            for op in tx.ops:
+                e = doc.find(op.id) if op.op.endswith((".create", ".edit")) else None
+                if e is None or not any(e.is_a(c) for c in _SELECTABLE):
+                    continue
+                if e.is_a("IfcSpace"):
+                    where = spaces.storey_of(e)
+                else:
+                    where = ifcopenshell.util.element.get_container(e)
+                if where == storey:
+                    found.add(op.id)
+        return found
 
     def shutdown(self) -> None:
         if self.process is not None:

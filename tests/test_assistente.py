@@ -25,8 +25,8 @@ def ctx(model):
     return Context(model.doc, model.commit, model.terreo.GlobalId)
 
 
-def _call(ctx, name, **args):
-    result = default_registry().call(ctx, name, args)
+def _call(ctx, tool, **args):
+    result = default_registry().call(ctx, tool, args)
     text = result["content"][0]["text"]
     return (json.loads(text) if not result["isError"] else text), result["isError"]
 
@@ -220,3 +220,109 @@ def test_as06_criar_paredes_soltas(model):
     model.commit(tx)
     assert len(model.doc.ifc.by_type("IfcWall")) == 2
     assert len(model.doc.ifc.by_type("IfcRelConnectsPathElements")) == 1
+
+
+# AS11: edição pela IA
+
+
+def _casa(ctx):
+    out, _ = _call(ctx, "layout_rooms", rooms=[
+        {"name": "Sala", "x": 0, "y": 0, "width": 5, "depth": 4},
+        {"name": "Quarto", "x": 0, "y": 4, "width": 5, "depth": 3}])
+    walls = {(tuple(w["inicio"]), tuple(w["fim"])): w["id"] for w in out["paredes"]}
+    rooms = {r["nome"]: r["id"] for r in out["ambientes"]}
+    return walls, rooms
+
+
+def _area(model, gid):
+    return spaces.area(spaces.read_state(model.doc.get(gid))["outline"])
+
+
+def test_as11_deslocar_parede_leva_os_ambientes(ctx, model):
+    walls, rooms = _casa(ctx)
+    middle = walls[((0, 4), (5, 4))]
+    out, error = _call(ctx, "move_wall", id=middle, distance=0.5, toward=[2, 10])
+    assert not error
+    assert out["inicio"] == [0, 4.5] and out["fim"] == [5, 4.5]
+    assert _area(model, rooms["Sala"]) == pytest.approx(4.86 * 4.36, abs=1e-3)
+    assert _area(model, rooms["Quarto"]) == pytest.approx(4.86 * 2.36, abs=1e-3)
+    # a parede de cima, com as laterais esticando junto
+    top = walls[((0, 7), (5, 7))]
+    out, _ = _call(ctx, "move_wall", id=top, distance=1, toward=[2, 0])  # para baixo
+    assert out["inicio"] == [0, 6] and set(out["paredes_alteradas"]) > {top}
+    assert _area(model, rooms["Quarto"]) == pytest.approx(4.86 * 1.36, abs=1e-3)
+
+
+def test_as11_editar_esquadria(ctx, model):
+    walls, _ = _casa(ctx)
+    door, _ = _call(ctx, "insert_door", at=[2.5, 0], type="P1", opens_toward=[2.5, 1])
+    _call(ctx, "edit_opening", id=door["id"], width=1.0, opens_toward=[2.5, -1])
+    o = openings.read_state(model.doc.get(door["id"]).FillsVoids[0].RelatingOpeningElement)
+    assert o["width"] == pytest.approx(1.0) and o["distance"] == pytest.approx(2.0)
+    assert doors.read_state(model.doc.get(door["id"]))["opens_to"] == "right"
+    _, error = _call(ctx, "edit_opening", id=door["id"], at=[0, 2])  # outra parede
+    assert not error
+    o = openings.read_state(model.doc.get(door["id"]).FillsVoids[0].RelatingOpeningElement)
+    assert o["wall"] == walls[((0, 0), (0, 7))] and o["distance"] == pytest.approx(1.5)
+    model.commit(fc.create_door_type(model.doc, "P3 – correr", "DOUBLE_DOOR_SLIDING",
+                                     defaults={"width": 1.66}))
+    _call(ctx, "edit_opening", id=door["id"], type="P3")  # tamanho do tipo novo, mesmo centro
+    o = openings.read_state(model.doc.get(door["id"]).FillsVoids[0].RelatingOpeningElement)
+    assert o["width"] == pytest.approx(1.66) and o["distance"] == pytest.approx(2.0 - 0.83)
+    win, _ = _call(ctx, "insert_window", at=[2.5, 7], type="J1")
+    _call(ctx, "edit_opening", id=win["id"], sill=0.9, height=1.2)
+    o = openings.read_state(model.doc.get(win["id"]).FillsVoids[0].RelatingOpeningElement)
+    assert o["sill"] == pytest.approx(0.9) and o["height"] == pytest.approx(1.2)
+
+
+def test_as11_tipo_altura_pontas_e_ambiente(ctx, model):
+    model.commit(cmd.create_wall_type(model.doc, "Drywall 9,5", [
+        {"material": "Gesso", "thickness": 0.095}], predefined_type="PARTITIONING"))
+    walls, rooms = _casa(ctx)
+    middle = walls[((0, 4), (5, 4))]
+    door, _ = _call(ctx, "insert_door", at=[2.5, 0])
+    text, error = _call(ctx, "set_type", ids=[middle, door["id"]], type="Drywall")
+    assert error and "uma classe por vez" in text
+    out, error = _call(ctx, "set_type", ids=[middle], type="Drywall")
+    assert not error and out["tipo"] == "Drywall 9,5"
+    out, _ = _call(ctx, "edit_space", id=rooms["Sala"], name="Estar", refit=True)
+    assert out["nome"] == "Estar"
+    assert out["area"] == pytest.approx(4.86 * (4 - 0.07 - 0.0475), abs=1e-3)
+    out, _ = _call(ctx, "edit_wall", id=middle, height=2.5)
+    from brasbim.core.walls.wall import read_state as read_wall
+
+    state = read_wall(model.doc, model.doc.get(middle))
+    assert state["top_mode"] == "fixed" and state["fixed_height"] == pytest.approx(2.5)
+    text, error = _call(ctx, "edit_wall", id=middle)
+    assert error and "nada a mudar" in text
+
+
+def test_as11_mover_copiar_girar_espelhar(ctx, model):
+    out, _ = _call(ctx, "create_walls", walls=[{"start": [0, 0], "end": [4, 0]}])
+    (wall,) = out["paredes"]
+    _call(ctx, "move_elements", ids=[wall], vector=[0, 1])
+    info, _ = _call(ctx, "describe_model")
+    assert info["paredes"][0]["inicio"] == [0, 1]
+    copy, _ = _call(ctx, "move_elements", ids=[wall], vector=[0, 2], copy=True)
+    assert len(copy["copias"]) == 1 and len(model.doc.ifc.by_type("IfcWall")) == 2
+    _call(ctx, "rotate_elements", ids=[wall], center=[0, 1], angle=90)
+    _call(ctx, "mirror_elements", ids=copy["copias"], axis_start=[10, 0], axis_end=[10, 1])
+    ends = {(tuple(w["inicio"]), tuple(w["fim"])) for w in _call(ctx, "describe_model")[0][
+        "paredes"]}
+    assert ((0, 1), (0, 5)) in ends
+    assert ((16, 3), (20, 3)) in ends  # espelhada em x = 10
+
+
+# AS12: o pedido leva o pavimento ativo e a seleção
+
+
+def test_as12_nota_da_selecao(ctx, model):
+    from brasbim.core.assistant.tools import selection_note
+
+    walls, rooms = _casa(ctx)
+    middle = walls[((0, 4), (5, 4))]
+    note = selection_note(model.doc, model.terreo, {middle, rooms["Sala"]})
+    assert note.startswith('[BrasBim] Pavimento ativo: "Térreo".')
+    assert f"parede {middle}, tipo Alvenaria 14, de [0.0, 4.0] a [5.0, 4.0]" in note
+    assert f"ambiente {rooms['Sala']} (Sala)" in note
+    assert "Nada selecionado" in selection_note(model.doc, model.terreo, set())

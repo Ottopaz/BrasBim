@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d
+from brasbim.core import geom2d, transform
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import spaces
 from brasbim.core.assistant import layout
@@ -408,6 +408,257 @@ def delete(ctx: Context, args: dict) -> dict:
             "janelas_junto": cascade["IfcWindow"]}
 
 
+# --- edição (spec/ui 16 §4.3) -------------------------------------------------------------
+
+
+def _existing(ctx: Context, ids) -> list[str]:
+    ids = list(ids)
+    if not ids:
+        raise OpError("informe ao menos um id")
+    missing = [g for g in ids if ctx.doc.find(g) is None]
+    if missing:
+        raise OpError(f"não existem: {', '.join(missing)}")
+    return ids
+
+
+def move_elements(ctx: Context, args: dict) -> dict:
+    ids = _existing(ctx, args["ids"])
+    vector = _point(args["vector"], "vector")
+    if args.get("copy"):
+        tx = transform.copy_elements(ctx.doc, ids, vector)
+    else:
+        tx = transform.move_elements(ctx.doc, ids, vector)
+    ctx.commit(tx)
+    new = [op.id for op in tx.ops if op.op.endswith(".create") and op.id not in ids]
+    return {"movidos": [] if args.get("copy") else ids, "copias": new}
+
+
+def rotate_elements(ctx: Context, args: dict) -> dict:
+    ids = _existing(ctx, args["ids"])
+    center = _point(args["center"], "center")
+    ctx.commit(transform.rotate_elements(ctx.doc, ids, center,
+                                         math.radians(float(args["angle"]))))
+    return {"girados": ids}
+
+
+def mirror_elements(ctx: Context, args: dict) -> dict:
+    ids = _existing(ctx, args["ids"])
+    a, b = _point(args["axis_start"], "axis_start"), _point(args["axis_end"], "axis_end")
+    tx = transform.mirror_elements(ctx.doc, ids, a, b, keep=bool(args.get("copy")))
+    ctx.commit(tx)
+    return {"espelhados": ids,
+            "copias": [op.id for op in tx.ops if op.op.endswith(".create") and op.id not in ids]}
+
+
+def _side(info: dict, p) -> str:
+    """Lado da parede onde fica o ponto: ``left`` (à esquerda de quem anda do início
+    para o fim) ou ``right``."""
+    local = info["frame"].to_local(p)
+    return "left" if info["path"].offset(local) > sum(info["band"]) / 2 else "right"
+
+
+def _faces_spaces(ctx: Context, storey, info: dict, shift) -> list:
+    """Operações que levam junto os vértices dos ambientes que estão nas faces da
+    parede (ambientes não seguem as paredes sozinhos)."""
+    t = info["band"][1] - info["band"][0]
+    mid = sum(info["band"]) / 2
+    path, frame = info["path"], info["frame"]
+    ops = []
+    for space in [e for e in ctx.doc.ifc.by_type("IfcSpace") if spaces.storey_of(e) == storey]:
+        state = spaces.read_state(space)
+        if not state["outline"]:
+            continue
+        moved, changed = [], False
+        for p in state["outline"]:
+            local = frame.to_local(tuple(p))
+            along = path.arc_length(path.param(local))
+            on_face = (abs(path.offset(local) - mid) <= t / 2 + 0.005
+                       and -t <= along <= path.length + t)
+            moved.append(list(shift(tuple(p))) if on_face else list(p))
+            changed |= on_face
+        if changed:
+            ops += ac.edit_element(ctx.doc, space, outline=moved).ops
+    return ops
+
+
+def move_wall(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    wall = doc.get(args["id"], "IfcWall")
+    info = _wall_info(doc, wall)
+    if info is None or not isinstance(info["path"], geom2d.LinePath):
+        raise OpError("só a parede reta do BrasBim se desloca")
+    distance = abs(float(args["distance"]))
+    if distance < 1e-4:
+        raise OpError("distância nula")
+    toward = _point(args["toward"], "toward")
+    sign = 1.0 if _side(info, toward) == "left" else -1.0
+    storey = doc.get(info["state"]["storey"], "IfcBuildingStorey")
+    n = info["frame"].vector_to_global((0.0, 1.0))
+    shift = geom2d.translation((n[0] * distance * sign, n[1] * distance * sign))
+    tx = cmd.offset_wall(doc, wall, distance * sign, carry=args.get("carry", True))
+    if args.get("spaces", True):
+        tx.ops += _faces_spaces(ctx, storey, info, shift)
+    ctx.commit(tx)
+    out = _wall_info(doc, wall)
+    rooms = [{"id": op.id, "nome": spaces.read_state(doc.get(op.id))["name"],
+              "area": _r(spaces.area(op.after["outline"]))}
+             for op in tx.ops if op.op == "space.edit"]
+    return {"parede": wall.GlobalId,
+            "inicio": _pt(out["frame"].to_global(out["path"].point(0.0, 0.0))),
+            "fim": _pt(out["frame"].to_global(out["path"].point(0.0, out["path"].t_end))),
+            "paredes_alteradas": sorted({op.id for op in tx.ops if op.op == "wall.edit"}),
+            "ambientes_ajustados": rooms}
+
+
+def edit_wall(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    wall = doc.get(args["id"], "IfcWall")
+    done = []
+    changes = {}
+    if args.get("type"):
+        changes["type"] = _type(doc, "IfcWallType", args["type"], "parede").GlobalId
+    if args.get("height") is not None:
+        changes.update(top_mode="fixed", fixed_height=float(args["height"]))
+    if changes:
+        ctx.commit(cmd.edit_wall(doc, wall, **changes))
+        done += sorted(changes)
+    for end in ("start", "end"):
+        if args.get(end) is not None:
+            ctx.commit(cmd.move_wall_end(doc, wall, end, _point(args[end], end),
+                                         carry=args.get("carry", True)))
+            done.append(end)
+    if not done:
+        raise OpError("nada a mudar: informe type, height, start ou end")
+    info = _wall_info(doc, wall)
+    return {"parede": wall.GlobalId, "mudou": done, "espessura": _r(info["thickness"]),
+            "comprimento": _r(info["path"].length)}
+
+
+def edit_opening(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    element = doc.get(args["id"])
+    if not (element.is_a("IfcDoor") or element.is_a("IfcWindow")):
+        raise OpError(f"{args['id']} não é porta nem janela")
+    opening = fc.opening_of(element)
+    if opening is None:
+        raise OpError("a esquadria não está numa abertura")
+    o = openings.read_state(opening)
+    k = fc.kind(element)
+    new_type = _type(doc, k.type_class, args["type"], k.noun) if args.get("type") else None
+    if new_type is not None:
+        # tipo novo sem medidas dadas: vale o tamanho padrão dele (o centro fica)
+        defaults = k.types.read(new_type)["defaults"]
+        args.setdefault("width", defaults["width"])
+        args.setdefault("height", defaults["height"])
+    width = float(args["width"]) if args.get("width") is not None else o["width"]
+    changes: dict = {}
+    if args.get("width") is not None and abs(width - o["width"]) > 1e-9:
+        changes["width"] = width
+    if args.get("at") is not None:
+        storey = doc.get(read_wall(doc, doc.get(o["wall"]))["storey"])
+        wall, _info, along, _ = _wall_at(doc, storey, _point(args["at"], "at"),
+                                         args.get("wall"))
+        changes.update(wall=wall.GlobalId, distance=along - width / 2)
+    elif "width" in changes:  # o centro fica onde estava
+        changes["distance"] = o["distance"] + o["width"] / 2 - width / 2
+    if args.get("height") is not None and abs(float(args["height"]) - o["height"]) > 1e-9:
+        changes["height"] = float(args["height"])
+    if args.get("sill") is not None:
+        changes["base"] = float(args["sill"])
+    if new_type is not None:
+        changes["type"] = new_type.GlobalId
+    if args.get("opens_toward") is not None:
+        info = _wall_info(doc, doc.get(changes.get("wall", o["wall"])))
+        changes["opens_to"] = _side(info, _point(args["opens_toward"], "opens_toward"))
+    hinges = args.get("hinges")
+    if hinges is not None and hinges not in ("left", "right"):
+        raise OpError("hinges: use left ou right")
+    tx = fc.edit_door(doc, element, hinges=hinges, **changes)
+    if not tx.ops:
+        return {"id": element.GlobalId, "mudou": []}
+    ctx.commit(tx)
+    return {"id": element.GlobalId, "mudou": sorted([*changes, *(["hinges"] if hinges else [])])}
+
+
+def edit_space(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    space = doc.get(args["id"], "IfcSpace")
+    changes = {}
+    if args.get("name"):
+        changes["name"] = str(args["name"])
+    if args.get("number"):
+        changes["number"] = str(args["number"])
+    if args.get("refit"):
+        from brasbim.core.structure import rooms
+
+        state = spaces.read_state(space)
+        storey = spaces.storey_of(space)
+        point = args.get("at") or spaces.center(state["outline"])
+        changes["outline"] = rooms.room_outline(doc, storey, tuple(point), "inner")
+    if not changes:
+        raise OpError("nada a mudar: informe name, number ou refit")
+    tx = ac.edit_element(doc, space, **changes)
+    if tx.ops:
+        ctx.commit(tx)
+    state = spaces.read_state(space)
+    return {"id": space.GlobalId, "nome": state["name"], "numero": state["number"],
+            "area": _r(spaces.area(state["outline"]))}
+
+
+_TYPE_CLASS = {"IfcWall": ("IfcWallType", "parede"), "IfcDoor": ("IfcDoorType", "porta"),
+               "IfcWindow": ("IfcWindowType", "janela"), "IfcSlab": ("IfcSlabType", "laje"),
+               "IfcColumn": ("IfcColumnType", "pilar"), "IfcBeam": ("IfcBeamType", "viga")}
+
+
+def set_type(ctx: Context, args: dict) -> dict:
+    doc = ctx.doc
+    ids = _existing(ctx, args["ids"])
+    classes = {next((c for c in _TYPE_CLASS if doc.get(g).is_a(c)), None) for g in ids}
+    if None in classes or len(classes) != 1:
+        raise OpError("troque o tipo de uma classe por vez (só paredes, só portas, …)")
+    cls = classes.pop()
+    type_class, noun = _TYPE_CLASS[cls]
+    new = _type(doc, type_class, args["type"], noun)
+    if cls == "IfcWall":
+        tx = cmd.edit_walls(doc, ids, type=new.GlobalId)
+    elif cls in ("IfcDoor", "IfcWindow"):
+        tx = fc.edit_doors(doc, ids, type=new.GlobalId)
+    else:
+        tx = sc.edit_elements(doc, ids, type=new.GlobalId)
+    if tx.ops:
+        ctx.commit(tx)
+    return {"ids": ids, "tipo": new.Name}
+
+
+def selection_note(doc: Document, storey, selection) -> str:
+    """Contexto que vai junto do pedido (spec/ui 16 §2.1): pavimento ativo e o que está
+    selecionado na tela, para pedidos como "aumenta essa parede"."""
+    parts = []
+    for gid in sorted(selection):
+        e = doc.find(gid)
+        if e is None:
+            continue
+        etype = ifcopenshell.util.element.get_type(e)
+        tname = f", tipo {etype.Name}" if etype is not None else ""
+        if e.is_a("IfcWall"):
+            info = _wall_info(doc, e)
+            if info is not None:
+                a = info["frame"].to_global(info["path"].point(0.0, 0.0))
+                b = info["frame"].to_global(info["path"].point(0.0, info["path"].t_end))
+                parts.append(f"parede {gid}{tname}, de {_pt(a)} a {_pt(b)}")
+                continue
+        if e.is_a("IfcSpace"):
+            parts.append(f"ambiente {gid} ({spaces.read_state(e)['name']})")
+        elif e.is_a("IfcDoor") or e.is_a("IfcWindow"):
+            parts.append(f"{'janela' if e.is_a('IfcWindow') else 'porta'} {gid}{tname}")
+        else:
+            parts.append(f"{e.is_a()} {gid}{tname}")
+    head = f'Pavimento ativo: "{storey.Name}".' if storey is not None else ""
+    if not parts:
+        return f"[BrasBim] {head} Nada selecionado na tela."
+    return f"[BrasBim] {head} Selecionado na tela: " + "; ".join(parts) + "."
+
+
 # --- registro -----------------------------------------------------------------------------
 
 _XY = {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
@@ -497,4 +748,67 @@ def default_registry() -> Registry:
         "Exclui elementos pelos ids (paredes levam junto as portas e janelas delas).",
         _obj({"ids": {"type": "array", "items": {"type": "string"}}}, ["ids"]),
         delete))
+    _IDS = {"type": "array", "items": {"type": "string"}, "description": "ids (GlobalId)"}
+    reg.add(Tool(
+        "move_wall", "Deslocando parede",
+        "Desloca uma parede reta paralela a si mesma, 'distance' metros na direção do "
+        "ponto 'toward' (ex.: para aumentar a sala 50 cm para o norte, desloque a parede "
+        "norte dela 0,5 com toward ao norte). As paredes vizinhas esticam ou encurtam "
+        "junto (carry, padrão sim) e os ambientes dos dois lados acompanham.",
+        _obj({"id": {"type": "string"}, "distance": {"type": "number"}, "toward": _XY,
+              "carry": {"type": "boolean"}}, ["id", "distance", "toward"]),
+        move_wall))
+    reg.add(Tool(
+        "edit_wall", "Editando parede",
+        "Muda tipo, altura (fixa) ou as pontas (start/end, pelo eixo) de uma parede. Ao "
+        "mover uma ponta, as paredes ligadas a ela vão junto (carry).",
+        _obj({"id": {"type": "string"}, "type": {"type": "string"},
+              "height": {"type": "number"}, "start": _XY, "end": _XY,
+              "carry": {"type": "boolean"}}, ["id"]),
+        edit_wall))
+    reg.add(Tool(
+        "edit_opening", "Editando esquadria",
+        "Muda uma porta ou janela: posição ('at' = novo centro, pode ser em outra "
+        "parede), largura (o centro fica), altura, peitoril (sill), tipo (sem largura e "
+        "altura, valem as do tipo novo), lado para onde abre (opens_toward = um ponto "
+        "daquele lado) e mão (hinges).",
+        _obj({"id": {"type": "string"}, "at": _XY, "width": {"type": "number"},
+              "height": {"type": "number"}, "sill": {"type": "number"},
+              "type": {"type": "string"}, "opens_toward": _XY,
+              "hinges": {"type": "string", "enum": ["left", "right"]},
+              "wall": {"type": "string"}}, ["id"]),
+        edit_opening))
+    reg.add(Tool(
+        "edit_space", "Editando ambiente",
+        "Renomeia ou renumera um ambiente; refit=true redesenha o contorno pelas paredes "
+        "em volta (depois de mudanças feitas à mão).",
+        _obj({"id": {"type": "string"}, "name": {"type": "string"},
+              "number": {"type": "string"}, "refit": {"type": "boolean"}, "at": _XY},
+             ["id"]),
+        edit_space))
+    reg.add(Tool(
+        "set_type", "Trocando tipo",
+        "Troca o tipo de vários elementos da mesma classe (só paredes, só portas, só "
+        "janelas, só lajes...). Ex.: paredes internas para drywall.",
+        _obj({"ids": _IDS, "type": {"type": "string"}}, ["ids", "type"]),
+        set_type))
+    reg.add(Tool(
+        "move_elements", "Movendo",
+        "Move (ou copia, copy=true) elementos pelo vetor [dx, dy]. Portas e janelas "
+        "andam ao longo da parede delas.",
+        _obj({"ids": _IDS, "vector": _XY, "copy": {"type": "boolean"}}, ["ids", "vector"]),
+        move_elements))
+    reg.add(Tool(
+        "rotate_elements", "Girando",
+        "Gira elementos 'angle' graus (anti-horário) em torno de 'center'.",
+        _obj({"ids": _IDS, "center": _XY, "angle": {"type": "number"}},
+             ["ids", "center", "angle"]),
+        rotate_elements))
+    reg.add(Tool(
+        "mirror_elements", "Espelhando",
+        "Espelha elementos pelo eixo de axis_start a axis_end; copy=true espelha uma "
+        "cópia e mantém o original.",
+        _obj({"ids": _IDS, "axis_start": _XY, "axis_end": _XY, "copy": {"type": "boolean"}},
+             ["ids", "axis_start", "axis_end"]),
+        mirror_elements))
     return reg

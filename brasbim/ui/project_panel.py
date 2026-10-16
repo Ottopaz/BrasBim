@@ -93,6 +93,8 @@ class ProjectPanel(QWidget):
         sheet_buttons.addWidget(self.new_sheet_button)
         sheet_buttons.addWidget(self.delete_sheet_button)
         layout.addLayout(sheet_buttons)
+        # o nome do pavimento cabe inteiro ao lado das outras três colunas
+        self.setMinimumWidth(320)
         self.refresh()
 
     def refresh(self) -> None:
@@ -103,6 +105,8 @@ class ProjectPanel(QWidget):
             active = storey.GlobalId == self.session.storey_id
             name = QTableWidgetItem(f"{'● ' if active else ''}{storey.Name or ''}")
             name.setData(Qt.UserRole, storey.GlobalId)
+            name.setToolTip("Clique para trabalhar neste pavimento (Page Up / Page Down "
+                            "trocam pelo teclado); clique duplo renomeia")
             elevation = QTableWidgetItem(fmt(storey.Elevation or 0.0))
             cut = QTableWidgetItem(fmt(storeys_.cut_height(storey)))
             cut.setToolTip("Altura do plano de corte da planta acima da cota; "

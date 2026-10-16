@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 9: assistente com IA, protótipo em teste; spec em revisão).*
+*Atualizado em 2026‑10‑16 (pacote 9: assistente com IA, com memória e edição; spec em revisão).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (438 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (446 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -29,7 +29,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/13-documentacao-planta` | aprovada e implementada (pacote 6; `tests/test_documentacao.py`, `test_interface_documentacao.py`) |
 | `spec/ui/14-cortes-e-fachadas` | aprovada e implementada (pacote 7; `tests/test_cortes.py`, `test_interface_cortes.py`) |
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
-| `spec/ui/16-assistente` | **em revisão**, protótipo implementado (pacote 9; AS01–AS10 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
+| `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -275,6 +275,21 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   --allowedTools mcp__brasbim --output-format stream-json`), `_MainThread` (chamada do
   servidor roda na thread da interface), `plan_image`/`view_plan` (PNG com grade de 1 m).
 - Teste real: casa de 3 quartos em 78 s, 24 chamadas, ~US$ 0,33 de uso do Claude Code.
+- **Memória e edição** (pedido do usuário, 2026‑10‑16): conversa continuada
+  (`AssistantPanel.conversation` = `session_id` dos eventos; `--resume`; botão Nova
+  conversa; outro projeto esquece), linha de contexto `[BrasBim]` com pavimento e seleção
+  (`tools.selection_note`), seleção do que mudou ao fim (`AssistantPanel.touched`).
+  Ferramentas `move_wall` (offset com vizinhas + vértices dos ambientes nas faces,
+  `_faces_spaces`), `edit_wall`, `edit_opening` (tipo novo sem medidas = medidas do tipo,
+  centro mantido), `edit_space` (`refit`), `set_type`, `move_elements`,
+  `rotate_elements`, `mirror_elements`. Teste real: três pedidos seguidos (desenhar,
+  "aumente a sala 50 cm para o sul", "troque essa porta por uma de correr"), 8–10 s cada.
+- Janela: Exibir > Painéis (Projeto, Propriedades, Mensagens, Assistente); Exibir >
+  Pavimento acima/abaixo (Page Up/Page Down, `MainWindow.step_storey`); painel Projeto
+  com largura mínima de 320 px (coluna Nome cortada).
+- `types_dialog._clear_form` agora tira as linhas e apaga por `deleteLater`
+  (`_dispose`): `removeRow` corrompia a memória (0xc0000374) de vez em quando no UI91, o
+  que apareceu quando a largura do painel Projeto mudou.
 
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
@@ -282,7 +297,8 @@ de uso fica para quando o programa estiver mais completo) e já incluir as ferra
 documentação do desenho técnico (`spec/REQUISITOS.md` §8).
 
 0. Revisor confirmar a correção do `CardinalPoint` do pilar (`pilar.md` §11 (e)).
-0b. Revisor testar o assistente (Exibir > Assistente) e decidir os pontos da spec 16 §9;
+0b. Revisor testar o assistente (Exibir > Painéis > Assistente, Ctrl+Shift+A) e decidir
+   os pontos da spec 16 §9;
    depois: aprovar a spec, pôr RF-IA-01 a 04 em `REQUISITOS.md`.
 1. ~~Pacote 5~~ concluído.
 2. ~~Pacote 6~~ concluído — documentação 1, anotação da planta: ambientes (`IfcSpace`, RF-AMB-01 a
@@ -302,9 +318,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
-- Assistente: cada pedido começa sem memória do anterior; sem aviso de privacidade; só o
-  conector Claude Code; a IA não edita elementos existentes (só cria e exclui); edição
-  manual durante o pedido impede o agrupamento no desfazer.
+- Assistente: a conversa não sobrevive a fechar o BrasBim; sem aviso de privacidade; só
+  o conector Claude Code; a IA não cria pavimentos, estrutura nem cobertura; edição
+  manual durante o pedido impede o agrupamento no desfazer; ambientes só acompanham a
+  parede movida pela IA (`move_wall`), não a movida à mão.
 - Specs 01 §5.5/§6, 03 §4.2 e 07 §2.2 ainda dizem "Tab troca as dobradiças"; a spec 09
   §2.2 mudou isso (atualizar o texto delas).
 - Peitoril fixado pelo balão não atualiza na hora o campo da barra Opções.

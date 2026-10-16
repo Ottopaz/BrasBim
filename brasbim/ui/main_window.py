@@ -145,18 +145,21 @@ class MainWindow(QMainWindow):
         self.project = ProjectPanel(self.session)
         self.project.open_view = self.open_view
         self.project.open_sheet = self.open_sheet
-        self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
+        self.project_dock = self._dock("Projeto", "projeto", self.project,
+                                       Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
         self.properties.open_view = self.open_view
         self.properties.open_sheet = self.open_sheet
         self.properties.edit_project_info = self.edit_project_info
-        self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
+        self.properties_dock = self._dock("Propriedades", "propriedades", self.properties,
+                                          Qt.RightDockWidgetArea)
         self.messages = QListWidget()
         self.messages.setWordWrap(True)
-        dock = self._dock("Mensagens", "mensagens", self.messages, Qt.BottomDockWidgetArea)
-        dock.setMaximumHeight(160)
+        self.messages_dock = self._dock("Mensagens", "mensagens", self.messages,
+                                        Qt.BottomDockWidgetArea)
+        self.messages_dock.setMaximumHeight(160)
         # Assistente (spec/ui 16): fechado até ser pedido em Exibir > Assistente
         self.assistant = AssistantPanel(self.session)
         self.assistant.finished.connect(self._assistant_finished)
@@ -206,10 +209,16 @@ class MainWindow(QMainWindow):
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
                                               "Ctrl+Shift+3")
         view_menu.addSeparator()
-        self.bars_menu = view_menu.addMenu("Barras")
+        self._action(view_menu, "Pavimento acima", lambda: self.step_storey(1), "PgUp")
+        self._action(view_menu, "Pavimento abaixo", lambda: self.step_storey(-1), "PgDown")
+        view_menu.addSeparator()
+        self.panels_menu = view_menu.addMenu("Painéis")
+        for dock in (self.project_dock, self.properties_dock, self.messages_dock):
+            self.panels_menu.addAction(dock.toggleViewAction())
         assistant_action = self.assistant_dock.toggleViewAction()
         assistant_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
-        view_menu.addAction(assistant_action)
+        self.panels_menu.addAction(assistant_action)
+        self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
                                                  self._toggle_selection_bar)
@@ -581,6 +590,17 @@ class MainWindow(QMainWindow):
     def confirm(self, text: str) -> bool:
         answer = QMessageBox.question(self, "Confirmar", text)
         return answer == QMessageBox.Yes
+
+    def step_storey(self, step: int) -> None:
+        """Page Up / Page Down: o pavimento de cima ou de baixo fica ativo."""
+        storeys = self.session.doc.storeys()
+        current = self.session.storey
+        if current is None or current not in storeys:
+            return
+        i = storeys.index(current) + step
+        if 0 <= i < len(storeys):
+            self.session.set_storey(storeys[i])
+            self.session.message(f"Pavimento ativo: {storeys[i].Name}")
 
     def set_view(self, mode: str) -> None:
         if mode == "split":
