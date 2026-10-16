@@ -167,38 +167,38 @@ da inserção do pilar.
 ## 11. Critérios de aceite (testes)
 Pavimentos Térreo (0,00) e Superior (2,80), plano de corte 1,50.
 
-- [ ] **UI96** Ferramenta Pilar com "Pilar 20×40", clique em (2, 3): pilar criado com a
+- [x] **UI96** Ferramenta Pilar com "Pilar 20×40", clique em (2, 3): pilar criado com a
       transação de §2.1; barra de espaço antes do clique cria com ângulo 90°.
-- [ ] **UI97** Pilar com atração no canto de uma junção em L de paredes; inserção canto
+- [x] **UI97** Pilar com atração no canto de uma junção em L de paredes; inserção canto
       inferior esquerdo na barra Opções: o canto do pilar fica no ponto.
-- [ ] **UI98** Ferramenta Viga de (0, 0) a (5, 0) e depois a (5, 4): duas vigas em
+- [x] **UI98** Ferramenta Viga de (0, 0) a (5, 0) e depois a (5, 4): duas vigas em
       cadeia, cada uma com o seu `beam.create`; Tab `4` Enter no segundo trecho dá
       comprimento 4.
-- [ ] **UI99** Ferramenta Laje, Retângulo de (0, 0) a (5, 4): laje de 20 m²; Polígono em
+- [x] **UI99** Ferramenta Laje, Retângulo de (0, 0) a (5, 4): laje de 20 m²; Polígono em
       L com 6 cliques e fechando no primeiro ponto: laje com 6 vértices; contorno que se
       cruza não fecha.
-- [ ] **UI100** Planta do Térreo: pilar cortado preenchido e por cima da parede (a parede
+- [x] **UI100** Planta do Térreo: pilar cortado preenchido e por cima da parede (a parede
       recortada); viga tracejada também com "Elementos acima do plano de corte"
       desligado; laje do Superior não aparece. Planta do Superior: a laje dele em
       contorno fino.
-- [ ] **UI101** Clique dentro do cômodo seleciona a laje; sobre a parede, a parede; sobre
+- [x] **UI101** Clique dentro do cômodo seleciona a laje; sobre a parede, a parede; sobre
       o pilar, o pilar. Seleção por janela que pega metade da laje não a inclui.
-- [ ] **UI102** Alças: arrastar a ponta da viga com `6` digitado deixa 6 m; arrastar um
+- [x] **UI102** Alças: arrastar a ponta da viga com `6` digitado deixa 6 m; arrastar um
       vértice da laje muda a área; arrastar o meio de um lado desloca o lado.
-- [ ] **UI103** Painel: mudar o deslocamento do topo da laje para −0,05 move a laje;
+- [x] **UI103** Painel: mudar o deslocamento do topo da laje para −0,05 move a laje;
       mudar o topo do pilar para altura fixa 3,00 muda a altura; mudar o ângulo da viga
       gira em torno do ponto inicial.
-- [ ] **UI104** Mover, Girar e Espelhar uma seleção com parede, pilar, viga e laje: uma
+- [x] **UI104** Mover, Girar e Espelhar uma seleção com parede, pilar, viga e laje: uma
       transação, um `*.edit` por elemento; desfazer volta tudo.
-- [ ] **UI105** Tipos: mudar "Pilar 20×40" para 25×50 refaz todos os pilares do tipo
+- [x] **UI105** Tipos: mudar "Pilar 20×40" para 25×50 refaz todos os pilares do tipo
       (mesmo `IfcRectangleProfileDef` com 0,25 × 0,50); tabela de camadas da laje de cima
       para baixo.
-- [ ] **UI106** 3D: os três aparecem com a cor do material; clique seleciona; laje com
+- [x] **UI106** 3D: os três aparecem com a cor do material; clique seleciona; laje com
       camadas mostra uma cor por camada.
-- [ ] **UI107** Mudar a cota do Superior para 3,00 refaz pilares e vigas ligados e a laje
+- [x] **UI107** Mudar a cota do Superior para 3,00 refaz pilares e vigas ligados e a laje
       do Superior.
-- [ ] **UI108** Projeto novo tem os tipos das três bibliotecas e os materiais novos.
-- [ ] **UI109** Os diários de UI96–UI107 reaplicados num projeto novo reproduzem o IFC.
+- [x] **UI108** Projeto novo tem os tipos das três bibliotecas e os materiais novos.
+- [x] **UI109** Os diários de UI96–UI107 reaplicados num projeto novo reproduzem o IFC.
 
 ## 12. Fontes públicas
 - **LAJE**, **PILAR**, **VIGA**: `spec/elementos/laje.md`, `pilar.md`, `viga.md` (em

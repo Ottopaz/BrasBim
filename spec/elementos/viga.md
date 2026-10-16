@@ -151,29 +151,29 @@ A convenção de mostrar as vigas tracejadas sob a laje é usual nas plantas de 
 | `GrossVolume` = `NetVolume` | b × h × comprimento (sem recortes no básico) |
 
 ## 9. Critérios de aceite (testes)
-- [ ] **VI01** Viga 14×40 de (0, 0) a (5, 0) no Térreo, topo no Superior (2,80), eixo:
+- [x] **VI01** Viga 14×40 de (0, 0) a (5, 0) no Térreo, topo no Superior (2,80), eixo:
       `IfcBeam` + `IfcBeamType` `BEAM`; `Axis` de comprimento 5; o corpo ocupa
       x ∈ [0; 5], y ∈ [−0,07; 0,07], z ∈ [2,40; 2,80].
-- [ ] **VI02** `IfcMaterialProfileSetUsage` com `CardinalPoint = 8`; o perfil do `Body`
+- [x] **VI02** `IfcMaterialProfileSetUsage` com `CardinalPoint = 8`; o perfil do `Body`
       é a mesma entidade do `IfcMaterialProfile` do tipo.
-- [ ] **VI03** Linha de referência face esquerda: `CardinalPoint = 7` e o corpo ocupa
+- [x] **VI03** Linha de referência face esquerda: `CardinalPoint = 7` e o corpo ocupa
       y ∈ [−0,14; 0] (a viga fica à direita da linha, que é sua face esquerda).
-- [ ] **VI04** Viga a 30° de (1, 1): corpo e `Axis` girados; comprimento mantido.
-- [ ] **VI05** Topo em cota fixa 2,60: z do topo = 2,60; mudar a cota do Superior não a
+- [x] **VI04** Viga a 30° de (1, 1): corpo e `Axis` girados; comprimento mantido.
+- [x] **VI05** Topo em cota fixa 2,60: z do topo = 2,60; mudar a cota do Superior não a
       altera.
-- [ ] **VI06** Mudar a cota do Superior para 3,00: a viga ligada sobe para 3,00.
-- [ ] **VI07** `Qto_BeamBaseQuantities` da VI01: `Length` 5, `CrossSectionArea` 0,056,
+- [x] **VI06** Mudar a cota do Superior para 3,00: a viga ligada sobe para 3,00.
+- [x] **VI07** `Qto_BeamBaseQuantities` da VI01: `Length` 5, `CrossSectionArea` 0,056,
       `OuterSurfaceArea` 5,4, `GrossVolume` 0,28.
-- [ ] **VI08** `Pset_BeamCommon` (`Reference`, `Status = NEW`, `LoadBearing = TRUE`);
+- [x] **VI08** `Pset_BeamCommon` (`Reference`, `Status = NEW`, `LoadBearing = TRUE`);
       `BrasBim_Viga` gravado; reabrir reproduz a viga.
-- [ ] **VI09** Nomes automáticos V1, V2…
-- [ ] **VI10** Planta do Térreo com o plano de corte a 1,50: a viga aparece com duas
+- [x] **VI09** Nomes automáticos V1, V2…
+- [x] **VI10** Planta do Térreo com o plano de corte a 1,50: a viga aparece com duas
       linhas tracejadas, também com "Elementos acima do plano de corte" desligado.
-- [ ] **VI11** Esticar a ponta, mover, girar e espelhar: `beam.edit`; desfazer/refazer
+- [x] **VI11** Esticar a ponta, mover, girar e espelhar: `beam.edit`; desfazer/refazer
       e o diário reproduzem o mesmo IFC; excluir e desfazer restaura os `GlobalId`s.
-- [ ] **VI12** IFC de outra origem (viga sem `BrasBim_Viga`): corpo preservado; mover
+- [x] **VI12** IFC de outra origem (viga sem `BrasBim_Viga`): corpo preservado; mover
       funciona.
-- [ ] **VI13** Arquivo passa na validação de esquema do IfcOpenShell.
+- [x] **VI13** Arquivo passa na validação de esquema do IfcOpenShell.
 
 ## 10. Fontes públicas
 Mesmo repositório, ramo e data de `laje.md` §10 (`S`, `M` e `P` idem).

@@ -152,30 +152,30 @@ paredes, para pôr o pilar no canto ou no meio de uma parede. Transação:
 | `GrossVolume` = `NetVolume` | área da seção × altura (sem recortes no básico) |
 
 ## 9. Critérios de aceite (testes)
-- [ ] **PI01** Pilar 20×40 em (2, 3) no Térreo (0,00), topo no Superior (2,80):
+- [x] **PI01** Pilar 20×40 em (2, 3) no Térreo (0,00), topo no Superior (2,80):
       `IfcColumn` + `IfcColumnType` `COLUMN`; `Axis` de z = 0 a 2,80; `Body`
       `IfcExtrudedAreaSolid` com profundidade 2,80; contido no Térreo.
-- [ ] **PI02** `IfcMaterialProfileSet` no tipo com `IfcRectangleProfileDef` 0,20 ×
+- [x] **PI02** `IfcMaterialProfileSet` no tipo com `IfcRectangleProfileDef` 0,20 ×
       0,40; `IfcMaterialProfileSetUsage` com `CardinalPoint = 5`; o perfil do `Body` é
       a mesma entidade do material.
-- [ ] **PI03** Ponto de inserção canto inferior esquerdo (`CardinalPoint = 1`): a seção
+- [x] **PI03** Ponto de inserção canto inferior esquerdo (`CardinalPoint = 1`): a seção
       ocupa x ∈ [2; 2,2], y ∈ [3; 3,4] (ângulo 0).
-- [ ] **PI04** Ângulo 90°: a seção ocupa x ∈ [1,8; 2,2], y ∈ [2,9; 3,1] (centro).
-- [ ] **PI05** Circular Ø 30: `IfcCircleProfileDef` com `Radius = 0,15`.
-- [ ] **PI06** Mudar a cota do Superior para 3,00: altura 3,00 e `Length = 3,00`.
-- [ ] **PI07** Topo abaixo da base: `column.create`/`.edit` recusado.
-- [ ] **PI08** `Qto_ColumnBaseQuantities` do 20×40 de 2,80: `CrossSectionArea` 0,08,
+- [x] **PI04** Ângulo 90°: a seção ocupa x ∈ [1,8; 2,2], y ∈ [2,9; 3,1] (centro).
+- [x] **PI05** Circular Ø 30: `IfcCircleProfileDef` com `Radius = 0,15`.
+- [x] **PI06** Mudar a cota do Superior para 3,00: altura 3,00 e `Length = 3,00`.
+- [x] **PI07** Topo abaixo da base: `column.create`/`.edit` recusado.
+- [x] **PI08** `Qto_ColumnBaseQuantities` do 20×40 de 2,80: `CrossSectionArea` 0,08,
       `OuterSurfaceArea` 3,36, `GrossVolume` 0,224.
-- [ ] **PI09** `Pset_ColumnCommon`: `Reference`, `Status = NEW`, `LoadBearing = TRUE`;
+- [x] **PI09** `Pset_ColumnCommon`: `Reference`, `Status = NEW`, `LoadBearing = TRUE`;
       `BrasBim_Pilar` gravado; reabrir reproduz o pilar.
-- [ ] **PI10** Nomes automáticos P1, P2; excluir P1 e criar outro dá P1 de novo.
-- [ ] **PI11** Planta: pilar sobre uma parede de 14 cm recorta a região da parede
+- [x] **PI10** Nomes automáticos P1, P2; excluir P1 e criar outro dá P1 de novo.
+- [x] **PI11** Planta: pilar sobre uma parede de 14 cm recorta a região da parede
       (a área da parede na planta diminui da interseção).
-- [ ] **PI12** Mover, girar, espelhar; desfazer/refazer e o diário reproduzem o mesmo
+- [x] **PI12** Mover, girar, espelhar; desfazer/refazer e o diário reproduzem o mesmo
       IFC; excluir e desfazer restaura os `GlobalId`s.
-- [ ] **PI13** IFC de outra origem (pilar sem `BrasBim_Pilar`): corpo preservado; mover
+- [x] **PI13** IFC de outra origem (pilar sem `BrasBim_Pilar`): corpo preservado; mover
       funciona.
-- [ ] **PI14** Arquivo passa na validação de esquema do IfcOpenShell.
+- [x] **PI14** Arquivo passa na validação de esquema do IfcOpenShell.
 
 ## 10. Fontes públicas
 Mesmo repositório, ramo e data de `laje.md` §10 (`S`, `M` e `P` idem).

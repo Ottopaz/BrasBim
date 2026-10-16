@@ -156,28 +156,28 @@ Convenção geral *(CG)*; conferência com a NBR 6492 pendente.
 | `Length`, `Depth` | só para contorno retangular: lado maior e lado menor |
 
 ## 9. Critérios de aceite (testes)
-- [ ] **LA01** Retângulo 5 × 4 m no Térreo, tipo "Laje maciça 10 cm": `IfcSlab` com
+- [x] **LA01** Retângulo 5 × 4 m no Térreo, tipo "Laje maciça 10 cm": `IfcSlab` com
       `IfcSlabType` `FLOOR`; `Body` `SweptSolid` com `IfcArbitraryClosedProfileDef`;
       topo em z = 0 e fundo em z = −0,10 (coordenadas do pavimento).
-- [ ] **LA02** `IfcMaterialLayerSetUsage` `AXIS3`, `POSITIVE`, deslocamento 0;
+- [x] **LA02** `IfcMaterialLayerSetUsage` `AXIS3`, `POSITIVE`, deslocamento 0;
       `TotalThickness` = `Depth` = 0,10.
-- [ ] **LA03** Polígono em L com 6 vértices desenhado em sentido horário: contorno
+- [x] **LA03** Polígono em L com 6 vértices desenhado em sentido horário: contorno
       gravado anti‑horário; área e perímetro corretos.
-- [ ] **LA04** Polígono com autointerseção ou área nula: `slab.create` recusado,
+- [x] **LA04** Polígono com autointerseção ou área nula: `slab.create` recusado,
       modelo intacto.
-- [ ] **LA05** Deslocamento do topo −0,05: topo em z = −0,05; `BrasBim_Laje`
+- [x] **LA05** Deslocamento do topo −0,05: topo em z = −0,05; `BrasBim_Laje`
       gravado; reabrir o arquivo reproduz a laje.
-- [ ] **LA06** Trocar para o tipo de 14,5 cm: topo mantido, fundo em −0,145; camadas na
+- [x] **LA06** Trocar para o tipo de 14,5 cm: topo mantido, fundo em −0,145; camadas na
       ordem contrapiso (em cima) … reboco (embaixo).
-- [ ] **LA07** `Qto_SlabBaseQuantities` do retângulo: `Width` 0,10, `Perimeter` 18,
+- [x] **LA07** `Qto_SlabBaseQuantities` do retângulo: `Width` 0,10, `Perimeter` 18,
       `GrossArea` 20, `GrossVolume` 2, `Length` 5, `Depth` 4.
-- [ ] **LA08** `Pset_SlabCommon`: `Reference`, `Status = NEW`, `LoadBearing = TRUE`.
-- [ ] **LA09** Mover, girar e espelhar: `slab.edit`; desfazer/refazer e reaplicar o
+- [x] **LA08** `Pset_SlabCommon`: `Reference`, `Status = NEW`, `LoadBearing = TRUE`.
+- [x] **LA09** Mover, girar e espelhar: `slab.edit`; desfazer/refazer e reaplicar o
       diário reproduzem o mesmo IFC.
-- [ ] **LA10** Excluir e desfazer: mesmos `GlobalId`s, sem entidades órfãs.
-- [ ] **LA11** IFC de outra origem (laje sem `BrasBim_Laje`, com `Body` próprio): corpo
+- [x] **LA10** Excluir e desfazer: mesmos `GlobalId`s, sem entidades órfãs.
+- [x] **LA11** IFC de outra origem (laje sem `BrasBim_Laje`, com `Body` próprio): corpo
       preservado; mover funciona.
-- [ ] **LA12** Arquivo passa na validação de esquema do IfcOpenShell.
+- [x] **LA12** Arquivo passa na validação de esquema do IfcOpenShell.
 
 ## 10. Fontes públicas
 IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em

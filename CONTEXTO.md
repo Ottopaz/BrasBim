@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑15 (pacote 3 concluído: janela e ponto de referência, spec/ui 09).*
+*Atualizado em 2026‑10‑16 (pacote 4 concluído: laje, pilar e viga, básico; spec/ui 10).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (282 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (348 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -26,7 +26,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
-| `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas, a implementar (pacote 4, básico; aceites LA01–12, PI01–14, VI01–13, UI96–UI109) |
+| `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
 ## O que já existe
 - Interface com barras móveis e ícones próprios, barra Opções por ferramenta, mini-barra
@@ -127,21 +127,65 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   `handles3d.FillingHandle3D` (bordas, peitoril, verga/altura).
 - Biblioteca J1–J6 em `ui/session.py`.
 
+## Pacote 4 — como ficou (spec/ui 10)
+- Núcleo em `core/structure/`: `profiles.py` (seções, `CardinalPoint`, `PLAN_CARDINAL`:
+  posição no quadradinho de 9 pontos vista de cima → número do IFC), `types.py` (tipos
+  de pilar/viga com `IfcMaterialProfileSet` e perfil compartilhado; tipo de laje com
+  camadas de cima para baixo no estado e de baixo para cima no IFC), `columns.py`,
+  `beams.py`, `slabs.py` (estado, leitura e gravação), `common.py` (tipo, pavimento, Pset
+  comum, topo, nomes P1/V1, elementos de outra origem), `rebuild.py` (corpo, eixo,
+  quantidades; viga reposicionada na cota do topo), `commands.py` (criar, editar, excluir,
+  alças, `storey_delete_ops`).
+- `assign_type` do IfcOpenShell cria sozinho o `IfcMaterial*Usage` da ocorrência: o
+  GlobalId da relação é sempre carimbado depois (`common.stamp_material`).
+- Contorno da laje: `slabs.clean` (anti-horário, sem repetidos/alinhados; recusa autointerseção
+  e área nula); lido de volta do perfil do corpo. Os comandos já mandam o contorno limpo
+  (senão o `before` do desfazer não confere).
+- Outra origem: `foreign` = representação (`fragment.dump`), `placement` = posicionamento;
+  mover/girar trocam só o `placement` (exige posicionamento relativo ao pavimento);
+  espelhar é recusado. Na planta, contorno convexo do corpo.
+- `core/transform.py`: as funções públicas separam pilar/viga/laje (`_structure`) das
+  paredes e esquadrias (`_*_walls`, as de antes) e juntam tudo numa transação. Espelhar:
+  pilar troca `CardinalPoint` de cima/baixo (`mirrored_cardinal`); viga troca face
+  esquerda/direita.
+- Planta (`core/plan.py`): `_structure` classifica pelo plano de corte do pavimento
+  (cotas a partir do pavimento); lajes antes das paredes, pilares e vigas depois;
+  `_carve` tira os pilares cortados das regiões e bordas das paredes; a viga leva as duas
+  faces (abertas) e uma faixa `beam` para a escolha; tracejado recortado no pilar.
+  `pick`: esquadria, pilar, viga, parede, laje; `in_rect`: laje só inteira.
+- Interface: `ColumnTool`, `BeamTool` (subclasse de `WallTool`: cada clique cria uma viga;
+  Esc/clique duplo encerra), `SlabTool` (polígono/retângulo; Esc tira o último vértice);
+  opções próprias por ferramenta (`options_class` em `ToolBox.reset`); barra de espaço vai
+  para a ferramenta (`tool.key("space")`) e, se ela não usar, continua deslocando a vista.
+  Alças da estrutura em `SelectTool` (`_Grip`, `_structure_handles`, `_structure_build`).
+  `toolbars.InsertionPicker` (9 pontos). Painel (`properties._column/_beam/_slab`,
+  `_structures`), `types_dialog` (`_PlanStyleDialog` com a representação na planta,
+  `ColumnTypesDialog`, `BeamTypesDialog`, `SlabTypesDialog`; representação "Padrão" =
+  sem Pset). 3D: `material_color` lê `IfcMaterialProfileSet`; `scene3d._slab_layers` corta
+  os triângulos da laje nas cotas das camadas.
+- Biblioteca em `ui/session.py`; materiais Contrapiso e Laje pré-moldada em
+  `materials.LIBRARY`.
+
 ## Próximos passos (nesta ordem)
 0. Revisão da aparência (spec/ui 11) usando o aplicativo; ajustes pelo retorno.
-1. Revisão das specs do pacote 4 (APROVADAS em 2026‑10‑15; pontos de revisão no fim de cada uma
-   e em spec/ui 10 §13). Diretriz do revisor (2026‑10‑15): primeiro o básico de todos os
-   elementos principais, depois refinar cada um pelo uso.
-2. Implementar o pacote 4 (núcleo em `core/structure/`, depois interface), commits por etapa.
-3. Retorno de uso do pacote 3 ainda não veio (nenhuma observação nova em `feedback/`).
+1. Revisor confirmar a correção do `CardinalPoint` do pilar (`pilar.md` §11 (e)).
+2. Retorno de uso dos pacotes 3 e 4 no aplicativo (laje, pilar, viga). Diretriz do revisor
+   (2026‑10‑15): primeiro o básico de todos os elementos principais, depois refinar cada
+   um pelo uso.
+3. Refinamento seguinte da estrutura (specs §11): aberturas na laje, laje pelo contorno
+   das paredes, recortes por prioridade no 3D e nos volumes, viga terminando na face do
+   pilar, etiquetas de pilar e viga, alças no 3D.
 
 ## Pendências
 - Specs 01 §5.5/§6, 03 §4.2 e 07 §2.2 ainda dizem "Tab troca as dobradiças"; a spec 09
   §2.2 mudou isso (atualizar o texto delas).
 - Peitoril fixado pelo balão não atualiza na hora o campo da barra Opções.
 - Excluir o estilo de um material deixa o `IfcSurfaceStyle` ainda usado pelas peças das
-  esquadrias (fica solto do material); estilo de corte do Vidro da biblioteca aparece
-  como "nenhum" ao ler de volta (conferir `_read_cut` para corte sólido).
+  esquadrias (fica solto do material).
+- Estrutura: painel com vários pilares/vigas/lajes só edita tipo (e topo da laje) e
+  propriedades comuns; alças da estrutura só na planta; laje "Por camadas" na planta usa a
+  representação do tipo, não as camadas; tipo de parede em uso continua sem pedir
+  substituto (o de pilar/viga/laje pede).
 - Ponto de referência fora de Mover/Copiar/Girar/Espelhar (spec 09, ponto (g)).
 - Janela em parede em arco, 4+ caixilhos e `TRIPLE_PANEL_*` laterais: V1.
 - Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
