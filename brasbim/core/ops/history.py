@@ -103,6 +103,17 @@ class History:
         self.journal.append(tx)
         self._notify("commit", tx, changed)
 
+    def squash(self, count: int, label: str) -> Transaction | None:
+        """Junta as ``count`` últimas transações da pilha num passo só de desfazer (o
+        pedido inteiro do assistente). O diário continua com cada uma."""
+        if count < 2 or count > len(self.undo_stack):
+            return None
+        txs = self.undo_stack[-count:]
+        del self.undo_stack[-count:]
+        tx = Transaction(label, [op for t in txs for op in t.ops])
+        self.undo_stack.append(tx)
+        return tx
+
     def undo(self) -> Transaction | None:
         if not self.undo_stack:
             return None

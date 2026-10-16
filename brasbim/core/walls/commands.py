@@ -58,6 +58,13 @@ def _create_walls(doc: Document, label: str, wall_type, storey, paths, options) 
     return Transaction(label, ops + connections.sync_ops(doc, new))
 
 
+def create_walls(doc: Document, wall_type, storey, segments, **options) -> Transaction:
+    """Paredes retas soltas, ``[(início, fim), ...]``, numa transação, com as junções
+    entre elas e com as que já existem (assistente, spec/ui 16 §4)."""
+    paths = [geom2d.LinePath(tuple(a), tuple(b)) for a, b in segments]
+    return _create_walls(doc, "Criar paredes", wall_type, storey, paths, options)
+
+
 def create_wall(doc: Document, wall_type, storey, start, end, **options) -> Transaction:
     """Parede reta de ``start`` a ``end`` (coordenadas do pavimento, em metros)."""
     path = geom2d.LinePath(tuple(start), tuple(end))

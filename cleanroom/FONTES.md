@@ -5,6 +5,7 @@
 **Padrões abertos (base principal)**
 - IFC 4.3 / ISO 16739‑1: buildingSMART (ifc43‑docs.standards.buildingsmart.org)
 - BCF 3.0, IDS 1.0, bSDD: buildingSMART
+- Model Context Protocol (modelcontextprotocol.io) e JSON-RPC 2.0, para o assistente (spec/ui 16)
 - Normas ABNT pertinentes (NBR 6492 representação de projetos de arquitetura, NBR 15575, NBR 9050…), conforme acesso legítimo
 
 **Documentação pública de produtos**
