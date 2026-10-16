@@ -28,6 +28,8 @@ ACTIONS = {
     "swap": ("swap", "Trocar a contínua", "no cruzamento, a outra parede fica inteira"),
     "flip_opening": ("flip_opening", "Inverter sentido", "a folha passa a abrir para o outro lado"),
     "flip_hinges": ("flip_hinges", "Inverter dobradiças", "troca o lado das dobradiças"),
+    "slab_opening": ("slab_opening", "Abertura",
+                     "desenhe uma abertura (escada, shaft) dentro da laje selecionada"),
     "delete": ("delete", "Excluir", "exclui a seleção (Delete)"),
 }
 

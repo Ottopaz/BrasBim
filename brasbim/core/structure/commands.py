@@ -25,7 +25,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.base import same_value
 from brasbim.core.ops.history import combine
-from brasbim.core.structure import beams, columns, common, profiles, slabs
+from brasbim.core.structure import beams, columns, common, profiles, slab_openings, slabs
 from brasbim.core.structure import types as st_types
 
 gid = common.gid
@@ -336,14 +336,73 @@ def edit_elements(doc: Document, elements, **changes) -> Transaction:
 
 
 def delete_ops(doc: Document, element) -> list[Op]:
+    """Exclusão; a laje leva antes as aberturas dela (spec/ui 12 §3.2)."""
+    entity = doc.get(gid(element))
+    if slab_openings.is_slab_opening(entity):
+        return [Op("slab_opening.delete", entity.GlobalId,
+                   data=slab_openings.read_state(entity))]
     element = _element(doc, element)
     module, prefix, _, _ = ELEMENTS[element.is_a()]
-    return [Op(f"{prefix}.delete", element.GlobalId, data=module.read_state(doc, element))]
+    ops = []
+    if element.is_a("IfcSlab"):
+        ops = [op for o in slab_openings.of_slab(element) for op in delete_ops(doc, o)]
+    return ops + [Op(f"{prefix}.delete", element.GlobalId,
+                     data=module.read_state(doc, element))]
 
 
 def delete_element(doc: Document, element) -> Transaction:
+    entity = doc.get(gid(element))
+    if slab_openings.is_slab_opening(entity):
+        return Transaction("Excluir abertura na laje", delete_ops(doc, entity))
     element = _element(doc, element)
     return Transaction(f"Excluir {ELEMENTS[element.is_a()][2]}", delete_ops(doc, element))
+
+
+# --- aberturas na laje (spec/ui 12 §3) ---------------------------------------------------
+
+
+def create_slab_opening(doc: Document, slab, outline) -> Transaction:
+    """Abertura na laje pelo contorno (coordenadas do pavimento)."""
+    slab = _element(doc, slab, "IfcSlab")
+    state = {"slab": slab.GlobalId, "outline": outline}
+    state["outline"] = slab_openings.check(doc, state)
+    return Transaction("Criar abertura na laje",
+                       [Op("slab_opening.create", guid.new(), data=state)])
+
+
+def create_slab_opening_rectangle(doc: Document, slab, corner, opposite) -> Transaction:
+    (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
+    return create_slab_opening(doc, slab, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
+
+
+def edit_slab_opening(doc: Document, opening, outline) -> Transaction:
+    opening = doc.get(gid(opening), "IfcOpeningElement")
+    state = slab_openings.read_state(opening)
+    new = slab_openings.check(doc, {**state, "outline": outline})
+    if new == state["outline"]:
+        return Transaction("Editar abertura na laje", [])
+    return Transaction("Editar abertura na laje", [
+        Op("slab_opening.edit", opening.GlobalId, before={"outline": state["outline"]},
+           after={"outline": new})])
+
+
+def outline_of(doc: Document, element) -> list:
+    """Contorno de laje ou de abertura na laje."""
+    entity = doc.get(gid(element))
+    if slab_openings.is_slab_opening(entity):
+        return slab_openings.read_state(entity)["outline"]
+    return slabs.read_state(doc, _element(doc, entity, "IfcSlab"))["outline"]
+
+
+def edit_outline(doc: Document, element, outline) -> Transaction:
+    entity = doc.get(gid(element))
+    if slab_openings.is_slab_opening(entity):
+        return edit_slab_opening(doc, entity, outline)
+    outline = slabs.clean(outline)
+    for opening in slab_openings.of_slab(entity):  # spec/ui 12 §3.2
+        if not slab_openings.inside(slab_openings.read_state(opening)["outline"], outline):
+            raise OpError("uma abertura ficaria fora da laje")
+    return edit_element(doc, entity, outline=outline)
 
 
 # --- alças (spec/ui 10 §4.1) -------------------------------------------------------------
@@ -359,20 +418,19 @@ def move_beam_end(doc: Document, beam, end: str, point) -> Transaction:
 
 
 def move_slab_vertex(doc: Document, slab, index: int, point) -> Transaction:
-    slab = _element(doc, slab, "IfcSlab")
-    outline = copy.deepcopy(slabs.read_state(doc, slab)["outline"])
+    """Alça de vértice da laje ou da abertura na laje."""
+    outline = copy.deepcopy(outline_of(doc, slab))
     outline[index] = [float(point[0]), float(point[1])]
-    tx = edit_element(doc, slab, outline=outline)
-    tx.label = "Mover vértice da laje"
+    tx = edit_outline(doc, slab, outline)
+    tx.label = "Mover vértice"
     return tx
 
 
 def offset_slab_edge(doc: Document, slab, index: int, distance: float) -> Transaction:
     """Desloca o lado ``index`` (do vértice ``index`` ao seguinte) paralelamente,
     ``distance`` para fora da laje (negativo: para dentro). Os lados vizinhos esticam
-    ou encurtam pela própria direção."""
-    slab = _element(doc, slab, "IfcSlab")
-    pts = [tuple(p) for p in slabs.read_state(doc, slab)["outline"]]
+    ou encurtam pela própria direção. Vale também para a abertura na laje."""
+    pts = [tuple(p) for p in outline_of(doc, slab)]
     n = len(pts)
     a, b = pts[index], pts[(index + 1) % n]
     length = math.dist(a, b)
@@ -395,8 +453,8 @@ def offset_slab_edge(doc: Document, slab, index: int, distance: float) -> Transa
     new = list(pts)
     new[index] = meet(prev, a, na, d) or na
     new[(index + 1) % n] = meet(nxt, b, nb, d) or nb
-    tx = edit_element(doc, slab, outline=new)
-    tx.label = "Deslocar lado da laje"
+    tx = edit_outline(doc, slab, new)
+    tx.label = "Deslocar lado"
     return tx
 
 

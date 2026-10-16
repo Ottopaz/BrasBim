@@ -22,7 +22,7 @@ import ifcopenshell.util.element
 from brasbim.core import props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
-from brasbim.core.structure import beams, columns, cuts, profiles, slabs
+from brasbim.core.structure import beams, columns, cuts, profiles, slab_openings, slabs
 from brasbim.core.structure import types as st_types
 
 _CLASSES = {"IfcColumn": columns, "IfcBeam": beams, "IfcSlab": slabs}
@@ -124,9 +124,11 @@ def rebuild_slab(doc: Document, slab) -> None:
         body = cuts.clipped(doc.ifc, body, frame, found, own)
     slabs.set_body(doc, slab, outline, t, body)
     cuts.sync_relations(doc, slab, found)
+    slab_openings.refresh(doc, slab, outline[0], t)
+    holes = [slab_openings.read_state(o)["outline"] for o in slab_openings.of_slab(slab)]
     a, p = slabs.area(outline), slabs.perimeter(outline)
-    removed = cuts.removed_volume(own, found) if own is not None else 0.0
-    area_out = cuts.removed_area(own, found) if own is not None else 0.0
+    removed = cuts.removed_volume(own, found, holes=holes) if own is not None else 0.0
+    area_out = cuts.removed_area(own, found, holes) if own is not None else 0.0
     quantities = {"Width": t, "Perimeter": p, "GrossArea": a, "NetArea": a - area_out,
                   "GrossVolume": a * t, "NetVolume": a * t - removed}
     sides = slabs.rectangle_sides(outline)

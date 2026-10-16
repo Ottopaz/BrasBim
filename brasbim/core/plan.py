@@ -19,7 +19,9 @@ vem das regiões; na viga, também a faixa usada para escolher), ``slab_view``,
 ``column_view`` e ``beam_view`` (abaixo do plano, linha fina) e ``slab_above``,
 ``column_above`` e ``beam_above`` (acima, tracejados). A viga acima do plano aparece
 sempre (viga.md §7), pelas duas faces. Os pilares cortados recortam as regiões e as
-bordas das paredes.
+bordas das paredes. A laje mostra como furos os pilares que a atravessam e as aberturas;
+cada abertura tem ``slab_opening`` (contorno, para escolher) e ``slab_opening_x`` (as
+diagonais do X; spec/ui 12 §3.5).
 
 Regiões (``Region``) e bordas (``Edge``) desenham as paredes cortadas: no detalhe
 simplificado, uma mancha por tipo (paredes do mesmo tipo unidas, sem linha na junção);
@@ -43,7 +45,7 @@ from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, geometry, params, window_types
 from brasbim.core.geom2d import Point
-from brasbim.core.structure import beams, columns, slabs
+from brasbim.core.structure import beams, columns, cuts, slab_openings, slabs
 from brasbim.core.structure import types as st_types
 from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import types as wall_types
@@ -126,7 +128,7 @@ class Plan:
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
         for roles in (_COLUMN_ROLES, _BEAM_ROLES, ("wall",), ("wall_view", "wall_above"),
-                      _SLAB_ROLES):
+                      _OPENING_ROLES, _SLAB_ROLES):
             found = [s for s in self.shapes if s.role in roles]
             for s in found:
                 if s.closed and _inside(s.points, p):
@@ -155,8 +157,9 @@ class Plan:
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes:
                 continue
-            # A laje só entra inteira, mesmo no cruzamento (spec/ui 10 §4.1).
-            if not crossing or shapes[0].role in _SLAB_ROLES:
+            # A laje (e a abertura nela) só entra inteira, mesmo no cruzamento (spec/ui 10
+            # §4.1).
+            if not crossing or shapes[0].role.startswith("slab"):
                 if all(inside(q) for s in shapes for q in s.points):
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
@@ -167,6 +170,7 @@ class Plan:
 _COLUMN_ROLES = ("column", "column_view", "column_above")
 _BEAM_ROLES = ("beam", "beam_view", "beam_above")
 _SLAB_ROLES = ("slab", "slab_view", "slab_above")
+_OPENING_ROLES = ("slab_opening",)
 
 
 def _segments(points, closed: bool):
@@ -717,7 +721,12 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
         ring = [tuple(p) for p in state["outline"]]
         z1 = state["top_offset"]
         style = wall_types.read_plan_style(element_type)
-        return _Element(element, kind, ring, [ring], (z1 - slabs.thickness(doc, state), z1),
+        holes = [list(c.cutter.ring) for c in cuts.cuts_of(doc, element)
+                 if c.mode == "through"]
+        holes += [list(map(tuple, slab_openings.read_state(o)["outline"]))
+                  for o in slab_openings.of_slab(element)]
+        lines = clip.difference([list(ring)], holes) if holes else [ring]
+        return _Element(element, kind, ring, lines, (z1 - slabs.thickness(doc, state), z1),
                         _slab_fill(element_type),
                         style["line_weight"] if style else SLAB_WEIGHT)
     except (OpError, ValueError, KeyError, TypeError) as e:
@@ -752,6 +761,8 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
         shapes += [Shape(gid, role, tuple(line), closed) for line in e.lines]
         if e.kind == "beam":  # escolha e seleção pela faixa inteira
             shapes.append(Shape(gid, "beam", tuple(e.ring), True))
+        if e.kind == "slab":
+            shapes += _opening_shapes(e.element)
     if cut_columns:  # o tracejado da viga não entra no pilar cortado (spec/ui 10 §6.2)
         outside = clip.difference([_slab(-_FAR, _FAR)], cut_columns)
         trimmed = []
@@ -765,12 +776,26 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
     return found, shapes, cut_columns
 
 
+def _opening_shapes(slab) -> list[Shape]:
+    """Contorno e X de cada abertura da laje (spec/ui 12 §3.5)."""
+    out = []
+    for opening in slab_openings.of_slab(slab):
+        ring = [tuple(p) for p in slab_openings.read_state(opening)["outline"]]
+        out.append(Shape(opening.GlobalId, "slab_opening", tuple(ring), True))
+        xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+        diagonals = [[(min(xs), min(ys)), (max(xs), max(ys))],
+                     [(min(xs), max(ys)), (max(xs), min(ys))]]
+        out += [Shape(opening.GlobalId, "slab_opening_x", tuple(q), False)
+                for q in clip.clip_lines(diagonals, [list(ring)])]
+    return out
+
+
 def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> None:
     for e in found:
         if e.kind not in kinds:
             continue
         z0, z1 = e.z
-        ring = [list(e.ring)]
+        ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         if z0 < cut < z1:
             plan.regions.append(Region(e.element.GlobalId, ring, e.fill))
             plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR))
@@ -811,7 +836,7 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     cut = storeys.cut_height(storey)
     found, structure, cut_columns = _structure(doc, storey, cut, show_above)
     # Lajes sob as paredes; pilares e vigas por cima (spec/ui 10 §6.1).
-    plan.shapes += [s for s in structure if s.role in _SLAB_ROLES]
+    plan.shapes += [s for s in structure if s.role.startswith("slab")]
     _structure_regions(plan, found, cut, ("slab",))
     cuts = [c for c in (_cut_wall(doc, wall, cut, show_above)
                         for wall in _continuous_last(_contained(storey, "IfcWall")))
@@ -821,7 +846,7 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     first_region, first_edge = len(plan.regions), len(plan.edges)
     _regions(doc, plan, cuts, detail)
     _carve(plan, first_region, first_edge, cut_columns)
-    plan.shapes += [s for s in structure if s.role not in _SLAB_ROLES]
+    plan.shapes += [s for s in structure if not s.role.startswith("slab")]
     _structure_regions(plan, found, cut, ("column", "beam"))
     crossed = {o for c in cuts for o in c.crossed}
     fillings = sorted(_contained(storey, "IfcDoor") + _contained(storey, "IfcWindow"),

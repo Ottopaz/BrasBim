@@ -63,6 +63,7 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `beam.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `start`, `end`, `ref_line`, `top_mode`, `top_storey`, `top_offset`, `top_elevation`, `common`, `foreign`, `placement` | viga §5.2 |
 | `slab_type.create` / `.delete` / `.edit` | `name`, `predefined_type` (`FLOOR` \| `BASESLAB`), `layers[]` (`material`, `thickness`; de cima para baixo), `plan_style` | laje §5.2 |
 | `slab.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `outline[]`, `top_offset`, `common`, `foreign`, `placement` | laje §5.2 |
+| `slab_opening.create` / `.delete` / `.edit` | `slab`, `outline[]` (coordenadas do pavimento, anti-horário; Pset `BrasBim_AberturaLaje`) | spec/ui 12 §3.2; mover, girar, espelhar e copiar a laje geram um `slab_opening.*` por abertura; excluir a laje exclui antes as aberturas |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`

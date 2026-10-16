@@ -42,6 +42,10 @@ ICONS = {
     # laje: placa em perspectiva, com a espessura
     "slab": '<path d="M2.75 12.25 L9 7.25 H21.25 L15 12.25 Z"/>'
             '<path d="M2.75 12.25 V15.75 H15 L21.25 10.75 V7.25 M15 12.25 V15.75"/>',
+    # abertura na laje: placa com um vazio marcado com X (spec/ui 12 §3.3)
+    "slab_opening": '<path d="M2.75 14.25 L9 8.25 H21.25 L15 14.25 Z"/>'
+                    '<path d="M8.75 12.25 L11 10.25 H15.25 L13 12.25 Z" stroke-width="1"/>'
+                    '<path d="M8.75 12.25 L15.25 10.25 M11 10.25 L13 12.25" stroke-width="1"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

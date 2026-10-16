@@ -19,7 +19,7 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
-from brasbim.core.structure import beams, columns, profiles, slabs
+from brasbim.core.structure import beams, columns, profiles, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.structure import types as st_types
@@ -407,6 +407,9 @@ def _structure_marks(doc, tx, style="preview") -> list[Mark]:
     marks = []
     for op in tx.ops:
         prefix, _, kind = op.op.partition(".")
+        if op.op == "slab_opening.edit":
+            marks.append(Mark(tuple(tuple(q) for q in op.after["outline"]), True, style))
+            continue
         if kind != "edit" or prefix not in ("column", "beam", "slab"):
             continue
         element = doc.find(op.id)
@@ -429,6 +432,10 @@ def moving_shapes(ctx: PlanContext, gids) -> list[plan.Shape]:
     """Desenho da seleção na planta, com as portas das paredes selecionadas."""
     selected = set(gids)
     doc = ctx.session.doc
+    for gid in list(selected):
+        slab = doc.find(gid)
+        if slab is not None and slab.is_a("IfcSlab"):
+            selected |= {o.GlobalId for o in slab_openings.of_slab(slab)}
     out = [s for s in ctx.plan.shapes if s.owner in selected and s.role != "below"]
     for owner, shapes in sorted(ctx.plan.owners(("door", "window")).items()):
         if owner in selected:
@@ -458,6 +465,8 @@ def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
     """Alças na planta (spec/ui 10 §4.1): ponto de inserção do pilar, pontas e meio da
     viga, vértices e meio dos lados da laje. Elementos de outra origem não têm alças."""
     element = doc.find(gid)
+    if slab_openings.is_slab_opening(element):
+        return _outline_handles(slab_openings.read_state(element)["outline"])
     if element is None or not sc.is_structure(element):
         return []
     state = sc.read_state(doc, element)
@@ -469,7 +478,12 @@ def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
         (x0, y0), (x1, y1) = state["start"], state["end"]
         return [("beam_start", (x0, y0)), ("beam_end", (x1, y1)),
                 ("beam_mid", ((x0 + x1) / 2, (y0 + y1) / 2))]
-    pts = [tuple(q) for q in state["outline"]]
+    return _outline_handles(state["outline"])
+
+
+def _outline_handles(outline) -> list[tuple[str, Point]]:
+    """Vértices e meio dos lados (laje e abertura na laje)."""
+    pts = [tuple(q) for q in outline]
     n = len(pts)
     return ([(f"slab_v{i}", q) for i, q in enumerate(pts)]
             + [(f"slab_e{i}", ((pts[i][0] + pts[(i + 1) % n][0]) / 2,
@@ -624,9 +638,9 @@ class SelectTool(Tool):
         """Alça de pilar, viga ou laje (spec/ui 10 §4.1)."""
         d = self.drag
         gid, which, doc = d["wall"].gid, d["which"], self.session.doc
-        state = sc.read_state(doc, doc.get(gid))
         extra = self.ctx.column_points
         if which in ("beam_start", "beam_end"):
+            state = sc.read_state(doc, doc.get(gid))
             fixed = tuple(state["end" if which == "beam_start" else "start"])
             self.snapped = self.ctx.snap(p, mods, fixed, extra=extra)
             q = self.snapped.point
@@ -635,7 +649,7 @@ class SelectTool(Tool):
         if which.startswith("slab_e"):
             index = int(which[6:])
             self.snapped = self.ctx.snap(p, Mods(alt=mods.alt))
-            offset = _edge_offset(state["outline"], index, self.snapped.point)
+            offset = _edge_offset(sc.outline_of(doc, gid), index, self.snapped.point)
             return (lambda: sc.offset_slab_edge(doc, gid, index, offset), self.snapped.point,
                     f"{fmt(abs(offset))} m")
         self.snapped = self.ctx.snap(p, mods, extra=extra)
@@ -757,8 +771,8 @@ class SelectTool(Tool):
         lado da laje."""
         d = self.drag
         gid, which, doc = d["wall"].gid, d["which"], self.session.doc
-        state = sc.read_state(doc, doc.get(gid))
         if which in ("beam_start", "beam_end"):
+            state = sc.read_state(doc, doc.get(gid))
             fixed = state["end" if which == "beam_start" else "start"]
             moving = state["start" if which == "beam_start" else "end"]
             target = cursor if cursor and math.dist(cursor, fixed) > 1e-9 else moving
@@ -768,7 +782,7 @@ class SelectTool(Tool):
             build = lambda: sc.move_beam_end(doc, gid, which[5:], q)
         elif which.startswith("slab_e"):
             index = int(which[6:])
-            side = (-1.0 if cursor and _edge_offset(state["outline"], index, cursor) < 0
+            side = (-1.0 if cursor and _edge_offset(sc.outline_of(doc, gid), index, cursor) < 0
                     else 1.0)
             build = lambda: sc.offset_slab_edge(doc, gid, index, side * value)
         else:
@@ -1635,6 +1649,71 @@ class SlabTool(_WallTool):
         return marks
 
 
+class _OpeningOptions:
+    """Opções da ferramenta Abertura na laje (spec/ui 12 §3.3)."""
+
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.mode = "rectangle"
+        self.type = None
+
+
+class SlabOpeningTool(SlabTool):
+    """Abertura na laje selecionada (spec/ui 12 §3.3): polígono ou retângulo, inteiro
+    dentro da laje. Chamada pela mini-barra; volta a Selecionar depois de criar."""
+
+    name, label = "slab_opening", "Abertura na laje"
+    options_class = _OpeningOptions
+
+    def __init__(self, ctx, options=None):
+        super().__init__(ctx, options)
+        self.slab: str | None = None
+
+    def hint(self):
+        if self.slab is None:
+            return "Selecione uma laje e use Abertura na mini-barra"
+        if self.options.mode == "rectangle":
+            return ("Clique o primeiro canto da abertura, dentro da laje" if not self.points
+                    else "Clique o canto oposto; Tab digita largura e altura")
+        return ("Clique os vértices da abertura, dentro da laje; feche no primeiro ponto, "
+                "com clique duplo ou Enter")
+
+    def _fits(self, points) -> bool:
+        doc = self.session.doc
+        slab = doc.find(self.slab) if self.slab else None
+        if slab is None or len(points) < 3:
+            return False
+        try:
+            outline = slabs.read_state(doc, slab)["outline"]
+            return slab_openings.inside(slabs.clean(points), outline)
+        except OpError:
+            return False
+
+    def _problem(self, points):
+        found = super()._problem(points)
+        if found is None and not self._fits(points):
+            return "a abertura precisa ficar inteira dentro da laje"
+        return found
+
+    def _create(self, points) -> None:
+        doc, slab = self.session.doc, self.slab
+        if slab is None:
+            self.session.message("selecione a laje antes", "recusa")
+        elif self.session.run(lambda: sc.create_slab_opening(doc, slab, points)):
+            self.finished = True
+        self.points = []
+
+    def shape_preview(self):
+        marks = super().shape_preview()
+        if not marks or not self.snapped:
+            return marks
+        first = marks[0]
+        if first.closed and len(first.points) >= 3 and not self._fits(list(first.points)):
+            marks[0] = Mark(first.points, True, "invalid")
+        return marks
+
+
 # --- porta e janela (spec/ui 01 §5.5; spec/ui 09 §2) ------------------------------------
 
 
@@ -2338,10 +2417,11 @@ class MirrorTool(_SelectionTool):
 
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
-         BeamTool, SlabTool, SplitTool, MoveTool, CopyTool, RotateTool, MirrorTool)
+         BeamTool, SlabTool, SlabOpeningTool, SplitTool, MoveTool, CopyTool, RotateTool,
+         MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
-SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split")
+SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening")
 
 
 # --- mini-barra da seleção (spec/ui 03 §5) -------------------------------------------------
@@ -2359,6 +2439,9 @@ def selection_actions(doc, gids) -> list[str]:
     out = ["move", "copy"]
     if walls or structure:
         out += ["rotate", "mirror"]
+    if (len(elements) == 1 and elements[0].is_a("IfcSlab")
+            and sc.read_state(doc, elements[0])["foreign"] is None):
+        out.append("slab_opening")
     if len(elements) == 1 and walls:
         out.append("split")
     if len(walls) == 2 and len(elements) == 2:

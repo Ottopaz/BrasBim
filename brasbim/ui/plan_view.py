@@ -211,7 +211,8 @@ class PlanView(QWidget, ToolInput):
         rest = []
         for shape in plan.shapes:
             role = shape.role
-            if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above"):
+            if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above",
+                            "slab_opening", "slab_opening_x"):
                 rest.append(shape)
                 continue
             selected = shape.owner in selection

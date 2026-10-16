@@ -284,13 +284,14 @@ def clipped(ifc, solid, frame: Frame, cuts: list[Cut], own: Piece):
     return solid
 
 
-def removed_volume(own: Piece, cuts: list[Cut], ring=None) -> float:
+def removed_volume(own: Piece, cuts: list[Cut], ring=None, holes=()) -> float:
     """Volume retirado (união das partes, sem contar duas vezes a parte comum a dois
-    recortes): fatias horizontais entre as cotas de todos os recortes."""
-    if not cuts:
+    recortes): fatias horizontais entre as cotas de todos os recortes. ``holes``: contornos
+    que atravessam o elemento inteiro (aberturas da laje, spec/ui 12 §3.4)."""
+    if not cuts and not holes:
         return 0.0
     base = [list(ring or own.ring)]
-    spans = []
+    spans = [(own.z0, own.z1, list(h)) for h in holes]
     for cut in cuts:
         c = cut.cutter
         lo, hi = {"through": (own.z0, own.z1), "top": (c.z0, own.z1),
@@ -308,9 +309,11 @@ def removed_volume(own: Piece, cuts: list[Cut], ring=None) -> float:
     return total
 
 
-def removed_area(own: Piece, cuts: list[Cut]) -> float:
-    """Área em planta dos recortes que atravessam o elemento (laje: ``NetArea``)."""
-    through = [list(c.cutter.ring) for c in cuts if c.mode == "through"]
+def removed_area(own: Piece, cuts: list[Cut], holes=()) -> float:
+    """Área em planta dos recortes que atravessam o elemento e das aberturas (laje:
+    ``NetArea``)."""
+    through = [list(c.cutter.ring) for c in cuts if c.mode == "through"] + [
+        list(h) for h in holes]
     if not through:
         return 0.0
     return clip.area(clip.intersection([list(own.ring)], clip.union(through)))

@@ -439,3 +439,31 @@ def test_dimensoes_na_hora_ferramenta_e_painel(window):
     field.editingFinished.emit()
     assert ue.get_type(first).Name == "Pilar 30×70"
     assert ue.get_type(third).Name == "Pilar 30×40"
+
+
+def test_al05_abertura_pela_mini_barra(window):
+    """spec/ui 12 §3.3: Abertura na mini-barra da laje, modo Retângulo, dois cliques."""
+    from brasbim.ui.tools import selection_actions
+
+    s = window.session
+    slab = _slab(window)
+    window.activate_tool("select")
+    s.select([slab.GlobalId])
+    assert "slab_opening" in selection_actions(s.doc, s.selection)
+    window.run_selection_action("slab_opening")
+    tool = window.toolbox.active
+    assert tool.name == "slab_opening" and tool.slab == slab.GlobalId
+    _click(window, (4, 3))
+    _move(window, (6, 5))  # sai da laje: vermelho
+    assert tool.shape_preview()[0].style == "invalid"
+    _click(window, (6, 5))
+    assert not s.doc.ifc.by_type("IfcOpeningElement")
+    QTest.keyClick(window.plan, Qt.Key_Escape)
+    window.run_selection_action("slab_opening")
+    _click(window, (1, 1))
+    _click(window, (2, 3))
+    (opening,) = s.doc.ifc.by_type("IfcOpeningElement")
+    assert window.toolbox.active.name == "select"
+    s.select([opening.GlobalId])
+    window.properties._rebuild()
+    assert window.properties.groups[0].title == "Abertura na laje"

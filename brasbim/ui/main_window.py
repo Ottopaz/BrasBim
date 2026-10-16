@@ -30,6 +30,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import doors
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import commands as sc
+from brasbim.core.structure import slab_openings
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui import feedback, theme
@@ -97,8 +98,11 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
                 seen.add((op.op, op.id))
                 ops.append(op)
     for element in entities:
-        if sc.is_structure(element):
-            ops += sc.delete_ops(doc, element)
+        if sc.is_structure(element) or slab_openings.is_slab_opening(element):
+            for op in sc.delete_ops(doc, element):
+                if (op.op, op.id) not in seen:  # a laje já leva as aberturas dela
+                    seen.add((op.op, op.id))
+                    ops.append(op)
     label = "Excluir"
     if len(entities) == 1 and door_list:
         label = f"Excluir {fc.kind(door_list[0]).noun}"
@@ -489,6 +493,11 @@ class MainWindow(QMainWindow):
             self.activate_tool("split")
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
             self.hint.setText(tool.hint())
+            return
+        if key == "slab_opening":
+            tool = self.toolbox.tools["slab_opening"]
+            tool.slab = next(iter(session.selection), None)
+            self.activate_tool("slab_opening")
             return
         if not session.selection:
             session.message("selecione os elementos antes", "recusa")

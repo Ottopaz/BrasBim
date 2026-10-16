@@ -42,7 +42,7 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
-from brasbim.core.structure import beams, columns, profiles, slabs
+from brasbim.core.structure import beams, columns, profiles, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
@@ -220,6 +220,8 @@ class PropertiesPanel(QScrollArea):
         elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
                                       or selection[0].is_a("IfcWindow")):
             self._door(selection[0])
+        elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
+            self._slab_opening(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
             {"IfcColumn": self._column, "IfcBeam": self._beam,
              "IfcSlab": self._slab}[selection[0].is_a()](selection[0])
@@ -914,6 +916,18 @@ class PropertiesPanel(QScrollArea):
         self._read("Perímetro", f"{fmt(q.get('Perimeter', 0))} m")
         self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
         self._structure_tail(slab, state)
+
+    def _slab_opening(self, opening) -> None:
+        """Abertura na laje (spec/ui 12 §3.3)."""
+        outline = slab_openings.read_state(opening)["outline"]
+        slab = slab_openings.host(opening)
+        self._title("Abertura na laje")
+        self._read("Área", f"{fmt(slabs.area(outline))} m²")
+        self._read("Perímetro", f"{fmt(slabs.perimeter(outline))} m")
+        slab_type = ifcopenshell.util.element.get_type(slab) if slab is not None else None
+        self._read("Laje", slab_type.Name if slab_type is not None else "—")
+        self._section("Identificação")
+        self._read("GlobalId", opening.GlobalId)
 
     def _structures(self, elements) -> None:
         """Vários pilares, várias vigas ou várias lajes (spec/ui 10 §4.3)."""

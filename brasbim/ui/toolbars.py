@@ -18,6 +18,7 @@ from brasbim.ui import icons, theme
 from brasbim.ui.tools import (
     BeamTool,
     ColumnTool,
+    SlabOpeningTool,
     SlabTool,
     WindowTool,
     _FillingTool,
@@ -202,6 +203,9 @@ class OptionsBar(QToolBar):
         self._clear()
         if isinstance(tool, BeamTool):
             self._beam(tool)
+        elif isinstance(tool, SlabOpeningTool):
+            self._choices(SLAB_MODES, tool.options.mode,
+                          lambda v: setattr(tool.options, "mode", v))
         elif isinstance(tool, SlabTool):
             self._slab(tool)
         elif isinstance(tool, _WallTool):

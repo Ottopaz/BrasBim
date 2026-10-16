@@ -70,6 +70,7 @@ HANDLER_MODULES = (
     "brasbim.core.structure.columns",
     "brasbim.core.structure.beams",
     "brasbim.core.structure.slabs",
+    "brasbim.core.structure.slab_openings",
     "brasbim.core.structure.rebuild",
 )
 _loaded = False

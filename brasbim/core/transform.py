@@ -21,7 +21,7 @@ from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
 from brasbim.core.structure import commands as structure_cmd
 from brasbim.core.structure import common as structure_common
-from brasbim.core.structure import profiles, slabs
+from brasbim.core.structure import profiles, slab_openings, slabs
 from brasbim.core.walls import connections, openings, rebuild, top
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -257,13 +257,37 @@ def _mirror_elements_walls(doc: Document, gids, a, b, keep: bool = False) -> Tra
 # --- pilar, viga e laje (spec/ui 10 §4.1) ------------------------------------------------
 
 
-def _structure(doc: Document, gids) -> tuple[list, list]:
-    """(GlobalIds dos outros elementos, pilares/vigas/lajes), na ordem da seleção."""
-    rest, found = [], []
+def _structure(doc: Document, gids) -> tuple[list, list, list]:
+    """(GlobalIds dos outros elementos, pilares/vigas/lajes, aberturas na laje sem a laje
+    na seleção), na ordem da seleção. A laje leva as aberturas dela (spec/ui 12 §3.2)."""
+    rest, found, openings = [], [], []
     for g in dict.fromkeys(gids):
         e = doc.get(g if isinstance(g, str) else g.GlobalId)
-        (found if structure_cmd.is_structure(e) else rest).append(e.GlobalId)
-    return rest, [doc.get(g) for g in found]
+        if slab_openings.is_slab_opening(e):
+            openings.append(e)
+        else:
+            (found if structure_cmd.is_structure(e) else rest).append(e.GlobalId)
+    lone = [o for o in openings if slab_openings.host(o).GlobalId not in found]
+    return rest, [doc.get(g) for g in found], lone
+
+
+def _opening_ops(doc: Document, elements, fn, lone=()) -> list[Op]:
+    """Aberturas das lajes transformadas (e as soltas) levadas por ``fn``."""
+    ops = []
+    slabs_ = [e for e in elements if e.is_a("IfcSlab")]
+    for opening in [o for s in slabs_ for o in slab_openings.of_slab(s)] + list(lone):
+        state = slab_openings.read_state(opening)
+        new = slabs.clean([fn(p) for p in state["outline"]])
+        ops.append(Op("slab_opening.edit", opening.GlobalId,
+                      before={"outline": state["outline"]}, after={"outline": new}))
+    return ops
+
+
+def _check_lone(doc: Document, lone, fn) -> None:
+    """A abertura movida sozinha continua dentro da laje dela."""
+    for opening in lone:
+        state = slab_openings.read_state(opening)
+        slab_openings.check(doc, {**state, "outline": [fn(p) for p in state["outline"]]})
 
 
 def _foreign_placement(doc: Document, element, state: dict, fn, angle: float) -> dict:
@@ -308,9 +332,15 @@ def _edit_ops(doc: Document, elements, changes_of) -> list[Op]:
             for op in structure_cmd.edit_element(doc, e, **changes_of(e)).ops]
 
 
-def _copy_ops(doc: Document, elements, changes_of) -> list[Op]:
-    """Cópias com GlobalIds novos e os próximos nomes livres (P…, V…)."""
+def _copy_ops(doc: Document, elements, changes_of, fn=None, lone=()) -> list[Op]:
+    """Cópias com GlobalIds novos e os próximos nomes livres (P…, V…); a laje leva cópias
+    das aberturas, e a abertura sozinha é copiada na mesma laje."""
     ops, taken = [], {"IfcColumn": set(), "IfcBeam": set()}
+    for opening in lone:
+        state = slab_openings.read_state(opening)
+        data = {**state, "outline": slab_openings.check(
+            doc, {**state, "outline": [fn(p) for p in state["outline"]]})}
+        ops.append(Op("slab_opening.create", guid.new(), data=data))
     for e in elements:
         module, prefix, _, _ = structure_cmd.ELEMENTS[e.is_a()]
         state = copy.deepcopy(module.read_state(doc, e))
@@ -326,7 +356,13 @@ def _copy_ops(doc: Document, elements, changes_of) -> list[Op]:
                 n += 1
             state["name"] = f"{letter}{n}"
             taken[e.is_a()].add(state["name"])
-        ops.append(Op(f"{prefix}.create", guid.new(), data=state))
+        new = guid.new()
+        ops.append(Op(f"{prefix}.create", new, data=state))
+        if e.is_a("IfcSlab"):
+            for opening in slab_openings.of_slab(e):
+                outline = slab_openings.read_state(opening)["outline"]
+                ops.append(Op("slab_opening.create", guid.new(), data={
+                    "slab": new, "outline": slabs.clean([fn(p) for p in outline])}))
     return ops
 
 
@@ -337,30 +373,39 @@ def _join(doc: Document, label: str, rest, walls_tx, structure_ops: list[Op]) ->
     return Transaction(label, ops + structure_ops)
 
 
+def _no_lone(lone) -> None:
+    if lone:
+        raise OpError("gire ou espelhe a laje que contém a abertura")
+
+
 def move_elements(doc: Document, gids, vector) -> Transaction:
-    """Desloca paredes (com aberturas e portas), portas, pilares, vigas e lajes pelo
-    vetor (spec/ui 02 §6.1)."""
-    rest, structure = _structure(doc, gids)
+    """Desloca paredes (com aberturas e portas), portas, pilares, vigas, lajes (com as
+    aberturas) e aberturas na laje pelo vetor (spec/ui 02 §6.1)."""
+    rest, structure, lone = _structure(doc, gids)
     fn = geom2d.translation(tuple(vector))
-    ops = _edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+    _check_lone(doc, lone, fn)
+    ops = (_edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+           + _opening_ops(doc, structure, fn, lone))
     return _join(doc, "Mover", rest, lambda: _move_elements_walls(doc, rest, vector), ops)
 
 
 def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
     """Gira a seleção ``angle`` radianos, anti-horário, em torno de ``center``
     (spec/ui 02 §6.3)."""
-    rest, structure = _structure(doc, gids)
+    rest, structure, lone = _structure(doc, gids)
+    _no_lone(lone)
     fn = geom2d.rotation(tuple(center), angle)
-    ops = _edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, angle))
+    ops = (_edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, angle))
+           + _opening_ops(doc, structure, fn))
     return _join(doc, "Girar", rest,
                  lambda: _rotate_elements_walls(doc, rest, center, angle), ops)
 
 
 def copy_elements(doc: Document, gids, vector) -> Transaction:
     """Cópia deslocada pelo vetor (spec/ui 02 §6.2)."""
-    rest, structure = _structure(doc, gids)
+    rest, structure, lone = _structure(doc, gids)
     fn = geom2d.translation(tuple(vector))
-    ops = _copy_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+    ops = _copy_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0), fn, lone)
     return _join(doc, "Copiar", rest, lambda: _copy_elements_walls(doc, rest, vector), ops)
 
 
@@ -369,10 +414,12 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
     espelha uma cópia e mantém o original."""
     if math.dist(a, b) < geom2d.MIN_LENGTH:
         raise OpError("o eixo de simetria precisa de dois pontos distintos")
-    rest, structure = _structure(doc, gids)
+    rest, structure, lone = _structure(doc, gids)
+    _no_lone(lone)
     fn = geom2d.reflection(tuple(a), tuple(b))
     changes = lambda e: _mirrored_state(doc, e, fn, a, b)
-    ops = (_copy_ops if keep else _edit_ops)(doc, structure, changes)
+    ops = (_copy_ops(doc, structure, changes, fn) if keep
+           else _edit_ops(doc, structure, changes) + _opening_ops(doc, structure, fn))
     label = "Espelhar cópia" if keep else "Espelhar"
     if not rest:
         return _join(doc, label, rest, None, ops)

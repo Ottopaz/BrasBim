@@ -10,12 +10,13 @@ from brasbim.core import plan, transform
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import History
 from brasbim.core.structure import commands as sc
-from brasbim.core.structure import slabs
+from brasbim.core.structure import slab_openings, slabs
 
 L_SHAPE_CW = [(0, 0), (0, 4), (2, 4), (2, 2), (5, 2), (5, 0)]
 
 
 def _slab(model, outline=None, t=None, storey=None, **options):
+    """Laje 5 × 4 (ou pelo contorno), no Térreo se nada for dito."""
     t = t or slab_type(model)
     storey = storey or model.terreo
     if outline is None:
@@ -169,3 +170,62 @@ def test_laje_na_planta_escolha_e_janela(model):
     assert slab.GlobalId in p.in_rect((-1, -1), (6, 5))
     upper = plan.storey_plan(model.doc, model.superior)
     assert not upper.owners("slab")
+
+
+# --- aberturas na laje (spec/ui 12 §3): AL01 a AL04 ---------------------------------------
+
+
+def _opening(model, slab, a=(1, 1), b=(2, 3)):
+    return created(model, sc.create_slab_opening_rectangle(model.doc, slab, a, b))
+
+
+def test_al01_abertura(model, tmp_path):
+    slab = _slab(model)
+    opening = _opening(model, slab)
+    assert opening.is_a("IfcOpeningElement") and opening.PredefinedType == "OPENING"
+    (rel,) = opening.VoidsElements
+    assert rel.RelatingBuildingElement == slab
+    q = qto(slab, "Qto_SlabBaseQuantities")
+    assert q["GrossArea"] == pytest.approx(20) and q["NetArea"] == pytest.approx(18)
+    assert q["NetVolume"] == pytest.approx(1.8)
+    assert valid(model.reopen(tmp_path))
+
+
+def test_al02_abertura_fora_da_laje(model):
+    slab = _slab(model)
+    with pytest.raises(OpError):
+        sc.create_slab_opening_rectangle(model.doc, slab, (4, 3), (6, 5))
+    _opening(model, slab)
+    with pytest.raises(OpError):  # a laje encolhe e a abertura ficaria fora
+        sc.move_slab_vertex(model.doc, slab, 0, (1.5, 1.5))
+
+
+def test_al03_transformar_e_excluir(model):
+    t = slab_type(model)
+
+    def action():
+        slab = _slab(model, t=t)
+        opening = _opening(model, slab)
+        model.commit(transform.move_elements(model.doc, [slab], (1, 0)))
+        assert slab_openings.read_state(opening)["outline"][0] == pytest.approx([2, 1])
+        model.commit(transform.rotate_elements(model.doc, [slab], (0, 0), 0.5))
+        model.commit(transform.mirror_elements(model.doc, [slab], (0, 0), (0, 1)))
+        model.commit(transform.copy_elements(model.doc, [slab], (10, 0)))
+        assert len(model.doc.ifc.by_type("IfcOpeningElement")) == 2
+        model.commit(transform.move_elements(model.doc, [opening], (0.2, 0)))
+        model.commit(sc.delete_element(model.doc, slab))
+        assert len(model.doc.ifc.by_type("IfcOpeningElement")) == 1
+
+    check_history(model, action)
+
+
+def test_al04_planta(model):
+    slab = _slab(model, storey=model.terreo)
+    opening = _opening(model, slab)
+    p = plan.storey_plan(model.doc, model.terreo)
+    shapes = [s for s in p.shapes if s.owner == opening.GlobalId]
+    assert [s.role for s in shapes].count("slab_opening_x") == 2
+    assert p.pick((1.5, 2.0), 0.05) == opening.GlobalId
+    assert p.pick((3.5, 2.0), 0.05) == slab.GlobalId
+    rings = [s for s in p.shapes if s.owner == slab.GlobalId and s.role == "slab_view"]
+    assert len(rings) == 2  # contorno e furo
