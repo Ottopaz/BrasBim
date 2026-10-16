@@ -485,3 +485,19 @@ def test_lc_laje_pelo_comodo_na_ferramenta(window):
     assert ue.get_pset(slab, "Qto_SlabBaseQuantities")["GrossArea"] == pytest.approx(20)
     tool.press((5.8, 1), Mods())
     assert "cômodo fechado" in s.messages[-1]["text"]
+
+
+def test_et01_et02_etiquetas_de_estrutura(window):
+    """spec/ui 12 §5: "P1"/"20×40" no pilar e "V1 14×40" girada com a viga; menu próprio,
+    guardado nas preferências."""
+    _column(window, (2, 3))
+    _beam(window, (0, 0), (0, 4))  # a 90°
+    labels = {lb.code: lb for lb in window.ctx.plan.labels if lb.kind == "structure"}
+    assert labels["P1"].size == "20×40"
+    assert labels["V1 14×40"].angle == pytest.approx(90)
+    assert labels["P1"].at[0] > 2.1 and labels["P1"].at[1] > 3.2
+    window.structure_tags_action.trigger()
+    assert window.plan.show_structure_tags is False
+    window.plan.grab()  # desenha sem erro com as etiquetas desligadas
+    window.structure_tags_action.trigger()
+    window.plan.grab()

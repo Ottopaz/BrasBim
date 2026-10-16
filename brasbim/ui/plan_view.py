@@ -69,6 +69,7 @@ class PlanView(QWidget, ToolInput):
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
         self.show_tag_size = False
+        self.show_structure_tags = True  # etiquetas de pilar e viga (spec/ui 12 §5)
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -300,21 +301,32 @@ class PlanView(QWidget, ToolInput):
         painter.restore()
 
     def _draw_tags(self, painter: QPainter) -> None:
-        if not self.show_tags:
+        if not (self.show_tags or self.show_structure_tags):
             return
         painter.setFont(QFont(self.font().family(), 9))
         metrics = painter.fontMetrics()
         selection = self.ctx.session.selection
         for label in self.ctx.plan.labels:
-            lines = [label.code] + ([label.size] if self.show_tag_size else [])
+            if label.kind == "structure":
+                if not self.show_structure_tags:
+                    continue
+                lines = [label.code] + ([label.size] if label.size else [])
+            elif not self.show_tags:
+                continue
+            else:
+                lines = [label.code] + ([label.size] if self.show_tag_size else [])
             q = self.to_screen(label.at)
             height = metrics.height()
             painter.setPen(QPen(C["select"] if label.owner in selection else C["label"]))
+            painter.save()
+            painter.translate(q)
+            painter.rotate(-label.angle)  # y da tela para baixo
             for i, text in enumerate(lines):
                 width = metrics.horizontalAdvance(text)
-                y = q.y() - len(lines) * height / 2 + i * height
-                painter.drawText(QRectF(q.x() - width / 2 - 2, y, width + 4, height),
+                y = -len(lines) * height / 2 + i * height
+                painter.drawText(QRectF(-width / 2 - 2, y, width + 4, height),
                                  Qt.AlignCenter, text)
+            painter.restore()
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active

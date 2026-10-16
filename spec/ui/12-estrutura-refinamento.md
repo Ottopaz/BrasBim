@@ -189,50 +189,50 @@ Pavimentos Térreo (0,00) e Superior (2,80), plano de corte 1,50; pilar 20×40, 
 e laje maciça de 10 cm da biblioteca.
 
 **Recortes**
-- [ ] **RC01** Viga de (0, 0) a (5, 0), eixo, e pilares centrados em (0, 0) e (5, 0): o
+- [x] **RC01** Viga de (0, 0) a (5, 0), eixo, e pilares centrados em (0, 0) e (5, 0): o
       corpo da viga é `Clipping` com 2 semiespaços; o volume líquido da viga é
       0,14 × 0,40 × (5 − 0,20) = 0,2688 (o pilar de 20 cm em x tira 0,10 de cada ponta).
-- [ ] **RC02** O pilar fica inteiro (`SweptSolid`, `NetVolume` = 0,08 × 2,80).
-- [ ] **RC03** Laje do Superior de 5 × 4 com um pilar do Térreo num canto: a laje perde a
+- [x] **RC02** O pilar fica inteiro (`SweptSolid`, `NetVolume` = 0,08 × 2,80).
+- [x] **RC03** Laje do Superior de 5 × 4 com um pilar do Térreo num canto: a laje perde a
       seção do pilar (0,08 m² × 0,10 m) em `NetVolume`, e `NetArea` desconta 0,08 m².
-- [ ] **RC04** Viga com topo em 2,80 sob a laje do Superior: a laje perde a faixa da viga
+- [x] **RC04** Viga com topo em 2,80 sob a laje do Superior: a laje perde a faixa da viga
       (largura 0,14 × comprimento sob ela × 0,10); a viga fica inteira.
-- [ ] **RC05** Parede de 14 cm de (0, 0) a (5, 0), topo no Superior, com viga 14×40 por
+- [x] **RC05** Parede de 14 cm de (0, 0) a (5, 0), topo no Superior, com viga 14×40 por
       cima no mesmo eixo: a parede perde a faixa de 2,40 a 2,80; `NetVolume` = 0,14 × 5 ×
       2,40 (sem pilares).
-- [ ] **RC06** `IfcRelInterferesElements` com o cortado em `RelatingElement`, o que corta
+- [x] **RC06** `IfcRelInterferesElements` com o cortado em `RelatingElement`, o que corta
       em `RelatedElement` e `ImpliedOrder` verdadeiro; um por par; somem quando o recorte
       some.
-- [ ] **RC07** Mover o pilar para longe da viga: a viga volta a `SweptSolid` e ao volume
+- [x] **RC07** Mover o pilar para longe da viga: a viga volta a `SweptSolid` e ao volume
       bruto; desfazer volta o recorte. O diário reaplicado reproduz o IFC.
-- [ ] **RC08** Viga inteira dentro da altura de uma parede de 4 m: sem recorte e com aviso
+- [x] **RC08** Viga inteira dentro da altura de uma parede de 4 m: sem recorte e com aviso
       em Mensagens.
-- [ ] **RC09** Pilar de outra origem corta a viga do BrasBim; a viga de outra origem não é
+- [x] **RC09** Pilar de outra origem corta a viga do BrasBim; a viga de outra origem não é
       cortada.
-- [ ] **RC10** O arquivo passa na validação de esquema; o 3D mostra a viga encurtada
+- [x] **RC10** O arquivo passa na validação de esquema; o 3D mostra a viga encurtada
       (malha sem triângulos dentro do pilar).
 
 **Aberturas na laje**
-- [ ] **AL01** Abertura 1 × 2 numa laje 5 × 4: `IfcOpeningElement` `OPENING` com
+- [x] **AL01** Abertura 1 × 2 numa laje 5 × 4: `IfcOpeningElement` `OPENING` com
       `IfcRelVoidsElement`; `NetArea` 18, `GrossArea` 20, `NetVolume` 1,8.
-- [ ] **AL02** Abertura que sai da laje: recusada.
-- [ ] **AL03** Mover, girar e espelhar a laje levam a abertura; excluir a laje exclui a
+- [x] **AL02** Abertura que sai da laje: recusada.
+- [x] **AL03** Mover, girar e espelhar a laje levam a abertura; excluir a laje exclui a
       abertura; desfazer restaura os GlobalIds.
-- [ ] **AL04** Planta: furo e X da abertura; o clique no contorno da abertura a escolhe.
-- [ ] **AL05** Interface: Abertura pela mini-barra, modo Retângulo, dois cliques dentro
+- [x] **AL04** Planta: furo e X da abertura; o clique no contorno da abertura a escolhe.
+- [x] **AL05** Interface: Abertura pela mini-barra, modo Retângulo, dois cliques dentro
       da laje.
 
 **Laje pelo cômodo**
-- [ ] **LC01** Retângulo de paredes de 14 cm por dentro de (0, 0)–(5, 4) (face externa no
+- [x] **LC01** Retângulo de paredes de 14 cm por dentro de (0, 0)–(5, 4) (face externa no
       retângulo): clique em (2, 2) com Face externa → laje (0, 0)–(5, 4); com Face
       interna → (0,14, 0,14)–(4,86, 3,86); com Eixo → (0,07, 0,07)–(4,93, 3,93).
-- [ ] **LC02** Cômodo em L de 6 paredes: laje de 6 vértices.
-- [ ] **LC03** Clique fora de cômodo fechado (parede faltando): recusa com a mensagem.
+- [x] **LC02** Cômodo em L de 6 paredes: laje de 6 vértices.
+- [x] **LC03** Clique fora de cômodo fechado (parede faltando): recusa com a mensagem.
 
 **Etiquetas**
-- [ ] **ET01** Planta com P1 e V1: etiquetas "P1"/"20×40" e "V1 14×40"; a da viga a 90°
+- [x] **ET01** Planta com P1 e V1: etiquetas "P1"/"20×40" e "V1 14×40"; a da viga a 90°
       fica girada.
-- [ ] **ET02** Exibir > Etiquetas de estrutura desligada: nenhuma; a preferência fica
+- [x] **ET02** Exibir > Etiquetas de estrutura desligada: nenhuma; a preferência fica
       guardada.
 
 ## 8. Fontes públicas

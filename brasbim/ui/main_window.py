@@ -225,7 +225,11 @@ class MainWindow(QMainWindow):
                                         lambda v: self._set_plan_option("show_tags", v))
         self.tag_size_action = self._action(view_menu, "Medidas na etiqueta",
                                             lambda v: self._set_plan_option("show_tag_size", v))
-        for action, value in ((self.tags_action, True), (self.tag_size_action, False)):
+        self.structure_tags_action = self._action(
+            view_menu, "Etiquetas de estrutura",
+            lambda v: self._set_plan_option("show_structure_tags", v))
+        for action, value in ((self.tags_action, True), (self.tag_size_action, False),
+                              (self.structure_tags_action, True)):
             action.setCheckable(True)
             action.setChecked(value)
         view_menu.addSeparator()
@@ -319,7 +323,9 @@ class MainWindow(QMainWindow):
             self.restoreState(state, STATE_VERSION)
         for action, key, option in ((self.tags_action, "etiquetas_porta", "show_tags"),
                                     (self.tag_size_action, "medidas_etiqueta",
-                                     "show_tag_size")):
+                                     "show_tag_size"),
+                                    (self.structure_tags_action, "etiquetas_estrutura",
+                                     "show_structure_tags")):
             value = settings.value(key)
             if value is not None:
                 action.setChecked(str(value).lower() == "true")
@@ -628,6 +634,7 @@ class MainWindow(QMainWindow):
         settings.setValue("paineis", self.saveState(STATE_VERSION))
         settings.setValue("etiquetas_porta", self.tags_action.isChecked())
         settings.setValue("medidas_etiqueta", self.tag_size_action.isChecked())
+        settings.setValue("etiquetas_estrutura", self.structure_tags_action.isChecked())
         settings.setValue("detalhe_planta", self.ctx.detail)
         settings.setValue("acima_do_corte", self.ctx.show_above)
         self.session.close()

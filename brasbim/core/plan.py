@@ -69,12 +69,16 @@ class Shape:
 
 @dataclass(frozen=True)
 class Label:
-    """Etiqueta de porta (spec/ui 05 §5): código e medidas do vão, no ponto ``at``."""
+    """Etiqueta no ponto ``at``: de esquadria (``kind`` ``filling``, spec/ui 05 §5: código
+    e medidas do vão) ou de estrutura (``structure``, spec/ui 12 §5: nome e seção).
+    ``angle`` em graus, anti-horário (a da viga acompanha a viga)."""
 
     owner: str
     at: Point
     code: str
     size: str
+    kind: str = "filling"
+    angle: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -776,6 +780,49 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
     return found, shapes, cut_columns
 
 
+LABEL_OFFSET = 0.20  # m: etiqueta de pilar e viga afastada do contorno (spec/ui 12 §5)
+
+
+def _section_text(element_type) -> str:
+    """"20×40", "Ø30" (seção do tipo), ou vazio."""
+    try:
+        section = st_types.section(element_type)
+    except (OpError, AttributeError):
+        return ""
+    from brasbim.core.structure import profiles
+
+    return profiles.label(section).replace(" × ", "×").replace("Ø ", "Ø")
+
+
+def structure_labels(found: list[_Element]) -> list[Label]:
+    """Etiquetas de pilar ("P1" e, abaixo, "20×40", junto ao canto de cima à direita) e de
+    viga ("V1 14×40" no meio dela, girada com ela, de leitura da esquerda para a direita
+    ou de baixo para cima; spec/ui 12 §5)."""
+    out = []
+    for e in found:
+        element = e.element
+        if e.kind not in ("column", "beam") or not element.Name:
+            continue
+        size = _section_text(ifcopenshell.util.element.get_type(element))
+        if e.kind == "column":
+            xs, ys = [p[0] for p in e.ring], [p[1] for p in e.ring]
+            out.append(Label(element.GlobalId, (max(xs) + LABEL_OFFSET, max(ys) + LABEL_OFFSET),
+                             element.Name, size, "structure"))
+            continue
+        a, b, c, d = e.ring  # faixa: direita (a→b) e esquerda (d→c)
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        angle = math.degrees(math.atan2(dy, dx))
+        if angle > 90.0 + 1e-9 or angle <= -90.0 + 1e-9:  # sempre legível
+            angle = angle - 180.0 if angle > 0 else angle + 180.0
+        n = math.hypot(dx, dy)
+        left = (-dy / n, dx / n)
+        mid = ((c[0] + d[0]) / 2 + left[0] * LABEL_OFFSET,
+               (c[1] + d[1]) / 2 + left[1] * LABEL_OFFSET)
+        text = f"{element.Name} {size}".strip()
+        out.append(Label(element.GlobalId, mid, text, "", "structure", angle))
+    return out
+
+
 def _opening_shapes(slab) -> list[Shape]:
     """Contorno e X de cada abertura da laje (spec/ui 12 §3.5)."""
     out = []
@@ -848,6 +895,7 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     _carve(plan, first_region, first_edge, cut_columns)
     plan.shapes += [s for s in structure if not s.role.startswith("slab")]
     _structure_regions(plan, found, cut, ("column", "beam"))
+    plan.labels += structure_labels(found)
     crossed = {o for c in cuts for o in c.crossed}
     fillings = sorted(_contained(storey, "IfcDoor") + _contained(storey, "IfcWindow"),
                       key=lambda e: e.GlobalId)

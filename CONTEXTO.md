@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 4 concluído; pilar e viga com dimensões digitadas).*
+*Atualizado em 2026‑10‑16 (pacote 5 concluído: recortes, aberturas na laje, laje pelo cômodo, etiquetas).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (353 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (376 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -25,7 +25,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/07-medidas-e-edicao-no-3d` | aprovada e implementada (testes UI61–UI72) |
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
-| `spec/ui/12-estrutura-refinamento` | **em revisão** (pacote 5) |
+| `spec/ui/12-estrutura-refinamento` | aprovada e implementada (pacote 5; RC01–10 em `tests/test_recortes.py`, AL01–05 e LC01–03 em `test_laje.py` e `test_interface_estrutura.py`, ET01–02) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -174,15 +174,36 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   As ferramentas guardam a seção (`ColumnTool.shape/b/h/d`, `_BeamOptions.b/h`) e o
   `type` só como tipo de partida. A laje continua escolhendo o tipo (camadas).
 
+## Pacote 5 — como ficou (spec/ui 12)
+- `core/structure/cuts.py`: `Piece` (prisma: contorno + cotas da edificação), `cuts_of`
+  (quem corta este: classes de prioridade maior, pavimentos vizinhos, modos `through`,
+  `top`, `bottom`; "inside" só avisa), `Frame` (plano e contorno do semiespaço no sistema
+  do corpo; na viga o contorno fica no plano horizontal com z local = direção da viga),
+  `clipped`, `removed_volume`/`removed_area` (fatias horizontais, união sem contar duas
+  vezes; aberturas entram como `holes`), `sync_relations` (`IfcRelInterferesElements`),
+  `cut_by` (quem este corta, para refazer).
+- Derivação: `structure/rebuild.derive` refaz os alterados e depois os que eles cortam
+  (inclusive paredes, por `walls.rebuild.rebuild_wall`, que também aplica os recortes);
+  `common.remove` guarda em `doc.cut_victims` quem o excluído cortava.
+- Corpo recortado: `Clipping` (o `SweptSolid` fica como primeiro operando; quem lê a laje
+  desembrulha os `IfcBooleanResult`).
+- `core/structure/slab_openings.py`: estado no Pset `BrasBim_AberturaLaje` (listas
+  `ContornoX`/`ContornoY`, coordenadas do pavimento); corpo e posicionamento refeitos pela
+  laje (`refresh`). `commands.outline_of`/`edit_outline` servem à laje e à abertura (as
+  alças são as mesmas); `transform._structure` separa as aberturas soltas.
+- `core/structure/rooms.py`: furo da união das paredes; afastamento por lado com a
+  espessura da parede daquela face. `SlabTool` modo `room`, `SlabOpeningTool` (mini-barra
+  "Abertura", em `SELECTION_TOOLS`).
+- Etiquetas: `plan.Label` com `kind` e `angle`; `plan.structure_labels`; Exibir >
+  Etiquetas de estrutura (`etiquetas_estrutura`).
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
 documentação do desenho técnico (`spec/REQUISITOS.md` §8).
 
 0. Revisor confirmar a correção do `CardinalPoint` do pilar (`pilar.md` §11 (e)).
-1. **Pacote 5** — refinamento da estrutura: `spec/ui/12-estrutura-refinamento.md` **em
-   revisão** (recortes por prioridade, aberturas na laje, laje pelo cômodo, etiquetas de
-   pilar e viga).
+1. ~~Pacote 5~~ concluído.
 2. **Pacote 6** — documentação 1, anotação da planta: ambientes (`IfcSpace`, RF-AMB-01 a
    03), cotas lineares associativas e cota automática de paredes e vãos, cota de nível
    (RF-DOC-05), textos, linhas e hachuras 2D (RF-DOC-06), norte e símbolo de nível
@@ -201,6 +222,11 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
 - Peitoril fixado pelo balão não atualiza na hora o campo da barra Opções.
 - Excluir o estilo de um material deixa o `IfcSurfaceStyle` ainda usado pelas peças das
   esquadrias (fica solto do material).
+- Recortes: elemento inteiro dentro da altura do outro fica sem recorte (aviso); parede
+  de topo inclinado ou tombada não é recortada; cada rebuild compara com todos os
+  elementos dos pavimentos vizinhos (medir em projeto grande); `NetSideArea` da parede
+  não desconta recortes; abertura de porta sob um recorte pode ser descontada duas vezes.
+- Laje pelo cômodo: a laje não fica ligada às paredes (V1).
 - Estrutura: painel com vários pilares/vigas/lajes só edita tipo (e topo da laje) e
   propriedades comuns; alças da estrutura só na planta; laje "Por camadas" na planta usa a
   representação do tipo, não as camadas; tipo de parede em uso continua sem pedir
