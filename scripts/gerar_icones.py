@@ -46,6 +46,11 @@ ICONS = {
     "slab_opening": '<path d="M2.75 14.25 L9 8.25 H21.25 L15 14.25 Z"/>'
                     '<path d="M8.75 12.25 L11 10.25 H15.25 L13 12.25 Z" stroke-width="1"/>'
                     '<path d="M8.75 12.25 L15.25 10.25 M11 10.25 L13 12.25" stroke-width="1"/>',
+    # laje pelo cômodo: planta de um cômodo com o cursor dentro (spec/ui 12 §4)
+    "slab_room": '<rect x="3.75" y="3.75" width="16.5" height="16.5"/>'
+                 '<rect x="6.25" y="6.25" width="11.5" height="11.5" stroke-width="1"/>'
+                 '<path d="M10.5 9.5 V15 L12 13.6 L13.2 16 L14.2 15.5 L13 13.2 H15 Z" '
+                 'fill="currentColor" stroke-width="0.75"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

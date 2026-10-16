@@ -467,3 +467,21 @@ def test_al05_abertura_pela_mini_barra(window):
     s.select([opening.GlobalId])
     window.properties._rebuild()
     assert window.properties.groups[0].title == "Abertura na laje"
+
+
+def test_lc_laje_pelo_comodo_na_ferramenta(window):
+    """spec/ui 12 §4: modo Pelo cômodo, pré-visualização e clique."""
+    s = window.session
+    _rect_walls(window)
+    tool = _tool(window, "slab")
+    tool.options.mode = "room"
+    window.options_bar.show_for(tool)
+    _move(window, (2, 2))
+    assert tool.shape_preview() and len(tool.shape_preview()[0].points) == 4
+    tool.move((5.8, 1), Mods())  # fora do cômodo
+    assert tool.shape_preview() == []
+    _click(window, (2, 2))
+    (slab,) = _all(window, "IfcSlab")
+    assert ue.get_pset(slab, "Qto_SlabBaseQuantities")["GrossArea"] == pytest.approx(20)
+    tool.press((5.8, 1), Mods())
+    assert "cômodo fechado" in s.messages[-1]["text"]

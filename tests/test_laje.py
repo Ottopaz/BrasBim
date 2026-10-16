@@ -229,3 +229,40 @@ def test_al04_planta(model):
     assert p.pick((3.5, 2.0), 0.05) == slab.GlobalId
     rings = [s for s in p.shapes if s.owner == slab.GlobalId and s.role == "slab_view"]
     assert len(rings) == 2  # contorno e furo
+
+
+# --- laje pelo cômodo (spec/ui 12 §4): LC01 a LC03 -----------------------------------------
+
+
+@pytest.mark.parametrize(("boundary", "lo", "hi"), [
+    ("outer", (0, 0), (5, 4)), ("inner", (0.14, 0.14), (4.86, 3.86)),
+    ("axis", (0.07, 0.07), (4.93, 3.93))])
+def test_lc01_retangulo_de_paredes(model, boundary, lo, hi):
+    from brasbim.core.walls import commands as cmd
+
+    model.commit(cmd.create_rectangle(model.doc, model.type14, model.terreo, (0, 0), (5, 4)))
+    slab = created(model, sc.create_slab_in_room(model.doc, slab_type(model), model.terreo,
+                                                 (2, 2), boundary))
+    outline = slabs.read_state(model.doc, slab)["outline"]
+    xs, ys = [p[0] for p in outline], [p[1] for p in outline]
+    assert len(outline) == 4
+    assert (min(xs), min(ys)) == pytest.approx(lo) and (max(xs), max(ys)) == pytest.approx(hi)
+
+
+def test_lc02_comodo_em_l(model):
+    from brasbim.core.walls import commands as cmd
+
+    pts = [(0, 0), (0, 4), (2, 4), (2, 2), (5, 2), (5, 0)]  # horário: paredes por dentro
+    model.commit(cmd.create_chain(model.doc, model.type14, model.terreo, pts, closed=True))
+    slab = created(model, sc.create_slab_in_room(model.doc, slab_type(model), model.terreo,
+                                                 (1, 1)))
+    outline = slabs.read_state(model.doc, slab)["outline"]
+    assert len(outline) == 6
+    assert slabs.area(outline) == pytest.approx(14)
+
+
+def test_lc03_fora_de_comodo(model):
+    model.wall((0, 0), (5, 0))
+    model.wall((5, 0), (5, 4))
+    with pytest.raises(OpError, match="cômodo fechado"):
+        sc.create_slab_in_room(model.doc, slab_type(model), model.terreo, (2, 2))

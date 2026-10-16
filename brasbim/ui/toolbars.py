@@ -68,6 +68,10 @@ ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "ri
 SLAB_MODES = [("polygon", "slab", "Polígono",
                "clique os vértices; feche no primeiro ponto, com clique duplo ou Enter"),
               ("rectangle", "wall_rect", "Retângulo", "clique dois cantos opostos")]
+SLAB_ROOM = ("room", "slab_room", "Pelo cômodo",
+             "clique dentro de um cômodo fechado por paredes")
+ROOM_BOUNDARIES = [("Face externa", "outer"), ("Eixo das paredes", "axis"),
+                   ("Face interna", "inner")]
 BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
 SECTIONS = [("Retangular", "rect"), ("Circular", "circle")]
 
@@ -457,8 +461,14 @@ class OptionsBar(QToolBar):
             tool.cancel()
             tool.points = []
             options.mode = value
+            self.show_for(tool)
 
-        self._choices(SLAB_MODES, options.mode, set_mode)
+        self._choices([*SLAB_MODES, SLAB_ROOM], options.mode, set_mode)
+        if options.mode == "room":
+            self._label("Contorno")
+            self._combo(ROOM_BOUNDARIES, options.boundary,
+                        lambda v: setattr(options, "boundary", v),
+                        "Até onde vai a laje: face externa, eixo ou face interna das paredes")
         self.addSeparator()
         self._label("Deslocamento do topo")
         self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),

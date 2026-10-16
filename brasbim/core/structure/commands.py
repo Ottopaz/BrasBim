@@ -268,6 +268,16 @@ def create_slab(doc: Document, slab_type, storey, outline, **options) -> Transac
     return Transaction("Criar laje", [Op("slab.create", guid.new(), data=data)])
 
 
+def create_slab_in_room(doc: Document, slab_type, storey, point, boundary: str = "outer",
+                        **options) -> Transaction:
+    """Laje do cômodo fechado por paredes que contém ``point`` (spec/ui 12 §4)."""
+    from brasbim.core.structure import rooms
+
+    outline = rooms.room_outline(doc, doc.get(gid(storey), "IfcBuildingStorey"), point,
+                                 boundary)
+    return create_slab(doc, slab_type, storey, outline, **options)
+
+
 def create_slab_rectangle(doc: Document, slab_type, storey, corner, opposite, **options):
     (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
     return create_slab(doc, slab_type, storey, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],

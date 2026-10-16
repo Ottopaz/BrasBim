@@ -19,7 +19,7 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
-from brasbim.core.structure import beams, columns, profiles, slab_openings, slabs
+from brasbim.core.structure import beams, columns, profiles, rooms, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.structure import types as st_types
@@ -1504,7 +1504,8 @@ class _SlabOptions:
 
     def __init__(self, session: Session):
         self.type = _first_type(session, self.type_class)
-        self.mode = "polygon"  # ou "rectangle"
+        self.mode = "polygon"  # "rectangle" ou "room" (pelo cômodo, spec/ui 12 §4)
+        self.boundary = "outer"  # contorno pelo cômodo: inner, axis, outer
         self.top_offset = 0.0
 
 
@@ -1515,9 +1516,15 @@ class SlabTool(_WallTool):
     name, label = "slab", "Laje"
     options_class = _SlabOptions
 
+    def __init__(self, ctx, options=None):
+        super().__init__(ctx, options)
+        self.room: list | None = None  # contorno do cômodo sob o cursor (modo Pelo cômodo)
+
     def hint(self):
         if self.options.type is None:
             return "Não há tipo de laje no projeto"
+        if self.options.mode == "room":
+            return "Clique dentro de um cômodo fechado por paredes"
         if self.options.mode == "rectangle":
             return ("Clique o primeiro canto" if not self.points else
                     "Clique o canto oposto; Tab digita largura e altura")
@@ -1528,6 +1535,24 @@ class SlabTool(_WallTool):
 
     def _extra(self):
         return list(self.points) + self.ctx.vertices + self.ctx.column_points
+
+    def _room(self, p) -> list | None:
+        """Contorno do cômodo sob o cursor (modo Pelo cômodo), ou None."""
+        storey = self.session.storey
+        if storey is None:
+            return None
+        try:
+            return rooms.room_outline(self.session.doc, storey, p, self.options.boundary)
+        except OpError:
+            return None
+
+    def move(self, p, mods):
+        if getattr(self.options, "mode", None) == "room":
+            Tool.move(self, p, mods)
+            self.snapped = snap.Snap(tuple(p), "free")
+            self.room = self._room(p)
+            return
+        super().move(p, mods)
 
     def point_fields(self):
         if not self.points:
@@ -1591,6 +1616,16 @@ class SlabTool(_WallTool):
     def press(self, p, mods, button="left"):
         if button != "left":
             return
+        if getattr(self.options, "mode", None) == "room":
+            options, doc, storey = self.options, self.session.doc, self.session.storey
+            if options.type is None or storey is None:
+                self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
+                return
+            self.session.run(lambda: sc.create_slab_in_room(
+                doc, options.type, storey, p, options.boundary,
+                top_offset=options.top_offset))
+            self.room = None
+            return
         q = self._point(p, mods)
         self._consume_reference()
         self.fixed.clear()
@@ -1633,6 +1668,8 @@ class SlabTool(_WallTool):
         return False
 
     def shape_preview(self):
+        if getattr(self.options, "mode", None) == "room":
+            return [Mark(tuple(tuple(q) for q in self.room), True)] if self.room else []
         if not self.points or not self.snapped:
             return []
         q = self.snapped.point
