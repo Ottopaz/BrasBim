@@ -39,11 +39,11 @@ class ProjectPanel(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Nome", "Cota", "Plano de corte"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Nome", "Cota", "Plano de corte", "Escala"])
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        for column in (1, 2):
+        for column in (1, 2, 3):
             self.table.horizontalHeader().setSectionResizeMode(column,
                                                                QHeaderView.ResizeToContents)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -77,17 +77,21 @@ class ProjectPanel(QWidget):
             cut = QTableWidgetItem(fmt(storeys_.cut_height(storey)))
             cut.setToolTip("Altura do plano de corte da planta acima da cota; "
                            "vazio volta ao padrão")
-            for item in (elevation, cut):
+            scale = QTableWidgetItem(f"1:{storeys_.scale(storey)}")
+            scale.setToolTip("Escala de desenho da planta: "
+                             + ", ".join(f"1:{v}" for v in storeys_.SCALES))
+            for item in (elevation, cut, scale):
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if active:
                 font = name.font()
                 font.setBold(True)
-                for item in (name, elevation, cut):
+                for item in (name, elevation, cut, scale):
                     item.setFont(font)
                 self.table.selectRow(row)
             self.table.setItem(row, 0, name)
             self.table.setItem(row, 1, elevation)
             self.table.setItem(row, 2, cut)
+            self.table.setItem(row, 3, scale)
         self.delete_button.setEnabled(len(storeys) > 1)
         self.table.blockSignals(False)
 
@@ -112,6 +116,8 @@ class ProjectPanel(QWidget):
                 self.session.run(lambda: cmd.edit_storey(doc, storey, name=name))
         elif item.column() == 2:
             self._edit_cut(storey, text)
+        elif item.column() == 3:
+            self.set_scale(storey, text)
         else:
             try:
                 elevation = parse_number(text)
@@ -138,6 +144,17 @@ class ProjectPanel(QWidget):
             return
         doc = self.session.doc
         self.session.run(lambda: cmd.edit_storey(doc, storey, cut_height=value))
+
+    def set_scale(self, storey, text: str) -> None:
+        """Escala da planta do pavimento (spec/ui 13 §2): "1:100" ou "100"."""
+        try:
+            value = int(text.replace(" ", "").removeprefix("1:"))
+        except ValueError:
+            self.session.message(f"escala inválida: {text!r}", "recusa")
+            return
+        if value != storeys_.scale(storey):
+            doc = self.session.doc
+            self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
 
     def add_storey(self) -> None:
         doc = self.session.doc

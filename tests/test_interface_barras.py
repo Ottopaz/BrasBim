@@ -122,7 +122,8 @@ def test_ui33_mini_barra(window):
     s.select([south.GlobalId])
     window.plan.repaint()
     assert not bar.isHidden()
-    assert bar.visible_actions() == ["move", "copy", "rotate", "mirror", "split", "delete"]
+    assert bar.visible_actions() == ["move", "copy", "rotate", "mirror", "split",
+                                     "auto_dimension", "delete"]  # Cotar: spec/ui 13 §4.5
     view = window.plan.rect()
     assert view.contains(QRect(bar.pos(), bar.size()))
     _, y0, _, y1 = window.plan.selection_rect()

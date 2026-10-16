@@ -38,6 +38,11 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import geom2d
+from brasbim.core.annotations import base as annotation_base
+from brasbim.core.annotations import commands as ac
+from brasbim.core.annotations import dimensions as annotation_dims
+from brasbim.core.annotations import drafting
+from brasbim.core.annotations import spaces as space_data
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
@@ -220,6 +225,10 @@ class PropertiesPanel(QScrollArea):
         elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
                                       or selection[0].is_a("IfcWindow")):
             self._door(selection[0])
+        elif len(selection) == 1 and selection[0].is_a("IfcSpace"):
+            self._space(selection[0])
+        elif len(selection) == 1 and annotation_base.kind_of(selection[0]) is not None:
+            self._annotation(selection[0])
         elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
             self._slab_opening(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
@@ -916,6 +925,95 @@ class PropertiesPanel(QScrollArea):
         self._read("Perímetro", f"{fmt(q.get('Perimeter', 0))} m")
         self._read("Volume", f"{fmt(q.get('NetVolume', 0))} m³")
         self._structure_tail(slab, state)
+
+    # --- ambientes e anotações (spec/ui 13) --------------------------------------------
+
+    def _space(self, space) -> None:
+        doc = self.session.doc
+        state = space_data.read_state(space)
+
+        def edit(**changes):
+            self._run(lambda: ac.edit_element(doc, space, **changes))
+
+        self._title(f"Ambiente {state['number'] or ''}".strip())
+        self._text("Número", state["number"], lambda v: edit(number=v or state["number"]))
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems([space_data.DEFAULT_NAME, *space_data.NAMES])
+        combo.setCurrentText(state["name"] or "")
+        combo.lineEdit().editingFinished.connect(
+            lambda: combo.currentText().strip() != state["name"]
+            and edit(name=combo.currentText().strip() or space_data.DEFAULT_NAME))
+        combo.activated.connect(lambda _i: edit(name=combo.currentText()))
+        self._add("Nome", combo)
+        q = ifcopenshell.util.element.get_pset(space, space_data.QTO) or {}
+        self._number("Pé-direito", state["height"], lambda v: edit(height=v),
+                     placeholder=f"calculado: {fmt(q.get('Height', 0))}", allow_empty=True)
+        self._section("Quantidades")
+        self._read("Área", f"{fmt(q.get('NetFloorArea', 0))} m²")
+        self._read("Perímetro", f"{fmt(q.get('GrossPerimeter', 0))} m")
+        self._read("Pé-direito", f"{fmt(q.get('Height', 0))} m")
+        self._section("Identificação")
+        self._read("GlobalId", space.GlobalId)
+
+    def _annotation(self, element) -> None:
+        doc = self.session.doc
+        kind = annotation_base.kind_of(element)
+        state = annotation_base.read_state(element)
+
+        def edit(**changes):
+            self._run(lambda: ac.edit_element(doc, element, **changes))
+
+        self._title(kind.noun.capitalize())
+        sizes = [(f"{fmt(v)} mm", v) for v in drafting.TEXT_SIZES]
+        if kind is drafting.TEXT:
+            self._text("Texto", state["text"].replace("\n", " / "),
+                       lambda v: v and edit(text=v.replace(" / ", "\n")))
+            note = QLabel("Clique duplo no texto, na planta, para várias linhas.")
+            note.setStyleSheet(f"color: {theme.INK_SOFT}")
+            note.setWordWrap(True)
+            self._add(note)
+            self._combo("Altura", sizes, state["size"], lambda v: edit(size=v))
+            self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+            self._combo("Alinhamento", [("Esquerda", "left"), ("Centro", "center"),
+                                        ("Direita", "right")], state["align"],
+                        lambda v: edit(align=v))
+        elif kind is drafting.LINE:
+            self._combo("Espessura", [(f"{fmt(w)} mm", w) for w in drafting.LINE_WEIGHTS],
+                        state["weight"], lambda v: edit(weight=v))
+            self._combo("Tipo", [("Contínua", "solid"), ("Tracejada", "dashed"),
+                                 ("Traço e ponto", "dashdot")], state["dash"],
+                        lambda v: edit(dash=v))
+            self._combo("Fechada", YES_NO, bool(state["closed"]), lambda v: edit(closed=v))
+        elif kind is drafting.HATCH:
+            self._combo("Padrão", [("Sólida", "solid"), ("Linhas", "lines"),
+                                   ("Cruzada", "cross")], state["pattern"],
+                        lambda v: edit(pattern=v))
+            self._text("Cor", state["color"], lambda v: v and edit(color=v.upper()))
+            self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+            self._number("Espaçamento (mm)", state["spacing"], lambda v: edit(spacing=v))
+        elif kind is drafting.NORTH:
+            self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+        elif kind is drafting.LEVEL:
+            storey = doc.get(state["storey"])
+            self._read("Valor", drafting.level_text(doc, storey, {**state, "fixed": None}))
+            self._text("Valor fixo", state["fixed"], lambda v: edit(fixed=v),
+                       placeholder="calculado")
+        elif kind is annotation_dims.DIMENSION:
+            current = ("aligned" if state["direction"] == "aligned" else
+                       "vertical" if abs(state["angle"] % 180.0 - 90.0) < 1e-6 else
+                       "horizontal")
+            self._combo("Direção", [("Alinhada", "aligned"), ("Horizontal", "horizontal"),
+                                    ("Vertical", "vertical")], current,
+                        lambda v: edit(direction="aligned" if v == "aligned" else "fixed",
+                                       angle=90.0 if v == "vertical" else 0.0))
+            self._number("Afastamento", state["offset"], lambda v: edit(offset=v))
+            values = annotation_dims.measures(doc, state)
+            self._read("Medidas", " · ".join(annotation_dims.fmt(v) for v in values))
+            held = sum(1 for p in state["points"] if p.get("ref") and not p.get("lost"))
+            self._read("Pontos presos", f"{held} de {len(state['points'])}")
+        self._section("Identificação")
+        self._read("GlobalId", element.GlobalId)
 
     def _slab_opening(self, opening) -> None:
         """Abertura na laje (spec/ui 12 §3.3)."""

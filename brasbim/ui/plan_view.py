@@ -70,6 +70,8 @@ class PlanView(QWidget, ToolInput):
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
         self.show_tag_size = False
         self.show_structure_tags = True  # etiquetas de pilar e viga (spec/ui 12 §5)
+        self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
+        self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -238,14 +240,16 @@ class PlanView(QWidget, ToolInput):
             selected = shape.owner in selection
             path = self._path(shape.points, shape.closed)
             role = shape.role
-            if role in ("wall", "column", "beam", "slab"):
+            if role == "annotation":
+                continue  # desenhada por ``_draw_annotations``
+            if role in ("wall", "column", "beam", "slab", "space"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
                 if not selected:
                     continue
                 painter.setPen(QPen(C["select"], 2))
                 fill = QColor(C["select"])
-                fill.setAlpha(110 if role != "slab" else 40)
+                fill.setAlpha(40 if role in ("slab", "space") else 110)
                 painter.setBrush(QBrush(fill))
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")
@@ -300,33 +304,84 @@ class PlanView(QWidget, ToolInput):
                 painter.drawLine(o + d * (min(ts) - 1), o + d * (max(ts) + 1))
         painter.restore()
 
+    def _font(self, height_m: float) -> QFont | None:
+        """Fonte com a altura de modelo na tela (texto que segue a escala, spec/ui 13 §2);
+        ``None`` se ficaria pequena demais para ler."""
+        px = height_m * self.scale
+        if px < 3:
+            return None
+        font = QFont(self.font().family())
+        font.setPixelSize(max(1, round(px)))
+        return font
+
     def _draw_tags(self, painter: QPainter) -> None:
-        if not (self.show_tags or self.show_structure_tags):
-            return
-        painter.setFont(QFont(self.font().family(), 9))
-        metrics = painter.fontMetrics()
         selection = self.ctx.session.selection
         for label in self.ctx.plan.labels:
             if label.kind == "structure":
                 if not self.show_structure_tags:
                     continue
                 lines = [label.code] + ([label.size] if label.size else [])
+            elif label.kind == "space":
+                code = (f"{label.number} · {label.code}" if self.show_space_numbers
+                        and label.number else label.code)
+                lines = [code, label.size]
             elif not self.show_tags:
                 continue
             else:
                 lines = [label.code] + ([label.size] if self.show_tag_size else [])
             q = self.to_screen(label.at)
-            height = metrics.height()
             painter.setPen(QPen(C["select"] if label.owner in selection else C["label"]))
             painter.save()
             painter.translate(q)
             painter.rotate(-label.angle)  # y da tela para baixo
-            for i, text in enumerate(lines):
-                width = metrics.horizontalAdvance(text)
-                y = -len(lines) * height / 2 + i * height
-                painter.drawText(QRectF(-width / 2 - 2, y, width + 4, height),
-                                 Qt.AlignCenter, text)
+            heights = [label.height] + [label.height * label.size_ratio] * (len(lines) - 1)
+            fonts = [self._font(h) if label.height else QFont(self.font().family(), 9)
+                     for h in heights]
+            if any(f is None for f in fonts):
+                painter.restore()
+                continue
+            rows = []
+            for text, font in zip(lines, fonts, strict=True):
+                painter.setFont(font)
+                rows.append((text, font, painter.fontMetrics().height()))
+            y = -sum(h for _, _, h in rows) / 2
+            for text, font, h in rows:
+                painter.setFont(font)
+                width = painter.fontMetrics().horizontalAdvance(text)
+                painter.drawText(QRectF(-width / 2 - 2, y, width + 4, h), Qt.AlignCenter, text)
+                y += h
             painter.restore()
+
+    def _line_px(self, weight_mm: float) -> float:
+        return max(1.0, self._px(weight_mm / 1000.0)) if self.show_weights else 1.0
+
+    def _draw_annotations(self, painter: QPainter) -> None:
+        """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
+        selection = self.ctx.session.selection
+        dashes = {"solid": Qt.SolidLine, "dashed": Qt.DashLine, "dashdot": Qt.DashDotLine}
+        for owner, prims in self.ctx.plan.annotations:
+            color = C["select"] if owner in selection else C["wall_line"]
+            painter.setBrush(Qt.NoBrush)
+            for stroke in prims.strokes:
+                painter.setPen(QPen(color, self._line_px(stroke.weight),
+                                    dashes.get(stroke.dash, Qt.SolidLine)))
+                painter.drawPath(self._path(stroke.points, stroke.closed))
+            painter.setPen(QPen(C["select"] if owner in selection else C["label"]))
+            for text in prims.texts:
+                font = self._font(text.height)
+                if font is None:
+                    continue
+                painter.save()
+                painter.setFont(font)
+                painter.translate(self.to_screen(text.at))
+                painter.rotate(-text.angle)
+                metrics = painter.fontMetrics()
+                width, height = metrics.horizontalAdvance(text.text), metrics.height()
+                x = {"left": 0.0, "center": -width / 2, "right": -width}[text.halign]
+                y = -height if text.valign == "bottom" else -height / 2
+                painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
+                                 text.text)
+                painter.restore()
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
@@ -387,6 +442,7 @@ class PlanView(QWidget, ToolInput):
         painter.fillRect(self.rect(), C["background"])
         self._draw_grid(painter)
         self._draw_plan(painter)
+        self._draw_annotations(painter)
         self._draw_tags(painter)
         self._draw_tool(painter)
         painter.end()

@@ -64,6 +64,9 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `slab_type.create` / `.delete` / `.edit` | `name`, `predefined_type` (`FLOOR` \| `BASESLAB`), `layers[]` (`material`, `thickness`; de cima para baixo), `plan_style` | laje §5.2 |
 | `slab.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `outline[]`, `top_offset`, `common`, `foreign`, `placement` | laje §5.2 |
 | `slab_opening.create` / `.delete` / `.edit` | `slab`, `outline[]` (coordenadas do pavimento, anti-horário; Pset `BrasBim_AberturaLaje`) | spec/ui 12 §3.2; mover, girar, espelhar e copiar a laje geram um `slab_opening.*` por abertura; excluir a laje exclui antes as aberturas |
+| `storey.edit` com `scale` | denominador da escala da planta (`None` = 1:50, Pset `BrasBim_Pavimento`, `Escala`) | spec/ui 13 §2 |
+| `space.create` / `.delete` / `.edit` | `storey`, `outline[]`, `number` (`Name`), `name` (`LongName`), `height` (`None` = calculado), `label_at` | spec/ui 13 §3.2 |
+| `dimension.*`, `level_mark.*`, `text.*`, `line2d.*`, `hatch.*`, `north.*` | `storey` e os parâmetros de cada tipo (spec/ui 13 §4–§7), guardados em JSON no Pset `BrasBim_Anotacao` (`Tipo`, `Parametros`); na cota, cada ponto `{"at", "ref"}` | spec/ui 13; a geometria `Annotation` é derivada; a posição dos pontos presos (`at`, `lost`) é atualizada pela derivação |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`

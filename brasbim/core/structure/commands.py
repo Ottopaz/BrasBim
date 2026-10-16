@@ -397,10 +397,14 @@ def edit_slab_opening(doc: Document, opening, outline) -> Transaction:
 
 
 def outline_of(doc: Document, element) -> list:
-    """Contorno de laje ou de abertura na laje."""
+    """Contorno de laje, de abertura na laje ou de ambiente (as alças são as mesmas)."""
     entity = doc.get(gid(element))
     if slab_openings.is_slab_opening(entity):
         return slab_openings.read_state(entity)["outline"]
+    if entity.is_a("IfcSpace"):
+        from brasbim.core.annotations import spaces
+
+        return spaces.read_state(entity)["outline"]
     return slabs.read_state(doc, _element(doc, entity, "IfcSlab"))["outline"]
 
 
@@ -408,6 +412,10 @@ def edit_outline(doc: Document, element, outline) -> Transaction:
     entity = doc.get(gid(element))
     if slab_openings.is_slab_opening(entity):
         return edit_slab_opening(doc, entity, outline)
+    if entity.is_a("IfcSpace"):
+        from brasbim.core.annotations import commands as anno_cmd
+
+        return anno_cmd.edit_element(doc, entity, outline=outline)
     outline = slabs.clean(outline)
     for opening in slab_openings.of_slab(entity):  # spec/ui 12 §3.2
         if not slab_openings.inside(slab_openings.read_state(opening)["outline"], outline):

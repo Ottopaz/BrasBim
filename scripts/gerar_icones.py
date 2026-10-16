@@ -51,6 +51,22 @@ ICONS = {
                  '<rect x="6.25" y="6.25" width="11.5" height="11.5" stroke-width="1"/>'
                  '<path d="M10.5 9.5 V15 L12 13.6 L13.2 16 L14.2 15.5 L13 13.2 H15 Z" '
                  'fill="currentColor" stroke-width="0.75"/>',
+    # documentação da planta (spec/ui 13)
+    "space": '<path d="M3.75 3.75 H20.25 V20.25 H3.75 Z" stroke-width="1"/>'
+             '<path d="M8 10.5 H16 M9.5 14 H14.5"/>',
+    "dimension": '<path d="M3 16 H21 M4.25 12.5 V19.5 M19.75 12.5 V19.5" stroke-width="1"/>'
+                 '<path d="M2.75 17.25 L5.75 14.75 M18.25 17.25 L21.25 14.75"/>'
+                 '<path d="M9 9.5 H15" stroke-width="1"/>',
+    "level_mark": '<path d="M12 17 L8.5 11 H15.5 Z"/><path d="M4 11 H20" stroke-width="1"/>'
+                  '<path d="M14 7 H20" stroke-width="1"/>',
+    "text": '<path d="M5.5 6 H18.5 M12 6 V19 M9.5 19 H14.5"/>',
+    "line2d": '<path d="M3.5 19 L10 8 L15 14 L20.5 5"/>'
+              '<circle cx="3.5" cy="19" r="1.25" fill="currentColor"/>'
+              '<circle cx="20.5" cy="5" r="1.25" fill="currentColor"/>',
+    "hatch": '<rect x="3.75" y="5.75" width="16.5" height="12.5"/>'
+             '<path d="M4 12 L10 6 M4 18 L16 6 M10 18 L20 8 M16 18 L20 14" stroke-width="1"/>',
+    "north": '<path d="M12 3 L16.5 15 L12 12.5 L7.5 15 Z"/>'
+             '<path d="M9.5 21 V17 L14.5 21 V17" stroke-width="1"/>',
     "undo": '<path d="M8.5 6.5 L4.5 10.5 L8.5 14.5"/>'
             '<path d="M4.5 10.5 H14.5 A4.75 4.75 0 0 1 14.5 20 H10"/>',
     "redo": '<path d="M15.5 6.5 L19.5 10.5 L15.5 14.5"/>'

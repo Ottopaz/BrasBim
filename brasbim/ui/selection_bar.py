@@ -30,6 +30,8 @@ ACTIONS = {
     "flip_hinges": ("flip_hinges", "Inverter dobradiças", "troca o lado das dobradiças"),
     "slab_opening": ("slab_opening", "Abertura",
                      "desenhe uma abertura (escada, shaft) dentro da laje selecionada"),
+    "auto_dimension": ("dimension", "Cotar",
+                       "cota em cadeia na face externa: pontas da parede e bordas dos vãos"),
     "delete": ("delete", "Excluir", "exclui a seleção (Delete)"),
 }
 

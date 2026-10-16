@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
+    QComboBox,
     QDockWidget,
     QFileDialog,
     QInputDialog,
@@ -25,6 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from brasbim.core import storeys as storeys_
+from brasbim.core.annotations import commands as ac
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import doors
@@ -98,6 +101,9 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
                 seen.add((op.op, op.id))
                 ops.append(op)
     for element in entities:
+        if ac.is_annotation(element):
+            ops += ac.delete_ops(doc, element)
+            continue
         if sc.is_structure(element) or slab_openings.is_slab_opening(element):
             for op in sc.delete_ops(doc, element):
                 if (op.op, op.id) not in seen:  # a laje já leva as aberturas dela
@@ -138,6 +144,7 @@ class MainWindow(QMainWindow):
             view.selection_bar = SelectionBar(view, self.run_selection_action)
         self.selection_bar = self.plan.selection_bar
         self.resize(1280, 800)
+        self._hook_tools()
         self._restore()
         self._refresh_all()
 
@@ -228,8 +235,14 @@ class MainWindow(QMainWindow):
         self.structure_tags_action = self._action(
             view_menu, "Etiquetas de estrutura",
             lambda v: self._set_plan_option("show_structure_tags", v))
+        self.space_numbers_action = self._action(
+            view_menu, "Número dos ambientes",
+            lambda v: self._set_plan_option("show_space_numbers", v))
+        self.weights_action = self._action(
+            view_menu, "Espessuras de linha", lambda v: self._set_plan_option("show_weights", v))
         for action, value in ((self.tags_action, True), (self.tag_size_action, False),
-                              (self.structure_tags_action, True)):
+                              (self.structure_tags_action, True),
+                              (self.space_numbers_action, False), (self.weights_action, True)):
             action.setCheckable(True)
             action.setChecked(value)
         view_menu.addSeparator()
@@ -313,6 +326,13 @@ class MainWindow(QMainWindow):
         self.statusBar().addWidget(self.hint, 1)
         self.statusBar().addPermanentWidget(self.coords)
         self.statusBar().addPermanentWidget(QLabel(f"Grade {fmt(self.ctx.grid)} m"))
+        self.scale_combo = QComboBox()
+        self.scale_combo.setToolTip("Escala da planta do pavimento ativo (textos, cotas e "
+                                    "símbolos seguem a escala)")
+        for value in storeys_.SCALES:
+            self.scale_combo.addItem(f"1:{value}", value)
+        self.scale_combo.currentIndexChanged.connect(self._scale_chosen)
+        self.statusBar().addPermanentWidget(self.scale_combo)
 
     def _restore(self) -> None:
         settings = _settings()
@@ -325,7 +345,10 @@ class MainWindow(QMainWindow):
                                     (self.tag_size_action, "medidas_etiqueta",
                                      "show_tag_size"),
                                     (self.structure_tags_action, "etiquetas_estrutura",
-                                     "show_structure_tags")):
+                                     "show_structure_tags"),
+                                    (self.space_numbers_action, "numeros_ambientes",
+                                     "show_space_numbers"),
+                                    (self.weights_action, "espessuras_linha", "show_weights")):
             value = settings.value(key)
             if value is not None:
                 action.setChecked(str(value).lower() == "true")
@@ -343,6 +366,7 @@ class MainWindow(QMainWindow):
     def _on_session(self, event: str) -> None:
         if event == "document":
             self.toolbox.reset()
+            self._hook_tools()
             self.activate_tool("select")
             self.ctx.invalidate()
             self.scene.load(self.session.doc.ifc, self.session.doc)
@@ -378,6 +402,7 @@ class MainWindow(QMainWindow):
         self.plan.update()
         self.view3d.update()
         self._refresh_title()
+        self._refresh_scale()
         undo = self.session.history.undo_stack
         redo = self.session.history.redo_stack
         self.undo_action.setEnabled(bool(undo))
@@ -390,6 +415,28 @@ class MainWindow(QMainWindow):
     def _refresh_show_actions(self) -> None:
         for action in (self.show_in_plan_action, self.show_in_3d_action):
             action.setEnabled(bool(self.session.selection))
+
+    def _refresh_scale(self) -> None:
+        storey = self.session.storey
+        self.scale_combo.blockSignals(True)
+        self.scale_combo.setCurrentIndex(max(0, self.scale_combo.findData(
+            storeys_.scale(storey) if storey is not None else storeys_.DEFAULT_SCALE)))
+        self.scale_combo.blockSignals(False)
+
+    def _scale_chosen(self, index: int) -> None:
+        storey, doc = self.session.storey, self.session.doc
+        value = self.scale_combo.itemData(index)
+        if storey is not None and value != storeys_.scale(storey):
+            self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    def ask_text(self, current: str = "") -> str | None:
+        """Texto da ferramenta Texto e da edição por clique duplo (spec/ui 13 §6)."""
+        text, ok = QInputDialog.getMultiLineText(self, "Texto", "Texto:", current)
+        return text if ok else None
+
+    def _hook_tools(self) -> None:
+        self.toolbox.tools["text"].ask = self.ask_text
+        self.toolbox.tools["select"].ask_text = self.ask_text
 
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
@@ -499,6 +546,10 @@ class MainWindow(QMainWindow):
             self.activate_tool("split")
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
             self.hint.setText(tool.hint())
+            return
+        if key == "auto_dimension":
+            wall = next(iter(session.selection), None)
+            session.run(lambda: ac.auto_dimension_wall(doc, wall))
             return
         if key == "slab_opening":
             tool = self.toolbox.tools["slab_opening"]
@@ -635,6 +686,8 @@ class MainWindow(QMainWindow):
         settings.setValue("etiquetas_porta", self.tags_action.isChecked())
         settings.setValue("medidas_etiqueta", self.tag_size_action.isChecked())
         settings.setValue("etiquetas_estrutura", self.structure_tags_action.isChecked())
+        settings.setValue("numeros_ambientes", self.space_numbers_action.isChecked())
+        settings.setValue("espessuras_linha", self.weights_action.isChecked())
         settings.setValue("detalhe_planta", self.ctx.detail)
         settings.setValue("acima_do_corte", self.ctx.show_above)
         self.session.close()

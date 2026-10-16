@@ -15,6 +15,10 @@ import math
 from dataclasses import dataclass, field
 
 from brasbim.core import geom2d, plan, snap, transform
+from brasbim.core.annotations import base as annotation_base
+from brasbim.core.annotations import commands as ac
+from brasbim.core.annotations import dimensions as annotation_dims
+from brasbim.core.annotations import drafting, spaces
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
@@ -467,6 +471,18 @@ def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
     element = doc.find(gid)
     if slab_openings.is_slab_opening(element):
         return _outline_handles(slab_openings.read_state(element)["outline"])
+    if element is not None and element.is_a("IfcSpace"):
+        state = spaces.read_state(element)
+        return _outline_handles(state["outline"]) + [("space_label",
+                                                      spaces.label_point(state))]
+    if element is not None and annotation_base.kind_of(element) is annotation_dims.DIMENSION:
+        state = annotation_base.read_state(element)
+        pts = annotation_dims.points(doc, state)
+        d, n = annotation_dims.frame(state, pts)
+        ts = [(p[0] - pts[0][0]) * d[0] + (p[1] - pts[0][1]) * d[1] for p in pts]
+        t, off = (min(ts) + max(ts)) / 2, state["offset"]
+        return [("dim_offset", (pts[0][0] + d[0] * t + n[0] * off,
+                                pts[0][1] + d[1] * t + n[1] * off))]
     if element is None or not sc.is_structure(element):
         return []
     state = sc.read_state(doc, element)
@@ -504,6 +520,21 @@ class SelectTool(Tool):
         super().__init__(ctx)
         self.drag: dict | None = None
         self.drag3d = None  # alça da parede no 3D (handles3d.WallHandle3D, spec/ui 08 §3)
+        self.ask_text = None  # clique duplo num texto: pede o texto novo (posto pela janela)
+
+    def double(self, p, mods):
+        """Clique duplo num texto edita o texto (spec/ui 13 §6)."""
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        if (self.ask_text is None or element is None
+                or annotation_base.kind_of(element) is not drafting.TEXT):
+            return
+        self.drag = None
+        current = annotation_base.read_state(element)["text"]
+        text = self.ask_text(current)
+        if text is not None and text.strip() and text != current:
+            self.session.run(lambda: ac.edit_element(doc, gid, text=text.strip("\n")))
 
     def hint(self) -> str:
         if self.drag3d is not None:
@@ -656,6 +687,14 @@ class SelectTool(Tool):
         q = self.snapped.point
         if which.startswith("slab_v"):
             return lambda: sc.move_slab_vertex(doc, gid, int(which[6:]), q), q, ""
+        if which == "space_label":
+            return lambda: ac.edit_element(doc, gid, label_at=list(q)), q, ""
+        if which == "dim_offset":
+            state = annotation_base.read_state(doc.get(gid))
+            pts = annotation_dims.points(doc, state)
+            _, n = annotation_dims.frame(state, pts)
+            offset = (q[0] - pts[0][0]) * n[0] + (q[1] - pts[0][1]) * n[1]
+            return lambda: ac.edit_element(doc, gid, offset=offset), q, f"{fmt(abs(offset))} m"
         base = dict(_structure_handles(doc, gid))[which]
         vector = (q[0] - base[0], q[1] - base[1])
         return lambda: transform.move_elements(doc, [gid], vector), q, ""
@@ -1613,17 +1652,20 @@ class SlabTool(_WallTool):
                                                     top_offset=options.top_offset))
         self.points = []
 
+    def _create_in_room(self, p) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if options.type is None or storey is None:
+            self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
+            return
+        self.session.run(lambda: sc.create_slab_in_room(doc, options.type, storey, p,
+                                                        options.boundary,
+                                                        top_offset=options.top_offset))
+
     def press(self, p, mods, button="left"):
         if button != "left":
             return
         if getattr(self.options, "mode", None) == "room":
-            options, doc, storey = self.options, self.session.doc, self.session.storey
-            if options.type is None or storey is None:
-                self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
-                return
-            self.session.run(lambda: sc.create_slab_in_room(
-                doc, options.type, storey, p, options.boundary,
-                top_offset=options.top_offset))
+            self._create_in_room(p)
             self.room = None
             return
         q = self._point(p, mods)
@@ -1749,6 +1791,352 @@ class SlabOpeningTool(SlabTool):
         if first.closed and len(first.points) >= 3 and not self._fits(list(first.points)):
             marks[0] = Mark(first.points, True, "invalid")
         return marks
+
+
+# --- documentação da planta (spec/ui 13) ------------------------------------------------
+
+
+class _SpaceOptions:
+    """Opções da ferramenta Ambiente (spec/ui 13 §3.3)."""
+
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.mode = "room"  # ou "polygon"
+        self.boundary = "inner"  # o ambiente vai até a face interna das paredes
+        self.name = spaces.DEFAULT_NAME
+        self.height: float | None = None  # vazio = calculado
+        self.type = "space"
+
+
+class SpaceTool(SlabTool):
+    """Ambiente pelo cômodo (um clique) ou por polígono (spec/ui 13 §3.3)."""
+
+    name, label = "space", "Ambiente"
+    options_class = _SpaceOptions
+
+    def hint(self):
+        if self.options.mode == "room":
+            return "Clique dentro de um cômodo fechado por paredes"
+        if not self.points:
+            return "Clique o primeiro vértice do ambiente"
+        return "Clique os vértices; feche no primeiro ponto, com clique duplo ou Enter"
+
+    def _create_in_room(self, p) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+            return
+        self.session.run(lambda: ac.create_space_in_room(doc, storey, p, name=options.name,
+                                                         height=options.height))
+
+    def _create(self, points) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+        else:
+            self.session.run(lambda: ac.create_space(doc, storey, points, name=options.name,
+                                                     height=options.height))
+        self.points = []
+
+
+class _HatchOptions:
+    """Opções da ferramenta Hachura (spec/ui 13 §6)."""
+
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.mode = "rectangle"
+        self.pattern = "solid"
+        self.color = "#B3B3AD"
+        self.angle = 45.0
+        self.spacing = 2.0  # mm de papel
+        self.type = "hatch"
+
+
+class HatchTool(SlabTool):
+    """Hachura 2D por polígono ou retângulo (spec/ui 13 §6)."""
+
+    name, label = "hatch", "Hachura"
+    options_class = _HatchOptions
+
+    def hint(self):
+        if self.options.mode == "rectangle":
+            return "Clique dois cantos opostos da hachura"
+        return "Clique os vértices da hachura; feche no primeiro ponto ou com Enter"
+
+    def _create(self, points) -> None:
+        o, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is not None:
+            self.session.run(lambda: ac.create_annotation(
+                doc, "hatch", storey, outline=points, pattern=o.pattern, color=o.color,
+                angle=o.angle, spacing=o.spacing))
+        self.points = []
+
+
+class _LineOptions:
+    """Opções da ferramenta Linha (spec/ui 13 §6)."""
+
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.weight = 0.25
+        self.dash = "solid"
+        self.type = "line2d"
+
+    def band(self, doc):
+        return (0.0, 0.0)
+
+
+class LineTool(WallTool):
+    """Linha 2D: clique os pontos; Enter, clique duplo ou botão direito encerra; clicar no
+    primeiro ponto fecha (spec/ui 13 §6)."""
+
+    name, label = "line2d", "Linha"
+    options_class = _LineOptions
+
+    def hint(self):
+        if not self.points:
+            return "Clique o primeiro ponto da linha"
+        return ("Clique o próximo ponto; Tab digita comprimento e ângulo; Enter ou clique "
+                "duplo encerra; clique no primeiro ponto fecha")
+
+    def finish(self, closed: bool = False) -> None:
+        points = list(self.points)
+        self.points = []
+        if closed and points and math.dist(points[-1], points[0]) < 1e-6:
+            points.pop()
+        if len(points) < 2:
+            return
+        o, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is not None:
+            self.session.run(lambda: ac.create_annotation(
+                doc, "line2d", storey, points=points, closed=closed, weight=o.weight,
+                dash=o.dash))
+
+    def shape_preview(self):
+        pts = list(self.points)
+        if pts and self.snapped:
+            pts.append(self.snapped.point)
+        return [Mark(tuple(pts), False)] if len(pts) >= 2 else []
+
+
+class _PointTool(Tool):
+    """Ferramenta de um clique (nível, texto) ou dois (norte)."""
+
+    creates = True
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self.snapped = self.ctx.snap(p, mods, extra=self.ctx.vertices)
+
+    def _storey(self):
+        storey = self.session.storey
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+        return storey
+
+
+class LevelTool(_PointTool):
+    """Cota de nível: um clique (spec/ui 13 §5)."""
+
+    name, label = "level_mark", "Nível"
+
+    def hint(self):
+        return "Clique onde vai a cota de nível"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        storey, q, doc = self._storey(), self.snapped.point, self.session.doc
+        if storey is not None:
+            self.session.run(lambda: ac.create_annotation(doc, "level_mark", storey, at=q))
+
+
+class _TextOptions:
+    def __init__(self):
+        self.size = 2.5
+        self.angle = 0.0
+        self.align = "left"
+
+
+class TextTool(_PointTool):
+    """Texto: um clique e digita (spec/ui 13 §6). ``ask(atual)`` pede o texto (posto pela
+    janela; devolve ``None`` se o usuário desistir)."""
+
+    name, label = "text", "Texto"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.options = _TextOptions()
+        self.ask = None
+
+    def hint(self):
+        return "Clique onde começa o texto e digite"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        storey, q, doc, o = self._storey(), self.snapped.point, self.session.doc, self.options
+        if storey is None:
+            return
+        text = self.ask("") if self.ask is not None else None
+        if not text or not text.strip():
+            return
+        self.session.run(lambda: ac.create_annotation(doc, "text", storey, at=q,
+                                                      text=text.strip("\n"), size=o.size,
+                                                      angle=o.angle, align=o.align))
+
+
+class NorthTool(_PointTool):
+    """Norte: clique a posição e a direção (spec/ui 13 §7)."""
+
+    name, label = "north", "Norte"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.points: list[Point] = []
+
+    def hint(self):
+        return "Clique a posição do norte" if not self.points else "Clique a direção do norte"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        q = self.snapped.point
+        if not self.points:
+            self.points = [q]
+            return
+        a = self.points[0]
+        self.points = []
+        if math.dist(a, q) < geom2d.MIN_LENGTH:
+            return
+        storey, doc = self._storey(), self.session.doc
+        angle = math.degrees(math.atan2(q[1] - a[1], q[0] - a[0]))
+        if storey is not None:
+            self.session.run(lambda: ac.create_annotation(doc, "north", storey, at=a,
+                                                          angle=angle))
+
+    def cancel(self):
+        if self.points:
+            self.points = []
+            return True
+        return False
+
+    def preview(self):
+        if not self.points or not self.snapped:
+            return []
+        return [Mark((self.points[0], self.snapped.point), False)]
+
+
+DIM_DIRECTIONS = {"aligned": ("aligned", 0.0), "horizontal": ("fixed", 0.0),
+                  "vertical": ("fixed", 90.0)}
+
+
+class DimensionTool(_PointTool):
+    """Cota (spec/ui 13 §4.5): clique os pontos (presos aos elementos quando há atração);
+    com dois ou mais, um clique fora de qualquer ponto de elemento (ou Enter) posiciona a
+    linha. Tab digita o afastamento."""
+
+    name, label = "dimension", "Cota"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.direction = "aligned"
+        self.items: list[tuple] = []  # (ponto, referência)
+        self.hover: tuple | None = None
+
+    def hint(self):
+        if len(self.items) < 2:
+            return "Clique os pontos a cotar (nos elementos, a cota fica presa a eles)"
+        return ("Clique outros pontos para a cadeia, ou fora deles para posicionar a linha "
+                "(Enter posiciona no cursor; Tab digita o afastamento)")
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        storey = self.session.storey
+        ref = (annotation_dims.ref_at(self.session.doc, storey, self.snapped.point,
+                                      self.ctx.tol) if storey is not None else None)
+        point = (annotation_dims.resolve(self.session.doc, ref) if ref else None)
+        self.hover = (tuple(point), ref) if point is not None else None
+        if self.hover is not None:
+            self.snapped = snap.Snap(self.hover[0], "end")
+
+    def _state(self, offset: float) -> dict:
+        direction, angle = DIM_DIRECTIONS[self.direction]
+        return {"points": ac.dimension_points(self.items), "direction": direction,
+                "angle": angle, "offset": offset}
+
+    def _offset(self, q) -> float:
+        state = self._state(0.0)
+        pts = [tuple(i[0]) for i in self.items]
+        _, n = annotation_dims.frame(state, pts)
+        return (q[0] - pts[0][0]) * n[0] + (q[1] - pts[0][1]) * n[1]
+
+    def fields(self):
+        if len(self.items) < 2 or self.cursor is None:
+            return []
+        return [Field("offset", "Afastamento", "m", self._offset(self.cursor),
+                      self.fixed.get("offset"))]
+
+    def _commit(self, offset: float) -> None:
+        storey, doc = self._storey(), self.session.doc
+        items, (direction, angle) = list(self.items), DIM_DIRECTIONS[self.direction]
+        self.items, self.fixed = [], {}
+        if storey is not None:
+            self.session.run(lambda: ac.create_dimension(doc, storey, items, direction, angle,
+                                                         offset))
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        if len(self.items) >= 2 and (self.hover is None or "offset" in self.fixed):
+            self._commit(self.fixed.get("offset", self._offset(self.snapped.point)))
+            return
+        item = self.hover or (self.snapped.point, None)
+        if self.items and math.dist(item[0], self.items[-1][0]) < 1e-6:
+            return
+        self.items.append(item)
+
+    def confirm(self):
+        if len(self.items) < 2:
+            return False
+        self._commit(self.fixed.get("offset", self._offset(self.cursor or (0.0, 0.0))))
+        return True
+
+    def key(self, key):
+        if key == "enter" and len(self.items) >= 2:
+            return self.confirm()
+        return False
+
+    def cancel(self):
+        self.fixed.clear()
+        if self.items:
+            self.items = []
+            return True
+        return False
+
+    def preview(self):
+        if not self.items or self.cursor is None:
+            return []
+        if len(self.items) < 2:
+            return [Mark((self.items[0][0], self.snapped.point), False)]
+        storey = self.session.storey
+        offset = self.fixed.get("offset", self._offset(self.cursor))
+        prims = annotation_dims.DIMENSION.build(self.session.doc, storey, self._state(offset))
+        return [Mark(st.points, st.closed) for st in prims.strokes]
+
+    def labels(self):
+        if len(self.items) < 2 or self.cursor is None:
+            return []
+        storey = self.session.storey
+        prims = annotation_dims.DIMENSION.build(self.session.doc, storey,
+                                                self._state(self._offset(self.cursor)))
+        return [(t.at, t.text) for t in prims.texts]
 
 
 # --- porta e janela (spec/ui 01 §5.5; spec/ui 09 §2) ------------------------------------
@@ -2454,7 +2842,8 @@ class MirrorTool(_SelectionTool):
 
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
-         BeamTool, SlabTool, SlabOpeningTool, SplitTool, MoveTool, CopyTool, RotateTool,
+         BeamTool, SlabTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+         LineTool, HatchTool, NorthTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
@@ -2472,10 +2861,13 @@ def selection_actions(doc, gids) -> list[str]:
         return []
     walls = [e for e in elements if e.is_a("IfcWall")]
     door_list = [e for e in elements if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
-    structure = [e for e in elements if sc.is_structure(e)]
+    structure = [e for e in elements if sc.is_structure(e) or ac.is_annotation(e)]
     out = ["move", "copy"]
     if walls or structure:
         out += ["rotate", "mirror"]
+    if len(elements) == 1 and walls and isinstance(
+            geom2d.path_from_dict(cmd.read_state(doc, walls[0])["path"]), geom2d.LinePath):
+        out.append("auto_dimension")
     if (len(elements) == 1 and elements[0].is_a("IfcSlab")
             and sc.read_state(doc, elements[0])["foreign"] is None):
         out.append("slab_opening")
@@ -2557,8 +2949,9 @@ class ToolBox:
         for tool in self.tools.values():
             holder = tool.options if isinstance(tool, _WallTool) else tool
             ifc_class = getattr(holder, "type_class", "IfcDoorType")
-            if not hasattr(holder, "type") or (holder.type and doc.find(holder.type)):
-                continue
+            if ifc_class is None or not hasattr(holder, "type") or (
+                    holder.type and doc.find(holder.type)):
+                continue  # sem tipo do IFC (abertura, ambiente, anotações) ou tipo válido
             types = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
             holder.type = types[0].GlobalId if types else None
 

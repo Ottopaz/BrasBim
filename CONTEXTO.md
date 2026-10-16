@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 5 concluído: recortes, aberturas na laje, laje pelo cômodo, etiquetas).*
+*Atualizado em 2026‑10‑16 (pacote 6 concluído: documentação da planta).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (375 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (400 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -26,7 +26,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/08-parede-no-3d-topo-e-inclinacao` | aprovada e implementada (testes UI73–UI81), inclusive §4.3 (corte por trecho) |
 | `spec/ui/09-janela` | aprovada e implementada (testes UI82–UI95 em `tests/test_interface_janela.py`) |
 | `spec/ui/12-estrutura-refinamento` | aprovada e implementada (pacote 5; RC01–10 em `tests/test_recortes.py`, AL01–05 e LC01–03 em `test_laje.py` e `test_interface_estrutura.py`, ET01–02) |
-| `spec/ui/13-documentacao-planta` | **em revisão** (pacote 6) |
+| `spec/ui/13-documentacao-planta` | aprovada e implementada (pacote 6; `tests/test_documentacao.py`, `test_interface_documentacao.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -198,6 +198,26 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Etiquetas: `plan.Label` com `kind` e `angle`; `plan.structure_labels`; Exibir >
   Etiquetas de estrutura (`etiquetas_estrutura`).
 
+## Pacote 6 — como ficou (spec/ui 13)
+- `storeys.scale`/`paper(storey, mm)`: escala por pavimento; textos, etiquetas, cotas e
+  símbolos medem *mm × escala* no modelo; `plan.Label.height` e a planta desenham na
+  escala (fonte some abaixo de 3 px).
+- `core/annotations/`: `prims.py` (Stroke, Text, Fill; gravação em `IfcGeometricCurveSet`,
+  `IfcTextLiteralWithExtent`, `IfcAnnotationFillArea`, com estilos próprios que saem
+  junto), `base.py` (registro `Kind`, estado em JSON no Pset `BrasBim_Anotacao`,
+  operações genéricas), `drafting.py` (texto, linha, hachura, norte, cota de nível),
+  `dimensions.py` (referências, `resolve`, `candidates`, `ref_at`, geometria; `refresh`
+  guarda a posição dos pontos presos e marca `lost`), `spaces.py` (`IfcSpace` agregado,
+  pé-direito calculado), `rebuild.py` (derivação, roda por último e usa `doc.changed`),
+  `commands.py` (criar/editar/excluir, `auto_dimension_wall`, `mapped`).
+- `transform`: as funções públicas separam ambientes e anotações (`_annotations`); as de
+  antes viraram `_*_core`. Cota copiada fica solta; cota movida junto com o elemento a
+  que está presa continua presa.
+- Interface: grupo Documentação na barra Ferramentas (`SpaceTool`, `DimensionTool`,
+  `LevelTool`, `TextTool` com `ask`, `LineTool`, `HatchTool`, `NorthTool`); clique duplo
+  num texto edita (`SelectTool.ask_text`); mini-barra Cotar; escala na barra de estado e
+  no painel do projeto; Exibir > Número dos ambientes e Espessuras de linha.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -205,7 +225,7 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
 
 0. Revisor confirmar a correção do `CardinalPoint` do pilar (`pilar.md` §11 (e)).
 1. ~~Pacote 5~~ concluído.
-2. **Pacote 6** — documentação 1, anotação da planta: ambientes (`IfcSpace`, RF-AMB-01 a
+2. ~~Pacote 6~~ concluído — documentação 1, anotação da planta: ambientes (`IfcSpace`, RF-AMB-01 a
    03), cotas lineares associativas e cota automática de paredes e vãos, cota de nível
    (RF-DOC-05), textos, linhas e hachuras 2D (RF-DOC-06), norte e símbolo de nível
    (RF-DOC-07), escala da vista (RF-DOC-04), espessuras de linha por categoria (RF-DOC-03).
@@ -228,6 +248,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   elementos dos pavimentos vizinhos (medir em projeto grande); `NetSideArea` da parede
   não desconta recortes; abertura de porta sob um recorte pode ser descontada duas vezes.
 - Laje pelo cômodo: a laje não fica ligada às paredes (V1).
+- Documentação: cota só prende em parede reta; pontos livres da cota sem alça (só o
+  afastamento); texto de várias linhas só pelo clique duplo; vários ambientes ou
+  anotações selecionados não têm painel próprio; as espessuras da NBR 8403 e as
+  convenções da NBR 6492 seguem sem conferência com o texto das normas.
 - Estrutura: painel com vários pilares/vigas/lajes só edita tipo (e topo da laje) e
   propriedades comuns; alças da estrutura só na planta; laje "Por camadas" na planta usa a
   representação do tipo, não as camadas; tipo de parede em uso continua sem pedir

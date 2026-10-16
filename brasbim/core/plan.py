@@ -31,6 +31,7 @@ no por camadas, uma por material, com a prioridade das camadas nas junções
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import logging
 import math
@@ -79,6 +80,9 @@ class Label:
     size: str
     kind: str = "filling"
     angle: float = 0.0
+    height: float = 0.0  # m de modelo (tamanho no papel × escala, spec/ui 13 §2)
+    size_ratio: float = 1.0  # altura da linha de medidas em relação à do código
+    number: str = ""  # ambiente: número, mostrado com Exibir > Número dos ambientes
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,8 @@ class Plan:
     labels: list[Label] = field(default_factory=list)
     regions: list[Region] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    # Anotações (spec/ui 13): (GlobalId, primitivas) — traços, textos e preenchimentos.
+    annotations: list = field(default_factory=list)
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -131,8 +137,8 @@ class Plan:
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
-        for roles in (_COLUMN_ROLES, _BEAM_ROLES, ("wall",), ("wall_view", "wall_above"),
-                      _OPENING_ROLES, _SLAB_ROLES):
+        for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("wall",),
+                      ("wall_view", "wall_above"), _OPENING_ROLES, ("space",), _SLAB_ROLES):
             found = [s for s in self.shapes if s.role in roles]
             for s in found:
                 if s.closed and _inside(s.points, p):
@@ -156,14 +162,15 @@ class Plan:
 
         out = []
         groups = {**self.owners("wall"),
-                  **self.owners(("door", "window", "column", "beam", "slab"))}
+                  **self.owners(("door", "window", "column", "beam", "slab", "space",
+                                 "annotation"))}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes:
                 continue
             # A laje (e a abertura nela) só entra inteira, mesmo no cruzamento (spec/ui 10
             # §4.1).
-            if not crossing or shapes[0].role.startswith("slab"):
+            if not crossing or shapes[0].role.startswith(("slab", "space")):
                 if all(inside(q) for s in shapes for q in s.points):
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
@@ -912,4 +919,54 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
         label = door_label(doc, door, storey)
         if label is not None:
             plan.labels.append(label)
+    _documentation(doc, storey, plan)
     return plan
+
+
+# --- documentação (spec/ui 13) ------------------------------------------------------------
+
+LABEL_MM = 2.5  # altura das etiquetas no papel (spec/ui 13 §2)
+SPACE_NAME_MM, SPACE_AREA_MM = 3.0, 2.5  # §3.4
+
+
+def _documentation(doc: Document, storey, plan: Plan) -> None:
+    """Ambientes (forma de escolha e etiqueta), anotações (primitivas, hachuras como
+    regiões sob tudo) e a altura das etiquetas pela escala do pavimento."""
+    from brasbim.core.annotations import base, spaces
+    from brasbim.core.annotations.prims import text_box
+
+    height = storeys.paper(storey, LABEL_MM)
+    plan.labels = [dataclasses.replace(lb, height=height) for lb in plan.labels]
+    hatches = []
+    for e in ifcopenshell.util.element.get_decomposition(storey):
+        if e.is_a("IfcSpace"):
+            try:
+                state = spaces.read_state(e)
+            except (OpError, AttributeError):
+                continue
+            if not state["outline"]:
+                continue
+            ring = tuple(tuple(p) for p in state["outline"])
+            plan.shapes.append(Shape(e.GlobalId, "space", ring, True))
+            q = ifcopenshell.util.element.get_pset(e, spaces.QTO) or {}
+            area = q.get("NetFloorArea", spaces.area(state["outline"]))
+            plan.labels.append(Label(
+                e.GlobalId, spaces.label_point(state), state["name"] or "",
+                f"{area:.2f}".replace(".", ",") + " m²", "space", 0.0,
+                storeys.paper(storey, SPACE_NAME_MM), SPACE_AREA_MM / SPACE_NAME_MM,
+                state["number"] or ""))
+        elif e.is_a("IfcAnnotation") and base.kind_of(e) is not None:
+            try:
+                prims = base.build(doc, e)
+            except (OpError, ValueError, KeyError):
+                continue
+            plan.annotations.append((e.GlobalId, prims))
+            for f in prims.fills:
+                hatches.append(Region(e.GlobalId, [list(r) for r in f.rings], f.fill))
+                plan.shapes += [Shape(e.GlobalId, "annotation", tuple(r), True)
+                                for r in f.rings]
+            plan.shapes += [Shape(e.GlobalId, "annotation", st.points, st.closed)
+                            for st in prims.strokes]
+            plan.shapes += [Shape(e.GlobalId, "annotation", tuple(text_box(t)), True)
+                            for t in prims.texts]
+    plan.regions[:0] = hatches  # as hachuras ficam sob as paredes

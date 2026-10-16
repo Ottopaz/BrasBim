@@ -200,47 +200,47 @@ Térreo (0,00) e Superior (2,80); retângulo de paredes de 14 cm por dentro de
 (0, 0)–(5, 4); escala 1:50.
 
 **Escala**
-- [ ] **DO01** Mudar a escala do Térreo para 1:100: o Pset guarda 100; a altura de um
+- [x] **DO01** Mudar a escala do Térreo para 1:100: o Pset guarda 100; a altura de um
       texto de 2,5 mm vai de 0,125 m para 0,25 m no modelo; desfazer volta.
 
 **Ambientes**
-- [ ] **AM01** Ambiente pelo cômodo em (2, 2): `IfcSpace` `INTERNAL` agregado ao Térreo,
+- [x] **AM01** Ambiente pelo cômodo em (2, 2): `IfcSpace` `INTERNAL` agregado ao Térreo,
       `Name` "01", `LongName` "Ambiente"; `NetFloorArea` 4,72 × 3,72 = 17,5584;
       `FootPrint` e `Body` presentes.
-- [ ] **AM02** Laje de 10 cm no Superior sobre o cômodo: pé-direito 2,70; sem a laje,
+- [x] **AM02** Laje de 10 cm no Superior sobre o cômodo: pé-direito 2,70; sem a laje,
       2,80; fixado em 2,60, fica 2,60.
-- [ ] **AM03** Dois ambientes: números 01 e 02; excluir o 01 e criar outro dá 01.
-- [ ] **AM04** Etiqueta "Sala" / "17,56 m²" no centro; arrastar a alça move só a
+- [x] **AM03** Dois ambientes: números 01 e 02; excluir o 01 e criar outro dá 01.
+- [x] **AM04** Etiqueta "Sala" / "17,56 m²" no centro; arrastar a alça move só a
       etiqueta.
-- [ ] **AM05** Mover e girar o ambiente; desfazer e o diário reproduzem o IFC.
+- [x] **AM05** Mover e girar o ambiente; desfazer e o diário reproduzem o IFC.
 
 **Cotas**
-- [ ] **CT01** Cota horizontal de (0, 0) a (5, 0), afastamento −0,6: `IfcAnnotation`
+- [x] **CT01** Cota horizontal de (0, 0) a (5, 0), afastamento −0,6: `IfcAnnotation`
       `DIMENSION` contida no Térreo; texto "5,00".
-- [ ] **CT02** Cota presa às pontas da face externa de uma parede: esticar a parede para
+- [x] **CT02** Cota presa às pontas da face externa de uma parede: esticar a parede para
       6 m muda o texto para "6,00".
-- [ ] **CT03** Cota presa ao canto de um pilar: mover o pilar move o ponto da cota.
-- [ ] **CT04** Excluir o pilar: o ponto fica livre no lugar; aviso em Mensagens; desfazer
+- [x] **CT03** Cota presa ao canto de um pilar: mover o pilar move o ponto da cota.
+- [x] **CT04** Excluir o pilar: o ponto fica livre no lugar; aviso em Mensagens; desfazer
       volta a prender.
-- [ ] **CT05** Cotar a parede com uma porta de 0,80 a 1,00 do início: cadeia "1,00 · 0,80
+- [x] **CT05** Cotar a parede com uma porta de 0,80 a 1,00 do início: cadeia "1,00 · 0,80
       · …" até o fim, numa transação.
-- [ ] **CT06** Cota em cadeia com 4 pontos: 3 textos.
+- [x] **CT06** Cota em cadeia com 4 pontos: 3 textos.
 
 **Nível, textos, linhas, hachuras, norte**
-- [ ] **NV01** Nível sobre uma laje de topo −0,05 no Térreo: "−0,05"; mudar a laje para
+- [x] **NV01** Nível sobre uma laje de topo −0,05 no Térreo: "−0,05"; mudar a laje para
       0,00 muda para "+0,00".
-- [ ] **TX01** Texto "PLANTA BAIXA" de 5 mm: `IfcAnnotation` `TEXT` com `IfcTextLiteral`
+- [x] **TX01** Texto "PLANTA BAIXA" de 5 mm: `IfcAnnotation` `TEXT` com `IfcTextLiteral`
       e altura 0,25 m a 1:50; girar 90° e espelhar: continua legível.
-- [ ] **LH01** Linha tracejada de 0,35 mm: `IfcCurveStyle` com a espessura e o padrão.
-- [ ] **HC01** Hachura sólida cinza num retângulo: `IfcAnnotationFillArea` com
+- [x] **LH01** Linha tracejada de 0,35 mm: `IfcCurveStyle` com a espessura e o padrão.
+- [x] **HC01** Hachura sólida cinza num retângulo: `IfcAnnotationFillArea` com
       `IfcFillAreaStyle`.
-- [ ] **NO01** Norte a 30°: o símbolo aponta para 30°; o arquivo passa na validação de
+- [x] **NO01** Norte a 30°: o símbolo aponta para 30°; o arquivo passa na validação de
       esquema.
 
 **Gerais**
-- [ ] **DO02** Todas as anotações e ambientes passam na validação de esquema do
+- [x] **DO02** Todas as anotações e ambientes passam na validação de esquema do
       IfcOpenShell e os diários reaplicados reproduzem o IFC.
-- [ ] **DO03** Exibir > Espessuras de linha liga e desliga as espessuras na tela.
+- [x] **DO03** Exibir > Espessuras de linha liga e desliga as espessuras na tela.
 
 ## 11. Fontes públicas
 IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em

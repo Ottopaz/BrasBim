@@ -11,6 +11,8 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
 
+from brasbim.core.annotations import drafting
+from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
 from brasbim.core.structure import profiles
 from brasbim.core.walls import types as wall_types
@@ -18,8 +20,14 @@ from brasbim.ui import icons, theme
 from brasbim.ui.tools import (
     BeamTool,
     ColumnTool,
+    DimensionTool,
+    HatchTool,
+    LineTool,
+    NorthTool,
     SlabOpeningTool,
     SlabTool,
+    SpaceTool,
+    TextTool,
     WindowTool,
     _FillingTool,
     _WallTool,
@@ -46,6 +54,17 @@ CREATE_TOOLS = [
      "clique o início e o fim; continua do último ponto; Esc ou clique duplo encerra"),
     ("slab", "slab", "Laje",
      "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
+]
+# Grupo Documentação (spec/ui 13 §9): anotação da planta.
+DOC_TOOLS = [
+    ("space", "space", "Ambiente", "clique dentro de um cômodo, ou desenhe o contorno"),
+    ("dimension", "dimension", "Cota",
+     "clique os pontos (nos elementos a cota fica presa) e depois a posição da linha"),
+    ("level_mark", "level_mark", "Nível", "clique onde vai a cota de nível"),
+    ("text", "text", "Texto", "clique e digite o texto"),
+    ("line2d", "line2d", "Linha", "clique os pontos; Enter ou clique duplo encerra"),
+    ("hatch", "hatch", "Hachura", "polígono ou retângulo"),
+    ("north", "north", "Norte", "clique a posição e a direção"),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -74,6 +93,15 @@ ROOM_BOUNDARIES = [("Face externa", "outer"), ("Eixo das paredes", "axis"),
                    ("Face interna", "inner")]
 BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
 SECTIONS = [("Retangular", "rect"), ("Circular", "circle")]
+DIM_DIRECTIONS = [("aligned", "dimension", "Alinhada", "paralela aos dois primeiros pontos"),
+                  ("horizontal", "ref_axis", "Horizontal", "mede só a distância em x"),
+                  ("vertical", "ref_left", "Vertical", "mede só a distância em y")]
+DASHES = [("Contínua", "solid"), ("Tracejada", "dashed"), ("Traço e ponto", "dashdot")]
+ALIGN_TEXT = [("Esquerda", "left"), ("Centro", "center"), ("Direita", "right")]
+HATCHES = [("Sólida", "solid"), ("Linhas", "lines"), ("Cruzada", "cross")]
+SPACE_MODES = [("room", "slab_room", "Pelo cômodo",
+                "clique dentro de um cômodo fechado por paredes"),
+               ("polygon", "space", "Polígono", "clique os vértices do contorno")]
 
 
 class InsertionPicker(QWidget):
@@ -162,6 +190,13 @@ class ToolsBar(QToolBar):
             group.addAction(action)
             self.addAction(action)
             self.actions_by_tool[tool] = action
+        self.addSeparator()
+        for tool, icon_name, name, usage in DOC_TOOLS:
+            action = make_action(self, icon_name, name, usage, checkable=True)
+            action.triggered.connect(lambda _=False, t=tool: window.activate_tool(t))
+            group.addAction(action)
+            self.addAction(action)
+            self.actions_by_tool[tool] = action
 
     def mark(self, tool_name: str) -> None:
         key = "wall" if tool_name in ("wall", "arc", "rectangle") else tool_name
@@ -205,7 +240,21 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
-        if isinstance(tool, BeamTool):
+        if isinstance(tool, SpaceTool):
+            self._space(tool)
+        elif isinstance(tool, HatchTool):
+            self._hatch(tool)
+        elif isinstance(tool, LineTool):
+            self._line(tool)
+        elif isinstance(tool, TextTool):
+            self._text(tool)
+        elif isinstance(tool, DimensionTool):
+            self._choices(DIM_DIRECTIONS, tool.direction,
+                          lambda v: setattr(tool, "direction", v))
+        elif isinstance(tool, NorthTool):
+            self.hide()
+            return
+        elif isinstance(tool, BeamTool):
             self._beam(tool)
         elif isinstance(tool, SlabOpeningTool):
             self._choices(SLAB_MODES, tool.options.mode,
@@ -473,3 +522,69 @@ class OptionsBar(QToolBar):
         self._label("Deslocamento do topo")
         self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),
                      "Cota da face de cima em relação ao pavimento (m)")
+
+    # --- documentação da planta (spec/ui 13) ----------------------------------------------
+
+    def _space(self, tool) -> None:
+        options = tool.options
+
+        def set_mode(value):
+            tool.cancel()
+            tool.points = []
+            options.mode = value
+
+        self._choices(SPACE_MODES, options.mode, set_mode)
+        self.addSeparator()
+        self._label("Nome")
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems([space_data.DEFAULT_NAME, *space_data.NAMES])
+        combo.setCurrentText(options.name)
+        combo.setToolTip("Nome do próximo ambiente")
+        combo.currentTextChanged.connect(lambda v: setattr(options, "name", v.strip()
+                                                           or space_data.DEFAULT_NAME))
+        self.addWidget(combo)
+        self._label("Pé-direito")
+        self._number(options.height, lambda v: setattr(options, "height", v),
+                     "Pé-direito (vazio = calculado até a laje de cima)", "calculado",
+                     allow_empty=True)
+
+    def _hatch(self, tool) -> None:
+        options = tool.options
+
+        def set_mode(value):
+            tool.cancel()
+            options.mode = value
+
+        self._choices(SLAB_MODES, options.mode, set_mode)
+        self.addSeparator()
+        self._label("Padrão")
+        self._combo(HATCHES, options.pattern, lambda v: setattr(options, "pattern", v),
+                    "Padrão da hachura")
+        self._label("Ângulo")
+        self._number(options.angle, lambda v: setattr(options, "angle", v),
+                     "Ângulo das linhas (graus)")
+        self._label("Espaçamento")
+        self._number(options.spacing, lambda v: setattr(options, "spacing", v),
+                     "Espaçamento das linhas, em mm de papel")
+
+    def _line(self, tool) -> None:
+        options = tool.options
+        self._label("Espessura")
+        self._combo([(f"{fmt(w)} mm", w) for w in drafting.LINE_WEIGHTS], options.weight,
+                    lambda v: setattr(options, "weight", v), "Espessura da linha no papel")
+        self._label("Tipo")
+        self._combo(DASHES, options.dash, lambda v: setattr(options, "dash", v),
+                    "Tipo de linha")
+
+    def _text(self, tool) -> None:
+        options = tool.options
+        self._label("Altura")
+        self._combo([(f"{fmt(v)} mm", v) for v in drafting.TEXT_SIZES], options.size,
+                    lambda v: setattr(options, "size", v), "Altura do texto no papel")
+        self._label("Ângulo")
+        self._number(options.angle, lambda v: setattr(options, "angle", v),
+                     "Ângulo do texto (graus)")
+        self._label("Alinhamento")
+        self._combo(ALIGN_TEXT, options.align, lambda v: setattr(options, "align", v),
+                    "Alinhamento do texto")
