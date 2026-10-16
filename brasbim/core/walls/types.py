@@ -64,7 +64,7 @@ def plan_style(wall_type) -> dict:
     return {**DEFAULT_PLAN_STYLE, **(read_plan_style(wall_type) or {})}
 
 
-def _validate_plan_style(style: dict | None) -> None:
+def validate_plan_style(style: dict | None) -> None:
     if style is None:
         return
     if style.get("fill") not in FILLS:
@@ -77,7 +77,7 @@ def _validate_plan_style(style: dict | None) -> None:
             raise OpError(f"cor inválida: {color!r}")
 
 
-def _write_plan_style(doc: Document, wall_type, style: dict | None) -> None:
+def write_plan_style(doc: Document, wall_type, style: dict | None) -> None:
     if style is None:
         props.remove_pset(doc, wall_type, PLAN_PSET)
         return
@@ -139,7 +139,7 @@ def _validate(state: dict) -> None:
         p = layer.get("priority")
         if p is not None and not 0 <= p <= 100:
             raise OpError("prioridade da camada deve estar entre 0 e 100")
-    _validate_plan_style(state.get("plan_style"))
+    validate_plan_style(state.get("plan_style"))
 
 
 def material_named(doc: Document, name: str):
@@ -190,7 +190,7 @@ def _create(doc: Document, op: Op) -> set[str]:
         doc.ifc, products=[wall_type], type="IfcMaterialLayerSet", material=lset
     )
     guid.stamp(rel, op.id, "material")
-    _write_plan_style(doc, wall_type, state.get("plan_style"))
+    write_plan_style(doc, wall_type, state.get("plan_style"))
     return {op.id}
 
 
@@ -218,7 +218,7 @@ def _edit(doc: Document, op: Op) -> set[str]:
     if "layers" in (op.after or {}):
         _write_layers(doc, lset, state["layers"])
     if "plan_style" in (op.after or {}):
-        _write_plan_style(doc, wall_type, state["plan_style"])
+        write_plan_style(doc, wall_type, state["plan_style"])
     return {op.id}
 
 

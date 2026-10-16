@@ -22,6 +22,8 @@ class Document:
         self._body = self._axis = self._profile = self._plan_body = None
         # GlobalIds recalculados durante a transação em curso (ver ``ops.history.run``).
         self.changed: set[str] = set()
+        # Perfis trocados num tipo de pilar ou viga, apagados depois de refeitos os corpos.
+        self.orphan_profiles: list = []
 
     # --- criação e arquivo ---------------------------------------------------
 
@@ -124,6 +126,11 @@ class Document:
         if self._axis is None:
             self._axis = self._subcontext("Plan", "Axis", "GRAPH_VIEW")
         return self._axis
+
+    @property
+    def model_axis_context(self):
+        """Eixo 3D de pilares e vigas (representação ``Axis``, ``Curve3D``)."""
+        return self._subcontext("Model", "Axis", "MODEL_VIEW")
 
     @property
     def profile_context(self):

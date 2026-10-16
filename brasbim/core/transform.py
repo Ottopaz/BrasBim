@@ -4,7 +4,8 @@
 As transações usam só operações que já existem (spec/ui 02 §1): mover e girar viram
 ``wall.edit`` (caminho novo) e, para a porta sem a sua parede, ``opening.edit``; copiar
 vira ``wall.create``, ``opening.create``, ``door.create`` e ``filling.attach``. As junções
-são recalculadas por ``connections.sync_ops``.
+são recalculadas por ``connections.sync_ops``. Pilares, vigas e lajes viram um
+``*.edit`` (ou ``*.create``, ao copiar) cada, na mesma transação (spec/ui 10 §4.1).
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import doors
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
+from brasbim.core.structure import commands as structure_cmd
+from brasbim.core.structure import common as structure_common
+from brasbim.core.structure import profiles, slabs
 from brasbim.core.walls import connections, openings, rebuild, top
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -113,12 +117,12 @@ def _transform(doc: Document, gids, fn, label: str, lone_allowed: bool) -> Trans
     return Transaction(label, ops + connections.sync_ops(doc, changed))
 
 
-def move_elements(doc: Document, gids, vector) -> Transaction:
+def _move_elements_walls(doc: Document, gids, vector) -> Transaction:
     """Desloca paredes (com aberturas e portas) e portas pelo vetor (spec/ui 02 §6.1)."""
     return _transform(doc, gids, geom2d.translation(tuple(vector)), "Mover", True)
 
 
-def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
+def _rotate_elements_walls(doc: Document, gids, center, angle: float) -> Transaction:
     """Gira paredes (com aberturas e portas) ``angle`` radianos, anti-horário, em torno
     de ``center`` (spec/ui 02 §6.3)."""
     return _transform(doc, gids, geom2d.rotation(tuple(center), angle), "Girar", False)
@@ -135,7 +139,7 @@ def _copy_door_ops(doc: Document, door, opening_data: dict) -> list[Op]:
             Op("filling.attach", door_id, data={"opening": opening_id})]
 
 
-def copy_elements(doc: Document, gids, vector) -> Transaction:
+def _copy_elements_walls(doc: Document, gids, vector) -> Transaction:
     """Cópia deslocada pelo vetor (spec/ui 02 §6.2): ``GlobalId``s novos, mesmos tipos;
     a parede leva cópias das suas aberturas e portas."""
     fn = geom2d.translation(tuple(vector))
@@ -188,7 +192,7 @@ def _has_hand(doc: Document, door) -> bool:
     return door_cmd.hand(doc, door) is not None
 
 
-def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
+def _mirror_elements_walls(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
     """Imagem espelhada da seleção pelo eixo ``a``–``b``; com ``keep``, espelha uma cópia
     e mantém o original. Portas e janelas trocam a mão (variante)."""
     if math.dist(a, b) < geom2d.MIN_LENGTH:
@@ -248,3 +252,131 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
     flips = new_doors if keep else [d.GlobalId for d in door_list if _has_hand(doc, d)]
     return combine(doc, "Espelhar cópia" if keep else "Espelhar",
                    [lambda: base, *[lambda d=d: door_cmd.flip_hinges(doc, d) for d in flips]])
+
+
+# --- pilar, viga e laje (spec/ui 10 §4.1) ------------------------------------------------
+
+
+def _structure(doc: Document, gids) -> tuple[list, list]:
+    """(GlobalIds dos outros elementos, pilares/vigas/lajes), na ordem da seleção."""
+    rest, found = [], []
+    for g in dict.fromkeys(gids):
+        e = doc.get(g if isinstance(g, str) else g.GlobalId)
+        (found if structure_cmd.is_structure(e) else rest).append(e.GlobalId)
+    return rest, [doc.get(g) for g in found]
+
+
+def _foreign_placement(doc: Document, element, state: dict, fn, angle: float) -> dict:
+    if not structure_common.relative_to_storey(element, doc.get(state["storey"])):
+        raise OpError(f"{element.is_a()} {element.GlobalId}, de outra origem, não está "
+                      "posicionado em relação ao pavimento")
+    return structure_common.placement_moved(state["placement"], fn, angle)
+
+
+def _moved_state(doc: Document, element, fn, angle: float) -> dict:
+    """Campos do estado levados por ``fn`` (translação ou rotação de ``angle`` rad)."""
+    state = structure_cmd.read_state(doc, element)
+    if state["foreign"] is not None:
+        return {"placement": _foreign_placement(doc, element, state, fn, angle)}
+    if element.is_a("IfcColumn"):
+        return {"point": list(fn(state["point"])),
+                "angle": (state["angle"] + math.degrees(angle) + 180.0) % 360.0 - 180.0}
+    if element.is_a("IfcBeam"):
+        return {"start": list(fn(state["start"])), "end": list(fn(state["end"]))}
+    return {"outline": [list(fn(p)) for p in state["outline"]]}
+
+
+def _mirrored_state(doc: Document, element, fn, a, b) -> dict:
+    state = structure_cmd.read_state(doc, element)
+    if state["foreign"] is not None:
+        raise OpError(f"{element.is_a()} {element.GlobalId}, de outra origem, não pode ser "
+                      "espelhado")
+    if element.is_a("IfcColumn"):
+        axis = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+        angle = (2 * axis - state["angle"] + 180.0) % 360.0 - 180.0
+        return {"point": list(fn(state["point"])), "angle": angle,
+                "cardinal": profiles.mirrored_cardinal(state["cardinal"])}
+    if element.is_a("IfcBeam"):
+        swap = {"left_face": "right_face", "right_face": "left_face", "axis": "axis"}
+        return {"start": list(fn(state["start"])), "end": list(fn(state["end"])),
+                "ref_line": swap[state["ref_line"]]}
+    return {"outline": [list(fn(p)) for p in state["outline"]]}
+
+
+def _edit_ops(doc: Document, elements, changes_of) -> list[Op]:
+    return [op for e in elements
+            for op in structure_cmd.edit_element(doc, e, **changes_of(e)).ops]
+
+
+def _copy_ops(doc: Document, elements, changes_of) -> list[Op]:
+    """Cópias com GlobalIds novos e os próximos nomes livres (P…, V…)."""
+    ops, taken = [], {"IfcColumn": set(), "IfcBeam": set()}
+    for e in elements:
+        module, prefix, _, _ = structure_cmd.ELEMENTS[e.is_a()]
+        state = copy.deepcopy(module.read_state(doc, e))
+        changes = changes_of(e)
+        if "outline" in changes:
+            changes["outline"] = slabs.clean(changes["outline"])
+        state.update(changes)
+        if e.is_a() in taken and state["foreign"] is None:
+            letter = "P" if e.is_a("IfcColumn") else "V"
+            used = {x.Name for x in doc.ifc.by_type(e.is_a())} | taken[e.is_a()]
+            n = 1
+            while f"{letter}{n}" in used:
+                n += 1
+            state["name"] = f"{letter}{n}"
+            taken[e.is_a()].add(state["name"])
+        ops.append(Op(f"{prefix}.create", guid.new(), data=state))
+    return ops
+
+
+def _join(doc: Document, label: str, rest, walls_tx, structure_ops: list[Op]) -> Transaction:
+    ops = walls_tx().ops if rest else []
+    if not rest and not structure_ops:
+        raise OpError("nada selecionado")
+    return Transaction(label, ops + structure_ops)
+
+
+def move_elements(doc: Document, gids, vector) -> Transaction:
+    """Desloca paredes (com aberturas e portas), portas, pilares, vigas e lajes pelo
+    vetor (spec/ui 02 §6.1)."""
+    rest, structure = _structure(doc, gids)
+    fn = geom2d.translation(tuple(vector))
+    ops = _edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+    return _join(doc, "Mover", rest, lambda: _move_elements_walls(doc, rest, vector), ops)
+
+
+def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
+    """Gira a seleção ``angle`` radianos, anti-horário, em torno de ``center``
+    (spec/ui 02 §6.3)."""
+    rest, structure = _structure(doc, gids)
+    fn = geom2d.rotation(tuple(center), angle)
+    ops = _edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, angle))
+    return _join(doc, "Girar", rest,
+                 lambda: _rotate_elements_walls(doc, rest, center, angle), ops)
+
+
+def copy_elements(doc: Document, gids, vector) -> Transaction:
+    """Cópia deslocada pelo vetor (spec/ui 02 §6.2)."""
+    rest, structure = _structure(doc, gids)
+    fn = geom2d.translation(tuple(vector))
+    ops = _copy_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+    return _join(doc, "Copiar", rest, lambda: _copy_elements_walls(doc, rest, vector), ops)
+
+
+def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
+    """Imagem espelhada da seleção pelo eixo ``a``–``b`` (spec/ui 05 §2); com ``keep``,
+    espelha uma cópia e mantém o original."""
+    if math.dist(a, b) < geom2d.MIN_LENGTH:
+        raise OpError("o eixo de simetria precisa de dois pontos distintos")
+    rest, structure = _structure(doc, gids)
+    fn = geom2d.reflection(tuple(a), tuple(b))
+    changes = lambda e: _mirrored_state(doc, e, fn, a, b)
+    ops = (_copy_ops if keep else _edit_ops)(doc, structure, changes)
+    label = "Espelhar cópia" if keep else "Espelhar"
+    if not rest:
+        return _join(doc, label, rest, None, ops)
+    # As portas trocam de mão numa transação montada por ``combine``: os elementos
+    # estruturais entram depois dela, sem depender do que ela cria.
+    tx = _mirror_elements_walls(doc, rest, a, b, keep)
+    return Transaction(label, tx.ops + ops)

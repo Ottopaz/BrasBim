@@ -207,3 +207,14 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
 - Pontos de revisão: (a) nomes P1, P2… automáticos (§3.1); (b) recorte da parede só na
   planta no básico (§6); (c) barra de espaço gira 90° na criação (§4); (d) biblioteca
   (§3.4).
+- **(e) Correção na implementação (2026‑10‑16), a confirmar pelo revisor:** a tabela de §3.1
+  e o PI03 numeram os pontos como vistos de cima, mas [IFC-CARD] define a "esquerda" como
+  o +x do perfil **olhando na direção da extrusão** (texto do `IfcCardinalPointReference`,
+  conferido no mesmo repositório da §10 nesta data). Num pilar, que é extrudado para cima,
+  visto de cima a esquerda do IFC fica à direita. A implementação mantém o comportamento
+  da interface (o canto escolhido no quadradinho cai no ponto clicado; no PI03 a seção
+  ocupa x ∈ [2; 2,2], y ∈ [3; 3,4]) e grava o número do IFC: canto inferior esquerdo da
+  planta = `CardinalPoint` **3**, inferior direito = 1, superior esquerdo = 9, superior
+  direito = 7, meio esquerdo = 6, meio direito = 4 (meio de cima, meio de baixo e centro
+  não mudam). Na viga, a tabela de
+  `viga.md` §2.4 já segue o [IFC-CARD].

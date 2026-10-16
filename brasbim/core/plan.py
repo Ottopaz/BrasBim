@@ -14,6 +14,13 @@ de giro, linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejad
 para o marco, a folha aberta, o arco e a seta, e mais ``window_sash`` (faces do perfil do
 caixilho fechado) e ``window_glass`` (vidro), em linha fina (spec/ui 09 §6.2).
 
+Estrutura (spec/ui 10 §6): ``slab``, ``column`` e ``beam`` (cortados pelo plano; o fundo
+vem das regiões; na viga, também a faixa usada para escolher), ``slab_view``,
+``column_view`` e ``beam_view`` (abaixo do plano, linha fina) e ``slab_above``,
+``column_above`` e ``beam_above`` (acima, tracejados). A viga acima do plano aparece
+sempre (viga.md §7), pelas duas faces. Os pilares cortados recortam as regiões e as
+bordas das paredes.
+
 Regiões (``Region``) e bordas (``Edge``) desenham as paredes cortadas: no detalhe
 simplificado, uma mancha por tipo (paredes do mesmo tipo unidas, sem linha na junção);
 no por camadas, uma por material, com a prioridade das camadas nas junções
@@ -36,6 +43,8 @@ from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, geometry, params, window_types
 from brasbim.core.geom2d import Point
+from brasbim.core.structure import beams, columns, slabs
+from brasbim.core.structure import types as st_types
 from brasbim.core.walls import openings, rebuild, top
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import read_state as read_wall
@@ -109,18 +118,20 @@ class Plan:
         return min(xs), min(ys), max(xs), max(ys)
 
     def pick(self, p: Point, tol: float) -> str | None:
-        """Elemento sob o ponto: esquadria (caixa envolvente) antes de parede (polígono)."""
+        """Elemento sob o ponto, nesta prioridade (spec/ui 10 §4.1): esquadria (caixa
+        envolvente), pilar, viga, parede (as cortadas primeiro) e laje."""
         for owner, shapes in sorted(self.owners(("door", "window")).items()):
             pts = [q for s in shapes for q in s.points]
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
-        for roles in (("wall",), ("wall_view", "wall_above")):  # cortadas primeiro
-            walls = [s for s in self.shapes if s.role in roles]
-            for s in walls:
+        for roles in (_COLUMN_ROLES, _BEAM_ROLES, ("wall",), ("wall_view", "wall_above"),
+                      _SLAB_ROLES):
+            found = [s for s in self.shapes if s.role in roles]
+            for s in found:
                 if s.closed and _inside(s.points, p):
                     return s.owner
-            near = [(_distance_to_outline(s.points, p, s.closed), s.owner) for s in walls]
+            near = [(_distance_to_outline(s.points, p, s.closed), s.owner) for s in found]
             near = [n for n in near if n[0] <= tol]
             if near:
                 return min(near)[1]
@@ -138,17 +149,24 @@ class Plan:
             return x0 <= q[0] <= x1 and y0 <= q[1] <= y1
 
         out = []
-        groups = {**self.owners("wall"), **self.owners(("door", "window"))}
+        groups = {**self.owners("wall"),
+                  **self.owners(("door", "window", "column", "beam", "slab"))}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes:
                 continue
-            if not crossing:
+            # A laje só entra inteira, mesmo no cruzamento (spec/ui 10 §4.1).
+            if not crossing or shapes[0].role in _SLAB_ROLES:
                 if all(inside(q) for s in shapes for q in s.points):
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
                 out.append(owner)
         return out
+
+
+_COLUMN_ROLES = ("column", "column_view", "column_above")
+_BEAM_ROLES = ("beam", "beam_view", "beam_above")
+_SLAB_ROLES = ("slab", "slab_view", "slab_above")
 
 
 def _segments(points, closed: bool):
@@ -621,6 +639,174 @@ def _continuous_last(walls) -> list:
     return sorted(walls, key=lambda w: (rank(w), w.GlobalId))
 
 
+# --- pilar, viga e laje (spec/ui 10 §6) ------------------------------------------------
+
+CUT_WEIGHT = 0.0005  # contorno grosso de corte (NBR 8403)
+SLAB_WEIGHT = 0.00018  # contorno fino da laje (laje.md §7)
+
+
+@dataclass
+class _Element:
+    """Pilar, viga ou laje diante do plano de corte."""
+
+    element: object
+    kind: str  # column, beam, slab
+    ring: list[Point]  # contorno no pavimento
+    lines: list[list[Point]]  # o que se desenha em vista ou acima (viga: as faces)
+    z: tuple[float, float]  # cotas do fundo e do topo, a partir do pavimento
+    fill: dict
+    edge_weight: float
+
+
+def _material_fill(doc: Document, element_type) -> dict:
+    """Fundo do material do perfil, ou o da representação do tipo, se houver."""
+    if wall_types.read_plan_style(element_type) is not None:
+        return _fill_of_type(wall_types.plan_style(element_type))
+    material = st_types.material_profile(element_type).Material
+    cut = materials.style(doc, material.Name if material else None)["cut"]
+    return {**cut, "source": "material"}
+
+
+def _slab_fill(element_type) -> dict:
+    """Laje: só o fundo que o tipo pedir (padrão: sem fundo, laje.md §3.2)."""
+    style = wall_types.read_plan_style(element_type)
+    return _fill_of_type(style) if style else {"pattern": "none", "source": "type"}
+
+
+def _hull(points: list[Point]) -> list[Point]:
+    pts = sorted({(round(x, 9), round(y, 9)) for x, y in points})
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        out: list[Point] = []
+        for q in seq:
+            while len(out) >= 2 and geom2d._cross(geom2d._sub(out[-1], out[-2]),
+                                                   geom2d._sub(q, out[-2])) <= 0:
+                out.pop()
+            out.append(q)
+        return out
+
+    lower, upper = half(pts), half(list(reversed(pts)))
+    return lower[:-1] + upper[:-1]
+
+
+def _foreign_element(element, storey, kind: str) -> _Element | None:
+    """Elemento de outra origem: contorno convexo do corpo, visto de cima."""
+    import ifcopenshell.geom
+
+    settings = ifcopenshell.geom.settings()
+    settings.set("use-world-coords", True)
+    try:
+        shape = ifcopenshell.geom.create_shape(settings, element)
+    except RuntimeError:
+        return None
+    verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
+    m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement))
+    local = (m @ np.c_[verts, np.ones(len(verts))].T).T[:, :3]
+    ring = _hull([(float(x), float(y)) for x, y, _ in local])
+    if len(ring) < 3:
+        return None
+    z = (float(local[:, 2].min()), float(local[:, 2].max()))
+    return _Element(element, kind, ring, [ring], z, {"pattern": "none", "source": "type"},
+                    CUT_WEIGHT)
+
+
+def _structure_element(doc: Document, element, storey) -> _Element | None:
+    kind = {"IfcColumn": "column", "IfcBeam": "beam", "IfcSlab": "slab"}[element.is_a()]
+    module = {"column": columns, "beam": beams, "slab": slabs}[kind]
+    try:
+        state = module.read_state(doc, element)
+        if state["foreign"] is not None:
+            return _foreign_element(element, storey, kind)
+        element_type = doc.get(state["type"])
+        if kind == "column":
+            ring = columns.outline(doc, state)
+            z0 = state["base_offset"]
+            return _Element(element, kind, ring, [ring], (z0, z0 + columns.height(doc, state)),
+                            _material_fill(doc, element_type), CUT_WEIGHT)
+        if kind == "beam":
+            ring = beams.outline(doc, state)
+            z1 = beams.top_z(doc, state)
+            faces = [[ring[0], ring[1]], [ring[3], ring[2]]]
+            return _Element(element, kind, ring, faces,
+                            (z1 - beams.section(doc, state)["h"], z1),
+                            _material_fill(doc, element_type), CUT_WEIGHT)
+        ring = [tuple(p) for p in state["outline"]]
+        z1 = state["top_offset"]
+        style = wall_types.read_plan_style(element_type)
+        return _Element(element, kind, ring, [ring], (z1 - slabs.thickness(doc, state), z1),
+                        _slab_fill(element_type),
+                        style["line_weight"] if style else SLAB_WEIGHT)
+    except (OpError, ValueError, KeyError, TypeError) as e:
+        log.warning("%s %s fora da planta: %s", element.is_a(), element.GlobalId, e)
+        return None
+
+
+def _structure(doc: Document, storey, cut: float, show_above: bool
+               ) -> tuple[list[_Element], list[Shape], Rings]:
+    """Elementos da estrutura do pavimento, as formas deles e a área dos pilares
+    cortados (que recorta as paredes)."""
+    found = [e for e in (_structure_element(doc, x, storey)
+                         for cls in ("IfcSlab", "IfcColumn", "IfcBeam")
+                         for x in _contained(storey, cls)) if e is not None]
+    shapes: list[Shape] = []
+    cut_columns: Rings = []
+    for e in found:
+        gid = e.element.GlobalId
+        z0, z1 = e.z
+        closed = e.kind != "beam"
+        if z0 < cut < z1:
+            shapes.append(Shape(gid, e.kind, tuple(e.ring), True))
+            if e.kind == "column":
+                cut_columns.append(list(e.ring))
+            continue
+        if z1 <= cut:
+            role = f"{e.kind}_view"
+        elif show_above or e.kind == "beam":
+            role = f"{e.kind}_above"
+        else:
+            continue
+        shapes += [Shape(gid, role, tuple(line), closed) for line in e.lines]
+        if e.kind == "beam":  # escolha e seleção pela faixa inteira
+            shapes.append(Shape(gid, "beam", tuple(e.ring), True))
+    if cut_columns:  # o tracejado da viga não entra no pilar cortado (spec/ui 10 §6.2)
+        outside = clip.difference([_slab(-_FAR, _FAR)], cut_columns)
+        trimmed = []
+        for s in shapes:
+            if s.role in ("beam_above", "beam_view"):
+                trimmed += [Shape(s.owner, s.role, tuple(q), False)
+                            for q in clip.clip_lines([list(s.points)], outside)]
+            else:
+                trimmed.append(s)
+        shapes = trimmed
+    return found, shapes, cut_columns
+
+
+def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> None:
+    for e in found:
+        if e.kind not in kinds:
+            continue
+        z0, z1 = e.z
+        ring = [list(e.ring)]
+        if z0 < cut < z1:
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill))
+            plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR))
+        elif e.kind == "slab" and z1 <= cut and e.fill["pattern"] != "none":
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill))
+
+
+def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None:
+    """Tira das regiões e das bordas das paredes (a partir dos índices dados) a área dos
+    pilares cortados (pilar.md §6)."""
+    if not holes:
+        return
+    plan.regions[first_region:] = [Region(r.key, clip.difference(r.rings, holes), r.fill)
+                                   for r in plan.regions[first_region:]]
+    plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color)
+                               for e in plan.edges[first_edge:]]
+
+
 # --- pavimento ----------------------------------------------------------------------
 
 
@@ -641,12 +827,20 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
             for wall in _contained(storeys_[i - 1], "IfcWall"):
                 plan.shapes += wall_shapes(doc, wall, role="below")
     cut = storeys.cut_height(storey)
+    found, structure, cut_columns = _structure(doc, storey, cut, show_above)
+    # Lajes sob as paredes; pilares e vigas por cima (spec/ui 10 §6.1).
+    plan.shapes += [s for s in structure if s.role in _SLAB_ROLES]
+    _structure_regions(plan, found, cut, ("slab",))
     cuts = [c for c in (_cut_wall(doc, wall, cut, show_above)
                         for wall in _continuous_last(_contained(storey, "IfcWall")))
             if c is not None]
     order = {"wall_above": 0, "wall_view": 1}  # acima, abaixo, cortadas (§3.2)
     plan.shapes += sorted((s for c in cuts for s in c.shapes), key=lambda s: order.get(s.role, 2))
+    first_region, first_edge = len(plan.regions), len(plan.edges)
     _regions(doc, plan, cuts, detail)
+    _carve(plan, first_region, first_edge, cut_columns)
+    plan.shapes += [s for s in structure if s.role not in _SLAB_ROLES]
+    _structure_regions(plan, found, cut, ("column", "beam"))
     crossed = {o for c in cuts for o in c.crossed}
     fillings = sorted(_contained(storey, "IfcDoor") + _contained(storey, "IfcWindow"),
                       key=lambda e: e.GlobalId)

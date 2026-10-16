@@ -57,6 +57,12 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `door.create` / `.delete` / `.edit` | `name`, `type`, `opens_to` (`left` \| `right`), `align` (`left_face` \| `axis` \| `right_face`), `offset`, `common`, `foreign` | porta §5.2 |
 | `window_type.create` / `.delete` / `.edit` | `name`, `code`, `predefined_type`, `partitioning`, `lining` (`depth`, `thickness`, `mullion_thickness`, `mullion_offsets[]`, `transom_thickness`, `transom_offsets[]`), `panels[]` (`operation`, `position`, `frame_depth`, `frame_thickness`), `materials`, `defaults`, `variant` | janela §5.2 |
 | `window.create` / `.delete` / `.edit` | os mesmos campos de `door.*` (na janela, `foreign.operation_type` guarda o `PartitioningType`) | janela §5.2 |
+| `column_type.create` / `.delete` / `.edit` | `name`, `predefined_type`, `section` (`{"shape": "rect", "b", "h"}` \| `{"shape": "circle", "d"}`), `material`, `plan_style` | pilar §5.2 |
+| `column.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `point`, `cardinal`, `angle` (graus), `base_offset`, `top_mode`, `top_storey`, `top_offset`, `fixed_height`, `common`, `foreign`, `placement` | pilar §5.2 |
+| `beam_type.create` / `.delete` / `.edit` | `name`, `predefined_type`, `section` (`{"shape": "rect", "b", "h"}`), `material`, `plan_style` | viga §5.2 |
+| `beam.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `start`, `end`, `ref_line`, `top_mode`, `top_storey`, `top_offset`, `top_elevation`, `common`, `foreign`, `placement` | viga §5.2 |
+| `slab_type.create` / `.delete` / `.edit` | `name`, `predefined_type` (`FLOOR` \| `BASESLAB`), `layers[]` (`material`, `thickness`; de cima para baixo), `plan_style` | laje §5.2 |
+| `slab.create` / `.delete` / `.edit` | `name`, `type`, `storey`, `outline[]`, `top_offset`, `common`, `foreign`, `placement` | laje §5.2 |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`
@@ -94,6 +100,21 @@ leva as aberturas depois do ponto para a nova parede, e `path_connection.*` refa
 junções (inclusive a L colinear entre as duas partes). A inversa `wall.merge` exige que a
 2ª parte já esteja sem aberturas e junções; a ordem invertida da transação garante isso.
 *(decisão do projeto)*
+
+Pilar, viga e laje: `id` = GlobalId do elemento. Os topos são planos, como na parede
+(`top_mode`: `storey` | `fixed`); no pilar a altura fixa é `fixed_height`, na viga a cota
+fixa do topo (a partir do pavimento dela) é `top_elevation`. `cardinal` é o
+`CardinalPoint` do `IfcMaterialProfileSetUsage` (1–9; a "esquerda" do IFC é o +x do
+perfil, olhando na direção da extrusão: visto de cima, o canto inferior esquerdo de um
+pilar é o 3). O contorno da laje (`outline`) é gravado anti-horário, sem pontos repetidos
+ou alinhados, começando pelo vértice da origem do posicionamento; os comandos já mandam o
+contorno assim. As camadas do tipo de laje vêm de cima para baixo e são gravadas na
+ordem inversa (camada 1 = a de baixo). Mover, girar, espelhar e copiar geram um
+`*.edit` (ou `*.create`) por elemento. Elementos de outra origem (sem `BrasBim_Pilar`,
+`BrasBim_Viga` ou `BrasBim_Laje`): `foreign` = `{"shape": representação}` e `placement` =
+`{"rel", "location", "axis", "ref"}` do `IfcLocalPlacement`; mover e girar trocam só o
+`placement`. Excluir um pavimento gera, antes do `storey.delete`, `column.edit` e
+`beam.edit` que passam para altura (cota) fixa os que tinham o topo nele.
 
 Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam as junções e geram
 estas operações na mesma transação da criação, edição ou exclusão da parede.

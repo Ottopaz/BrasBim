@@ -50,6 +50,9 @@ LIBRARY = {
     "Vidro": {"color": "#A6CCE0", "cut": _cut("solid", background="#A6CCE0"),
               "transparency": 0.6},
     "Alumínio": {"color": "#C4C7CC", "cut": _cut("solid", background="#9DA1A8")},
+    # Laje (spec/ui 10 §5)
+    "Contrapiso": {"color": "#C7C2B8", "cut": _cut("lines", angle=45.0, spacing=0.02)},
+    "Laje pré-moldada": {"color": "#BDB8AE", "cut": _cut("cross", angle=45.0, spacing=0.04)},
 }
 _PALETTE = ("#C9A37D", "#9EB5C7", "#A8C499", "#D4B582", "#BAA3C9", "#C99999")
 

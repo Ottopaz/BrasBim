@@ -469,7 +469,9 @@ def delete_storey(doc: Document, storey) -> Transaction:
     contained = ifcopenshell.util.element.get_contained(storey)
     if contained:
         raise OpError(f"o pavimento {storey.Name} contém {len(contained)} elemento(s)")
-    ops = []
+    from brasbim.core.structure import commands as structure_cmd  # evita import circular
+
+    ops = structure_cmd.storey_delete_ops(doc, storey)
     for wall in sorted(doc.ifc.by_type("IfcWall"), key=lambda w: w.GlobalId):
         try:
             state = read_state(doc, wall)
