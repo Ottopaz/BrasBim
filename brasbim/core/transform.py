@@ -13,6 +13,8 @@ from __future__ import annotations
 import copy
 import math
 
+import ifcopenshell.util.element
+
 from brasbim.core import geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
@@ -378,7 +380,7 @@ def _no_lone(lone) -> None:
         raise OpError("gire ou espelhe a laje que contém a abertura")
 
 
-def move_elements(doc: Document, gids, vector) -> Transaction:
+def _move_elements_core(doc: Document, gids, vector) -> Transaction:
     """Desloca paredes (com aberturas e portas), portas, pilares, vigas, lajes (com as
     aberturas) e aberturas na laje pelo vetor (spec/ui 02 §6.1)."""
     rest, structure, lone = _structure(doc, gids)
@@ -389,7 +391,7 @@ def move_elements(doc: Document, gids, vector) -> Transaction:
     return _join(doc, "Mover", rest, lambda: _move_elements_walls(doc, rest, vector), ops)
 
 
-def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
+def _rotate_elements_core(doc: Document, gids, center, angle: float) -> Transaction:
     """Gira a seleção ``angle`` radianos, anti-horário, em torno de ``center``
     (spec/ui 02 §6.3)."""
     rest, structure, lone = _structure(doc, gids)
@@ -401,7 +403,7 @@ def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
                  lambda: _rotate_elements_walls(doc, rest, center, angle), ops)
 
 
-def copy_elements(doc: Document, gids, vector) -> Transaction:
+def _copy_elements_core(doc: Document, gids, vector) -> Transaction:
     """Cópia deslocada pelo vetor (spec/ui 02 §6.2)."""
     rest, structure, lone = _structure(doc, gids)
     fn = geom2d.translation(tuple(vector))
@@ -409,7 +411,7 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
     return _join(doc, "Copiar", rest, lambda: _copy_elements_walls(doc, rest, vector), ops)
 
 
-def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
+def _mirror_elements_core(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
     """Imagem espelhada da seleção pelo eixo ``a``–``b`` (spec/ui 05 §2); com ``keep``,
     espelha uma cópia e mantém o original."""
     if math.dist(a, b) < geom2d.MIN_LENGTH:
@@ -427,3 +429,97 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
     # estruturais entram depois dela, sem depender do que ela cria.
     tx = _mirror_elements_walls(doc, rest, a, b, keep)
     return Transaction(label, tx.ops + ops)
+
+
+# --- ambientes e anotações (spec/ui 13 §6) -----------------------------------------------
+
+
+def _annotations(doc: Document, gids) -> tuple[list[str], list]:
+    """(GlobalIds dos outros elementos, ambientes e anotações)."""
+    from brasbim.core.annotations import commands as anno_cmd
+
+    others, annos = [], []
+    for g in dict.fromkeys(gids):
+        e = doc.get(g if isinstance(g, str) else g.GlobalId)
+        (annos if anno_cmd.is_annotation(e) else others).append(
+            e if anno_cmd.is_annotation(e) else e.GlobalId)
+    return others, annos
+
+
+def _anno_ops(doc: Document, annos, fn, turn, mirrored: bool, moving: set[str],
+              copy_: bool = False) -> list[Op]:
+    from brasbim.core.annotations import commands as anno_cmd
+
+    ops = []
+    for e in annos:
+        changes = anno_cmd.mapped(doc, e, fn, turn, mirrored, moving)
+        if copy_:
+            state = {**copy.deepcopy(anno_cmd.read_state(doc, e)), **changes}
+            if e.is_a("IfcSpace"):  # a cópia ganha o próximo número livre
+                state["outline"] = slabs.clean(state["outline"])
+                storey = doc.get(state["storey"])
+                used = {x.Name for x in ifcopenshell.util.element.get_decomposition(storey)
+                        if x.is_a("IfcSpace")}
+                used |= {o.data["number"] for o in ops if o.op == "space.create"}
+                n = 1
+                while f"{n:02d}" in used:
+                    n += 1
+                state["number"] = f"{n:02d}"
+            ops.append(Op(f"{anno_cmd.prefix_of(e)}.create", guid.new(), data=state))
+        else:
+            ops += anno_cmd.edit_element(doc, e, **changes).ops
+    return ops
+
+
+def _with_annotations(label: str, doc: Document, gids, core, annos_ops) -> Transaction:
+    others, annos = _annotations(doc, gids)
+    extra = annos_ops(annos)
+    if not others:
+        if not extra:
+            raise OpError("nada selecionado")
+        return Transaction(label, extra)
+    tx = core(others)
+    return Transaction(tx.label, tx.ops + extra)
+
+
+def _moving(doc: Document, gids) -> set[str]:
+    return {g if isinstance(g, str) else g.GlobalId for g in gids}
+
+
+def move_elements(doc: Document, gids, vector) -> Transaction:
+    """Desloca a seleção pelo vetor (spec/ui 02 §6.1), com ambientes e anotações."""
+    fn = geom2d.translation(tuple(vector))
+    return _with_annotations(
+        "Mover", doc, gids, lambda others: _move_elements_core(doc, others, vector),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, _moving(doc, gids)))
+
+
+def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
+    """Gira a seleção ``angle`` radianos, anti-horário, em torno de ``center``."""
+    fn = geom2d.rotation(tuple(center), angle)
+    deg = math.degrees(angle)
+    return _with_annotations(
+        "Girar", doc, gids, lambda others: _rotate_elements_core(doc, others, center, angle),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a + deg, False, _moving(doc, gids)))
+
+
+def copy_elements(doc: Document, gids, vector) -> Transaction:
+    """Cópia deslocada pelo vetor (spec/ui 02 §6.2); as cotas copiadas ficam soltas."""
+    fn = geom2d.translation(tuple(vector))
+    return _with_annotations(
+        "Copiar", doc, gids, lambda others: _copy_elements_core(doc, others, vector),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True))
+
+
+def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
+    """Imagem espelhada pelo eixo ``a``–``b``; com ``keep``, espelha uma cópia."""
+    if math.dist(a, b) < geom2d.MIN_LENGTH:
+        raise OpError("o eixo de simetria precisa de dois pontos distintos")
+    fn = geom2d.reflection(tuple(a), tuple(b))
+    axis = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+    moving = set() if keep else _moving(doc, gids)
+    return _with_annotations(
+        "Espelhar cópia" if keep else "Espelhar", doc, gids,
+        lambda others: _mirror_elements_core(doc, others, a, b, keep),
+        lambda annos: _anno_ops(doc, annos, fn, lambda x: 2 * axis - x, True, moving,
+                                copy_=keep))

@@ -135,6 +135,16 @@ class Document:
         return self._subcontext("Model", "Axis", "MODEL_VIEW")
 
     @property
+    def annotation_context(self):
+        """Anotações da planta: cotas, textos, símbolos (spec/ui 13)."""
+        return self._subcontext("Plan", "Annotation", "PLAN_VIEW")
+
+    @property
+    def footprint_context(self):
+        """Contorno dos ambientes (``FootPrint``, spec/ui 13 §3.1)."""
+        return self._subcontext("Plan", "FootPrint", "PLAN_VIEW")
+
+    @property
     def profile_context(self):
         """Contorno 3D de portas e janelas (representação ``Profile``)."""
         if self._profile is None:

@@ -454,6 +454,8 @@ def edit_storey(doc: Document, storey, **changes) -> Transaction:
     cut = changes.get("cut_height")
     if cut is not None and abs(cut - storeys.DEFAULT_CUT_HEIGHT) < 1e-9:
         changes["cut_height"] = None  # o padrão não é gravado (spec/ui 06 §3.1)
+    if changes.get("scale") == storeys.DEFAULT_SCALE:
+        changes["scale"] = None  # idem para a escala (spec/ui 13 §2)
     before = {k: current[k] for k in changes}
     return Transaction(
         "Editar pavimento", [Op("storey.edit", storey.GlobalId, before=before, after=changes)]

@@ -3,8 +3,8 @@ documento: Documentação 1 — anotação da planta (ambientes, cotas, cota de 
 requisito: RF-AMB-01, RF-AMB-02, RF-AMB-03, RF-DOC-03, RF-DOC-04, RF-DOC-05, RF-DOC-06, RF-DOC-07
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-16)
 ---
 
 # Documentação 1: anotação da planta (pacote 6)

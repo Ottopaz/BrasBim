@@ -9,6 +9,8 @@ Operações: ``storey.create`` / ``storey.delete`` (data: name, elevation, cut_h
 
 ``cut_height`` é a altura do plano de corte da planta acima da cota do pavimento
 (spec/ui 06 §3.1), no Pset ``BrasBim_Pavimento``; ``None`` = padrão (1,50 m), sem gravar.
+``scale`` é o denominador da escala de desenho da planta (spec/ui 13 §2), no mesmo Pset
+(``Escala``); ``None`` = padrão (1:50), sem gravar.
 """
 
 from __future__ import annotations
@@ -29,13 +31,27 @@ from brasbim.core.ops.base import (
 
 PSET = "BrasBim_Pavimento"
 DEFAULT_CUT_HEIGHT = 1.50  # parede §7, a confirmar na NBR 6492
+DEFAULT_SCALE = 50  # spec/ui 13 §2
+SCALES = (20, 25, 50, 75, 100, 200, 500)
 
 
 def read(storey) -> dict:
     values = ifcopenshell.util.element.get_pset(storey, PSET) or {}
-    cut = values.get("AlturaPlanoCorte")
+    cut, scale_ = values.get("AlturaPlanoCorte"), values.get("Escala")
     return {"name": storey.Name, "elevation": float(storey.Elevation or 0.0),
-            "cut_height": None if cut is None else float(cut)}
+            "cut_height": None if cut is None else float(cut),
+            "scale": None if scale_ is None else int(scale_)}
+
+
+def scale(storey) -> int:
+    """Denominador da escala de desenho da planta do pavimento (spec/ui 13 §2)."""
+    value = read(storey)["scale"] if storey is not None else None
+    return DEFAULT_SCALE if value is None else value
+
+
+def paper(storey, mm: float) -> float:
+    """Tamanho no modelo (m) de ``mm`` milímetros de papel na escala do pavimento."""
+    return mm * scale(storey) / 1000.0
 
 
 def cut_height(storey) -> float:
@@ -44,19 +60,26 @@ def cut_height(storey) -> float:
     return DEFAULT_CUT_HEIGHT if value is None else value
 
 
-def _write_cut_height(doc: Document, storey, value) -> None:
-    if value is None:
+def _write_pset(doc: Document, storey, cut, scale_) -> None:
+    """Plano de corte e escala; o que é padrão (``None``) não é gravado."""
+    if cut is not None and cut <= 0:
+        raise OpError("o plano de corte deve ficar acima da cota do pavimento")
+    if scale_ is not None and int(scale_) not in SCALES:
+        raise OpError(f"escala inválida: 1:{scale_}")
+    values = {}
+    if cut is not None:
+        values["AlturaPlanoCorte"] = doc.ifc.createIfcPositiveLengthMeasure(float(cut))
+    if scale_ is not None:
+        values["Escala"] = doc.ifc.createIfcInteger(int(scale_))
+    if not values:
         props.remove_pset(doc, storey, PSET)
         return
-    if value <= 0:
-        raise OpError("o plano de corte deve ficar acima da cota do pavimento")
-    props.write_pset(doc, storey, PSET,
-                     {"AlturaPlanoCorte": doc.ifc.createIfcPositiveLengthMeasure(float(value))})
+    props.write_pset(doc, storey, PSET, values)
 
 
 def _write(doc: Document, storey, state: dict) -> None:
-    if "cut_height" in state:
-        _write_cut_height(doc, storey, state["cut_height"])
+    if "cut_height" in state or "scale" in state:
+        _write_pset(doc, storey, state.get("cut_height"), state.get("scale"))
     storey.Name = state["name"]
     storey.Elevation = float(state["elevation"])
     old = storey.ObjectPlacement

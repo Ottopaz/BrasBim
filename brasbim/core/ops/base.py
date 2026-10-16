@@ -72,6 +72,10 @@ HANDLER_MODULES = (
     "brasbim.core.structure.slabs",
     "brasbim.core.structure.slab_openings",
     "brasbim.core.structure.rebuild",
+    "brasbim.core.annotations.spaces",
+    "brasbim.core.annotations.drafting",
+    "brasbim.core.annotations.dimensions",
+    "brasbim.core.annotations.rebuild",
 )
 _loaded = False
 
