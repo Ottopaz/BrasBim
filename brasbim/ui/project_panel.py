@@ -62,6 +62,18 @@ class ProjectPanel(QWidget):
         self.views.itemClicked.connect(
             lambda item: self.session.select([item.data(Qt.UserRole)]))
         self.open_view = None  # posto pela janela principal
+        # Pranchas (spec/ui 15 §5)
+        self.sheets = QListWidget()
+        self.sheets.setToolTip("Clique duplo abre a prancha")
+        self.sheets.itemDoubleClicked.connect(
+            lambda item: self.open_sheet and self.open_sheet(item.data(Qt.UserRole)))
+        self.sheets.itemClicked.connect(
+            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        self.open_sheet = None
+        self.new_sheet_button = QPushButton("Nova prancha")
+        self.new_sheet_button.clicked.connect(self.add_sheet)
+        self.delete_sheet_button = QPushButton("Excluir prancha")
+        self.delete_sheet_button.clicked.connect(self.delete_sheet)
         self.add_button = QPushButton("Novo pavimento")
         self.add_button.clicked.connect(self.add_storey)
         self.delete_button = QPushButton("Excluir pavimento")
@@ -75,6 +87,12 @@ class ProjectPanel(QWidget):
         layout.addLayout(buttons)
         layout.addWidget(QLabel("Vistas"))
         layout.addWidget(self.views)
+        layout.addWidget(QLabel("Pranchas"))
+        layout.addWidget(self.sheets)
+        sheet_buttons = QHBoxLayout()
+        sheet_buttons.addWidget(self.new_sheet_button)
+        sheet_buttons.addWidget(self.delete_sheet_button)
+        layout.addLayout(sheet_buttons)
         self.refresh()
 
     def refresh(self) -> None:
@@ -113,6 +131,17 @@ class ProjectPanel(QWidget):
             item = QListWidgetItem(views_.read_state(view)["name"] or view.GlobalId)
             item.setData(Qt.UserRole, view.GlobalId)
             self.views.addItem(item)
+        from brasbim.core.drawings import sheets as sheets_
+
+        self.sheets.clear()
+        for sheet in sheets_.all_sheets(self.session.doc):
+            state = sheets_.read_state(sheet)
+            text = f"{state['number']} · {state['title']}" if state["title"] \
+                else state["number"]
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, sheet.GlobalId)
+            self.sheets.addItem(item)
+        self.delete_sheet_button.setEnabled(self.sheets.count() > 0)
 
     def storey_at(self, row: int):
         item = self.table.item(row, 0)
@@ -174,6 +203,22 @@ class ProjectPanel(QWidget):
         if value != storeys_.scale(storey):
             doc = self.session.doc
             self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    def add_sheet(self) -> None:
+        from brasbim.core.drawings import sheets as sheets_
+
+        doc = self.session.doc
+        tx = sheets_.create_sheet(doc)
+        if self.session.run(tx) and self.open_sheet:
+            self.open_sheet(tx.ops[0].id)
+
+    def delete_sheet(self) -> None:
+        from brasbim.core.drawings import sheets as sheets_
+
+        item = self.sheets.currentItem()
+        if item is not None:
+            doc, gid = self.session.doc, item.data(Qt.UserRole)
+            self.session.run(lambda: sheets_.delete_sheet(doc, gid))
 
     def add_storey(self) -> None:
         doc = self.session.doc

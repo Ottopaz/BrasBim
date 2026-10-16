@@ -484,6 +484,9 @@ def delete_storey(doc: Document, storey) -> Transaction:
             ops.append(Op("wall.edit", wall.GlobalId, before={k: state[k] for k in keys},
                           after={"top_mode": "fixed", "top_storey": None,
                                  "fixed_height": rebuild.height(doc, state)}))
+    from brasbim.core.drawings import sheets  # a planta do pavimento sai das pranchas
+
+    ops += sheets.refs_removed_ops(doc, storey.GlobalId)
     ops.append(Op("storey.delete", storey.GlobalId, data=storeys.read(storey)))
     return Transaction("Excluir pavimento", ops)
 

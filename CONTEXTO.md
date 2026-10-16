@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 7 concluído: cortes e fachadas).*
+*Atualizado em 2026‑10‑16 (pacote 8 concluído: pranchas e PDF; documentação do MVP completa).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (411 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (421 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -28,7 +28,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/12-estrutura-refinamento` | aprovada e implementada (pacote 5; RC01–10 em `tests/test_recortes.py`, AL01–05 e LC01–03 em `test_laje.py` e `test_interface_estrutura.py`, ET01–02) |
 | `spec/ui/13-documentacao-planta` | aprovada e implementada (pacote 6; `tests/test_documentacao.py`, `test_interface_documentacao.py`) |
 | `spec/ui/14-cortes-e-fachadas` | aprovada e implementada (pacote 7; `tests/test_cortes.py`, `test_interface_cortes.py`) |
-| `spec/ui/15-pranchas-e-pdf` | **em revisão** (pacote 8) |
+| `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -238,6 +238,21 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   Símbolos de corte (`simbolos_corte`). As abas são refeitas a cada mudança do modelo e
   fechadas quando a vista é excluída.
 
+## Pacote 8 — como ficou (spec/ui 15)
+- `core/drawings/sheets.py`: prancha = `IfcAnnotation` "Prancha" na edificação (JSON no
+  Pset `BrasBim_Prancha`); `paper`, `frame`, `title_block`, `fold_marks`, `title_items`
+  (quadro e carimbo como primitivas em mm), `view_bounds`/`view_size`/`free_spot`;
+  comandos `create_sheet`, `edit_sheet`, `add_to_sheet`, `move_on_sheet`,
+  `remove_from_sheet`, `delete_sheet`, `edit_project`; `refs_removed_ops` usado ao
+  excluir vista (`annotations.commands.delete_ops`) e pavimento (`delete_storey`).
+- `ui/paper.py`: `render_sheet` desenha o papel com os "pintores" `_PlanPainter` e
+  `_SectionPainter`, que pegam os métodos de `PlanView`/`SectionView`; as espessuras
+  usam `unit` (1 na tela; dpi/96 no papel) — `PlanView.unit`, `SectionView.unit`;
+  `export_pdf` (QPdfWriter, 600 dpi, uma página por prancha, no tamanho do formato);
+  `SheetView` (aba: arrastar vista, botão direito tira da prancha).
+- Interface: lista Pranchas e botões no painel do projeto; painel da prancha (pôr
+  planta ou vista); Arquivo > Exportar PDF… (Ctrl+P) e Dados do projeto….
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -251,9 +266,11 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    (RF-DOC-07), escala da vista (RF-DOC-04), espessuras de linha por categoria (RF-DOC-03).
 3. ~~Pacote 7~~ concluído — documentação 2: cortes e fachadas gerados do modelo, com linhas ocultas
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
-4. **Pacote 8** — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
+4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
-5. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
+5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
+   uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
+6. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
    conjuntos por etapa, pranchas de prefeitura (RF-DOC-08, 11 a 16); alças da estrutura
    no 3D.
 
@@ -268,6 +285,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   elementos dos pavimentos vizinhos (medir em projeto grande); `NetSideArea` da parede
   não desconta recortes; abertura de porta sob um recorte pode ser descontada duas vezes.
 - Laje pelo cômodo: a laje não fica ligada às paredes (V1).
+- Excluir pavimento e desfazer: a propriedade `PavimentoTopo` volta ao Pset da parede
+  no fim da lista (ordem diferente, conteúdo igual; o `snapshot` dos testes acusa).
 - Cortes: o desenho é refeito inteiro a cada mudança do modelo (medir em projeto
   grande); sobreposição cíclica no pintor fica como está; sem cotas nem textos dentro do
   corte; zmin/zmax só decidem em que plantas o símbolo aparece.

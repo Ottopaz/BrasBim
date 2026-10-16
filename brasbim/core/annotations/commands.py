@@ -154,9 +154,13 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
 
 
 def delete_ops(doc: Document, element) -> list[Op]:
+    """Exclusão; a vista sai antes das pranchas em que está (spec/ui 15 §4)."""
+    from brasbim.core.drawings import sheets
+
     element = doc.get(_gid(element))
-    return [Op(f"{prefix_of(element)}.delete", element.GlobalId,
-               data=read_state(doc, element))]
+    ops = sheets.refs_removed_ops(doc, element.GlobalId) if prefix_of(element) == "view"         else []
+    return ops + [Op(f"{prefix_of(element)}.delete", element.GlobalId,
+                     data=read_state(doc, element))]
 
 
 def delete_element(doc: Document, element) -> Transaction:

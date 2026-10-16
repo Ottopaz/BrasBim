@@ -11,10 +11,14 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QFormLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -29,6 +33,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.document import OpError
+from brasbim.core.drawings import sheets as sheets_
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import doors
 from brasbim.core.ops import Transaction
@@ -38,6 +43,7 @@ from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 from brasbim.ui import feedback, theme
 from brasbim.ui.materials_dialog import MaterialsDialog
+from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
@@ -124,6 +130,7 @@ class MainWindow(QMainWindow):
         self.session = session
         self.ctx = PlanContext(session)
         self.section_views: dict[str, SectionView] = {}  # abas de corte e fachada
+        self.sheet_views: dict[str, SheetView] = {}  # abas de prancha (spec/ui 15)
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
         self.scene.load(session.doc.ifc, session.doc)
@@ -175,11 +182,14 @@ class MainWindow(QMainWindow):
     def _build_docks(self) -> None:
         self.project = ProjectPanel(self.session)
         self.project.open_view = self.open_view
+        self.project.open_sheet = self.open_sheet
         self._dock("Projeto", "projeto", self.project, Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
         self.properties.open_view = self.open_view
+        self.properties.open_sheet = self.open_sheet
+        self.properties.edit_project_info = self.edit_project_info
         self._dock("Propriedades", "propriedades", self.properties, Qt.RightDockWidgetArea)
         self.messages = QListWidget()
         self.messages.setWordWrap(True)
@@ -203,6 +213,9 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Abrir…", self.open_project, "Ctrl+O")
         self._action(file_menu, "Salvar", self.save_project, "Ctrl+S")
         self._action(file_menu, "Salvar como…", self.save_project_as, "Ctrl+Shift+S")
+        file_menu.addSeparator()
+        self._action(file_menu, "Exportar PDF…", self.export_pdf, "Ctrl+P")
+        self._action(file_menu, "Dados do projeto…", self.edit_project_info)
         file_menu.addSeparator()
         self._action(file_menu, "Sair", self.close)
         edit_menu = bar.addMenu("&Editar")
@@ -464,7 +477,66 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(view)
         return view
 
+    def open_sheet(self, gid: str) -> SheetView | None:
+        """Abre a prancha numa aba (spec/ui 15 §5)."""
+        if self.session.doc.find(gid) is None:
+            return None
+        view = self.sheet_views.get(gid)
+        if view is None:
+            view = SheetView(self.session, gid)
+            self.sheet_views[gid] = view
+            self.tabs.addTab(view, view.title)
+        if self.split:
+            self.set_view("plan")
+        self.tabs.setCurrentWidget(view)
+        return view
+
+    def export_pdf(self, path: str | None = None) -> int:
+        """Arquivo > Exportar PDF…: todas as pranchas, uma por página (spec/ui 15 §5)."""
+        found = sheets_.all_sheets(self.session.doc)
+        if not found:
+            self.session.message("não há pranchas: crie uma no painel do projeto", "recusa")
+            return 0
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(self, "Exportar PDF", "", "PDF (*.pdf)")
+            if not path:
+                return 0
+            if not path.lower().endswith(".pdf"):
+                path += ".pdf"
+        pages = export_pdf(path, self.session.doc, found)
+        self.session.message(f"PDF exportado ({pages} página(s)): {path}")
+        return pages
+
+    def edit_project_info(self) -> None:
+        """Dados do projeto para o carimbo (spec/ui 15 §4)."""
+        info = sheets_.read_project(self.session.doc)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Dados do projeto")
+        form = QFormLayout(dialog)
+        fields = {}
+        for key, label in (("name", "Nome do projeto"), ("address", "Endereço da obra"),
+                           ("owner", "Proprietário"), ("responsible", "Responsável técnico"),
+                           ("registration", "Registro (CAU ou CREA)")):
+            fields[key] = QLineEdit(info.get(key) or "")
+            form.addRow(label, fields[key])
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() == QDialog.Accepted:
+            doc = self.session.doc
+            values = {k: f.text().strip() for k, f in fields.items()}
+            self.session.run(lambda: sheets_.edit_project(doc, **values))
+
     def _refresh_section_views(self, reset: bool = False) -> None:
+        for gid, view in list(self.sheet_views.items()):
+            if reset or self.session.doc.find(gid) is None:
+                self.tabs.removeTab(self.tabs.indexOf(view))
+                view.deleteLater()
+                del self.sheet_views[gid]
+                continue
+            view.invalidate()
+            self.tabs.setTabText(self.tabs.indexOf(view), view.title)
         for gid, view in list(self.section_views.items()):
             if reset or self.session.doc.find(gid) is None:
                 self.tabs.removeTab(self.tabs.indexOf(view))

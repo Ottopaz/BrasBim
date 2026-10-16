@@ -27,6 +27,7 @@ class SectionView(QWidget):
         self.scale = 60.0
         self.origin = QPointF(200, 400)
         self.show_weights = True
+        self.unit = 1.0  # unidades do desenho por pixel de tela (spec/ui 15)
         self._drawing: section.Drawing | None = None
         self._pan: QPointF | None = None
         self._fitted = False
@@ -69,10 +70,11 @@ class SectionView(QWidget):
         return ((q.x() - self.origin.x()) / self.scale, (self.origin.y() - q.y()) / self.scale)
 
     def _px(self, weight: float) -> float:
-        return weight * 1000 * 96 / 25.4
+        return weight * 1000 * 96 / 25.4 * self.unit
 
     def _line_px(self, weight_mm: float) -> float:
-        return max(1.0, self._px(weight_mm / 1000.0)) if self.show_weights else 1.0
+        return (max(self.unit, self._px(weight_mm / 1000.0)) if self.show_weights
+                else self.unit)
 
     def fit(self) -> None:
         box = self.drawing.bounds()
@@ -119,12 +121,16 @@ class SectionView(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), C["background"])
-        selection = self.session.selection
+        self.paint(painter, self.session.selection)
+        painter.end()
+
+    def paint(self, painter: QPainter, selection=()) -> None:
+        """O desenho (também usado na prancha e no PDF, spec/ui 15 §3)."""
         for item in self.drawing.items:
             selected = item.owner in selection
             ink = C["select"] if selected else C["wall_line"]
             if item.kind == "face":
-                painter.setPen(QPen(C["background"], 0.6))
+                painter.setPen(QPen(C["background"], 0.6 * self.unit))
                 painter.setBrush(QBrush(C["background"]))
                 painter.drawPath(self._path(item.points, True))
             elif item.kind == "edge" or item.kind == "line":
@@ -159,7 +165,6 @@ class SectionView(QWidget):
             painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
                              text.text)
             painter.restore()
-        painter.end()
 
     # --- entrada -----------------------------------------------------------------------------
 

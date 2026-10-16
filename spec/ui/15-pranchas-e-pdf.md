@@ -3,8 +3,8 @@ documento: Documentação 3 — pranchas com carimbo e exportação em PDF
 requisito: RF-DOC-09, RF-DOC-10, RF-PRJ-06 (parte)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-16)
 ---
 
 # Documentação 3: pranchas e PDF (pacote 8)
@@ -84,17 +84,17 @@ prefeitura (RF-DOC-15, 16), recorte manual da área de cada vista.
 ## 6. Critérios de aceite (testes)
 Térreo e Superior; retângulo de paredes (0, 0)–(6, 4); Corte A; escala 1:50.
 
-- [ ] **PR01** Nova prancha: `IfcAnnotation` "Prancha" na edificação, número "01", A3
+- [x] **PR01** Nova prancha: `IfcAnnotation` "Prancha" na edificação, número "01", A3
       horizontal; a segunda é "02".
-- [ ] **PR02** Planta do Térreo na prancha 01: no papel, a largura do desenho das paredes
+- [x] **PR02** Planta do Térreo na prancha 01: no papel, a largura do desenho das paredes
       é 6000 mm / 50 = 120 mm (± 1 mm).
-- [ ] **PR03** Corte A na prancha: aparece com o título "CORTE A"; excluir o Corte A o
+- [x] **PR03** Corte A na prancha: aparece com o título "CORTE A"; excluir o Corte A o
       tira da prancha na mesma transação; desfazer volta.
-- [ ] **PR04** Carimbo com o nome do projeto, o proprietário e a folha "01/02"; a escala
+- [x] **PR04** Carimbo com o nome do projeto, o proprietário e a folha "01/02"; a escala
       "1:50".
-- [ ] **PR05** Exportar PDF: um arquivo com 2 páginas de 420 × 297 mm.
-- [ ] **PR06** Mover uma vista na prancha (arrasto): `sheet.edit`; desfazer volta.
-- [ ] **PR07** O arquivo passa na validação de esquema; o diário reaplicado reproduz o IFC.
+- [x] **PR05** Exportar PDF: um arquivo com 2 páginas de 420 × 297 mm.
+- [x] **PR06** Mover uma vista na prancha (arrasto): `sheet.edit`; desfazer volta.
+- [x] **PR07** O arquivo passa na validação de esquema; o diário reaplicado reproduz o IFC.
 
 ## 7. Fontes públicas
 - IFC 4.3: `IfcAnnotation` e `IfcProject`, como em spec/ui 13 §11.

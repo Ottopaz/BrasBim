@@ -68,6 +68,8 @@ para que refazer e reaplicar produzam os mesmos GlobalIds. *(decisão do projeto
 | `space.create` / `.delete` / `.edit` | `storey`, `outline[]`, `number` (`Name`), `name` (`LongName`), `height` (`None` = calculado), `label_at` | spec/ui 13 §3.2 |
 | `dimension.*`, `level_mark.*`, `text.*`, `line2d.*`, `hatch.*`, `north.*` | `storey` e os parâmetros de cada tipo (spec/ui 13 §4–§7), guardados em JSON no Pset `BrasBim_Anotacao` (`Tipo`, `Parametros`); na cota, cada ponto `{"at", "ref"}` | spec/ui 13; a geometria `Annotation` é derivada; a posição dos pontos presos (`at`, `lost`) é atualizada pela derivação |
 | `view.create` / `.delete` / `.edit` | `name`, `letter`, `kind` (`section`/`elevation`), `a`, `b`, `side` (`left`/`right`), `depth`, `zmin`, `zmax`, `scale` (JSON no Pset `BrasBim_Vista`; `IfcAnnotation` na edificação) | spec/ui 14 §3; o desenho do corte é calculado, não gravado |
+| `sheet.create` / `.delete` / `.edit` | `number`, `title`, `format` (A0–A4), `orientation`, `views[]` (`{"kind": "plan", "storey"}` ou `{"kind": "view", "view"}`, com `at` em mm do papel) — JSON no Pset `BrasBim_Prancha`; `IfcAnnotation` "Prancha" na edificação | spec/ui 15 §4; excluir uma vista ou um pavimento gera antes o `sheet.edit` que a tira das pranchas |
+| `project.edit` | `name` (`IfcProject.Name`), `address`, `owner`, `responsible`, `registration` (Pset `BrasBim_Projeto`) | spec/ui 15 §4 (parte de RF-PRJ-06) |
 
 Caminho (`path`):
 - Reta: `{"kind": "line", "start": [x, y], "end": [x, y]}`

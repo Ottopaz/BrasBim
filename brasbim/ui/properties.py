@@ -45,7 +45,7 @@ from brasbim.core.annotations import dimensions as annotation_dims
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.document import OpError
-from brasbim.core.drawings import views
+from brasbim.core.drawings import sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
@@ -191,6 +191,8 @@ class PropertiesPanel(QScrollArea):
         self._pending = False
         self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
         self.open_view = None  # abre um corte ou fachada (posto pela janela principal)
+        self.open_sheet = None  # abre uma prancha (idem)
+        self.edit_project_info = None  # dados do projeto para o carimbo (idem)
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
@@ -230,6 +232,8 @@ class PropertiesPanel(QScrollArea):
             self._door(selection[0])
         elif len(selection) == 1 and selection[0].is_a("IfcSpace"):
             self._space(selection[0])
+        elif len(selection) == 1 and sheets.is_sheet(selection[0]):
+            self._sheet(selection[0])
         elif len(selection) == 1 and views.is_view(selection[0]):
             self._view(selection[0])
         elif len(selection) == 1 and annotation_base.kind_of(selection[0]) is not None:
@@ -1019,6 +1023,47 @@ class PropertiesPanel(QScrollArea):
             self._read("Pontos presos", f"{held} de {len(state['points'])}")
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
+
+    def _sheet(self, sheet) -> None:
+        """Prancha (spec/ui 15 §5)."""
+        doc = self.session.doc
+        state = sheets.read_state(sheet)
+
+        def edit(**changes):
+            self._run(lambda: sheets.edit_sheet(doc, sheet, **changes))
+
+        self._title(f"Prancha {state['number']}")
+        self._text("Número", state["number"], lambda v: v and edit(number=v))
+        self._text("Título", state["title"], lambda v: edit(title=v or ""))
+        self._combo("Formato", [(f, f) for f in sheets.FORMATS], state["format"],
+                    lambda v: edit(format=v))
+        self._combo("Orientação", [("Horizontal", "landscape"), ("Vertical", "portrait")],
+                    state["orientation"], lambda v: edit(orientation=v))
+        self._section("Vistas na prancha")
+        for item in state["views"]:
+            target = doc.find(item.get("storey") or item.get("view"))
+            name = ((f"Planta: {target.Name}" if item["kind"] == "plan"
+                     else views.read_state(target)["name"]) if target is not None else "—")
+            self._read(name, f"1:{sheets.scale_of(doc, item)}")
+        present = {it.get("storey") or it.get("view") for it in state["views"]}
+        options = [(f"Planta: {s.Name}", {"kind": "plan", "storey": s.GlobalId})
+                   for s in doc.storeys() if s.GlobalId not in present]
+        options += [(views.read_state(v)["name"], {"kind": "view", "view": v.GlobalId})
+                    for v in views.all_views(doc) if v.GlobalId not in present]
+        if options:
+            combo = QComboBox()
+            for text, item in options:
+                combo.addItem(text, item)
+            self._add("Pôr na prancha", combo)
+            self._buttons(("Pôr", lambda: self._run(lambda: sheets.add_to_sheet(
+                doc, sheet, combo.currentData()))))
+        buttons = []
+        if self.open_sheet is not None:
+            buttons.append(("Abrir a prancha", lambda: self.open_sheet(sheet.GlobalId)))
+        if self.edit_project_info is not None:
+            buttons.append(("Dados do projeto…", self.edit_project_info))
+        if buttons:
+            self._buttons(*buttons)
 
     def _view(self, view) -> None:
         """Corte ou fachada (spec/ui 14 §7)."""

@@ -73,6 +73,8 @@ class PlanView(QWidget, ToolInput):
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
+        # Unidades do desenho por pixel de tela: 1 na tela; dpi/96 no papel (spec/ui 15).
+        self.unit = 1.0
         self._space = False
         self._fitted = False
         self.setMouseTracking(True)
@@ -197,7 +199,7 @@ class PlanView(QWidget, ToolInput):
 
     def _px(self, weight: float) -> float:
         """Espessura de linha em metros de papel (NBR 8403) para pixels (spec/ui 03 §6.1)."""
-        return weight * 1000 * 96 / 25.4
+        return weight * 1000 * 96 / 25.4 * self.unit
 
     def _rings_path(self, rings) -> QPainterPath:
         path = QPainterPath()
@@ -221,13 +223,14 @@ class PlanView(QWidget, ToolInput):
                 continue
             selected = shape.owner in selection
             if role == "below":
-                pen = QPen(C["below"], 1, Qt.DashLine)
+                pen = QPen(C["below"], self.unit, Qt.DashLine)
             elif role in ("wall_above", "slab_above"):
                 pen = QPen(C["select"] if selected else C["wall_line"],
-                           max(1.0, self._px(ABOVE_WEIGHT)), Qt.DashLine)
+                           max(self.unit, self._px(ABOVE_WEIGHT)), Qt.DashLine)
             else:
                 pen = QPen(C["select"] if selected else C["wall_line"],
-                           2 if selected else max(1.0, self._px(VIEW_WEIGHT)))
+                           2 * self.unit if selected else max(self.unit,
+                                                              self._px(VIEW_WEIGHT)))
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(self._path(shape.points, shape.closed))
@@ -235,7 +238,7 @@ class PlanView(QWidget, ToolInput):
             self._draw_region(painter, self._rings_path(region.rings), region.fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:
-            painter.setPen(QPen(QColor(edge.color), max(1.0, self._px(edge.weight))))
+            painter.setPen(QPen(QColor(edge.color), max(self.unit, self._px(edge.weight))))
             painter.drawPath(self._rings_path(edge.rings))
         for shape in rest:
             selected = shape.owner in selection
@@ -248,14 +251,14 @@ class PlanView(QWidget, ToolInput):
                 # destaque da seleção.
                 if not selected:
                     continue
-                painter.setPen(QPen(C["select"], 2))
+                painter.setPen(QPen(C["select"], 2 * self.unit))
                 fill = QColor(C["select"])
                 fill.setAlpha(40 if role in ("slab", "space") else 110)
                 painter.setBrush(QBrush(fill))
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")
                 painter.setPen(QPen(C["select"] if selected else C["wall_line"],
-                                    2 if selected else max(1.0, self._px(
+                                    2 * self.unit if selected else max(self.unit, self._px(
                                         ABOVE_WEIGHT if above else VIEW_WEIGHT)),
                                     Qt.DashLine if above else Qt.SolidLine))
                 painter.setBrush(Qt.NoBrush)
@@ -264,7 +267,7 @@ class PlanView(QWidget, ToolInput):
                 color = C["select"] if selected else (C["swing"] if role == "door_swing"
                                                       else C["door"])
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
-                painter.setPen(QPen(color, 0.8 if thin else 1.3, style))
+                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
 
@@ -289,7 +292,7 @@ class PlanView(QWidget, ToolInput):
             return
         painter.save()
         painter.setClipPath(path)
-        painter.setPen(QPen(color, 1))
+        painter.setPen(QPen(color, self.unit))
         rect = path.boundingRect()
         corners = [rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()]
         anchor = self.to_screen((0.0, 0.0))
@@ -354,7 +357,7 @@ class PlanView(QWidget, ToolInput):
             painter.restore()
 
     def _line_px(self, weight_mm: float) -> float:
-        return max(1.0, self._px(weight_mm / 1000.0)) if self.show_weights else 1.0
+        return max(self.unit, self._px(weight_mm / 1000.0)) if self.show_weights else self.unit
 
     def _draw_annotations(self, painter: QPainter) -> None:
         """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
