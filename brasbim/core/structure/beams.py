@@ -113,21 +113,21 @@ def section(doc: Document, state: dict) -> dict:
     return st_types.section(doc.get(state["type"], "IfcBeamType"))
 
 
-def faces(doc: Document, state: dict) -> tuple[float, float]:
+def faces(doc: Document, state: dict, sec: dict | None = None) -> tuple[float, float]:
     """(y da face direita, y da face esquerda) em relação à linha desenhada, com y para a
     esquerda de quem anda do início para o fim."""
-    b = section(doc, state)["b"]
+    b = (sec or section(doc, state))["b"]
     return {"axis": (-b / 2, b / 2), "left_face": (-b, 0.0),
             "right_face": (0.0, b)}[state["ref_line"]]
 
 
-def outline(doc: Document, state: dict) -> list[tuple[float, float]]:
-    """Faixa da viga no pavimento (anti-horário)."""
+def outline(doc: Document, state: dict, sec: dict | None = None) -> list[tuple[float, float]]:
+    """Faixa da viga no pavimento (anti-horário); ``sec`` no lugar da do tipo."""
     (x0, y0), (x1, y1) = state["start"], state["end"]
     n = length(state)
     ux, uy = (x1 - x0) / n, (y1 - y0) / n
     lx, ly = -uy, ux
-    right, left = faces(doc, state)
+    right, left = faces(doc, state, sec)
     return [(x0 + lx * right, y0 + ly * right), (x1 + lx * right, y1 + ly * right),
             (x1 + lx * left, y1 + ly * left), (x0 + lx * left, y0 + ly * left)]
 

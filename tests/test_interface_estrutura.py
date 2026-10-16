@@ -392,3 +392,50 @@ def test_paineis_barras_e_tipos_abrem(window):
         dialog.name.setText(dialog.name.text() + " novo")
         assert dialog.apply()
         dialog.close()
+
+
+def _field(window, name):
+    return next(w for g in window.properties.groups for n, w in g.rows if n == name)
+
+
+def test_dimensoes_na_hora_ferramenta_e_painel(window):
+    """Decisão do revisor (2026-10-16): pilar e viga com as dimensões digitadas, sem
+    cadastro de tamanhos (spec/ui 10 §3 e §4.3)."""
+    s = window.session
+    tool = _tool(window, "column")
+    from PySide6.QtWidgets import QLabel
+
+    labels = [w.text().strip() for w in window.options_bar.findChildren(QLabel)
+              if w.isVisibleTo(window.options_bar)]
+    assert "b" in labels and "h" in labels and "Tipo" not in labels
+    tool.b, tool.h = 0.25, 0.60
+    _click(window, (2, 3))
+    first = _all(window, "IfcColumn")[-1]
+    assert ue.get_type(first).Name == "Pilar 25×60"
+    tool.shape, tool.d = "circle", 0.35
+    _click(window, (6, 3))
+    second = _all(window, "IfcColumn")[-1]
+    assert ue.get_type(second).Name == "Pilar Ø35"
+    beam_tool = _tool(window, "beam")
+    beam_tool.options.b, beam_tool.options.h = 0.12, 0.50
+    _click(window, (0, 0))
+    _click(window, (4, 0))
+    assert ue.get_type(_all(window, "IfcBeam")[-1]).Name == "Viga 12×50"
+    # painel: muda só o pilar selecionado
+    window.activate_tool("select")
+    third = _column(window, (8, 3))  # 20 × 40 da biblioteca
+    s.select([first.GlobalId])
+    window.properties._rebuild()
+    field = _field(window, "h (profundidade)")
+    field.setText("0,70")
+    field.editingFinished.emit()
+    assert ue.get_type(first).Name == "Pilar 25×70"
+    assert ue.get_type(third).Name == "Pilar 20×40"
+    s.select([first.GlobalId, third.GlobalId])
+    window.properties._rebuild()
+    field = _field(window, "b (largura)")
+    assert field.text() == ""  # "vários"
+    field.setText("0,30")
+    field.editingFinished.emit()
+    assert ue.get_type(first).Name == "Pilar 30×70"
+    assert ue.get_type(third).Name == "Pilar 30×40"

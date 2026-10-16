@@ -194,3 +194,54 @@ def test_pi14_validacao(model, tmp_path):
     _column(model, (0, 0))
     _column(model, (3, 0), circle_type(model), angle=45.0)
     assert valid(model.reopen(tmp_path))
+
+
+# --- dimensões escolhidas na hora (decisão do revisor, 2026-10-16; spec/ui 10 §3) -------
+
+
+def _section_types(model):
+    return sorted(t.Name for t in model.doc.ifc.by_type("IfcColumnType"))
+
+
+def test_secao_digitada_cria_o_tipo_uma_vez(model):
+    base = column_type(model)
+    tx = model.commit(sc.create_column(model.doc, base, model.terreo, (0, 0),
+                                       section={"shape": "rect", "b": 0.25, "h": 0.60}))
+    assert [op.op for op in tx.ops] == ["column_type.create", "column.create"]
+    assert _section_types(model) == ["Pilar 20×40", "Pilar 25×60"]
+    tx = model.commit(sc.create_column(model.doc, base, model.terreo, (3, 0),
+                                       section={"shape": "rect", "b": 0.25, "h": 0.60}))
+    assert [op.op for op in tx.ops] == ["column.create"]  # reaproveita o tipo
+    tx = model.commit(sc.create_column(model.doc, base, model.terreo, (6, 0),
+                                       section={"shape": "rect", "b": 0.20, "h": 0.40}))
+    assert [op.op for op in tx.ops] == ["column.create"]
+    a, b, c = sorted(model.doc.ifc.by_type("IfcColumn"), key=lambda e: e.Name)
+    assert ue.get_type(a) == ue.get_type(b) != ue.get_type(c)
+    lo, hi = bounds(a)
+    assert hi[0] - lo[0] == pytest.approx(0.25) and hi[1] - lo[1] == pytest.approx(0.60)
+
+
+def test_secao_no_painel_muda_so_este_pilar(model):
+    base = column_type(model)
+    p1 = _column(model, (0, 0), base)
+    p2 = _column(model, (3, 0), base)
+
+    def action():
+        model.commit(sc.edit_element(model.doc, p1, section={"shape": "rect", "b": 0.30,
+                                                             "h": 0.40}))
+        model.commit(sc.edit_element(model.doc, p2, section={"shape": "circle", "d": 0.35}))
+
+    check_history(model, action)
+    assert columns.section(model.doc, columns.read_state(model.doc, p1))["b"] == 0.30
+    assert ue.get_type(p2).Name == "Pilar Ø35"
+    assert columns.read_state(model.doc, p2)["cardinal"] == 5
+    model.history.undo()
+    model.history.undo()
+    assert _section_types(model) == ["Pilar 20×40"]  # os tipos criados saem no desfazer
+
+
+def test_secao_invalida_recusada(model):
+    base = column_type(model)
+    with pytest.raises(OpError):
+        sc.create_column(model.doc, base, model.terreo, (0, 0),
+                         section={"shape": "rect", "b": 0.005, "h": 0.4})

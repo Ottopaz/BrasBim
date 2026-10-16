@@ -157,3 +157,17 @@ def test_vi13_validacao(model, tmp_path):
     _beam(model, (0, 0), (5, 0), t)
     _beam(model, (0, 0), (3, 4), t, ref_line="left_face", top_mode="fixed", top_elevation=2.5)
     assert valid(model.reopen(tmp_path))
+
+
+def test_secao_digitada_na_cadeia(model):
+    """Vigas com b × h escolhidos na hora (spec/ui 10 §3): um tipo por seção."""
+    base = beam_type(model)
+    tx = model.commit(sc.create_beam_chain(model.doc, base, model.terreo,
+                                           [(0, 0), (5, 0), (5, 4)],
+                                           section={"shape": "rect", "b": 0.19, "h": 0.55}))
+    assert [op.op for op in tx.ops] == ["beam_type.create", "beam.create", "beam.create"]
+    first, second = (model.doc.get(op.id) for op in tx.ops[1:])
+    assert ue.get_type(first) == ue.get_type(second)
+    assert ue.get_type(first).Name == "Viga 19×55"
+    lo, hi = bounds(first)
+    assert hi[2] - lo[2] == pytest.approx(0.55) and hi[1] - lo[1] == pytest.approx(0.19)

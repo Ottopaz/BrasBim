@@ -1271,6 +1271,15 @@ def _first_type(session: Session, ifc_class: str) -> str | None:
     return found.GlobalId if found is not None else None
 
 
+def _base_section(session: Session, ifc_class: str) -> dict:
+    """Seção inicial da ferramenta: a do tipo padrão da biblioteca (20 × 40, 14 × 40)."""
+    gid = _first_type(session, ifc_class)
+    if gid is not None:
+        return dict(st_types.section(session.doc.get(gid)))
+    return ({"shape": "rect", "b": 0.20, "h": 0.40} if ifc_class == "IfcColumnType"
+            else {"shape": "rect", "b": 0.14, "h": 0.40})
+
+
 def _top_options(tool, fixed_key: str) -> dict:
     """Topo ligado ao pavimento de cima (com deslocamento) ou fixo (spec/ui 10 §3)."""
     if tool.top == "fixed":
@@ -1279,7 +1288,10 @@ def _top_options(tool, fixed_key: str) -> dict:
 
 
 class ColumnTool(Tool):
-    """Pilar (spec/ui 10 §2.1): um clique no ponto de inserção; barra de espaço gira 90°."""
+    """Pilar (spec/ui 10 §2.1): um clique no ponto de inserção; barra de espaço gira 90°.
+    As dimensões são digitadas na barra Opções; o tipo da seção é achado ou criado pelo
+    núcleo (``commands.section_type``). ``type`` é só o tipo de partida (material e
+    representação na planta)."""
 
     name, label = "column", "Pilar"
     type_class = "IfcColumnType"
@@ -1288,6 +1300,10 @@ class ColumnTool(Tool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.type = _first_type(ctx.session, self.type_class)
+        base = _base_section(ctx.session, self.type_class)
+        self.shape = base["shape"]
+        self.b, self.h = base.get("b", 0.20), base.get("h", 0.40)
+        self.d = base.get("d", 0.30)
         self.insertion = (1, 1)  # quadradinho de 9 pontos: (coluna, linha), centro
         self.angle = 0.0
         self.base_offset = 0.0
@@ -1296,20 +1312,18 @@ class ColumnTool(Tool):
         self.fixed_height = structure_common.DEFAULT_TOP
         self.point: Point | None = None
 
-    def section(self) -> dict | None:
-        found = self.session.doc.find(self.type) if self.type else None
-        return st_types.section(found) if found is not None else None
+    def section(self) -> dict:
+        if self.shape == "circle":
+            return {"shape": "circle", "d": self.d}
+        return {"shape": "rect", "b": self.b, "h": self.h}
 
     @property
     def cardinal(self) -> int:
-        section = self.section()
-        if section is not None and section["shape"] == "circle":
+        if self.shape == "circle":
             return 5
         return profiles.PLAN_CARDINAL[self.insertion]
 
     def hint(self):
-        if self.type is None:
-            return "Não há tipo de pilar no projeto"
         ref = ("; Tab digita X e Y a partir dele" if self.reference is not None
                else "; pare o cursor num vértice para medir a partir dele")
         return f"Clique o ponto de inserção; barra de espaço gira 90°{ref}"
@@ -1353,24 +1367,26 @@ class ColumnTool(Tool):
         return self.release_reference()
 
     def _outline(self) -> list[Point] | None:
-        section = self.section()
-        if section is None or self.point is None:
+        if self.point is None:
             return None
-        state = {"point": list(self.point), "cardinal": self.cardinal, "angle": self.angle,
-                 "type": self.type}
-        return columns.outline(self.session.doc, state)
+        state = {"point": list(self.point), "cardinal": self.cardinal, "angle": self.angle}
+        try:
+            return columns.outline(self.session.doc, state, self.section())
+        except (KeyError, ValueError):
+            return None
 
     def press(self, p, mods, button="left"):
         if button != "left":
             return
         self.move(p, mods)
-        if self.type is None or self.session.storey is None:
-            self.session.message("não há tipo de pilar ou pavimento ativo", "recusa")
+        if self.session.storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
             return
         doc, storey, q = self.session.doc, self.session.storey, self.point
         options = {"cardinal": self.cardinal, "angle": self.angle,
                    "base_offset": self.base_offset, **_top_options(self, "fixed_height")}
-        self.session.run(lambda: sc.create_column(doc, self.type, storey, q, **options))
+        self.session.run(lambda: sc.create_column(doc, self.type, storey, q,
+                                                  section=self.section(), **options))
         self.fixed.clear()
         self.reference = self.tracking = None  # a referência serviu a este ponto
         self.move(p, mods)
@@ -1382,23 +1398,29 @@ class ColumnTool(Tool):
 
 
 class _BeamOptions:
-    """Opções da ferramenta Viga (spec/ui 10 §3)."""
+    """Opções da ferramenta Viga (spec/ui 10 §3): b × h digitados; ``type`` é só o tipo
+    de partida (material e representação na planta)."""
 
     type_class = "IfcBeamType"
 
     def __init__(self, session: Session):
         self.type = _first_type(session, self.type_class)
+        base = _base_section(session, self.type_class)
+        self.b, self.h = base["b"], base["h"]
         self.ref_line = "axis"
         self.top = "storey"
         self.top_offset = 0.0
         self.top_elevation = structure_common.DEFAULT_TOP
 
+    def section(self) -> dict:
+        return {"shape": "rect", "b": self.b, "h": self.h}
+
     def command_options(self) -> dict:
-        return {"ref_line": self.ref_line, **_top_options(self, "top_elevation")}
+        return {"ref_line": self.ref_line, "section": self.section(),
+                **_top_options(self, "top_elevation")}
 
     def band(self, doc) -> tuple[float, float]:
-        beam_type = doc.find(self.type) if self.type else None
-        b = st_types.section(beam_type)["b"] if beam_type is not None else 0.14
+        b = self.b
         return {"axis": (-b / 2, b / 2), "left_face": (-b, 0.0),
                 "right_face": (0.0, b)}[self.ref_line]
 
@@ -1411,8 +1433,6 @@ class BeamTool(WallTool):
     options_class = _BeamOptions
 
     def hint(self):
-        if self.options.type is None:
-            return "Não há tipo de viga no projeto"
         if not self.points:
             return "Clique o início da viga"
         return ("Clique o fim; a próxima viga começa nele; Tab digita comprimento e ângulo; "
@@ -1435,8 +1455,8 @@ class BeamTool(WallTool):
         if math.dist(a, q) <= beams.MIN_LENGTH:
             return
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        if options.type is None or storey is None:
-            self.session.message("não há tipo de viga ou pavimento ativo", "recusa")
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
             return
         if self.session.run(lambda: sc.create_beam(doc, options.type, storey, a, q,
                                                    **options.command_options())):

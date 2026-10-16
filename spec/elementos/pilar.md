@@ -99,10 +99,16 @@ Nome do tipo = "Pilar b×h" em centímetros (ex.: "Pilar 20×40").
 
 ## 4. Criação
 Um clique posiciona o pilar no ponto de inserção. Antes do clique, a barra Opções escolhe
-o tipo, o ponto de inserção na seção e o ângulo. Durante a pré‑visualização, a barra de
-espaço gira 90° *(CG)*. Os pontos de atração incluem os vértices e cruzamentos das
-paredes, para pôr o pilar no canto ou no meio de uma parede. Transação:
-(`column_type.create`, se faltar) → `column.create`.
+a seção (b × h ou diâmetro, digitados; spec/ui 10 §3), o ponto de inserção na seção e o
+ângulo. Durante a pré‑visualização, a barra de espaço gira 90° *(CG)*. Os pontos de
+atração incluem os vértices e cruzamentos das paredes, para pôr o pilar no canto ou no
+meio de uma parede. Transação: (`column_type.create`, se faltar) → `column.create`.
+**Dimensões escolhidas na hora** (decisão do revisor, 2026‑10‑16): pilar e viga não
+dependem de tamanhos cadastrados. O usuário digita b × h (ou o diâmetro) na barra Opções e
+no painel; o BrasBim acha o tipo com essa seção (mesmo material e representação do tipo de
+partida) ou o cria na mesma transação, com o nome "Pilar 25×60" / "Viga 14×40". O IFC
+continua com um tipo por seção e o perfil compartilhado entre os elementos iguais
+[IFC-COL]. Mudar a seção no painel muda só os elementos selecionados.
 
 ## 5. Edição
 
@@ -110,7 +116,7 @@ paredes, para pôr o pilar no canto ou no meio de uma parede. Transação:
 - Mover, copiar, girar (muda posição e ângulo), espelhar (espelha a posição e o ângulo;
   a seção é simétrica) e excluir.
 - Alça na planta: o ponto de inserção (arrastar move o pilar).
-- Painel: tipo, ponto de inserção, ângulo, base e topo, nome, propriedades comuns.
+- Painel: seção (b × h ou diâmetro: muda só este pilar, para o tipo dessa seção), ponto de inserção, ângulo, base e topo, nome, propriedades comuns.
 
 ### 5.2 Operações serializáveis
 | `op` | Dados |

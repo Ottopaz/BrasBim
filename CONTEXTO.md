@@ -4,12 +4,12 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 4 concluído: laje, pilar e viga, básico; spec/ui 10).*
+*Atualizado em 2026‑10‑16 (pacote 4 concluído; pilar e viga com dimensões digitadas).*
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (348 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (353 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -165,6 +165,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   os triângulos da laje nas cotas das camadas.
 - Biblioteca em `ui/session.py`; materiais Contrapiso e Laje pré-moldada em
   `materials.LIBRARY`.
+- **Dimensões digitadas** (pedido do revisor, 2026‑10‑16): pilar e viga não usam lista de
+  tipos na barra Opções nem no painel; b × h (ou Ø) são digitados. `commands.section_type`
+  acha o tipo com a mesma seção, material e representação do tipo de partida, ou gera o
+  `*_type.create` na mesma transação ("Pilar 25×60"; nome repetido ganha " (2)").
+  `section=` em `create_column`, `create_beam(_chain)` e `edit_element` (só o elemento).
+  As ferramentas guardam a seção (`ColumnTool.shape/b/h/d`, `_BeamOptions.b/h`) e o
+  `type` só como tipo de partida. A laje continua escolhendo o tipo (camadas).
 
 ## Próximos passos (nesta ordem)
 0. Revisão da aparência (spec/ui 11) usando o aplicativo; ajustes pelo retorno.

@@ -100,9 +100,9 @@ def section(doc: Document, state: dict) -> dict:
     return st_types.section(doc.get(state["type"], "IfcColumnType"))
 
 
-def outline(doc: Document, state: dict) -> list[tuple[float, float]]:
-    """Contorno da seção no pavimento (anti-horário)."""
-    sec = section(doc, state)
+def outline(doc: Document, state: dict, sec: dict | None = None) -> list[tuple[float, float]]:
+    """Contorno da seção no pavimento (anti-horário); ``sec`` no lugar da do tipo."""
+    sec = sec or section(doc, state)
     cx, cy = profiles.insertion(sec, state["cardinal"])
     a = math.radians(state["angle"])
     c, s = math.cos(a), math.sin(a)

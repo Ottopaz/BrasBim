@@ -97,6 +97,7 @@ INSERTIONS = [("Centro", (1, 1)), ("Canto inferior esquerdo", (0, 0)),
               ("Meio da esquerda", (0, 1)), ("Meio da direita", (2, 1)),
               ("Canto superior esquerdo", (0, 2)), ("Meio de cima", (1, 2)),
               ("Canto superior direito", (2, 2))]
+SECTIONS = [("Retangular", "rect"), ("Circular", "circle")]
 STRUCTURE_NOUNS = {"IfcColumn": ("Pilar", "Pilares"), "IfcBeam": ("Viga", "Vigas"),
                    "IfcSlab": ("Laje", "Lajes")}
 # Caixilhos sem giro: o "abre para" é o lado interno (janela §2.4).
@@ -724,15 +725,64 @@ class PropertiesPanel(QScrollArea):
     # --- pilar, viga e laje (spec/ui 10 §4.3) -----------------------------------------------
 
     def _structure_head(self, element, state: dict, type_class: str) -> None:
-        """Nome, tipo e Editar tipo…"""
+        """Pilar e viga: nome e dimensões da seção, digitadas (decisão do revisor,
+        2026‑10‑16); laje: tipo e Editar tipo…"""
         doc = self.session.doc
-        if element.is_a("IfcColumn") or element.is_a("IfcBeam"):
-            self._text("Nome", element.Name, lambda v: self._run(
-                lambda: sc.edit_element(doc, element, name=v)))
-        self._combo("Tipo", self._types(type_class), state["type"],
-                    lambda v: self._run(lambda: sc.edit_element(doc, element, type=v)))
-        if state["type"]:
-            self._edit_type_button(type_class, state["type"])
+        if element.is_a("IfcSlab") or state["foreign"] is not None:
+            self._combo("Tipo", self._types(type_class), state["type"],
+                        lambda v: self._run(lambda: sc.edit_element(doc, element, type=v)))
+            if state["type"] and element.is_a("IfcSlab"):
+                self._edit_type_button(type_class, state["type"])
+            return
+        self._text("Nome", element.Name, lambda v: self._run(
+            lambda: sc.edit_element(doc, element, name=v)))
+        section = sc.module_of(element).section(doc, state)
+        self._section_fields([element], [section])
+
+    def _section_fields(self, elements, sections) -> None:
+        """b, h (ou Ø) da seção; mudar vale só para os elementos mostrados, cada um
+        mantendo a outra dimensão (o tipo da seção é achado ou criado)."""
+        doc = self.session.doc
+        column = elements[0].is_a("IfcColumn")
+
+        def apply(change):
+            builds = [lambda e=e, sec=sec: sc.edit_element(doc, e, section=change(sec))
+                      for e, sec in zip(elements, sections, strict=True)]
+            if len(builds) == 1:
+                self._run(builds[0])
+            else:
+                self._run(lambda: combine(doc, f"Editar {len(builds)} elementos", builds))
+
+        def size(key):
+            def commit(value):
+                if value <= profiles.MIN_SIZE:
+                    self.session.message(f"a dimensão deve passar de "
+                                         f"{fmt(profiles.MIN_SIZE)} m", "recusa")
+                    self.refresh()
+                    return
+                apply(lambda sec: {**sec, key: value})
+            return commit
+
+        shape = _common(sec["shape"] for sec in sections)
+        if column:
+            def to_shape(value):
+                def change(sec):
+                    if value == "circle":
+                        return {"shape": "circle", "d": max(sec.get("b", 0), sec.get("h", 0))
+                                or sec["d"]}
+                    d = sec.get("d", 0.20)
+                    return {"shape": "rect", "b": sec.get("b", d), "h": sec.get("h", d)}
+                apply(change)
+
+            self._combo("Seção", SECTIONS, shape, to_shape)
+        if shape == "circle":
+            self._number("Ø (diâmetro)", _common(sec["d"] for sec in sections), size("d"),
+                         placeholder=MIXED)
+        elif shape == "rect":
+            self._number("b (largura)", _common(sec["b"] for sec in sections), size("b"),
+                         placeholder=MIXED)
+            self._number("h (altura)" if not column else "h (profundidade)",
+                         _common(sec["h"] for sec in sections), size("h"), placeholder=MIXED)
 
     def _structure_tail(self, element, state: dict) -> None:
         self._structure_common([element])
@@ -782,7 +832,6 @@ class PropertiesPanel(QScrollArea):
             self._structure_tail(column, state)
             return
         section = columns.section(doc, state)
-        self._read("Seção", profiles.label(section))
 
         def edit(**changes):
             self._run(lambda: sc.edit_element(doc, column, **changes))
@@ -816,7 +865,6 @@ class PropertiesPanel(QScrollArea):
         if state["foreign"] is not None:
             self._structure_tail(beam, state)
             return
-        self._read("Seção", profiles.label(beams.section(doc, state)))
 
         def edit(**changes):
             self._run(lambda: sc.edit_element(doc, beam, **changes))
@@ -874,8 +922,13 @@ class PropertiesPanel(QScrollArea):
         type_class = f"{elements[0].is_a()}Type"
         states = [sc.read_state(doc, e) for e in elements]
         self._section(f"<b>{plural} ({len(elements)})</b>")
-        self._combo("Tipo", self._types(type_class), _common(s["type"] for s in states),
-                    lambda v: self._run(lambda: sc.edit_elements(doc, elements, type=v)))
+        own = [(e, s) for e, s in zip(elements, states, strict=True) if s["foreign"] is None]
+        if elements[0].is_a("IfcSlab"):
+            self._combo("Tipo", self._types(type_class), _common(s["type"] for s in states),
+                        lambda v: self._run(lambda: sc.edit_elements(doc, elements, type=v)))
+        elif own:
+            module = sc.module_of(elements[0])
+            self._section_fields([e for e, _ in own], [module.section(doc, s) for _, s in own])
         if elements[0].is_a("IfcSlab"):
             self._number("Deslocamento do topo", _common(s["top_offset"] for s in states),
                          lambda v: self._run(lambda: sc.edit_elements(doc, elements,

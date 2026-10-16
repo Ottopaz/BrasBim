@@ -4,6 +4,12 @@
 
 Como nos comandos da parede, aqui só se lê o modelo para montar as operações; quem
 altera o modelo é ``History.commit``.
+
+Pilar e viga com as dimensões escolhidas na hora (decisão do revisor, 2026‑10‑16;
+spec/ui 10 §3): ``section=`` em criar e editar acha o tipo com essa seção (e o material e
+a representação do tipo de partida) ou cria um na mesma transação, com o nome "Pilar
+25×60". O IFC continua com um ``IfcColumnType``/``IfcBeamType`` por seção, e os elementos
+iguais dividem o mesmo perfil.
 """
 
 from __future__ import annotations
@@ -17,8 +23,9 @@ import ifcopenshell.util.element
 from brasbim.core import guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
+from brasbim.core.ops.base import same_value
 from brasbim.core.ops.history import combine
-from brasbim.core.structure import beams, columns, common, slabs
+from brasbim.core.structure import beams, columns, common, profiles, slabs
 from brasbim.core.structure import types as st_types
 
 gid = common.gid
@@ -126,6 +133,54 @@ def delete_type(doc: Document, element_type, replacement=None) -> Transaction:
     return Transaction(f"Excluir tipo de {_TYPE_NOUN[prefix]}", ops)
 
 
+# --- tipo pela seção (spec/ui 10 §3) ----------------------------------------------------
+
+_PROFILE_TYPES = {"column": ("IfcColumnType", "Pilar", st_types.COLUMN),
+                  "beam": ("IfcBeamType", "Viga", st_types.BEAM)}
+
+
+def section_name(prefix: str, section: dict) -> str:
+    """"Pilar 25×60", "Pilar Ø35", "Viga 14×40" (dimensões em centímetros)."""
+    word = _PROFILE_TYPES[prefix][1]
+    return f"{word} {profiles.label(section).replace(' × ', '×').replace('Ø ', 'Ø')}"
+
+
+def section_type(doc: Document, prefix: str, section: dict, base=None) -> tuple[str, list[Op]]:
+    """(GlobalId do tipo com esta seção, operações para criá-lo se faltar). Material e
+    representação na planta vêm de ``base`` (o tipo atual), senão Concreto e o padrão."""
+    type_class, _, kind = _PROFILE_TYPES[prefix]
+    section = {k: (v if k == "shape" else float(v)) for k, v in section.items()}
+    try:
+        profiles.validate(section, kind.shapes)
+    except (ValueError, KeyError) as e:
+        raise OpError(str(e)) from e
+    base = doc.find(gid(base)) if base is not None else None
+    base_state = st_types.read_profile_type(base) if base is not None else None
+    material = base_state["material"] if base_state else "Concreto"
+    plan_style = base_state["plan_style"] if base_state else None
+    found = []
+    for t in sorted(doc.ifc.by_type(type_class), key=lambda t: t.GlobalId):
+        try:
+            state = st_types.read_profile_type(t)
+        except OpError:
+            continue
+        if (same_value(state["section"], section) and state["material"] == material
+                and state["plan_style"] == plan_style):
+            found.append(t)
+    name = section_name(prefix, section)
+    if found:  # o de nome padrão primeiro (o da biblioteca)
+        return min(found, key=lambda t: (t.Name != name, t.Name or "")).GlobalId, []
+    names = {t.Name for t in doc.ifc.by_type(type_class)}
+    unique, n = name, 2
+    while unique in names:
+        unique = f"{name} ({n})"
+        n += 1
+    data = {"name": unique, "predefined_type": kind.predefined_types[0], "section": section,
+            "material": material, "plan_style": plan_style}
+    new = guid.new()
+    return new, [Op(f"{prefix}_type.create", new, data=data)]
+
+
 # --- criação ---------------------------------------------------------------------------
 
 
@@ -151,10 +206,17 @@ def column_data(doc: Document, column_type, storey, point, **options) -> dict:
     return data
 
 
-def create_column(doc: Document, column_type, storey, point, **options) -> Transaction:
-    """Pilar no ponto de inserção ``point`` (pilar.md §4)."""
+def create_column(doc: Document, column_type, storey, point, section: dict | None = None,
+                  **options) -> Transaction:
+    """Pilar no ponto de inserção ``point`` (pilar.md §4). Com ``section``, o tipo é o
+    dessa seção (criado se faltar)."""
+    ops = []
+    if section is not None:
+        column_type, ops = section_type(doc, "column", section, column_type)
+        if section["shape"] == "circle":
+            options["cardinal"] = 5
     data = column_data(doc, column_type, storey, point, **options)
-    return Transaction("Criar pilar", [Op("column.create", guid.new(), data=data)])
+    return Transaction("Criar pilar", [*ops, Op("column.create", guid.new(), data=data)])
 
 
 def _beam_ops(doc: Document, beam_type, storey, segments, options) -> list[Op]:
@@ -177,18 +239,25 @@ def _beam_ops(doc: Document, beam_type, storey, segments, options) -> list[Op]:
     return ops
 
 
-def create_beam(doc: Document, beam_type, storey, start, end, **options) -> Transaction:
-    """Viga reta de ``start`` a ``end`` (viga.md §4)."""
-    return Transaction("Criar viga", _beam_ops(doc, beam_type, storey, [(start, end)], options))
+def create_beam(doc: Document, beam_type, storey, start, end, section: dict | None = None,
+                **options) -> Transaction:
+    """Viga reta de ``start`` a ``end`` (viga.md §4). Com ``section``, o tipo é o dessa
+    seção (criado se faltar)."""
+    return create_beam_chain(doc, beam_type, storey, [start, end], section, **options)
 
 
-def create_beam_chain(doc: Document, beam_type, storey, points, **options) -> Transaction:
+def create_beam_chain(doc: Document, beam_type, storey, points, section: dict | None = None,
+                      **options) -> Transaction:
     """Vigas em cadeia pelos ``points``."""
     pts = [tuple(p) for p in points]
     if len(pts) < 2:
         raise OpError("a cadeia precisa de pelo menos 2 pontos")
-    return Transaction("Criar vigas", _beam_ops(doc, beam_type, storey,
-                                                list(itertools.pairwise(pts)), options))
+    ops = []
+    if section is not None:
+        beam_type, ops = section_type(doc, "beam", section, beam_type)
+    segments = list(itertools.pairwise(pts))
+    return Transaction("Criar viga" if len(segments) == 1 else "Criar vigas",
+                       ops + _beam_ops(doc, beam_type, storey, segments, options))
 
 
 def create_slab(doc: Document, slab_type, storey, outline, **options) -> Transaction:
@@ -209,10 +278,21 @@ def create_slab_rectangle(doc: Document, slab_type, storey, corner, opposite, **
 
 
 def edit_element(doc: Document, element, **changes) -> Transaction:
-    """Altera campos do estado (``STATE_KEYS`` do elemento)."""
+    """Altera campos do estado (``STATE_KEYS`` do elemento). Em pilar e viga,
+    ``section=`` troca só este elemento para o tipo dessa seção (criado se faltar)."""
     element = _element(doc, element)
     module, prefix, noun, _ = ELEMENTS[element.is_a()]
     state = module.read_state(doc, element)
+    section = changes.pop("section", None)
+    pre: list[Op] = []
+    if section is not None:
+        if prefix == "slab":
+            raise OpError("a laje não tem seção; troque o tipo")
+        if state["foreign"] is not None:
+            raise OpError(f"{noun} de outra origem: a seção vem do corpo original")
+        changes["type"], pre = section_type(doc, prefix, section, state["type"])
+        if prefix == "column" and section["shape"] == "circle":
+            changes.setdefault("cardinal", 5)
     for key in ("type", "storey", "top_storey"):
         if changes.get(key) is not None:
             changes[key] = gid(changes[key])
@@ -222,7 +302,8 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     if "outline" in changes:
         changes["outline"] = slabs.clean(changes["outline"])
     # O pilar circular só tem o centro como ponto de inserção (pilar.md §3.1).
-    if (element.is_a("IfcColumn") and changes.get("type") and state["foreign"] is None
+    if (element.is_a("IfcColumn") and changes.get("type") and not pre
+            and state["foreign"] is None
             and st_types.section(doc.get(changes["type"]))["shape"] == "circle"):
         changes.setdefault("cardinal", 5)
     for key in ("point", "start", "end"):
@@ -239,8 +320,9 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     if not changes:
         return Transaction(f"Editar {noun}", [])
     before = {k: copy.deepcopy(state[k]) for k in changes}
-    return Transaction(f"Editar {noun}", [Op(f"{prefix}.edit", element.GlobalId,
-                                             before=before, after=copy.deepcopy(changes))])
+    return Transaction(f"Editar {noun}", [*pre, Op(f"{prefix}.edit", element.GlobalId,
+                                                   before=before,
+                                                   after=copy.deepcopy(changes))])
 
 
 def edit_elements(doc: Document, elements, **changes) -> Transaction:

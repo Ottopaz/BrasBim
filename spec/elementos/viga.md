@@ -101,7 +101,7 @@ Concreto 12 × 30, 14 × 40, 15 × 40, 20 × 50. Nome do tipo = "Viga b×h" em c
 Como a parede reta: clique no início e no fim; a ferramenta continua a partir do último
 ponto (cadeia) até Esc ou duplo‑clique. Tab abre o quadro com comprimento e ângulo.
 Pontos de atração incluem o centro e os cantos dos pilares e as faces e pontas das
-paredes. Barra Opções: tipo, linha de referência e topo. Transação:
+paredes. Barra Opções: b × h (digitados; spec/ui 10 §3), linha de referência e topo. Transação:
 (`beam_type.create`, se faltar) → `beam.create`.
 
 ## 5. Edição
@@ -110,8 +110,8 @@ paredes. Barra Opções: tipo, linha de referência e topo. Transação:
 - Mover, copiar, girar, espelhar (troca face esquerda ↔ direita para manter o lado),
   excluir.
 - Alças na planta: as pontas (arrastar estica ou encurta) e o meio (move).
-- Painel: tipo, linha de referência, topo, comprimento e ângulo, nome, propriedades
-  comuns.
+- Painel: b × h (muda só esta viga, para o tipo dessa seção), linha de referência, topo,
+  comprimento e ângulo, nome, propriedades comuns.
 
 ### 5.2 Operações serializáveis
 | `op` | Dados |

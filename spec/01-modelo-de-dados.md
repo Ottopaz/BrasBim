@@ -115,6 +115,9 @@ ordem inversa (camada 1 = a de baixo). Mover, girar, espelhar e copiar geram um
 `{"rel", "location", "axis", "ref"}` do `IfcLocalPlacement`; mover e girar trocam só o
 `placement`. Excluir um pavimento gera, antes do `storey.delete`, `column.edit` e
 `beam.edit` que passam para altura (cota) fixa os que tinham o topo nele.
+Pilar e viga com a seção digitada (spec/ui 10 §3): quando ainda não há tipo com essa
+seção, a transação começa com `column_type.create`/`beam_type.create` e o elemento
+aponta para ele (`type`); não há operação própria para a seção.
 
 Junções: `id` = GlobalId da `IfcRelConnectsPathElements`. Os comandos detectam as junções e geram
 estas operações na mesma transação da criação, edição ou exclusão da parede.

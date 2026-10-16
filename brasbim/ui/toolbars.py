@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
 
 from brasbim.core.fillings import params
+from brasbim.core.structure import profiles
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.tools import (
@@ -67,6 +68,7 @@ SLAB_MODES = [("polygon", "slab", "Polígono",
                "clique os vértices; feche no primeiro ponto, com clique duplo ou Enter"),
               ("rectangle", "wall_rect", "Retângulo", "clique dois cantos opostos")]
 BEAM_TOPS = [("Pavimento de cima", "storey"), ("Cota fixa", "fixed")]
+SECTIONS = [("Retangular", "rect"), ("Circular", "circle")]
 
 
 class InsertionPicker(QWidget):
@@ -364,16 +366,35 @@ class OptionsBar(QToolBar):
         edit.triggered.connect(lambda: window.edit_type(ifc_class, holder.type))
         self.addAction(edit)
 
+    def _size(self, holder, key: str, label: str, tip: str) -> None:
+        """Dimensão da seção digitada na hora (decisão do revisor, 2026‑10‑16)."""
+        def commit(value):
+            if value <= profiles.MIN_SIZE:
+                self.window_.session.message(
+                    f"{label}: a dimensão deve passar de {fmt(profiles.MIN_SIZE)} m", "recusa")
+                self.show_for(self.tool)
+                return
+            setattr(holder, key, value)
+
+        self._label(label)
+        self._number(getattr(holder, key), commit, tip)
+
     def _column(self, tool) -> None:
-        def set_type(gid):
-            tool.type = gid
+        self._label("Seção")
+
+        def set_shape(value):
+            tool.shape = value
             self.show_for(tool)
 
-        self._type_group("IfcColumnType", tool, set_type, "do próximo pilar")
+        self._combo(SECTIONS, tool.shape, set_shape, "Forma da seção do próximo pilar")
+        if tool.shape == "circle":
+            self._size(tool, "d", "Ø", "Diâmetro do pilar (m)")
+        else:
+            self._size(tool, "b", "b", "Largura do pilar, ao longo do ângulo (m)")
+            self._size(tool, "h", "h", "Profundidade do pilar (m)")
         self.addSeparator()
         self._label("Inserção")
-        section = tool.section()
-        circle = section is not None and section["shape"] == "circle"
+        circle = tool.shape == "circle"
         self.addWidget(InsertionPicker(tool.insertion, lambda v: setattr(tool, "insertion", v),
                                        center_only=circle))
         self._label("Ângulo")
@@ -399,12 +420,8 @@ class OptionsBar(QToolBar):
 
     def _beam(self, tool) -> None:
         options = tool.options
-
-        def set_type(gid):
-            options.type = gid
-            self.show_for(tool)
-
-        self._type_group("IfcBeamType", options, set_type, "da próxima viga")
+        self._size(options, "b", "b", "Largura da viga (m)")
+        self._size(options, "h", "h", "Altura da viga (m)")
         self.addSeparator()
         self._choices(REF_LINES, options.ref_line, lambda v: setattr(options, "ref_line", v))
         self.addSeparator()

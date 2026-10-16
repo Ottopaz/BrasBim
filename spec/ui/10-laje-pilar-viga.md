@@ -59,9 +59,16 @@ Dois modos na barra Opções: **Polígono** e **Retângulo**.
 ## 3. Barra Opções
 | Ferramenta | Grupos |
 |---|---|
-| Pilar | Tipo (lista) e **Editar tipo**; Inserção (9 pontos num quadradinho clicável, só centro para seção circular); Ângulo; Base (deslocamento); Topo (pavimento/altura fixa e deslocamento) |
-| Viga | Tipo e **Editar tipo**; Linha de referência (eixo, face esquerda, face direita); Topo (ligado a pavimento + deslocamento, ou cota fixa) |
+| Pilar | **Seção** (retangular/circular) com **b** e **h** ou **Ø**, digitados; Inserção (9 pontos num quadradinho clicável, só centro para seção circular); Ângulo; Base (deslocamento); Topo (pavimento/altura fixa e deslocamento) |
+| Viga | **b** e **h**, digitados; Linha de referência (eixo, face esquerda, face direita); Topo (ligado a pavimento + deslocamento, ou cota fixa) |
 | Laje | Tipo e **Editar tipo**; Modo (polígono, retângulo); Deslocamento do topo |
+
+**Dimensões escolhidas na hora** (decisão do revisor, 2026‑10‑16): pilar e viga não
+dependem de tamanhos cadastrados. O usuário digita b × h (ou o diâmetro) na barra Opções e
+no painel; o BrasBim acha o tipo com essa seção (mesmo material e representação do tipo de
+partida) ou o cria na mesma transação, com o nome "Pilar 25×60" / "Viga 14×40". O IFC
+continua com um tipo por seção e o perfil compartilhado entre os elementos iguais
+[IFC-COL, IFC-BEAM]. Mudar a seção no painel muda só os elementos selecionados.
 
 ## 4. Elemento selecionado
 
@@ -90,8 +97,8 @@ nesta etapa.
 ### 4.3 Painel de propriedades
 | Elemento | Grupos e campos |
 |---|---|
-| Pilar | **Pilar**: Nome, Tipo, Editar tipo…, Seção (leitura: "20 × 40" ou "Ø 30"). **Posição**: X, Y, Ângulo, Inserção. **Altura**: Base (deslocamento), Topo (pavimento/altura fixa), Deslocamento do topo, Altura fixa. **Quantidades** (leitura). **Propriedades comuns**. **Identificação** |
-| Viga | **Viga**: Nome, Tipo, Editar tipo…, Seção (leitura). **Geometria**: Comprimento, Ângulo, Linha de referência. **Altura**: Topo (ligado/cota fixa), Deslocamento ou Cota. **Quantidades**. **Propriedades comuns**. **Identificação** |
+| Pilar | **Pilar**: Nome, Seção (retangular/circular), b e h ou Ø (editáveis, §3). **Posição**: X, Y, Ângulo, Inserção. **Altura**: Base (deslocamento), Topo (pavimento/altura fixa), Deslocamento do topo, Altura fixa. **Quantidades** (leitura). **Propriedades comuns**. **Identificação** |
+| Viga | **Viga**: Nome, b e h (editáveis, §3). **Geometria**: Comprimento, Ângulo, Linha de referência. **Altura**: Topo (ligado/cota fixa), Deslocamento ou Cota. **Quantidades**. **Propriedades comuns**. **Identificação** |
 | Laje | **Laje**: Tipo, Editar tipo…, Espessura (leitura). **Altura**: Deslocamento do topo, Cota do topo e do fundo (leitura, em relação ao pavimento). **Quantidades**: Área, Perímetro, Volume. **Propriedades comuns**. **Identificação** |
 
 Propriedades comuns (spec 05 §6): Código (`Reference`), Situação (`Status`), Estrutural
@@ -100,6 +107,8 @@ Desempenho acústico (`AcousticRating`). Vários do mesmo elemento: "Pilares (n)
 "vários" onde diferem (spec 02 §9).
 
 ## 5. Tipos
+Os tipos de pilar e de viga são criados sozinhos pela seção (§3); a janela deles serve para trocar o material, a representação na planta ou as medidas de todos os elementos de uma seção de uma vez.
+
 Menu **Projeto**: **Tipos de pilar…**, **Tipos de viga…**, **Tipos de laje…**, na mesma
 janela de tipos (lista, Novo, Copiar, Excluir e editor; spec 02 §8).
 
