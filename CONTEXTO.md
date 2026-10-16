@@ -28,6 +28,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/12-estrutura-refinamento` | aprovada e implementada (pacote 5; RC01–10 em `tests/test_recortes.py`, AL01–05 e LC01–03 em `test_laje.py` e `test_interface_estrutura.py`, ET01–02) |
 | `spec/ui/13-documentacao-planta` | aprovada e implementada (pacote 6; `tests/test_documentacao.py`, `test_interface_documentacao.py`) |
 | `spec/ui/14-cortes-e-fachadas` | aprovada e implementada (pacote 7; `tests/test_cortes.py`, `test_interface_cortes.py`) |
+| `spec/ui/15-pranchas-e-pdf` | **em revisão** (pacote 8) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
