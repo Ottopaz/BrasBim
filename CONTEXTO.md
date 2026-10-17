@@ -4,7 +4,16 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑16 (pacote 10: cobertura simples implementada; a seguir, tabelas).*
+*Atualizado em 2026‑10‑17 (pacote 10: cobertura simples implementada; spec das tabelas aguardando revisão).*
+
+> **Onde paramos (2026‑10‑17):** cobertura entregue (commit `111a482`, 466 testes, ruff
+> limpo). A spec `spec/ui/17-tabelas.md` está **em revisão**: o revisor precisa decidir os
+> pontos §9 (a) tabela no IFC como anotação + JSON, (b) modelos prontos e colunas,
+> (c) área construída pela face externa das paredes, (d) XLSX com a biblioteca padrão ou
+> `openpyxl` (MIT), (e) clicar na linha seleciona na planta. Aprovada a spec, implementar
+> TB01–TB11 (pacote 11). Depois: aprimorar o assistente dentro do software (pedido do
+> revisor em 2026‑10‑16), e seguir com mobiliário, salvamento automático, camadas e vistas
+> 3D. Continuam abertos os itens 0 e 0b dos próximos passos.
 
 ## Comandos
 | Para | Comando |
@@ -349,7 +358,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
 4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora tabelas: spec
    `spec/ui/17-tabelas.md` em revisão (RF-QTD-01 a 03 e 05; pontos §9 a–e); em seguida
-   mobiliário básico, salvamento automático, camadas e vistas 3D padrão.
+   aprimorar o assistente dentro do software (pedido do revisor); depois mobiliário
+   básico, salvamento automático, camadas e vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
 6. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
@@ -362,7 +372,7 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   camadas aparece de uma cor só no 3D; alça do contorno numa cobertura de duas/quatro
   águas que deixa de ser retângulo é recusada.
 - Assistente: a conversa não sobrevive a fechar o BrasBim; sem aviso de privacidade; só
-  o conector Claude Code; a IA não cria pavimentos, estrutura nem cobertura; edição
+  o conector Claude Code; a IA não cria pavimentos nem estrutura (cobertura já cria); edição
   manual durante o pedido impede o agrupamento no desfazer; ambientes só acompanham a
   parede movida pela IA (`move_wall`), não a movida à mão.
 - Specs 01 §5.5/§6, 03 §4.2 e 07 §2.2 ainda dizem "Tab troca as dobradiças"; a spec 09
