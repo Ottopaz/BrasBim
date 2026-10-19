@@ -3,7 +3,7 @@ documento: Quantitativos e tabelas (quadro de esquadrias, quadro de áreas, tabe
 requisito: RF-QTD-01, RF-QTD-02, RF-QTD-03, RF-QTD-05
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-16
-status: em revisão
+status: aprovado
 revisor: OTTO
 ---
 
@@ -180,3 +180,7 @@ comando ou layout de diálogo de outro software foi copiado.
 (d) XLSX escrito sem biblioteca nova (§5). A alternativa é a `openpyxl`, de licença
     MIT, que traria formatação mais rica.
 (e) Clicar na linha seleciona os elementos na planta (§5).
+
+**Decisões do revisor (2026‑10‑19):** (a) a (e) aprovados como estão: anotação com JSON;
+os cinco modelos com as colunas do §3.3; área construída pela face externa das paredes;
+XLSX com a biblioteca padrão; clique na linha seleciona na planta.
