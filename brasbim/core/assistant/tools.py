@@ -759,6 +759,44 @@ def selection_note(doc: Document, storey, selection) -> str:
     return f"[BrasBim] {head} Selecionado na tela: " + "; ".join(parts) + "."
 
 
+def table(ctx: Context, args: dict) -> dict:
+    """Linhas de uma tabela de quantitativos (spec/ui 17 §6), sem criar a tabela."""
+    from brasbim.core.quantities import tables
+
+    doc = ctx.doc
+    category = args.get("category", "walls")
+    fields = tables.fields_of(category)
+    columns = args.get("columns") or ["type", "count"]
+    storeys = []
+    for ref in args.get("storeys") or []:
+        found = next((s for s in doc.storeys() if ref in (s.GlobalId, s.Name)), None)
+        if found is None:
+            raise OpError(f"pavimento {ref!r} não existe")
+        storeys.append(found.GlobalId)
+    options = tables.type_options(doc, category)
+    types = []
+    for ref in args.get("types") or []:
+        found = [t for t in options if ref in (t.GlobalId, t.Name)] or [
+            t for t in options if (t.Name or "").casefold().startswith(str(ref).casefold())]
+        if not found:
+            raise OpError(f"tipo {ref!r} não existe nesta categoria")
+        types += [t.GlobalId for t in found]
+    state = {**tables.default_state(), "category": category,
+             "columns": [{"field": c} for c in columns], "storeys": storeys,
+             "types": types, "group_by": args.get("group_by"),
+             "rows": args.get("rows") or ("group" if args.get("group_by") else "element")}
+    result = tables.compute(doc, state)
+    rows = []
+    for row in result.rows:
+        item = {"linha": row.kind}
+        for column, value in zip(result.columns, row.cells, strict=True):
+            if value is not None:
+                item[column.field] = _r(value) if isinstance(value, float) else value
+        rows.append(item)
+    return {"colunas": {c.field: c.title for c in result.columns}, "linhas": rows,
+            "campos_disponiveis": sorted(fields)}
+
+
 # --- registro -----------------------------------------------------------------------------
 
 _XY = {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
@@ -779,6 +817,31 @@ def default_registry() -> Registry:
         "ambientes (nome, área útil em m²), lajes e coberturas. Use no começo e para "
         "conferir o resultado.",
         _obj({"storey": _STOREY}), describe_model, changes=False))
+    reg.add(Tool(
+        "table", "Calculando quantitativos",
+        "Tabela de quantitativos lida do modelo (as quantidades do IFC): contagens, "
+        "comprimentos, áreas e volumes por categoria, com filtro, agrupamento e totais. "
+        "Use para perguntas de quantidade (\"quantos m² de parede tem o térreo?\", "
+        "\"quantas janelas J1?\") em vez de somar à mão. Categorias: walls, doors, "
+        "windows, fillings (portas e janelas), slabs, columns, beams, roofs, spaces. "
+        "Campos comuns: storey, type, name, count, guid. Paredes: length, thickness, "
+        "height, side_area (líquida, uma face), gross_side_area, volume. Esquadrias: "
+        "code, class, width, height, sill, area, operation. Lajes: area, perimeter, "
+        "thickness, volume. Pilares: section, height, volume. Vigas: section, length, "
+        "volume. Coberturas: shape, slope, roof_area, plan_area. Ambientes: number, "
+        "space_name, floor_area, perimeter, height. Com group_by, uma linha por grupo; "
+        "a linha 'total' soma tudo.",
+        _obj({
+            "category": {"type": "string"},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "group_by": {"type": "string"},
+            "rows": {"type": "string", "enum": ["element", "group"]},
+            "storeys": {"type": "array", "items": {"type": "string"},
+                        "description": "nomes dos pavimentos (padrão: todos)"},
+            "types": {"type": "array", "items": {"type": "string"},
+                      "description": "nomes dos tipos (padrão: todos)"}},
+            ["category"]),
+        table, changes=False))
     reg.add(Tool(
         "layout_rooms", "Desenhando os ambientes",
         "Planta por ambientes: cada cômodo é um retângulo medido pelo EIXO das paredes "

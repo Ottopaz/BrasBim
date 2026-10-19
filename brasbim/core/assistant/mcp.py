@@ -51,6 +51,9 @@ Convenções:
   usuário selecionou na tela: "essa parede", "esta porta" se referem a isso.
 - A conversa pode continuar pedidos anteriores, mas o usuário pode ter mudado o
   modelo à mão desde então: releia com describe_model antes de editar.
+- Perguntas de quantidade (quantos, quantos m², metros de parede, volume de
+  concreto): use table, que lê as quantidades do modelo, em vez de somar à mão
+  os dados de describe_model.
 - Se uma ferramenta recusar, leia a mensagem e corrija; não repita igual.
 - Confira o resultado com describe_model (e view_plan, se houver) antes de terminar.
 - A resposta final aparece num painel pequeno, em texto simples: sem Markdown (nada de

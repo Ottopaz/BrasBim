@@ -56,23 +56,7 @@ WALL_USES = [("Parede maciça", "SOLIDWALL"), ("Divisória", "PARTITIONING"),
 LAYER_ROLES = [("Sem função", None), ("Estrutural", "LoadBearing"),
                ("Acabamento", "Finish"), ("Isolamento", "Insulation")]
 FILLS = [("Nenhum", "none"), ("Sólido", "solid"), ("Hachura", "hatch")]
-DOOR_OPERATIONS = [
-    ("Giro, 1 folha, dobradiças à esquerda", "SINGLE_SWING_LEFT"),
-    ("Giro, 1 folha, dobradiças à direita", "SINGLE_SWING_RIGHT"),
-    ("Giro, 2 folhas", "DOUBLE_DOOR_SINGLE_SWING"),
-    ("Giro com folha fixa à direita", "SWING_FIXED_LEFT"),
-    ("Giro com folha fixa à esquerda", "SWING_FIXED_RIGHT"),
-    ("Vaivém, 1 folha, à esquerda", "DOUBLE_SWING_LEFT"),
-    ("Vaivém, 1 folha, à direita", "DOUBLE_SWING_RIGHT"),
-    ("Vaivém, 2 folhas", "DOUBLE_DOOR_DOUBLE_SWING"),
-    ("Correr para a esquerda", "SLIDING_TO_LEFT"),
-    ("Correr para a direita", "SLIDING_TO_RIGHT"),
-    ("Correr, 2 folhas", "DOUBLE_DOOR_SLIDING"),
-    ("Sanfonada para a esquerda", "FOLDING_TO_LEFT"),
-    ("Sanfonada para a direita", "FOLDING_TO_RIGHT"),
-    ("Sanfonada, 2 folhas", "DOUBLE_DOOR_FOLDING"),
-    ("Enrolar", "ROLLINGUP"),
-]
+DOOR_OPERATIONS = params.DOOR_OPERATION_LABELS
 
 
 def _number_text(value) -> str:
@@ -628,19 +612,7 @@ PARTITIONINGS = [("1 caixilho", "SINGLE_PANEL"), ("2 lado a lado", "DOUBLE_PANEL
                  ("2 um sobre o outro", "DOUBLE_PANEL_HORIZONTAL"),
                  ("3 lado a lado", "TRIPLE_PANEL_VERTICAL"),
                  ("3 um sobre o outro", "TRIPLE_PANEL_HORIZONTAL")]
-WINDOW_OPERATIONS = [
-    ("Fixo", "FIXEDCASEMENT"),
-    ("De abrir — dobradiças à esquerda", "SIDEHUNGLEFTHAND"),
-    ("De abrir — dobradiças à direita", "SIDEHUNGRIGHTHAND"),
-    ("Oscilobatente — dobradiças à esquerda", "TILTANDTURNLEFTHAND"),
-    ("Oscilobatente — dobradiças à direita", "TILTANDTURNRIGHTHAND"),
-    ("Maxim-ar (eixo no topo)", "TOPHUNG"),
-    ("Tombar (eixo na base)", "BOTTOMHUNG"),
-    ("Basculante (eixo horizontal)", "PIVOTHORIZONTAL"),
-    ("Pivotante (eixo vertical)", "PIVOTVERTICAL"),
-    ("De correr", "SLIDINGHORIZONTAL"),
-    ("Guilhotina", "SLIDINGVERTICAL"),
-]
+WINDOW_OPERATIONS = params.WINDOW_OPERATION_LABELS
 POSITION_NAMES = {"MIDDLE": "Caixilho", "LEFT": "Esquerda", "RIGHT": "Direita",
                   "TOP": "Superior", "BOTTOM": "Inferior"}
 

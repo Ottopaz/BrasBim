@@ -117,6 +117,26 @@ def lining_band(align: str, offset: float, depth: float, ymin: float, ymax: floa
     return a, a + depth
 
 
+# Nomes das operações na interface e nas tabelas (spec/ui 09 §5, spec/ui 17 §3.2).
+DOOR_OPERATION_LABELS = [
+    ("Giro, 1 folha, dobradiças à esquerda", "SINGLE_SWING_LEFT"),
+    ("Giro, 1 folha, dobradiças à direita", "SINGLE_SWING_RIGHT"),
+    ("Giro, 2 folhas", "DOUBLE_DOOR_SINGLE_SWING"),
+    ("Giro com folha fixa à direita", "SWING_FIXED_LEFT"),
+    ("Giro com folha fixa à esquerda", "SWING_FIXED_RIGHT"),
+    ("Vaivém, 1 folha, à esquerda", "DOUBLE_SWING_LEFT"),
+    ("Vaivém, 1 folha, à direita", "DOUBLE_SWING_RIGHT"),
+    ("Vaivém, 2 folhas", "DOUBLE_DOOR_DOUBLE_SWING"),
+    ("Correr para a esquerda", "SLIDING_TO_LEFT"),
+    ("Correr para a direita", "SLIDING_TO_RIGHT"),
+    ("Correr, 2 folhas", "DOUBLE_DOOR_SLIDING"),
+    ("Sanfonada para a esquerda", "FOLDING_TO_LEFT"),
+    ("Sanfonada para a direita", "FOLDING_TO_RIGHT"),
+    ("Sanfonada, 2 folhas", "DOUBLE_DOOR_FOLDING"),
+    ("Enrolar", "ROLLINGUP"),
+]
+
+
 # --- janela (``spec/elementos/janela.md`` §2.2, §2.3 e §3.2) -------------------------------
 
 WINDOW_QTO = "Qto_WindowBaseQuantities"
@@ -136,6 +156,19 @@ WINDOW_OPERATIONS = (
     "TILTANDTURNRIGHTHAND", "TOPHUNG", "BOTTOMHUNG", "PIVOTHORIZONTAL", "PIVOTVERTICAL",
     "SLIDINGHORIZONTAL", "SLIDINGVERTICAL",
 )
+WINDOW_OPERATION_LABELS = [
+    ("Fixo", "FIXEDCASEMENT"),
+    ("De abrir — dobradiças à esquerda", "SIDEHUNGLEFTHAND"),
+    ("De abrir — dobradiças à direita", "SIDEHUNGRIGHTHAND"),
+    ("Oscilobatente — dobradiças à esquerda", "TILTANDTURNLEFTHAND"),
+    ("Oscilobatente — dobradiças à direita", "TILTANDTURNRIGHTHAND"),
+    ("Maxim-ar (eixo no topo)", "TOPHUNG"),
+    ("Tombar (eixo na base)", "BOTTOMHUNG"),
+    ("Basculante (eixo horizontal)", "PIVOTHORIZONTAL"),
+    ("Pivotante (eixo vertical)", "PIVOTVERTICAL"),
+    ("De correr", "SLIDINGHORIZONTAL"),
+    ("Guilhotina", "SLIDINGVERTICAL"),
+]
 # Operações em que o caixilho gira (desenhado aberto na planta, como a folha da porta).
 WINDOW_SWINGS = ("SIDEHUNGLEFTHAND", "SIDEHUNGRIGHTHAND", "TILTANDTURNLEFTHAND",
                  "TILTANDTURNRIGHTHAND")

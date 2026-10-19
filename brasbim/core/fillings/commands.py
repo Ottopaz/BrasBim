@@ -189,6 +189,9 @@ def delete_door_type(doc: Document, door_type) -> Transaction:
     if partner is not None and k.types.read(partner)["variant"] == door_type.GlobalId:
         ops.append(Op(f"{k.prefix}_type.edit", partner.GlobalId,
                       before={"variant": door_type.GlobalId}, after={"variant": None}))
+    from brasbim.core.quantities import tables  # o tipo sai do filtro das tabelas
+
+    ops += tables.refs_removed_ops(doc, door_type.GlobalId)
     ops.append(Op(f"{k.prefix}_type.delete", door_type.GlobalId, data=state))
     return Transaction(f"Excluir tipo de {k.noun}", ops)
 

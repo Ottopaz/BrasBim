@@ -132,29 +132,29 @@ parede tem o térreo?" e "quantas janelas J1 tem a casa?". As instruções dizem
 Casa de teste: retângulo de paredes (0, 0)–(8, 5) e parede interna em x = 5, no Térreo;
 duas portas P1, três janelas J1 e uma J2; ambientes Sala e Quarto.
 
-- [ ] **TB01** Quadro de esquadrias: uma linha por tipo, com P1 = 2, J1 = 3 e J2 = 1;
+- [x] **TB01** Quadro de esquadrias: uma linha por tipo, com P1 = 2, J1 = 3 e J2 = 1;
       Largura e Altura do tipo; total de 6.
-- [ ] **TB02** Quadro de áreas: área útil de cada ambiente igual a `NetFloorArea`;
+- [x] **TB02** Quadro de áreas: área útil de cada ambiente igual a `NetFloorArea`;
       subtotal do Térreo = soma; a área construída do Térreo é a área do contorno
       externo das paredes.
-- [ ] **TB03** Paredes por tipo: o comprimento total é a soma de `Length`, e a área
+- [x] **TB03** Paredes por tipo: o comprimento total é a soma de `Length`, e a área
       lateral a soma de `NetSideArea`, já sem os vãos.
-- [ ] **TB04** Filtro por pavimento e por tipo; agrupar por pavimento; ordem
+- [x] **TB04** Filtro por pavimento e por tipo; agrupar por pavimento; ordem
       decrescente; "vários" no campo que muda dentro do grupo.
-- [ ] **TB05** A tabela acompanha o modelo: inserir uma porta, mudar uma largura ou
+- [x] **TB05** A tabela acompanha o modelo: inserir uma porta, mudar uma largura ou
       desfazer muda as linhas sem tocar na definição.
-- [ ] **TB06** `table.create` / `.edit` / `.delete` com desfazer e refazer; o diário
+- [x] **TB06** `table.create` / `.edit` / `.delete` com desfazer e refazer; o diário
       reaplicado reproduz o IFC; reabrir o arquivo traz a tabela; o arquivo passa na
       validação de esquema.
-- [ ] **TB07** Excluir um pavimento que está no filtro o tira do filtro, na mesma
+- [x] **TB07** Excluir um pavimento que está no filtro o tira do filtro, na mesma
       transação.
-- [ ] **TB08** CSV: `;`, vírgula decimal, BOM, cabeçalho com unidades, linhas de grupo e
+- [x] **TB08** CSV: `;`, vírgula decimal, BOM, cabeçalho com unidades, linhas de grupo e
       total.
-- [ ] **TB09** XLSX: o arquivo abre como zip válido do formato (planilha, estilos,
+- [x] **TB09** XLSX: o arquivo abre como zip válido do formato (planilha, estilos,
       cadeias); números como número; reler a planilha dá os mesmos valores.
-- [ ] **TB10** Interface: Nova tabela pelo modelo abre a aba; clicar numa linha
+- [x] **TB10** Interface: Nova tabela pelo modelo abre a aba; clicar numa linha
       seleciona os elementos; mudar a coluna no painel é uma transação.
-- [ ] **TB11** Assistente: `table` com esquadrias agrupadas por tipo devolve as
+- [x] **TB11** Assistente: `table` com esquadrias agrupadas por tipo devolve as
       contagens.
 
 ## 8. Fontes públicas

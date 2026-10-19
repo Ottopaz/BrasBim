@@ -445,9 +445,11 @@ def delete_wall_type(doc: Document, wall_type) -> Transaction:
     used = ifcopenshell.util.element.get_types(wall_type)
     if used:
         raise OpError(f"o tipo {wall_type.Name} é usado por {len(used)} parede(s)")
-    return Transaction("Excluir tipo de parede",
-                       [Op("wall_type.delete", wall_type.GlobalId,
-                           data=wall_types.read(wall_type))])
+    from brasbim.core.quantities import tables  # o tipo sai do filtro das tabelas
+
+    return Transaction("Excluir tipo de parede", [
+        *tables.refs_removed_ops(doc, wall_type.GlobalId),
+        Op("wall_type.delete", wall_type.GlobalId, data=wall_types.read(wall_type))])
 
 
 def create_storey(doc: Document, name: str, elevation: float) -> Transaction:
@@ -494,6 +496,9 @@ def delete_storey(doc: Document, storey) -> Transaction:
     from brasbim.core.drawings import sheets  # a planta do pavimento sai das pranchas
 
     ops += sheets.refs_removed_ops(doc, storey.GlobalId)
+    from brasbim.core.quantities import tables  # e sai do filtro das tabelas
+
+    ops += tables.refs_removed_ops(doc, storey.GlobalId)
     ops.append(Op("storey.delete", storey.GlobalId, data=storeys.read(storey)))
     return Transaction("Excluir pavimento", ops)
 

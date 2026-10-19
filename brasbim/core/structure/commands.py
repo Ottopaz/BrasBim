@@ -142,6 +142,9 @@ def delete_type(doc: Document, element_type, replacement=None) -> Transaction:
         if any(e.is_a("IfcRoof") for e in used) and other.PredefinedType != "ROOF":
             raise OpError("as coberturas precisam de um tipo de cobertura")
         ops = [op for e in used for op in edit_element(doc, e, type=other.GlobalId).ops]
+    from brasbim.core.quantities import tables  # o tipo sai do filtro das tabelas
+
+    ops += tables.refs_removed_ops(doc, element_type.GlobalId)
     ops.append(Op(f"{prefix}_type.delete", element_type.GlobalId, data=read_type(element_type)))
     return Transaction(f"Excluir tipo de {_TYPE_NOUN[prefix]}", ops)
 

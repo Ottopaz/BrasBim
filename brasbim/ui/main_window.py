@@ -49,6 +49,7 @@ from brasbim.ui.scene3d import Scene
 from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
+from brasbim.ui.table_view import TableView
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
 from brasbim.ui.types_dialog import (
@@ -93,6 +94,7 @@ class MainWindow(QMainWindow):
         self.ctx = PlanContext(session)
         self.section_views: dict[str, SectionView] = {}  # abas de corte e fachada
         self.sheet_views: dict[str, SheetView] = {}  # abas de prancha (spec/ui 15)
+        self.table_views: dict[str, TableView] = {}  # abas de tabela (spec/ui 17)
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
         self.scene.load(session.doc.ifc, session.doc)
@@ -132,6 +134,7 @@ class MainWindow(QMainWindow):
         self.splitter.hide()
         self.tabs.addTab(self.plan, "Planta")
         self.tabs.addTab(self.view3d, "3D")
+        self.tabs.currentChanged.connect(self._tab_changed)
         self.setCentralWidget(self.central)
 
     def _dock(self, title: str, name: str, widget, area) -> QDockWidget:
@@ -145,6 +148,7 @@ class MainWindow(QMainWindow):
         self.project = ProjectPanel(self.session)
         self.project.open_view = self.open_view
         self.project.open_sheet = self.open_sheet
+        self.project.open_table = self.open_table
         self.project_dock = self._dock("Projeto", "projeto", self.project,
                                        Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
@@ -152,6 +156,7 @@ class MainWindow(QMainWindow):
         self.properties.edit_type = self.edit_type
         self.properties.open_view = self.open_view
         self.properties.open_sheet = self.open_sheet
+        self.properties.open_table = self.open_table
         self.properties.edit_project_info = self.edit_project_info
         self.properties_dock = self._dock("Propriedades", "propriedades", self.properties,
                                           Qt.RightDockWidgetArea)
@@ -186,6 +191,7 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Salvar como…", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
         self._action(file_menu, "Exportar PDF…", self.export_pdf, "Ctrl+P")
+        self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
         self._action(file_menu, "Dados do projeto…", self.edit_project_info)
         file_menu.addSeparator()
         self._action(file_menu, "Sair", self.close)
@@ -471,6 +477,49 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(view)
         return view
 
+    def open_table(self, gid: str) -> TableView | None:
+        """Abre a tabela numa aba (spec/ui 17 §5)."""
+        if self.session.doc.find(gid) is None:
+            return None
+        view = self.table_views.get(gid)
+        if view is None:
+            view = TableView(self.session, gid)
+            view.show_in_plan = self.show_in_plan
+            self.table_views[gid] = view
+            self.tabs.addTab(view, view.title)
+        if self.split:
+            self.set_view("plan")
+        self.tabs.setCurrentWidget(view)
+        return view
+
+    def _tab_changed(self, _index: int = -1) -> None:
+        """Com a aba de uma tabela à frente, o painel de propriedades é o dela (§5)."""
+        view = self.tabs.currentWidget()
+        gid = view.table_gid if isinstance(view, TableView) else None
+        if getattr(self.properties, "active_table", None) != gid:
+            self.properties.active_table = gid
+            self.properties.refresh()
+
+    def export_table(self, kind: str | None = None, path: str | None = None) -> str | None:
+        """Arquivo > Exportar tabela…: a tabela da aba à frente, em CSV ou XLSX (§5)."""
+        view = self.tabs.currentWidget()
+        if not isinstance(view, TableView):
+            self.session.message("abra uma tabela (painel do projeto) para exportar",
+                                 "recusa")
+            return None
+        if kind is None:
+            if path is not None:
+                kind = "xlsx" if path.lower().endswith(".xlsx") else "csv"
+            else:
+                name, _ = QFileDialog.getSaveFileName(
+                    self, "Exportar tabela", f"{view.title}.xlsx",
+                    "Planilha XLSX (*.xlsx);;CSV (*.csv)")
+                if not name:
+                    return None
+                path = name
+                kind = "csv" if name.lower().endswith(".csv") else "xlsx"
+        return view.export(kind, path)
+
     def export_pdf(self, path: str | None = None) -> int:
         """Arquivo > Exportar PDF…: todas as pranchas, uma por página (spec/ui 15 §5)."""
         found = sheets_.all_sheets(self.session.doc)
@@ -509,6 +558,14 @@ class MainWindow(QMainWindow):
             self.session.run(lambda: sheets_.edit_project(doc, **values))
 
     def _refresh_section_views(self, reset: bool = False) -> None:
+        for gid, view in list(self.table_views.items()):
+            if reset or self.session.doc.find(gid) is None:
+                self.tabs.removeTab(self.tabs.indexOf(view))
+                view.deleteLater()
+                del self.table_views[gid]
+                continue
+            view.invalidate()
+            self.tabs.setTabText(self.tabs.indexOf(view), view.title)
         for gid, view in list(self.sheet_views.items()):
             if reset or self.session.doc.find(gid) is None:
                 self.tabs.removeTab(self.tabs.indexOf(view))

@@ -49,6 +49,7 @@ from brasbim.core.drawings import sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.ops.history import combine
+from brasbim.core.quantities import tables
 from brasbim.core.structure import beams, columns, profiles, roofs, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
@@ -58,7 +59,7 @@ from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
 from brasbim.core.walls.wall import read_state as read_wall
-from brasbim.ui import theme
+from brasbim.ui import icons, theme
 from brasbim.ui.tools import block_grid, fmt, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
@@ -197,6 +198,8 @@ class PropertiesPanel(QScrollArea):
         self.edit_type = None  # abre a janela de tipos (posto pela janela principal)
         self.open_view = None  # abre um corte ou fachada (posto pela janela principal)
         self.open_sheet = None  # abre uma prancha (idem)
+        self.open_table = None  # abre uma tabela (idem)
+        self.active_table = None  # tabela da aba à frente: o painel é o dela (spec/ui 17 §5)
         self.edit_project_info = None  # dados do projeto para o carimbo (idem)
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
@@ -230,7 +233,12 @@ class PropertiesPanel(QScrollArea):
         self.groups = [_Group()]
         selection = [self.session.doc.find(g) for g in sorted(self.session.selection)]
         selection = [e for e in selection if e is not None]
-        if len(selection) == 1 and selection[0].is_a("IfcWall"):
+        active = self.session.doc.find(self.active_table) if self.active_table else None
+        if active is not None:
+            self._table(active)
+        elif len(selection) == 1 and tables.is_table(selection[0]):
+            self._table(selection[0])
+        elif len(selection) == 1 and selection[0].is_a("IfcWall"):
             self._wall(selection[0])
         elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
                                       or selection[0].is_a("IfcWindow")):
@@ -1117,6 +1125,136 @@ class PropertiesPanel(QScrollArea):
             buttons.append(("Dados do projeto…", self.edit_project_info))
         if buttons:
             self._buttons(*buttons)
+
+    def _table(self, table) -> None:
+        """Definição da tabela (spec/ui 17 §5): cada mudança é um ``table.edit``."""
+        doc = self.session.doc
+        state = tables.read_state(table)
+        fields = tables.fields_of(state["category"])
+
+        def edit(**changes):
+            self._run(lambda: tables.edit_table(doc, table, **changes))
+
+        self._title(f"Tabela: {state['name']}" if state["name"] else "Tabela")
+        self._text("Nome", state["name"], lambda v: v and edit(name=v))
+        self._combo("Categoria", [(c.label, k) for k, c in tables.CATEGORIES.items()],
+                    state["category"], lambda v: edit(category=v))
+        self._section("Colunas")
+        columns = state["columns"]
+        chosen = [c["field"] for c in columns]
+        order = chosen + [k for k in fields if k not in chosen]
+        for key in order:
+            self._add(self._column_row(table, state, key, fields[key]))
+        self._section("Linhas")
+        options = [("Nenhum", None)] + [(f.title, k) for k, f in fields.items()
+                                        if not f.sums]
+        self._combo("Agrupar por", options, state["group_by"],
+                    lambda v: edit(group_by=v))
+        self._combo("Linhas", [("Uma por elemento", "element"), ("Uma por grupo", "group")],
+                    state["rows"], lambda v: edit(rows=v))
+        sort = state["sort"] or {}
+        self._combo("Ordenar por", [("Padrão", None)] + [(f.title, k) for k, f in
+                                                          fields.items()],
+                    sort.get("field"),
+                    lambda v: edit(sort={"field": v, "descending": bool(
+                        sort.get("descending"))} if v else None))
+        if sort:
+            self._combo("Sentido", [("Crescente", False), ("Decrescente", True)],
+                        bool(sort.get("descending")),
+                        lambda v: edit(sort={**sort, "descending": v}))
+        totals = QCheckBox("Subtotais e total")
+        totals.setChecked(state["totals"])
+        totals.toggled.connect(lambda v: edit(totals=v))
+        self._add(totals)
+        if state["category"] == "spaces":
+            built = QCheckBox("Área construída por pavimento")
+            built.setChecked(state["built_area"])
+            built.setToolTip("Dentro da face externa das paredes; agrupe por pavimento "
+                             "e mostre a área útil")
+            built.toggled.connect(lambda v: edit(built_area=v))
+            self._add(built)
+        self._section("Filtro")
+        self._choices("Pavimentos", [(s.Name, s.GlobalId) for s in doc.storeys()],
+                      state["storeys"], lambda v: edit(storeys=v))
+        options = [(t.Name or t.GlobalId, t.GlobalId)
+                   for t in tables.type_options(doc, state["category"])]
+        if options:
+            self._choices("Tipos", options, state["types"], lambda v: edit(types=v))
+        if self.open_table is not None and self.active_table != table.GlobalId:
+            self._buttons(("Abrir a tabela", lambda: self.open_table(table.GlobalId)))
+
+    def _column_row(self, table, state: dict, key: str, field) -> QWidget:
+        """Coluna: marcar, título e posição (subir/descer)."""
+        doc = self.session.doc
+        columns = [dict(c) for c in state["columns"]]
+        index = next((i for i, c in enumerate(columns) if c["field"] == key), None)
+
+        def commit(new):
+            self._run(lambda: tables.edit_table(doc, table, columns=new))
+
+        def toggle(checked):
+            if checked:
+                commit([*columns, {"field": key}])
+            elif len(columns) > 1:
+                commit([c for c in columns if c["field"] != key])
+            else:
+                self.session.message("a tabela precisa de ao menos uma coluna", "recusa")
+                self.refresh()
+
+        def rename():
+            text = title.text().strip()
+            new = [dict(c) for c in columns]
+            new[index].pop("title", None)
+            if text and text != field.heading:
+                new[index]["title"] = text
+            if new != columns:
+                commit(new)
+
+        def move(step):
+            new = list(columns)
+            j = index + step
+            if 0 <= j < len(new):
+                new[index], new[j] = new[j], new[index]
+                commit(new)
+
+        holder = QWidget()
+        holder.setObjectName(f"coluna_{key}")
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        check = QCheckBox()
+        check.setChecked(index is not None)
+        check.setToolTip(field.heading)
+        check.toggled.connect(toggle)
+        row.addWidget(check)
+        title = QLineEdit(columns[index].get("title", field.heading) if index is not None
+                          else field.heading)
+        title.setEnabled(index is not None)
+        title.setToolTip("Título da coluna")
+        title.editingFinished.connect(rename)
+        row.addWidget(title, 1)
+        for name, step, tip in ((("up", -1, "Subir"), ("down", 1, "Descer"))
+                                if index is not None else ()):
+            button = QPushButton(icons.icon(name), "")
+            button.setToolTip(tip)
+            button.setFixedWidth(26)
+            button.setEnabled(0 <= index + step < len(columns))
+            button.clicked.connect(lambda _=False, s=step: move(s))
+            row.addWidget(button)
+        return holder
+
+    def _choices(self, label: str, items, chosen, commit) -> None:
+        """Lista de marcar; nada marcado = todos."""
+        self._read(label, "todos" if not chosen else f"{len(chosen)} de {len(items)}")
+        for text, value in items:
+            box = QCheckBox(text)
+            box.setChecked(value in chosen)
+
+            def toggled(checked, v=value):
+                new = [x for _, x in items if (x in chosen or x == v) and (checked or x != v)]
+                commit(new)
+
+            box.toggled.connect(toggled)
+            self._add(box)
 
     def _view(self, view) -> None:
         """Corte ou fachada (spec/ui 14 §7)."""

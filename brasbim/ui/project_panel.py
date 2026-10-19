@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Painel Projeto: tabela de pavimentos (``spec/ui/02-edicao.md`` §7).
+"""Painel Projeto: tabela de pavimentos (``spec/ui/02-edicao.md`` §7), vistas, pranchas e
+tabelas de quantitativos (spec/ui 17 §5).
 
 Um clique numa linha torna o pavimento ativo; clique duplo numa célula edita o nome, a
 cota ou o plano de corte (``storey.edit``; spec/ui 06 §3.1, vazio = padrão); os botões
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import storeys as storeys_
+from brasbim.core.quantities import tables as tables_
 from brasbim.core.walls import commands as cmd
 from brasbim.ui.tools import fmt, parse_number
 
@@ -74,6 +77,18 @@ class ProjectPanel(QWidget):
         self.new_sheet_button.clicked.connect(self.add_sheet)
         self.delete_sheet_button = QPushButton("Excluir prancha")
         self.delete_sheet_button.clicked.connect(self.delete_sheet)
+        # Tabelas (spec/ui 17 §5)
+        self.tables = QListWidget()
+        self.tables.setToolTip("Clique duplo abre a tabela")
+        self.tables.itemDoubleClicked.connect(
+            lambda item: self.open_table and self.open_table(item.data(Qt.UserRole)))
+        self.tables.itemClicked.connect(
+            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        self.open_table = None
+        self.new_table_button = QPushButton("Nova tabela…")
+        self.new_table_button.setMenu(self._templates_menu())
+        self.delete_table_button = QPushButton("Excluir tabela")
+        self.delete_table_button.clicked.connect(self.delete_table)
         self.add_button = QPushButton("Novo pavimento")
         self.add_button.clicked.connect(self.add_storey)
         self.delete_button = QPushButton("Excluir pavimento")
@@ -93,6 +108,12 @@ class ProjectPanel(QWidget):
         sheet_buttons.addWidget(self.new_sheet_button)
         sheet_buttons.addWidget(self.delete_sheet_button)
         layout.addLayout(sheet_buttons)
+        layout.addWidget(QLabel("Tabelas"))
+        layout.addWidget(self.tables)
+        table_buttons = QHBoxLayout()
+        table_buttons.addWidget(self.new_table_button)
+        table_buttons.addWidget(self.delete_table_button)
+        layout.addLayout(table_buttons)
         # o nome do pavimento cabe inteiro ao lado das outras três colunas
         self.setMinimumWidth(320)
         self.refresh()
@@ -146,6 +167,12 @@ class ProjectPanel(QWidget):
             item.setData(Qt.UserRole, sheet.GlobalId)
             self.sheets.addItem(item)
         self.delete_sheet_button.setEnabled(self.sheets.count() > 0)
+        self.tables.clear()
+        for table in tables_.all_tables(self.session.doc):
+            item = QListWidgetItem(tables_.read_state(table)["name"] or table.GlobalId)
+            item.setData(Qt.UserRole, table.GlobalId)
+            self.tables.addItem(item)
+        self.delete_table_button.setEnabled(self.tables.count() > 0)
 
     def storey_at(self, row: int):
         item = self.table.item(row, 0)
@@ -223,6 +250,34 @@ class ProjectPanel(QWidget):
         if item is not None:
             doc, gid = self.session.doc, item.data(Qt.UserRole)
             self.session.run(lambda: sheets_.delete_sheet(doc, gid))
+
+    def _templates_menu(self) -> QMenu:
+        """Modelos prontos (§3.3); "Em branco" pede a categoria."""
+        menu = QMenu(self)
+        for key, (label, _) in tables_.TEMPLATES.items():
+            if key == "blank":
+                continue
+            menu.addAction(label, lambda k=key: self.add_table(k))
+        blank = menu.addMenu("Em branco")
+        for key, category in tables_.CATEGORIES.items():
+            blank.addAction(category.label, lambda c=key: self.add_table("blank", c))
+        return menu
+
+    def add_table(self, template: str, category: str = "walls") -> str | None:
+        doc = self.session.doc
+        tx = tables_.create_table(doc, template, category)
+        if not self.session.run(tx):
+            return None
+        if self.open_table:
+            for op in reversed(tx.ops):  # a primeira fica à frente
+                self.open_table(op.id)
+        return tx.ops[0].id
+
+    def delete_table(self) -> None:
+        item = self.tables.currentItem()
+        if item is not None:
+            doc, gid = self.session.doc, item.data(Qt.UserRole)
+            self.session.run(lambda: tables_.delete_table(doc, gid))
 
     def add_storey(self) -> None:
         doc = self.session.doc

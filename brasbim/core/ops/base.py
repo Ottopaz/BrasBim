@@ -79,6 +79,7 @@ HANDLER_MODULES = (
     "brasbim.core.annotations.rebuild",
     "brasbim.core.drawings.views",
     "brasbim.core.drawings.sheets",
+    "brasbim.core.quantities.tables",
 )
 _loaded = False
 

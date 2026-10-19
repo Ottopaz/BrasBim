@@ -116,6 +116,9 @@ ICONS = {
     "swap": '<path d="M2.5 9.75 H21.5 M2.5 14.25 H21.5"/>'
             '<path d="M9.75 2.5 V9.75 M14.25 2.5 V9.75 M9.75 14.25 V21.5 M14.25 14.25 V21.5" '
             'stroke-width="1"/>',
+    # subir e descer um item da lista (colunas da tabela, spec/ui 17 §5)
+    "up": '<path d="M6.5 14.5 L12 9 L17.5 14.5"/>',
+    "down": '<path d="M6.5 9.5 L12 15 L17.5 9.5"/>',
     "edit_type": '<path d="M4.5 19.5 L5.5 15.5 L15.5 5.5 L18.5 8.5 L8.5 18.5 Z"/>'
                  '<path d="M13.5 7.5 L16.5 10.5"/>',
 }

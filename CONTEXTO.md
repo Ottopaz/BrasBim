@@ -4,21 +4,18 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑17 (pacote 10: cobertura simples implementada; spec das tabelas aguardando revisão).*
+*Atualizado em 2026‑10‑19 (pacote 11: tabelas implementadas).*
 
-> **Onde paramos (2026‑10‑17):** cobertura entregue (commit `111a482`, 466 testes, ruff
-> limpo). A spec `spec/ui/17-tabelas.md` está **em revisão**: o revisor precisa decidir os
-> pontos §9 (a) tabela no IFC como anotação + JSON, (b) modelos prontos e colunas,
-> (c) área construída pela face externa das paredes, (d) XLSX com a biblioteca padrão ou
-> `openpyxl` (MIT), (e) clicar na linha seleciona na planta. Aprovada a spec, implementar
-> TB01–TB11 (pacote 11). Depois: aprimorar o assistente dentro do software (pedido do
-> revisor em 2026‑10‑16), e seguir com mobiliário, salvamento automático, camadas e vistas
-> 3D. Continuam abertos os itens 0 e 0b dos próximos passos.
+> **Onde paramos (2026‑10‑19):** spec `spec/ui/17-tabelas.md` aprovada pelo revisor (§9
+> a–e como estavam) e implementada (TB01–TB11, 480 testes, ruff limpo). Próximo:
+> aprimorar o assistente dentro do software (pedido do revisor em 2026‑10‑16), depois
+> mobiliário, salvamento automático, camadas e vistas 3D. Continuam abertos os itens 0 e
+> 0b dos próximos passos.
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (466 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (480 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -40,7 +37,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
-| `spec/ui/17-tabelas` | **em revisão** (pacote 11: quadro de esquadrias, quadro de áreas, tabelas configuráveis, CSV/XLSX) |
+| `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
 
@@ -338,6 +335,37 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   `describe_model` lista coberturas e separa tipos de laje e de cobertura; lados contados
   a partir de 1 para a IA.
 
+## Pacote 11 — como ficou (spec/ui 17, tabelas)
+- Núcleo em `core/quantities/tables.py`: tabela = `IfcAnnotation` "Tabela" na edificação,
+  definição em JSON no Pset `BrasBim_Tabela`; operações `table.create/delete/edit`.
+  `CATEGORIES` (walls, doors, windows, fillings, slabs, columns, beams, roofs, spaces),
+  `fields_of` (campos com título, unidade, se somam e como ler: sempre das
+  `Qto_*BaseQuantities`; código = `Reference` do Pset comum; peitoril = `sill` do vão;
+  operação pelos nomes de `fillings.params.*_OPERATION_LABELS`, que saíram de
+  `ui/types_dialog.py`). As águas da cobertura não entram em Lajes.
+- `compute(doc, tabela ou estado)` → `Result` (colunas, linhas `element`/`group`/
+  `subtotal`/`built`/`total`/`built_total`, cada uma com os GlobalIds). Ordem: grupo
+  (pavimento pela cota), campo escolhido, depois código/número/nome em ordem natural
+  ("J2" antes de "J10"). Campo que não soma mostra "vários" quando muda no grupo.
+- Área construída: `rooms.building_rings` (novo; contornos externos de todas as
+  edificações do pavimento, sem os furos dos cômodos), usado também por
+  `building_outline`. Só no quadro de áreas agrupado por pavimento, na coluna da área útil.
+- `TEMPLATES`: esquadrias, áreas, paredes por tipo, estrutura (cria três tabelas numa
+  transação), em branco (com a categoria). `edit_table` com troca de categoria ajusta a
+  definição (`fitted`). `refs_removed_ops`: excluir pavimento (`delete_storey`) ou tipo
+  (`delete_wall_type`, `delete_door_type`, `structure.delete_type`) tira dos filtros.
+- `core/quantities/export.py`: CSV (`;`, vírgula, BOM) e XLSX mínimo com `zipfile`
+  (estilos negrito e "0.00", cadeias compartilhadas, nome de planilha limpo).
+- Interface: lista Tabelas no painel do projeto (Nova tabela… com menu dos modelos,
+  Excluir tabela), aba `ui/table_view.py` (`TableView`; clique seleciona, clique duplo
+  mostra na planta, Exportar CSV/XLSX), Arquivo > Exportar tabela…; com a aba à frente o
+  painel de propriedades é o da tabela (`PropertiesPanel.active_table`, posto por
+  `MainWindow._tab_changed`): nome, categoria, colunas (marcar, título, subir/descer
+  com os ícones novos `up`/`down`), agrupar, linhas, ordem, totais, área construída,
+  filtro de pavimentos e tipos.
+- Assistente: ferramenta `table` (só leitura) e linha nas `INSTRUCTIONS` para usá-la
+  nas perguntas de quantidade.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -356,10 +384,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    removidas, e o símbolo de corte na planta (RF-DOC-02, RF-DOC-07).
 4. ~~Pacote 8~~ concluído — documentação 3: pranchas A0–A4 com margens, carimbo editável e várias
    vistas (RF-DOC-09), exportação PDF vetorial (RF-DOC-10).
-4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); agora tabelas: spec
-   `spec/ui/17-tabelas.md` em revisão (RF-QTD-01 a 03 e 05; pontos §9 a–e); em seguida
-   aprimorar o assistente dentro do software (pedido do revisor); depois mobiliário
-   básico, salvamento automático, camadas e vistas 3D padrão.
+4b. ~~Cobertura simples (RF-ELE-07)~~ concluída (pacote 10); ~~tabelas~~ concluídas
+   (pacote 11, RF-QTD-01 a 03 e 05). Agora: aprimorar o assistente dentro do software
+   (pedido do revisor); depois mobiliário básico, salvamento automático, camadas e
+   vistas 3D padrão.
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
 6. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
@@ -367,6 +395,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- Tabelas: as portas da biblioteca não têm código curto (o `Reference` é o nome do tipo,
+  "P1 – giro 80", como na etiqueta da planta); as janelas têm ("J1"). Sem tabela na
+  prancha, fórmulas e filtro por propriedade (V1); o pátio interno fechado por paredes
+  conta na área construída.
 - Cobertura: sem ajuste das paredes ao telhado (oitão: usar o topo em empena da parede);
   telhados em L/T, mansarda e beiral por lado ficam para o V1; a água com várias
   camadas aparece de uma cor só no 3D; alça do contorno numa cobertura de duas/quatro
