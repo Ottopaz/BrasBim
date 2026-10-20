@@ -3,7 +3,7 @@ documento: Camadas de organização (grupos, visibilidade, bloqueio e combinaç�
 requisito: RF-NUC-08, RF-NUC-04 (filtro por camada)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-20
-status: em revisão
+status: aprovado
 revisor: OTTO
 ---
 
@@ -13,14 +13,16 @@ revisor: OTTO
 Organizar o modelo para **mostrar só o que interessa** em cada momento e em cada desenho.
 Exemplos: esconder o mobiliário para cotar a planta, ver só a estrutura, bloquear as
 paredes enquanto se desenha o forro, ou guardar um "jeito de mostrar" para a planta da
-prefeitura e outro para a planta executiva.
+prefeitura e outro para a planta executiva, ou uma combinação por etapa da obra (layout,
+demolição, construção, elétrica, hidráulica…).
 
 Cada elemento fica em **uma camada**. As camadas ficam reunidas em **grupos** (por
 exemplo, Estrutura → Pilares, Vigas, Lajes). Uma **combinação** guarda, com um nome, o
 estado de todas as camadas (visível ou oculta, livre ou bloqueada), e ele pode ser
 reaplicado de uma vez.
 
-Ficam de fora (V1): cor e espessura forçadas por camada, camada por vista de prancha
+Ficam de fora (V1): grupos dentro de grupos, cor e espessura forçadas por camada,
+camada mostrada em arame no 3D, camada por vista de prancha
 sem combinação, filtro de seleção por camada no diálogo de busca, e camadas que mudam
 com a escala (RF-DOC-08).
 
@@ -28,17 +30,17 @@ com a escala (RF-DOC-08).
 - **Camada no arquivo** = `IfcPresentationLayerWithStyle`:
   - `Name` é o nome da camada. `Identifier` é o código estável do BrasBim (12 caracteres),
     que continua o mesmo quando a camada é renomeada.
-  - `LayerOn`, `LayerBlocked` e `LayerFrozen` (este último sempre `.F.`) guardam o estado.
-    `LayerStyles` fica vazio.
+  - `LayerOn`, `LayerBlocked` e `LayerFrozen` (este último sempre `.F.`) guardam o estado
+    de exibição **gravado ao salvar** (§5.1). `LayerStyles` fica vazio.
   - `AssignedItems` lista as **representações** (`IfcShapeRepresentation`) de cada
     elemento da camada: `Body`, `Axis`, `FootPrint`, `Annotation` etc.
 - O IFC exige pelo menos um item em `AssignedItems`. Por isso a entidade só existe
   enquanto a camada tem elementos: é criada com o primeiro e apagada com o último.
 - A **lista de camadas, os grupos e as combinações** ficam em JSON no Pset
   `BrasBim_Camadas` do `IfcProject`, como as tabelas (spec/ui 17). Ficam ali a ordem, o
-  grupo e o estado de cada camada, inclusive das vazias, além das combinações e da
-  camada padrão de cada ferramenta. Quando a camada tem entidade, o estado gravado nela
-  e o do JSON são sempre iguais.
+  grupo de cada camada, inclusive das vazias, as combinações, a camada padrão de cada
+  ferramenta e (`state`) o estado de exibição gravado ao salvar. Quando a camada tem
+  entidade, `LayerOn`/`LayerBlocked` e o `state` do JSON são iguais.
 - **Outro programa abre o arquivo** e vê as camadas pelo padrão IFC (nome e
   ligada/desligada). Os grupos e as combinações são só do BrasBim.
 - **Arquivo de outra origem** com `IfcPresentationLayerAssignment`: cada camada lida
@@ -55,7 +57,7 @@ com a escala (RF-DOC-08).
 | Campo | Valores | Regras |
 |---|---|---|
 | Nome | texto | Único no projeto, sem diferenciar maiúsculas. Não pode ser vazio |
-| Grupo | um grupo ou nenhum | Um nível só (grupo dentro de grupo fica para o V1, ponto (a)) |
+| Grupo | um grupo ou nenhum | Um nível só (decisão do revisor; grupo dentro de grupo fica para o V1) |
 | Visível | sim/não | |
 | Bloqueada | sim/não | Desenhada e usada pelo snap, mas não pode ser selecionada nem editada |
 
@@ -63,6 +65,10 @@ O grupo tem só nome e ordem. Ligar ou desligar o olho do grupo, ou o cadeado, m
 as camadas dele. Quando as camadas discordam, o grupo mostra o estado "misto".
 
 ### 3.1 Conjunto inicial (projeto novo)
+É só um ponto de partida. **Quem decide em que camada cada elemento fica é o usuário**
+(decisão do revisor): ele cria, renomeia, agrupa e exclui camadas à vontade e escolhe a
+camada padrão de cada ferramenta (§3.2) e a camada de cada elemento (§5).
+
 | Grupo | Camadas | Recebem |
 |---|---|---|
 | Arquitetura | Paredes · Esquadrias · Pisos e lajes · Cobertura · Ambientes | parede; porta e janela; laje; cobertura; ambiente |
@@ -119,7 +125,7 @@ Elementos selecionados quando a camada deles é ocultada ou bloqueada saem da se
 Operações novas (serializáveis, como as demais):
 | Operação | Faz |
 |---|---|
-| `layer.create` / `layer.delete` / `layer.edit` | camada: nome, grupo, ordem, visível, bloqueada |
+| `layer.create` / `layer.delete` / `layer.edit` | camada: nome, grupo, ordem (a exibição fica fora, §5.1) |
 | `layer_group.create` / `.delete` / `.edit` | grupo: nome, ordem |
 | `layer.assign` | elementos → camada (cria ou apaga as `IfcPresentationLayerWithStyle`) |
 | `layer_combination.create` / `.delete` / `.edit` | combinação: nome e estados |
@@ -129,21 +135,34 @@ Operações novas (serializáveis, como as demais):
 transação. Excluir um grupo leva as camadas dele para "sem grupo" (não apaga as camadas).
 A pseudo-camada "Sem camada" não pode ser excluída nem renomeada.
 
-**Desfazer:** ligar e desligar camadas e aplicar combinações **entram no desfazer**, porque
-o estado fica gravado no IFC (`LayerOn`) e precisa passar pelo diário de sessão e pela
-colaboração por reserva. Ver o ponto (b).
+### 5.1 Exibição fora do desfazer (decisão do revisor)
+Mostrar, ocultar, bloquear, desbloquear, isolar e aplicar uma combinação **não são
+operações**: não entram no desfazer nem no diário de sessão e não pedem reserva na
+colaboração. São o estado de exibição **de quem está usando** (`Session.layer_state`),
+como o zoom. Na colaboração, cada usuário vê as camadas do seu jeito.
+
+- **Ao salvar**, o estado atual vai para `LayerOn`/`LayerBlocked` e para o `state` do JSON,
+  direto no arquivo e sem transação. Assim outro programa abre o IFC como ele foi
+  deixado.
+- **Ao abrir**, o estado é lido de volta. Arquivo sem `state` abre com tudo visível e
+  livre.
+- O que **é** operação: criar, excluir, renomear e reordenar camadas e grupos, mudar o
+  grupo de uma camada, `layer.assign`, a camada padrão das ferramentas e criar, editar ou
+  excluir combinações.
 
 ## 6. Combinações
 Uma combinação é um nome mais, para cada camada, visível ou oculta e livre ou bloqueada.
 
 ### 6.1 Na janela
-- Lista **Combinação** no alto do painel Camadas. Escolher um nome aplica os estados.
+- Lista **Combinação** no alto do painel Camadas. Escolher um nome aplica os estados
+  (exibição, fora do desfazer, §5.1).
 - Mudar qualquer camada depois disso deixa a lista em "(alterada)". *Atualizar
   combinação* grava o estado atual nela, e *Salvar como…* cria uma combinação nova.
 - Camada criada depois da combinação: entra **visível e livre** nas combinações que já
   existem.
-- Conjunto inicial: **Tudo**, **Arquitetura** (sem Estrutura nem Documentação),
-  **Estrutura** (só Estrutura e Cotas) e **Apresentação** (sem Documentação nem Ambientes).
+- Conjunto inicial (aprovado): **Tudo**, **Arquitetura** (sem Estrutura nem
+  Documentação), **Estrutura** (só Estrutura e Cotas) e **Apresentação** (sem
+  Documentação nem Ambientes).
 
 ### 6.2 Na prancha
 Cada vista da prancha (spec/ui 15, `views[]`) ganha o campo opcional `combination`, com o
@@ -152,8 +171,11 @@ ele, a vista desenha com os estados daquela combinação, **sem mudar** a janela
 mesma planta pode aparecer em duas pranchas, uma com cotas e outra sem.
 
 ## 7. Painel Camadas
-Painel novo (Exibir > Painéis > Camadas, Ctrl+Shift+L), que junta as abas com Projeto e
-Propriedades:
+Painel próprio (Exibir > Painéis > Camadas, Ctrl+Shift+L), **separado** dos outros
+(decisão do revisor): abre solto, como janela flutuante, e lembra posição e tamanho
+(`QSettings`). Não vira aba junto de Projeto ou Propriedades.
+- **Busca** no alto: filtra a lista pelo nome enquanto se digita. Os grupos que têm
+  camadas encontradas ficam abertos.
 - Lista em árvore com os grupos e as camadas dentro deles. Em cada linha: o **olho**
   (visível), o **cadeado** (bloqueada), o nome (que muda com duplo clique) e o número de
   elementos.
@@ -189,8 +211,7 @@ uma laje, um ambiente, uma cota e um texto, no Térreo.
 - [ ] **CM06** Grupo: desligar Estrutura desliga Pilares, Vigas e Lajes estruturais.
       Religar uma delas deixa o grupo "misto".
 - [ ] **CM07** `layer.assign` de vários elementos, com desfazer e refazer: o diário
-      reaplicado reproduz o IFC. Reabrir o arquivo traz camadas, grupos, combinações e
-      estados.
+      reaplicado reproduz o IFC. Reabrir o arquivo traz camadas, grupos e combinações.
 - [ ] **CM08** Excluir uma camada com elementos leva os elementos para a camada escolhida.
       Excluir um grupo mantém as camadas.
 - [ ] **CM09** Combinação: aplicar **Estrutura** deixa visíveis só Estrutura e Cotas.
@@ -210,6 +231,10 @@ uma laje, um ambiente, uma cota e um texto, no Térreo.
       de dois elementos numa transação só.
 - [ ] **CM15** Assistente: `describe_model` não lista elemento oculto, e `edit_wall` em
       parede bloqueada volta como erro.
+- [ ] **CM16** Exibição fora do desfazer: ocultar, bloquear e aplicar combinação não
+      acrescentam nada ao histórico nem ao diário. Salvar grava `LayerOn`/`LayerBlocked` e o
+      `state`, e reabrir traz o mesmo estado.
+- [ ] **CM17** Painel: a busca "cot" deixa só Cotas, com o grupo Documentação aberto.
 
 ## 9. Fontes públicas
 - **IFC 4.3**: `IfcPresentationLayerAssignment` e `IfcPresentationLayerWithStyle`
@@ -225,17 +250,14 @@ uma laje, um ambiente, uma cota e um texto, no Térreo.
 Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
 comando ou layout de diálogo de outro software foi copiado.
 
-## 10. Pontos de revisão
-a. **Grupos de um nível só** (grupo → camadas) ou grupos dentro de grupos
-   (Estrutura → Concreto → Pilares)? A proposta é um nível agora e vários no V1.
-b. **Ligar e desligar camadas entra no desfazer?** A proposta é que sim, porque o estado
-   vai para o IFC e para a colaboração. A alternativa é guardar a visibilidade por usuário
-   e por janela, fora do desfazer, e gravar no IFC só ao salvar. Isso é mais confortável,
-   mas dois usuários podem ver coisas diferentes no mesmo modelo.
-c. **Tabelas contam elementos ocultos?** A proposta é que sim (a tabela é do modelo). A
-   alternativa é uma opção "só camadas visíveis" na definição da tabela.
-d. **Conjunto inicial (§3.1):** os nomes e a divisão estão bons? Laje em Arquitetura ou em
-   Estrutura por padrão?
-e. **Combinações iniciais (§6.1):** Tudo, Arquitetura, Estrutura e Apresentação servem? É
-   preciso uma "Prefeitura"?
-f. **Painel Camadas em aba** junto de Projeto e Propriedades, ou numa janela solta?
+## 10. Decisões do revisor (2026-10-20)
+a. Grupos de **um nível só**.
+b. Ligar e desligar camadas **não** entra no desfazer (§5.1).
+c. As tabelas **contam** os elementos ocultos.
+d. O usuário define em que camada cada elemento fica. O conjunto inicial é só um ponto
+   de partida (§3.1).
+e. As combinações iniciais ficam como propostas.
+f. O painel Camadas é **separado** (janela solta, §7).
+
+Visto no print do revisor (`feedback/prints/vegetais.png`), só como função: combinações
+usadas por etapa da obra e uma lista longa de camadas. Daí veio a busca do painel (§7).

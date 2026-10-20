@@ -4,13 +4,13 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑20 (spec do pacote 12, camadas, em revisão).*
+*Atualizado em 2026‑10‑20 (spec do pacote 12, camadas, aprovada).*
 
 > **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
 > depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
-> Spec `spec/ui/18-camadas.md` escrita, **aguardando revisão** (pontos §10 a–f). O revisor
-> vai pôr prints de referência em `feedback/prints/` (usar só como descrição de função,
-> sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
+> Spec `spec/ui/18-camadas.md` **aprovada** (decisões §10); próximo: implementar o pacote
+> 12. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
+> função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
 
 ## Comandos
 | Para | Comando |
@@ -37,7 +37,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
-| `spec/ui/18-camadas` | **em revisão** (pacote 12; CM01–CM15; pontos §10) |
+| `spec/ui/18-camadas` | aprovada (pacote 12; CM01–CM17; decisões §10), a implementar |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
@@ -389,15 +389,19 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    (pacote 11, RF-QTD-01 a 03 e 05). Agora: aprimorar o assistente dentro do software
    (pedido do revisor); depois mobiliário básico, salvamento automático, camadas e
    vistas 3D padrão.
-4c. Pedido do revisor (2026‑10‑20), ferramentas básicas, nesta ordem proposta:
-   12 camadas com grupos e combinações (spec 18, em revisão) · 13 objetos: mobiliário e
-   vegetação (`IfcFurniture`, `IfcGeographicElement` VEGETATION) · 14 desenho 2D: círculo,
-   arco, curva livre (spline), cota de raio e de ângulo, rótulo, marcador de alteração ·
-   15 eixos de projeto (`IfcGrid`) · 16 vão livre na parede (ferramenta) e claraboia ·
-   17 escada e guarda-corpo/corrimão · 18 terreno (malha) · 19 detalhe ampliado ·
-   20 pele de vidro · 21 forma livre (RF-ELE-15). Texto, linha, hachura, cota linear e de
-   nível já existem. Depois: salvamento automático, vistas 3D padrão, aprimorar o
-   assistente (mais ferramentas: pavimentos, estrutura, cortes, pranchas; mais criativo).
+4c. Pedido do revisor (2026‑10‑20), ferramentas básicas, nesta ordem:
+   12 camadas com grupos e combinações (spec 18 **aprovada**; "vegetais" no print do
+   revisor = camadas, não vegetação) · 13 **objetos paramétricos e biblioteca** (o revisor
+   quer inspiração no comportamento do Revit com famílias: só a função, pela documentação
+   pública; vocabulário próprio/IFC, `IfcTypeObject` + ocorrências) e mobiliário ·
+   14 desenho 2D: círculo, arco, curva livre (spline), cota de raio e de ângulo, rótulo,
+   marcador de alteração · 15 eixos de projeto (`IfcGrid`) · 16 vão livre na parede
+   (ferramenta) e claraboia · 17 escada e guarda-corpo/corrimão · 18 terreno (malha) ·
+   19 detalhe ampliado · 20 pele de vidro · 21 forma livre (RF-ELE-15). Vistos no print
+   da barra do revisor, opcionais: casca, luminária, vista interna, câmera (vista 3D
+   salva), imagem inserida, ponto de referência. Texto, linha, hachura, cota linear e
+   de nível já existem. Depois: salvamento automático, vistas 3D padrão, aprimorar o
+   assistente (mais ferramentas; mais criativo).
 5. **Teste de uso completo** (pedido do revisor: com o programa mais completo): modelar
    uma casa do começo ao fim e imprimir as pranchas; anotar em `feedback/`.
 6. Depois (V1): detalhe por escala, DXF, detalhes ampliados, revisões, tabelas na prancha,
