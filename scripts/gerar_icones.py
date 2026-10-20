@@ -153,6 +153,27 @@ ICONS = {
     "detach": '<path d="M3.75 3.5 V20.5 M7.25 3.5 V20.5"/>'
               '<rect x="12.75" y="8.75" width="7.5" height="6.5"/>'
               '<path d="M9.5 12 H11.5" stroke-width="1" stroke-dasharray="1 1"/>',
+    # desenho 2D (spec/ui 19): curva, círculo, arco, cotas de raio e de ângulo, rótulo,
+    # marcador de alteração
+    "spline2d": '<path d="M3 17 C7 3, 11 21, 15 9 S19 5, 21 7"/>'
+                '<circle cx="3" cy="17" r="1" fill="currentColor"/>'
+                '<circle cx="21" cy="7" r="1" fill="currentColor"/>',
+    "circle2d": '<circle cx="12" cy="12" r="8.25"/>'
+                '<circle cx="12" cy="12" r="1" fill="currentColor"/>',
+    "arc2d": '<path d="M4 18 A9.5 9.5 0 0 1 20 18"/>'
+             '<circle cx="4" cy="18" r="1" fill="currentColor"/>'
+             '<circle cx="12" cy="8.5" r="1" fill="currentColor"/>'
+             '<circle cx="20" cy="18" r="1" fill="currentColor"/>',
+    "radius_dim": '<path d="M20.5 12 A8.5 8.5 0 1 1 12 3.5" stroke-width="1"/>'
+                  '<path d="M12 12 L18 6"/><path d="M18 6 L14.8 6.6 L17.4 9.2 Z" '
+                  'fill="currentColor"/>',
+    "angle_dim": '<path d="M3.5 20.5 H21 M3.5 20.5 L15.5 5.5"/>'
+                 '<path d="M13 20.5 A9.5 9.5 0 0 0 9.4 13.1" stroke-width="1"/>',
+    "label": '<path d="M3.5 20.5 L10 12 H21"/><path d="M3.5 20.5 L4.6 16.6 L7 18.4 Z" '
+             'fill="currentColor"/><path d="M12 8.5 H19" stroke-width="1"/>',
+    "revision": '<path d="M5 9 Q5 5 9 5 Q12 3 15 5 Q19 5 19 9 Q21 12 19 15 Q19 19 15 19 '
+                'Q12 21 9 19 Q5 19 5 15 Q3 12 5 9 Z" stroke-width="1"/>'
+                '<path d="M12 8.5 L15.5 14.5 H8.5 Z"/>',
     # vistas da prévia: planta e 3D
     "view_plan": '<rect x="4.75" y="4.75" width="14.5" height="14.5"/>'
                  '<path d="M4.75 12 H19.25 M12 4.75 V19.25" stroke-width="1"/>',

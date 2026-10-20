@@ -18,7 +18,7 @@ from brasbim.core import geom2d, plan, snap, storeys, transform
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
-from brasbim.core.annotations import drafting, spaces
+from brasbim.core.annotations import drafting, drawing2d, spaces
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
@@ -593,9 +593,11 @@ class SelectTool(Tool):
         doc = self.session.doc
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         element = doc.find(gid) if gid else None
-        if (self.ask_text is None or element is None
-                or annotation_base.kind_of(element) is not drafting.TEXT):
+        kind = annotation_base.kind_of(element) if element is not None else None
+        if self.ask_text is None or kind not in (drafting.TEXT, drawing2d.LABEL):
             return
+        if kind is drawing2d.LABEL and annotation_base.read_state(element)["field"] != "free":
+            return  # o rótulo preso mostra o dado do elemento
         self.drag = None
         current = annotation_base.read_state(element)["text"]
         text = self.ask_text(current)
@@ -2276,6 +2278,379 @@ class NorthTool(_PointTool):
         return [Mark((self.points[0], self.snapped.point), False)]
 
 
+# --- Desenho 2D (spec/ui 19) -------------------------------------------------------------
+
+
+def _anno_marks(session, prefix: str, state: dict, style: str = "preview") -> list[Mark]:
+    """Pré-visualização de uma anotação pelo estado (as primitivas que ela vai ter)."""
+    from brasbim.core.annotations import base as abase
+
+    storey = session.storey
+    if storey is None:
+        return []
+    kind = abase.KINDS[prefix]
+    full = {**kind.defaults, **state, "storey": storey.GlobalId}
+    try:
+        kind.validate(full)
+        built = kind.build(session.doc, storey, full)
+    except (OpError, ValueError, ZeroDivisionError, KeyError):
+        return []
+    marks = [Mark(st.points, st.closed, style) for st in built.strokes if len(st.points) > 1]
+    from brasbim.core.annotations.prims import text_box
+
+    marks += [Mark(tuple(text_box(t)), True, "guide") for t in built.texts]
+    return marks
+
+
+class _CurveOptions:
+    """Espessura e tipo de linha (círculo, arco e curva, spec/ui 19 §3)."""
+
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.weight = 0.18
+        self.dash = "solid"
+        self.type = None
+
+
+class _ClickTool(_PointTool):
+    """Ferramenta de alguns cliques; ``points`` guarda os já dados."""
+
+    clicks = 2
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.points: list[Point] = []
+        self.options = _CurveOptions(ctx.session)
+
+    def cancel(self):
+        if self.points:
+            self.points.pop()
+            return True
+        return False
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        if self._storey() is None:
+            return
+        q = self.snapped.point
+        if self.points and math.dist(q, self.points[-1]) < 1e-6:
+            return
+        self.points.append(q)
+        if len(self.points) >= self.clicks:
+            points, self.points = list(self.points), []
+            self.finish(points)
+
+    def finish(self, points) -> None:
+        raise NotImplementedError
+
+    def state(self, points) -> dict | None:
+        return None
+
+    def preview(self):
+        if not self.points or self.snapped is None:
+            return []
+        state = self.state([*self.points, self.snapped.point])
+        marks = _anno_marks(self.session, self.prefix, state) if state else []
+        return marks or [Mark((*self.points, self.snapped.point), False, "guide")]
+
+    def _create(self, state: dict) -> None:
+        doc, storey = self.session.doc, self.session.storey
+        self.session.run(lambda: ac.create_annotation(doc, self.prefix, storey, **state))
+
+
+class CircleTool(_ClickTool):
+    """Círculo: centro e um ponto (spec/ui 19 §3); Tab digita o raio."""
+
+    name, label, prefix = "circle2d", "Círculo", "circle2d"
+
+    def hint(self):
+        return "Clique o centro do círculo" if not self.points else \
+            "Clique um ponto do círculo; Tab digita o raio"
+
+    def fields(self):
+        if not self.points or self.snapped is None:
+            return []
+        return [Field("radius", "Raio", "m", math.dist(self.points[0], self.snapped.point),
+                      self.fixed.get("radius"))]
+
+    def check(self, key, value):
+        return "o raio deve ser positivo" if value <= 0 else None
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        if self.points and "radius" in self.fixed:
+            c = self.points[0]
+            d = math.dist(c, self.snapped.point) or 1.0
+            r = self.fixed["radius"]
+            q = self.snapped.point
+            self.snapped = snap.Snap((c[0] + (q[0] - c[0]) * r / d, c[1] + (q[1] - c[1]) * r / d),
+                                     "free")
+
+    def state(self, points):
+        if len(points) < 2 or math.dist(points[0], points[1]) < 1e-6:
+            return None
+        return {"center": list(points[0]), "radius": math.dist(points[0], points[1]),
+                "weight": self.options.weight, "dash": self.options.dash}
+
+    def finish(self, points):
+        state = self.state(points)
+        self.fixed.clear()
+        if state:
+            self._create(state)
+
+
+class ArcTool(_ClickTool):
+    """Arco por três pontos: início, um ponto do arco e fim (spec/ui 19 §3)."""
+
+    name, label, prefix = "arc2d", "Arco", "arc2d"
+    clicks = 3
+
+    def hint(self):
+        return ["Clique o início do arco", "Clique um ponto do arco",
+                "Clique o fim do arco"][min(len(self.points), 2)]
+
+    def state(self, points):
+        if len(points) < 3:
+            return None
+        try:
+            fields = drawing2d.arc_from_points(*points[:3])
+        except OpError:
+            return None
+        return {**fields, "weight": self.options.weight, "dash": self.options.dash}
+
+    def preview(self):
+        if len(self.points) == 1 and self.snapped is not None:
+            return [Mark((self.points[0], self.snapped.point), False, "guide")]
+        return super().preview()
+
+    def finish(self, points):
+        state = self.state(points)
+        if state is None:
+            self.session.message("os três pontos estão alinhados: não há arco", "recusa")
+            return
+        self._create(state)
+
+
+class SplineTool(LineTool):
+    """Curva livre: passa pelos pontos clicados (spec/ui 19 §3)."""
+
+    name, label = "spline2d", "Curva"
+    options_class = _LineOptions
+
+    def hint(self):
+        if not self.points:
+            return "Clique o primeiro ponto da curva"
+        return ("Clique os pontos por onde a curva passa; Enter ou clique duplo encerra; "
+                "clique no primeiro ponto fecha")
+
+    def finish(self, closed: bool = False) -> None:
+        points = list(self.points)
+        self.points = []
+        if closed and points and math.dist(points[-1], points[0]) < 1e-6:
+            points.pop()
+        if len(points) < 2:
+            return
+        o, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is not None:
+            self.session.run(lambda: ac.create_annotation(
+                doc, "spline2d", storey, points=points, closed=closed, weight=o.weight,
+                dash=o.dash))
+
+    def shape_preview(self):
+        pts = list(self.points)
+        if pts and self.snapped:
+            pts.append(self.snapped.point)
+        if len(pts) < 2:
+            return []
+        return [Mark(tuple(drawing2d.spline(pts, False)), False)]
+
+
+class _RadiusOptions:
+    type_class = None
+
+    def __init__(self):
+        self.diameter = False
+        self.type = None
+
+
+class RadiusDimTool(_ClickTool):
+    """Cota de raio: um ponto sobre o círculo, o arco ou a parede em arco, e onde vai o
+    texto (spec/ui 19 §3)."""
+
+    name, label, prefix = "radius_dim", "Cota de raio", "radius_dim"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.options = _RadiusOptions()
+        self.target = None  # (GlobalId, centro, raio)
+
+    def hint(self):
+        if self.target is None:
+            return "Clique sobre um círculo, um arco ou uma parede em arco"
+        return "Clique onde vai o texto da cota"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        storey = self._storey()
+        if storey is None:
+            return
+        if self.target is None:
+            found = drawing2d.curves_near(self.session.doc, storey, p,
+                                          max(self.ctx.tol, 0.05))
+            if not found:
+                self.session.message("clique sobre um círculo, um arco ou uma parede em arco",
+                                     "recusa")
+                return
+            self.target = found[0]
+            return
+        state = self.state([p])
+        self.target = None
+        if state:
+            self._create(state)
+
+    def cancel(self):
+        if self.target is not None:
+            self.target = None
+            return True
+        return False
+
+    def state(self, points):
+        if self.target is None or not points:
+            return None
+        gid, center, radius = self.target
+        q = points[-1]
+        angle = math.degrees(math.atan2(q[1] - center[1], q[0] - center[0]))
+        return {"center": list(center), "radius": radius, "angle": angle % 360.0,
+                "diameter": self.options.diameter, "ref": gid}
+
+    def preview(self):
+        if self.target is None or self.snapped is None:
+            return []
+        return _anno_marks(self.session, self.prefix, self.state([self.cursor]))
+
+
+class AngleDimTool(_ClickTool):
+    """Cota de ângulo: vértice, um ponto em cada lado e a posição do arco."""
+
+    name, label, prefix = "angle_dim", "Cota de ângulo", "angle_dim"
+    clicks = 4
+
+    def hint(self):
+        return ["Clique o vértice do ângulo", "Clique um ponto do primeiro lado",
+                "Clique um ponto do segundo lado", "Clique onde passa o arco da cota"][
+            min(len(self.points), 3)]
+
+    def state(self, points):
+        if len(points) < 3:
+            return None
+        v, a, b = points[:3]
+        r = math.dist(v, points[3]) if len(points) > 3 else min(math.dist(v, a),
+                                                                 math.dist(v, b)) * 0.5
+        return {"vertex": list(v), "a": list(a), "b": list(b), "radius": max(r, 1e-3)}
+
+    def preview(self):
+        if self.snapped is None or not self.points:
+            return []
+        if len(self.points) < 2:
+            return [Mark((self.points[0], self.snapped.point), False, "guide")]
+        return super().preview()
+
+    def finish(self, points):
+        state = self.state(points)
+        if state:
+            self._create(state)
+
+
+class _LabelOptions:
+    type_class = None
+
+    def __init__(self):
+        self.field = "type"  # o que o rótulo preso mostra (spec/ui 19 §3)
+        self.type = None
+
+
+class LabelTool(_ClickTool):
+    """Rótulo: a ponta da seta (sobre o elemento) e onde vai o texto (spec/ui 19 §3).
+    ``ask(atual)`` pede o texto quando o rótulo é livre."""
+
+    name, label, prefix = "label", "Rótulo", "label"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.options = _LabelOptions()
+        self.ask = None
+        self.ref: str | None = None
+
+    def hint(self):
+        return ("Clique a ponta da seta (sobre o elemento que o rótulo descreve)"
+                if not self.points else "Clique onde vai o texto")
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        if not self.points:
+            self.move(p, mods)
+            gid = self.ctx.plan.pick(p, self.ctx.tol)
+            element = self.session.doc.find(gid) if gid else None
+            self.ref = gid if element is not None and not element.is_a("IfcAnnotation") \
+                else None
+        super().press(p, mods, button)
+
+    def state(self, points):
+        if len(points) < 2:
+            return None
+        field = self.options.field if self.ref else "free"
+        return {"at": list(points[0]), "text_at": list(points[1]), "ref": self.ref,
+                "field": field, "text": "texto" if field == "free" else ""}
+
+    def finish(self, points):
+        state = self.state(points)
+        if state is None:
+            return
+        if state["field"] == "free":
+            text = self.ask("") if self.ask is not None else None
+            if not text or not text.strip():
+                return
+            state["text"] = text.strip()
+        self._create(state)
+        self.ref = None
+
+
+class _RevisionOptions:
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.mode = "rectangle"
+        self.number = None  # vazio: o próximo livre
+        self.note = ""
+        self.type = "revision"
+
+
+class RevisionTool(SlabTool):
+    """Marcador de alteração: retângulo ou polígono (spec/ui 19 §3)."""
+
+    name, label = "revision", "Alteração"
+    options_class = _RevisionOptions
+
+    def hint(self):
+        if self.options.mode == "rectangle":
+            return "Clique dois cantos opostos da área alterada"
+        return "Clique os vértices da área alterada; feche no primeiro ponto ou com Enter"
+
+    def _create(self, points) -> None:
+        o, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is not None:
+            number = o.number or drawing2d.next_revision(doc)
+            self.session.run(lambda: ac.create_annotation(
+                doc, "revision", storey, outline=points, number=number, note=o.note))
+        self.points = []
+
+
 class ViewTool(_PointTool):
     """Corte ou fachada (spec/ui 14 §7): clique A, clique B e clique do lado olhado."""
 
@@ -3381,7 +3756,8 @@ class ObjectTool(Tool):
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, ObjectTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
-         LineTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
+         LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
+         RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.

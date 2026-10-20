@@ -45,6 +45,10 @@ def derive(doc: Document, dirty: set[str]) -> None:
             continue
         if kind.prefix == "dimension":
             dimensions.refresh(doc, element)
+        elif kind.prefix == "radius_dim":
+            from brasbim.core.annotations import drawing2d
+
+            drawing2d.refresh_radius(doc, element)
         base.rebuild(doc, element)
 
 

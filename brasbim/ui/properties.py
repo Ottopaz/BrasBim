@@ -43,7 +43,7 @@ from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
-from brasbim.core.annotations import drafting
+from brasbim.core.annotations import drafting, drawing2d
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.document import OpError
 from brasbim.core.drawings import sheets, views
@@ -1080,6 +1080,41 @@ class PropertiesPanel(QScrollArea):
             self._read("Valor", drafting.level_text(doc, storey, {**state, "fixed": None}))
             self._text("Valor fixo", state["fixed"], lambda v: edit(fixed=v),
                        placeholder="calculado")
+        elif kind in (drawing2d.CIRCLE, drawing2d.ARC, drawing2d.SPLINE):
+            if kind is not drawing2d.SPLINE:
+                self._number("Raio (m)", state["radius"], lambda v: edit(radius=v))
+            if kind is drawing2d.ARC:
+                self._number("Início (°)", state["start"], lambda v: edit(start=v))
+                self._number("Fim (°)", state["end"], lambda v: edit(end=v))
+            if kind is drawing2d.SPLINE:
+                self._combo("Fechada", YES_NO, bool(state["closed"]),
+                            lambda v: edit(closed=v))
+            self._combo("Espessura", [(f"{fmt(w)} mm", w) for w in drafting.LINE_WEIGHTS],
+                        state["weight"], lambda v: edit(weight=v))
+            self._combo("Tipo", [("Contínua", "solid"), ("Tracejada", "dashed"),
+                                 ("Traço e ponto", "dashdot")], state["dash"],
+                        lambda v: edit(dash=v))
+        elif kind is drawing2d.RADIUS:
+            _center, radius = drawing2d._radius_state(doc, state)
+            self._read("Medida", f"R {drawing2d.fmt(radius)}")
+            self._combo("Mostra", [("Raio", False), ("Diâmetro", True)],
+                        bool(state["diameter"]), lambda v: edit(diameter=v))
+            self._number("Direção (°)", state["angle"], lambda v: edit(angle=v))
+            self._read("Presa", "sim" if state.get("ref") and doc.find(state["ref"])
+                       else "não")
+        elif kind is drawing2d.ANGLE:
+            self._read("Ângulo", f"{drawing2d.angle_value(state):.1f}°".replace(".", ","))
+            self._number("Raio do arco (m)", state["radius"], lambda v: edit(radius=v))
+        elif kind is drawing2d.LABEL:
+            fields = [("Tipo do elemento", "type"), ("Nome do elemento", "name"),
+                      ("Código", "code"), ("Texto digitado", "free")]
+            if state.get("ref"):
+                self._combo("Mostra", fields, state["field"], lambda v: edit(field=v))
+            self._text("Texto", state["text"], lambda v: edit(text=v or ""))
+            self._read("Mostrando", drawing2d.label_text(doc, state))
+        elif kind is drawing2d.REVISION:
+            self._text("Número", state["number"], lambda v: v and edit(number=v))
+            self._text("Nota", state["note"], lambda v: edit(note=v or ""))
         elif kind is annotation_dims.DIMENSION:
             current = ("aligned" if state["direction"] == "aligned" else
                        "vertical" if abs(state["angle"] % 180.0 - 90.0) < 1e-6 else

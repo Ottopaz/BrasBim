@@ -26,17 +26,22 @@ from brasbim.ui.tools import (
     DimensionTool,
     DoorTool,
     HatchTool,
+    LabelTool,
     LevelTool,
     LineTool,
     NorthTool,
     ObjectTool,
+    RadiusDimTool,
+    RevisionTool,
     RoofTool,
     SlabOpeningTool,
     SlabTool,
     SpaceTool,
+    SplineTool,
     TextTool,
     ViewTool,
     WindowTool,
+    _ClickTool,
     _FillingTool,
     _WallTool,
     floor_types,
@@ -74,11 +79,21 @@ DOC_TOOLS = [
     ("space", "space", "Ambiente", "clique dentro de um cômodo, ou desenhe o contorno"),
     ("dimension", "dimension", "Cota",
      "clique os pontos (nos elementos a cota fica presa) e depois a posição da linha"),
+    ("radius_dim", "radius_dim", "Cota de raio",
+     "clique sobre um círculo, um arco ou uma parede em arco e onde vai o texto"),
+    ("angle_dim", "angle_dim", "Cota de ângulo",
+     "clique o vértice, um ponto em cada lado e onde passa o arco"),
     ("level_mark", "level_mark", "Nível", "clique onde vai a cota de nível"),
     ("text", "text", "Texto", "clique e digite o texto"),
+    ("label", "label", "Rótulo",
+     "clique a ponta da seta sobre o elemento e onde vai o texto"),
     ("line2d", "line2d", "Linha", "clique os pontos; Enter ou clique duplo encerra"),
+    ("spline2d", "spline2d", "Curva", "clique os pontos por onde ela passa; Enter encerra"),
+    ("circle2d", "circle2d", "Círculo", "clique o centro e um ponto; Tab digita o raio"),
+    ("arc2d", "arc2d", "Arco", "clique o início, um ponto do arco e o fim"),
     ("hatch", "hatch", "Hachura", "polígono ou retângulo"),
     ("north", "north", "Norte", "clique a posição e a direção"),
+    ("revision", "revision", "Alteração", "dois cantos da área alterada (nuvem e número)"),
     ("section", "section", "Corte", "clique os dois pontos da linha e o lado olhado"),
     ("elevation", "elevation", "Fachada",
      "clique os dois pontos da linha, fora do edifício, e o lado olhado"),
@@ -249,6 +264,11 @@ def tool_kind(tool) -> str | None:
 
         t = tool.type_entity()
         return objects.kind_of_type(t) if t is not None else None
+    for cls, kind in ((_ClickTool, None), (RevisionTool, "revision")):
+        if isinstance(tool, cls):
+            return getattr(tool, "prefix", kind)
+    if isinstance(tool, SplineTool):
+        return "spline2d"
     for cls, kind in ((SpaceTool, "space"), (HatchTool, "hatch"), (LineTool, "line2d"),
                       (TextTool, "text"), (DimensionTool, "dimension"), (NorthTool, "north"),
                       (ViewTool, "view"), (LevelTool, "level_mark"), (BeamTool, "beam"),
@@ -283,7 +303,36 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
-        if isinstance(tool, SpaceTool):
+        if isinstance(tool, RadiusDimTool):
+            self._choices([(False, "radius_dim", "Raio", "R 1,20"),
+                           (True, "circle2d", "Diâmetro", "Ø 2,40")],
+                          tool.options.diameter,
+                          lambda v: setattr(tool.options, "diameter", v))
+        elif isinstance(tool, LabelTool):
+            self._label("Mostra")
+            self._combo([("Tipo do elemento", "type"), ("Nome do elemento", "name"),
+                         ("Código", "code"), ("Texto digitado", "free")], tool.options.field,
+                        lambda v: setattr(tool.options, "field", v),
+                        "O que o rótulo mostra quando a seta está sobre um elemento")
+        elif isinstance(tool, _ClickTool):
+            self._line(tool)
+        elif isinstance(tool, RevisionTool):
+            self._choices(SLAB_MODES, tool.options.mode,
+                          lambda v: setattr(tool.options, "mode", v))
+            self._label("Número")
+            field = QLineEdit(tool.options.number or "")
+            field.setPlaceholderText("próximo")
+            field.setFixedWidth(64)
+            field.editingFinished.connect(
+                lambda: setattr(tool.options, "number", field.text().strip() or None))
+            self.addWidget(field)
+            self._label("Nota")
+            note = QLineEdit(tool.options.note)
+            note.setFixedWidth(160)
+            note.editingFinished.connect(lambda: setattr(tool.options, "note",
+                                                         note.text().strip()))
+            self.addWidget(note)
+        elif isinstance(tool, SpaceTool):
             self._space(tool)
         elif isinstance(tool, HatchTool):
             self._hatch(tool)
@@ -333,7 +382,7 @@ class OptionsBar(QToolBar):
             return
         self.addSeparator()
         self._label("Camada")
-        current = config["defaults"].get(kind) or display_layers.NONE
+        current = display_layers.default_layer(config, kind) or display_layers.NONE
         self._combo(display_layers.choices(doc), current,
                     lambda v: session.run(lambda: display_layers.set_default(doc, kind, v)),
                     "Camada em que esta ferramenta desenha")

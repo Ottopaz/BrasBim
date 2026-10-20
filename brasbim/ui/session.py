@@ -246,7 +246,7 @@ class Session:
         if config is None or not self.doc.display.locked:
             return
         for kind, _, _ in display_layers.created(tx, self.doc):
-            target = config["defaults"].get(kind) or display_layers.NONE
+            target = display_layers.default_layer(config, kind) or display_layers.NONE
             if target in self.doc.display.locked:
                 raise OpError(f"a camada {display_layers.layer_name(self.doc, target)} está "
                               "bloqueada; desbloqueie-a no painel Camadas para desenhar nela")

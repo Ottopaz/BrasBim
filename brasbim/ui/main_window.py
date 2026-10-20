@@ -642,6 +642,7 @@ class MainWindow(QMainWindow):
 
     def _hook_tools(self) -> None:
         self.toolbox.tools["text"].ask = self.ask_text
+        self.toolbox.tools["label"].ask = self.ask_text
         self.toolbox.tools["select"].ask_text = self.ask_text
         self.toolbox.tools["object"].on_missing_type = self.show_library
 

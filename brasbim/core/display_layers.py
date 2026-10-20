@@ -42,7 +42,8 @@ IMPORTED_GROUP = "Importadas"
 
 # Ferramentas (tipos de elemento do BrasBim) que têm camada padrão (§3.2).
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
-         "text", "line2d", "hatch", "level_mark", "north", "view", "object:furniture",
+         "text", "line2d", "hatch", "level_mark", "north", "view", "circle2d", "arc2d",
+         "spline2d", "radius_dim", "angle_dim", "label", "revision", "object:furniture",
          "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
 # Conjunto inicial (§3.1): grupo → [(camada, ferramentas que vão para ela)].
@@ -52,9 +53,11 @@ INITIAL = (
                      ("Ambientes", ("space",)))),
     ("Estrutura", (("Pilares", ("column",)), ("Vigas", ("beam",)),
                    ("Lajes estruturais", ()))),
-    ("Documentação", (("Cotas", ("dimension",)), ("Textos e rótulos", ("text",)),
-                      ("Linhas e hachuras", ("line2d", "hatch")),
-                      ("Símbolos", ("level_mark", "north", "view")))),
+    ("Documentação", (("Cotas", ("dimension", "radius_dim", "angle_dim")),
+                      ("Textos e rótulos", ("text", "label")),
+                      ("Linhas e hachuras", ("line2d", "hatch", "circle2d", "arc2d",
+                                             "spline2d")),
+                      ("Símbolos", ("level_mark", "north", "view", "revision")))),
     ("Entorno", (("Terreno", ()), ("Vegetação", ("object:vegetation",)))),
     # Equipamentos (louças, eletrodomésticos) nasce no primeiro uso (objeto-parametrico §2.5).
     ("Interiores", (("Mobiliário", ("object:furniture",)),)),
@@ -156,6 +159,20 @@ def _roofs():
     from brasbim.core.structure import roofs
 
     return roofs
+
+
+# Ferramenta parecida, para arquivo antigo sem a camada padrão das novas (spec/ui 19 §6).
+FALLBACK = {"circle2d": "line2d", "arc2d": "line2d", "spline2d": "line2d",
+            "radius_dim": "dimension", "angle_dim": "dimension", "label": "text",
+            "revision": "north"}
+
+
+def default_layer(config: dict, kind: str | None) -> str | None:
+    """Camada padrão da ferramenta (ou da parecida, em arquivo antigo)."""
+    found = config["defaults"].get(kind)
+    if found is None and kind in FALLBACK:
+        found = config["defaults"].get(FALLBACK[kind])
+    return found
 
 
 def kind_of(element) -> str | None:
@@ -321,7 +338,7 @@ def sync(doc: Document, dirty: set[str]) -> None:
         seen.add(element.GlobalId)
         key = element.GlobalId
         if key not in mapping:
-            mapping[key] = _ifc_layer_of(element) or config["defaults"].get(kind_of(element))
+            mapping[key] = _ifc_layer_of(element) or default_layer(config, kind_of(element))
         _assign(doc, element, mapping[key], config)
     _cleanup(doc, config)
 
@@ -925,7 +942,7 @@ def inherit(doc: Document, tx, sources):
                 target = layers[0]
             else:
                 continue
-        if target != config["defaults"].get(kind):
+        if target != default_layer(config, kind):
             ops.append(Op("layer.assign", gid, before={"layer": None}, after={"layer": target}))
     return Transaction(tx.label, tx.ops + ops) if ops else tx
 
