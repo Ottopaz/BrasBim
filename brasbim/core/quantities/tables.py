@@ -164,10 +164,11 @@ def _code(r: _Reader, e):
 
 def _sill(r: _Reader, e):
     from brasbim.core.fillings import commands as fc
+    from brasbim.core.structure import skylights
     from brasbim.core.walls import openings
 
     opening = fc.opening_of(e)
-    if opening is None:
+    if opening is None or skylights.is_skylight(e):
         return None
     try:
         return float(openings.read_state(opening)["sill"])

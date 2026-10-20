@@ -30,8 +30,11 @@ STATE_KEYS = ("slab", "outline")
 
 
 def of_slab(slab) -> list:
-    """Aberturas da laje, em ordem de GlobalId."""
-    return sorted((r.RelatedOpeningElement for r in slab.HasOpenings or ()),
+    """Aberturas da laje, em ordem de GlobalId (o vão da claraboia é da claraboia)."""
+    from brasbim.core.structure import skylights
+
+    return sorted((r.RelatedOpeningElement for r in slab.HasOpenings or ()
+                   if not skylights.is_skylight_opening(r.RelatedOpeningElement)),
                   key=lambda o: o.GlobalId)
 
 
@@ -41,7 +44,10 @@ def host(opening):
 
 
 def is_slab_opening(entity) -> bool:
-    if entity is None or not entity.is_a("IfcOpeningElement"):
+    from brasbim.core.structure import skylights
+
+    if entity is None or not entity.is_a("IfcOpeningElement") or \
+            skylights.is_skylight_opening(entity):
         return False
     found = host(entity)
     return found is not None and found.is_a("IfcSlab")

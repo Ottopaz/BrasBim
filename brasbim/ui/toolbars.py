@@ -25,6 +25,7 @@ from brasbim.ui.tools import (
     ColumnTool,
     DimensionTool,
     DoorTool,
+    GridTool,
     HatchTool,
     LabelTool,
     LevelTool,
@@ -34,12 +35,14 @@ from brasbim.ui.tools import (
     RadiusDimTool,
     RevisionTool,
     RoofTool,
+    SkylightTool,
     SlabOpeningTool,
     SlabTool,
     SpaceTool,
     SplineTool,
     TextTool,
     ViewTool,
+    WallOpeningTool,
     WindowTool,
     _ClickTool,
     _FillingTool,
@@ -62,6 +65,8 @@ CREATE_TOOLS = [
      "passe o cursor sobre uma parede reta e clique; Tab digita a distância"),
     ("window", "window", "Janela",
      "passe o cursor sobre uma parede reta e clique; Tab digita a distância e o peitoril"),
+    ("wall_opening", "wall_opening", "Vão",
+     "vão passante ou nicho: passe o cursor sobre uma parede reta e clique"),
     # Estrutura na ordem em que se costuma lançar (spec/ui 10 §2).
     ("column", "column", "Pilar",
      "clique o ponto de inserção; barra de espaço gira 90°"),
@@ -71,8 +76,11 @@ CREATE_TOOLS = [
      "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
     ("roof", "roof", "Cobertura",
      "clique dentro da edificação, ou desenhe o contorno de apoio; escolha a forma na barra"),
+    ("skylight", "skylight", "Claraboia",
+     "clique o centro sobre uma laje ou cobertura; barra de espaço gira 90°"),
     ("object", "object", "Objeto",
      "escolha o objeto na barra de opções e clique; barra de espaço gira 90°"),
+    ("grid", "grid", "Eixos", "clique a origem e a direção; espaçamentos na barra de opções"),
 ]
 # Grupo Documentação (spec/ui 13 §9): anotação da planta.
 DOC_TOOLS = [
@@ -264,6 +272,10 @@ def tool_kind(tool) -> str | None:
 
         t = tool.type_entity()
         return objects.kind_of_type(t) if t is not None else None
+    if isinstance(tool, GridTool):
+        return "grid"
+    if isinstance(tool, SkylightTool):
+        return "window"
     for cls, kind in ((_ClickTool, None), (RevisionTool, "revision")):
         if isinstance(tool, cls):
             return getattr(tool, "prefix", kind)
@@ -303,7 +315,42 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
-        if isinstance(tool, RadiusDimTool):
+        if isinstance(tool, SkylightTool):
+            for key, name in (("width", "Largura"), ("length", "Comprimento"),
+                              ("angle", "Ângulo")):
+                self._label(name)
+                self._number(getattr(tool, key), lambda v, k=key: setattr(tool, k, v),
+                             f"{name} da claraboia" + (" (graus)" if key == "angle"
+                                                         else " (m)"))
+        elif isinstance(tool, WallOpeningTool):
+            o = tool.options
+            self._choices([("OPENING", "wall_opening", "Vão passante", "atravessa a parede"),
+                           ("RECESS", "slab_opening", "Nicho",
+                            "rebaixo na face do lado do cursor")],
+                          o.kind, lambda v: (setattr(o, "kind", v), self.show_for(tool)))
+            self.addSeparator()
+            fields = [("width", "Largura"), ("height", "Altura"), ("sill", "Peitoril")]
+            if o.kind == "RECESS":
+                fields.append(("depth", "Profundidade"))
+            for key, name in fields:
+                self._label(name)
+                self._number(getattr(o, key), lambda v, k=key: setattr(o, k, v),
+                             f"{name} (m)")
+        elif isinstance(tool, GridTool):
+            o = tool.options
+            for key, label, tip, width in (
+                    ("u", "Em x", "Espaçamentos dos eixos numerados (m): 5; 4; 4", 110),
+                    ("first_number", "de", "Primeiro número", 36),
+                    ("v", "Em y", "Espaçamentos dos eixos com letras (m): 6; 6", 110),
+                    ("first_letter", "de", "Primeira letra", 36)):
+                self._label(label)
+                field = QLineEdit(getattr(o, key))
+                field.setToolTip(tip)
+                field.setFixedWidth(width)
+                field.editingFinished.connect(
+                    lambda k=key, f=field: setattr(o, k, f.text().strip() or getattr(o, k)))
+                self.addWidget(field)
+        elif isinstance(tool, RadiusDimTool):
             self._choices([(False, "radius_dim", "Raio", "R 1,20"),
                            (True, "circle2d", "Diâmetro", "Ø 2,40")],
                           tool.options.diameter,

@@ -253,6 +253,14 @@ class PlanView(QWidget, ToolInput):
             role = shape.role
             if role in ("annotation", "roof_edge", "object_box"):
                 continue  # desenhada por ``_draw_annotations`` (a caixa não aparece)
+            if role == "opening_box":  # o vão aparece na parede; aqui só o destaque
+                if selected:
+                    fill = QColor(C["select"])
+                    fill.setAlpha(60)
+                    painter.setPen(QPen(C["select"], 1.6 * self.unit))
+                    painter.setBrush(QBrush(fill))
+                    painter.drawPath(path)
+                continue
             if role in ("plant", "plant_fill"):  # vegetação: por cima das paredes
                 self._draw_object(painter, shape, selected)
                 continue

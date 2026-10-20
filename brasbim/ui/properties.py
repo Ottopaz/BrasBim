@@ -52,7 +52,7 @@ from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops.history import combine
 from brasbim.core.quantities import tables
-from brasbim.core.structure import beams, columns, profiles, roofs, slab_openings, slabs
+from brasbim.core.structure import beams, columns, profiles, roofs, skylights, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
@@ -244,6 +244,8 @@ class PropertiesPanel(QScrollArea):
             self._table(selection[0])
         elif len(selection) == 1 and selection[0].is_a("IfcWall"):
             self._wall(selection[0])
+        elif len(selection) == 1 and skylights.is_skylight(selection[0]):
+            self._skylight(selection[0])
         elif len(selection) == 1 and (selection[0].is_a("IfcDoor")
                                       or selection[0].is_a("IfcWindow")):
             self._door(selection[0])
@@ -257,6 +259,10 @@ class PropertiesPanel(QScrollArea):
             self._annotation(selection[0])
         elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
             self._slab_opening(selection[0])
+        elif len(selection) == 1 and cmd.is_wall_opening(selection[0]):
+            self._wall_opening(selection[0])
+        elif len(selection) == 1 and selection[0].is_a("IfcGrid"):
+            self._grid(selection[0])
         elif len(selection) == 1 and objects.is_object(selection[0]):
             self._object(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
@@ -266,7 +272,8 @@ class PropertiesPanel(QScrollArea):
             self._title(f"{len(selection)} elementos selecionados")
             walls = [e for e in selection if e.is_a("IfcWall")]
             door_list = [e for e in selection if e.is_a("IfcDoor")]
-            window_list = [e for e in selection if e.is_a("IfcWindow")]
+            window_list = [e for e in selection if e.is_a("IfcWindow")
+                           and not skylights.is_skylight(e)]
             if walls:
                 self._walls(walls)
             if door_list:
@@ -1503,6 +1510,90 @@ class PropertiesPanel(QScrollArea):
     def _edit_type_button(self, ifc_class: str, gid: str) -> None:
         if self.edit_type is not None:
             self._buttons(("Editar tipo…", lambda: self.edit_type(ifc_class, gid)))
+
+    def _skylight(self, window) -> None:
+        """Claraboia (spec/ui 20 §4)."""
+        doc = self.session.doc
+        state = skylights.read_state(window)
+
+        def edit(**changes):
+            self._run(lambda: skylights.edit_skylight(doc, window, **changes))
+
+        self._title(f"Claraboia {state['code']}")
+        self._text("Código", state["code"], lambda v: v and edit(code=v))
+        self._number("Largura (m)", state["width"], lambda v: edit(width=v))
+        self._number("Comprimento (m)", state["length"], lambda v: edit(length=v))
+        self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+        self._number("Caixilho (m)", state["frame"], lambda v: edit(frame=v))
+        host = doc.find(state["host"])
+        self._read("Apoio", (host.Name or host.is_a()) if host else "—")
+        self._section("Identificação")
+        self._read("GlobalId", window.GlobalId)
+
+    def _wall_opening(self, opening) -> None:
+        """Vão ou nicho sem esquadria (spec/ui 20 §3)."""
+        doc = self.session.doc
+        state = openings.read_state(opening)
+
+        def edit(**changes):
+            self._run(lambda: cmd.edit_opening(doc, opening, **changes))
+
+        self._title("Nicho" if state["kind"] == "RECESS" else "Vão")
+        self._combo("Tipo", [("Vão passante", "OPENING"), ("Nicho", "RECESS")],
+                    state["kind"], lambda v: edit(kind=v, depth=(
+                        state["depth"] or 0.05) if v == "RECESS" else None))
+        self._number("Largura (m)", state["width"], lambda v: edit(width=v))
+        self._number("Altura (m)", state["height"], lambda v: edit(height=v))
+        self._number("Peitoril (m)", state["sill"], lambda v: edit(sill=v))
+        self._number("Distância (m)", state["distance"], lambda v: edit(distance=v))
+        if state["kind"] == "RECESS":
+            self._number("Profundidade (m)", state["depth"], lambda v: edit(depth=v))
+            self._combo("Face", [("Esquerda", "left"), ("Direita", "right")],
+                        state["side"], lambda v: edit(side=v))
+        self._section("Identificação")
+        self._read("GlobalId", opening.GlobalId)
+
+    def _grid(self, grid) -> None:
+        """Eixos de projeto (spec/ui 20 §2)."""
+        from brasbim.core import grids
+        from brasbim.ui.tools import parse_spacings
+
+        doc = self.session.doc
+        state = grids.read_state(grid)
+
+        def edit(**changes):
+            self._run(lambda: grids.edit_grid(doc, grid, **changes))
+
+        def respace(key, text):
+            try:
+                axes = grids.axes_from_spacings(parse_spacings(text),
+                                                state[key][0]["tag"])
+            except (OpError, ValueError):
+                self.session.message("espaçamentos inválidos (ex.: 5; 4; 4)", "recusa")
+                self.refresh()
+                return
+            edit(**{key: axes})
+
+        self._title("Eixos de projeto")
+        self._text("Nome", state["name"], lambda v: v and edit(name=v))
+        self._text("Espaçamentos em x (m)",
+                   "; ".join(fmt(v) for v in grids.spacings(state["u"])),
+                   lambda v: respace("u", v or ""))
+        self._read("Eixos numerados", ", ".join(a["tag"] for a in state["u"]))
+        self._text("Espaçamentos em y (m)",
+                   "; ".join(fmt(v) for v in grids.spacings(state["v"])),
+                   lambda v: respace("v", v or ""))
+        self._read("Eixos com letras", ", ".join(a["tag"] for a in state["v"]))
+        self._section("Posição")
+        self._number("Origem x (m)", state["origin"][0],
+                     lambda v: edit(origin=[v, state["origin"][1]]))
+        self._number("Origem y (m)", state["origin"][1],
+                     lambda v: edit(origin=[state["origin"][0], v]))
+        self._number("Ângulo (°)", state["angle"], lambda v: edit(angle=v))
+        self._number("Prolongamento (m)", state["extent"], lambda v: edit(extent=v))
+        self._combo("Círculos", [("Nas duas pontas", "both"), ("No início", "start"),
+                                 ("No fim", "end"), ("Sem círculo", "none")],
+                    state["bubbles"], lambda v: edit(bubbles=v))
 
     # --- objeto paramétrico (objeto-parametrico.md §5.1) -------------------------------
 

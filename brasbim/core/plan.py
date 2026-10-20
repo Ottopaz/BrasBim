@@ -142,7 +142,8 @@ class Plan:
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
-        for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("wall",),
+        for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("opening_box",),
+                      ("wall",),
                       ("wall_view", "wall_above"), _OPENING_ROLES, ("object_box",),
                       ("space",), _SLAB_ROLES, _ROOF_ROLES):
             found = [s for s in self.shapes if s.role in roles and s.owner not in self.locked]
@@ -924,7 +925,10 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
         if wall.GlobalId in hidden and wall.is_a("IfcWall"):
             c = _cut_wall(doc, wall, cut, show_above)
             crossed |= set(c.crossed) if c is not None else set()
-    fillings = sorted(_contained(storey, "IfcDoor", doc) + _contained(storey, "IfcWindow", doc),
+    from brasbim.core.structure import skylights
+
+    fillings = sorted((e for e in _contained(storey, "IfcDoor", doc)
+                       + _contained(storey, "IfcWindow", doc) if not skylights.is_skylight(e)),
                       key=lambda e: e.GlobalId)
     for door in fillings:
         opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
@@ -939,10 +943,54 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
         label = door_label(doc, door, storey)
         if label is not None:
             plan.labels.append(label)
+    _wall_openings(doc, storey, plan)
+    _skylights(doc, storey, plan)
     _objects(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     return plan
+
+
+def _skylights(doc: Document, storey, plan: Plan) -> None:
+    """Claraboias (spec/ui 20 §4): caixilho e vidro em projeção, escolha pela caixa."""
+    from brasbim.core.structure import skylights
+
+    for window in _contained(storey, "IfcWindow", doc):
+        if not skylights.is_skylight(window):
+            continue
+        state = skylights.read_state(window)
+        ring = skylights.outline(state)
+        inner = skylights.outline({**state, "width": state["width"] - 2 * state["frame"],
+                                   "length": state["length"] - 2 * state["frame"]})
+        plan.shapes.append(Shape(window.GlobalId, "window_skylight", tuple(ring), True))
+        plan.shapes.append(Shape(window.GlobalId, "window_glass", tuple(inner), True))
+
+
+def _wall_openings(doc: Document, storey, plan: Plan) -> None:
+    """Vãos e nichos sem esquadria (spec/ui 20 §3): a caixa do vão, para escolher."""
+    from brasbim.core.walls import commands as wall_cmd
+
+    for wall in _contained(storey, "IfcWall", doc):
+        try:
+            state = read_wall(doc, wall)
+            band = rebuild.band(doc, state)
+        except (OpError, ValueError):
+            continue
+        if not isinstance(band.path, geom2d.LinePath):
+            continue
+        frame = geom2d.frame(band.path)
+        for opening in openings.of_wall(wall):
+            if not wall_cmd.is_wall_opening(opening):
+                continue
+            o = openings.read_state(opening)
+            if o["kind"] == "RECESS":
+                y0, y1 = ((band.ymax - o["depth"], band.ymax) if o["side"] == "left"
+                          else (band.ymin, band.ymin + o["depth"]))
+            else:
+                y0, y1 = band.ymin, band.ymax
+            x0, x1 = o["distance"], o["distance"] + o["width"]
+            ring = tuple(frame.to_global(q) for q in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
+            plan.shapes.append(Shape(opening.GlobalId, "opening_box", ring, True))
 
 
 def _objects(doc: Document, storey, plan: Plan, cut: float) -> None:
@@ -1106,6 +1154,18 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             plan.shapes += [Shape(e.GlobalId, "annotation", tuple(text_box(t)), True)
                             for t in prims.texts]
     plan.regions[:0] = hatches  # as hachuras ficam sob as paredes
+    from brasbim.core import grids  # eixos de projeto (spec/ui 20 §2): em todo pavimento
+
+    for grid in grids.all_grids(doc):
+        if grid.GlobalId in hidden:
+            continue
+        try:
+            prims = grids.prims(grids.read_state(grid), storey)
+        except OpError:
+            continue
+        plan.annotations.append((grid.GlobalId, prims))
+        plan.shapes += [Shape(grid.GlobalId, "annotation", st.points, st.closed)
+                        for st in prims.strokes]
     from brasbim.core.drawings import views  # símbolos de corte e fachada (spec/ui 14 §6)
 
     for view in views.all_views(doc):

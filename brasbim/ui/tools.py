@@ -153,11 +153,13 @@ class PlanContext:
         self._walls = None
         self._vertices = None
         self._columns = None
+        self._grid_points = None
         self.detail = "simple"  # Exibir > Detalhe da planta (spec/ui 06 §2)
         self.show_above = True  # Exibir > Elementos acima do plano de corte (§3.2)
 
     def invalidate(self) -> None:
         self._plan = self._walls = self._vertices = self._columns = None
+        self._grid_points = None
 
     @property
     def plan(self) -> plan.Plan:
@@ -228,7 +230,22 @@ class PlanContext:
             return snap.Snap(snap.constrain(origin, p), "free")
         if mods.alt:
             return snap.Snap(tuple(p), "free")
-        return snap.snap(self.walls, p, self.tol, self.grid, list(extra))
+        return snap.snap(self.walls, p, self.tol, self.grid, list(extra) + self.grid_points)
+
+    @property
+    def grid_points(self) -> list[Point]:
+        """Cruzamentos dos eixos de projeto (spec/ui 20 §2): pontos de atração."""
+        if self._grid_points is None:
+            from brasbim.core import grids
+
+            found = []
+            for g in grids.all_grids(self.session.doc):
+                try:
+                    found += grids.intersections(grids.read_state(g))
+                except OpError:
+                    continue
+            self._grid_points = found
+        return self._grid_points
 
 
 class Tool:
@@ -947,7 +964,9 @@ class SelectTool(Tool):
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         selection = self.session.selection
         entity = self.session.doc.find(gid) if gid else None
-        is_door = entity is not None and (entity.is_a("IfcDoor") or entity.is_a("IfcWindow"))
+        from brasbim.core.structure import skylights
+
+        is_door = entity is not None and (entity.is_a("IfcDoor") or entity.is_a("IfcWindow"))             and not skylights.is_skylight(entity)
         if gid and not mods.ctrl and gid in selection:
             if is_door and len(selection) == 1:
                 self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
@@ -2278,6 +2297,103 @@ class NorthTool(_PointTool):
         return [Mark((self.points[0], self.snapped.point), False)]
 
 
+# --- Eixos de projeto (spec/ui 20 §2) ------------------------------------------------------
+
+
+def parse_spacings(text: str) -> list[float]:
+    """"5; 4; 4" (ou "5 4 4") → [5, 4, 4]; vazio = um eixo só."""
+    parts = [p for p in text.replace(";", " ").split() if p.strip()]
+    return [parse_number(p) for p in parts]
+
+
+class _GridOptions:
+    type_class = None
+
+    def __init__(self):
+        self.u = "5; 5"
+        self.v = "4; 4"
+        self.first_number = "1"
+        self.first_letter = "A"
+        self.type = None
+
+
+class GridTool(_PointTool):
+    """Eixos de projeto: clique a origem e a direção do primeiro eixo (spec/ui 20 §2)."""
+
+    name, label = "grid", "Eixos"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.options = _GridOptions()
+        self.points: list[Point] = []
+
+    def hint(self):
+        return ("Clique a origem dos eixos (cruzamento do 1 com o A)" if not self.points
+                else "Clique a direção dos eixos numerados (ângulo); Shift prende a 45°")
+
+    def _state(self, origin, angle):
+        from brasbim.core import grids
+
+        o = self.options
+        try:
+            return {**grids.default_state(), "origin": list(origin), "angle": angle,
+                    "u": grids.axes_from_spacings(parse_spacings(o.u), o.first_number),
+                    "v": grids.axes_from_spacings(parse_spacings(o.v), o.first_letter)}
+        except (OpError, ValueError):
+            return None
+
+    def _angle(self, q) -> float:
+        a = self.points[0]
+        if math.dist(a, q) < 1e-6:
+            return 0.0
+        return math.degrees(math.atan2(q[1] - a[1], q[0] - a[0]))
+
+    def move(self, p, mods):
+        Tool.move(self, p, mods)
+        origin = self.points[0] if self.points else None
+        self.snapped = self.ctx.snap(p, mods, origin=origin, extra=self.ctx.vertices)
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        q = self.snapped.point
+        if not self.points:
+            self.points = [q]
+            return
+        origin, angle = self.points[0], self._angle(q)
+        self.points = []
+        state = self._state(origin, angle)
+        if state is None:
+            self.session.message("espaçamentos dos eixos inválidos (ex.: 5; 4; 4)", "recusa")
+            return
+        from brasbim.core import grids
+
+        doc, o = self.session.doc, self.options
+        self.session.run(lambda: grids.create_grid(
+            doc, origin, angle, parse_spacings(o.u), parse_spacings(o.v), o.first_number,
+            o.first_letter))
+
+    def cancel(self):
+        if self.points:
+            self.points = []
+            return True
+        return False
+
+    def preview(self):
+        from brasbim.core import grids
+
+        if self.snapped is None or self.session.storey is None:
+            return []
+        origin = self.points[0] if self.points else self.snapped.point
+        angle = self._angle(self.snapped.point) if self.points else 0.0
+        state = self._state(origin, angle)
+        if state is None:
+            return []
+        return [Mark(st.points, st.closed) for st in grids.prims(state,
+                                                                  self.session.storey).strokes]
+
+
 # --- Desenho 2D (spec/ui 19) -------------------------------------------------------------
 
 
@@ -2649,6 +2765,66 @@ class RevisionTool(SlabTool):
             self.session.run(lambda: ac.create_annotation(
                 doc, "revision", storey, outline=points, number=number, note=o.note))
         self.points = []
+
+
+class SkylightTool(_PointTool):
+    """Claraboia: um clique sobre a laje ou a cobertura (spec/ui 20 §4); barra de espaço
+    gira 90°; Tab digita o ângulo."""
+
+    name, label = "skylight", "Claraboia"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.width, self.length, self.angle = 0.80, 1.20, 0.0
+
+    def hint(self):
+        return ("Clique o centro da claraboia sobre uma laje ou uma cobertura; barra de "
+                "espaço gira 90°")
+
+    def fields(self):
+        return [Field("angle", "Ângulo", "°", self.angle)] if self.cursor is not None else []
+
+    def fix(self, key, value):
+        if key == "angle" and value is not None:
+            self.angle = value % 360.0
+
+    def key(self, key):
+        if key == "space":
+            self.angle = (self.angle + 90.0) % 360.0
+            return True
+        return False
+
+    def _state(self):
+        from brasbim.core.structure import skylights
+
+        if self.snapped is None:
+            return None
+        return {**skylights.default_state(), "center": list(self.snapped.point),
+                "width": self.width, "length": self.length, "angle": self.angle}
+
+    def preview(self):
+        from brasbim.core.structure import skylights
+
+        state = self._state()
+        if state is None:
+            return []
+        storey = self.session.storey
+        host = skylights.host_at(self.session.doc, storey, state["center"]) if storey else None
+        style = "preview" if host is not None else "invalid"
+        return [Mark(tuple(skylights.outline(state)), True, style)]
+
+    def press(self, p, mods, button="left"):
+        from brasbim.core.structure import skylights
+
+        if button != "left":
+            return
+        self.move(p, mods)
+        storey = self._storey()
+        if storey is None:
+            return
+        doc, q = self.session.doc, self.snapped.point
+        self.session.run(lambda: skylights.create_skylight(doc, storey, q, self.width,
+                                                           self.length, self.angle))
 
 
 class ViewTool(_PointTool):
@@ -3107,6 +3283,118 @@ class WindowTool(_FillingTool):
 
 
 # --- dividir (0.2 §5) -----------------------------------------------------------------------
+
+
+class _OpeningOptions2:
+    """Opções da ferramenta Vão (spec/ui 20 §3)."""
+
+    def __init__(self):
+        self.kind = "OPENING"  # ou RECESS (nicho)
+        self.width = 0.80
+        self.height = 2.10
+        self.sill = 0.0
+        self.depth = 0.05
+
+
+class WallOpeningTool(_FillingTool):
+    """Vão passante ou nicho na parede (spec/ui 20 §3): como a porta, sem esquadria."""
+
+    name, label = "wall_opening", "Vão"
+    type_class = "IfcDoorType"  # não usa tipo; ``type_state`` dá as medidas da barra Opções
+    noun = "vão"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.type = None
+        self.options = _OpeningOptions2()
+
+    def type_state(self) -> dict | None:
+        o = self.options
+        return {"defaults": {"width": o.width, "height": o.height, "base": o.sill},
+                "operation_type": "NOTDEFINED"}
+
+    def handed_state(self) -> dict | None:
+        return self.type_state()
+
+    def hand(self, tstate: dict) -> str | None:
+        return None
+
+    def hint(self):
+        what = "o vão" if self.options.kind == "OPENING" else "o nicho"
+        return (f"Passe o cursor sobre uma parede reta e clique para abrir {what}; Tab "
+                "digita a distância")
+
+    def move(self, p, mods):
+        self.width = self.height = self.base = None
+        # a porta desenha folha e marco: aqui só o retângulo do vão na faixa da parede
+        Tool.move(self, p, mods)
+        self.target = None
+        hit = snap.wall_at(self.ctx.walls, p, self.ctx.tol)
+        if hit is None:
+            return
+        if not hit.wall.straight:
+            self.target = {"error": "vão em parede em arco ainda não é suportado (V1)",
+                           "marks": [], "labels": []}
+            return
+        o = self.options
+        wall, along = hit.wall, hit.along
+        if not mods.alt and abs(along - wall.path.length / 2) <= self.ctx.tol:
+            along = wall.path.length / 2
+        ref_x = self._reference_x(wall, hit, along)
+        after = along >= ref_x
+        fixed = self.fixed.get("ref")
+        if fixed is not None:
+            distance = ref_x + fixed if after else ref_x - fixed - o.width
+        else:
+            distance = along - o.width / 2
+        side = "left" if hit.left else "right"
+        state = {**openings.default_state(), "wall": wall.gid, "kind": o.kind,
+                 "distance": distance, "width": o.width, "height": o.height,
+                 "sill": o.sill, "depth": o.depth if o.kind == "RECESS" else None,
+                 "side": side}
+        error = None
+        try:
+            openings.check_fits(self.session.doc, self.session.doc.get(wall.gid), state)
+        except OpError as e:
+            error = str(e)
+        if o.kind == "RECESS":
+            y0, y1 = ((wall.ymax - o.depth, wall.ymax) if side == "left"
+                      else (wall.ymin, wall.ymin + o.depth))
+        else:
+            y0, y1 = wall.ymin, wall.ymax
+        ring = tuple(wall.frame.to_global(q) for q in ((distance, y0), (distance + o.width, y0),
+                                                       (distance + o.width, y1),
+                                                       (distance, y1)))
+        ref_point = (self.reference if self.reference is not None
+                     else wall.frame.to_global((ref_x, wall.ymax if hit.left else wall.ymin)))
+        edge_x = distance if after else distance + o.width
+        ref_y = wall.frame.to_local(ref_point)[1]
+        self.target = {
+            "state": state, "error": error,
+            "ref_distance": max(distance - ref_x if after else ref_x - distance - o.width, 0.0),
+            "distance": distance,
+            "ref_line": (ref_point, wall.frame.to_global((edge_x, ref_y))),
+            "marks": [Mark(ring, True, "invalid" if error else "preview")],
+            "labels": _edge_labels(wall, distance, o.width)}
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        self.move(p, mods)
+        target = self.target
+        if target is None:
+            self.session.message("clique sobre uma parede", "recusa")
+            return
+        if target["error"]:
+            self.session.message(target["error"], "recusa")
+            return
+        s, doc = target["state"], self.session.doc
+        self.session.run(lambda: cmd.create_opening(
+            doc, s["wall"], s["distance"], s["width"], s["height"], s["sill"], s["kind"],
+            s["depth"], s["side"]))
+        self.fixed.pop("ref", None)
+        self.reference = None
+        self.move(p, mods)
 
 
 class SplitTool(Tool):
@@ -3754,8 +4042,9 @@ class ObjectTool(Tool):
         return []
 
 
-TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
-         BeamTool, SlabTool, RoofTool, ObjectTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
+         WallOpeningTool, ColumnTool,
+         BeamTool, SlabTool, RoofTool, SkylightTool, ObjectTool, GridTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
@@ -3774,10 +4063,15 @@ def selection_actions(doc, gids) -> list[str]:
     if not elements:
         return []
     walls = [e for e in elements if e.is_a("IfcWall")]
-    door_list = [e for e in elements if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
+    from brasbim.core.structure import skylights
+
+    door_list = [e for e in elements if (e.is_a("IfcDoor") or e.is_a("IfcWindow"))
+                 and not skylights.is_skylight(e)]
     structure = [e for e in elements if sc.is_structure(e) or ac.is_annotation(e)]
     found_objects = [e for e in elements if objects.is_object(e)]
     free = [e for e in found_objects if objects.read_state(doc, e)["host"] is None]
+    if all(cmd.is_wall_opening(e) for e in elements):  # vão e nicho (spec/ui 20 §3)
+        return ["delete"]
     out = ["move", "copy"]
     if walls or structure or free:
         out += ["rotate", "mirror"]

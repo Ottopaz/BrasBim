@@ -379,6 +379,16 @@ def edit_opening(doc: Document, opening, **changes) -> Transaction:
                                               after=dict(changes))])
 
 
+def is_wall_opening(entity) -> bool:
+    """Vão ou nicho de parede sem esquadria, feito pelo usuário (não o de um objeto)."""
+    from brasbim.core.objects import hosting
+
+    if entity is None or not entity.is_a("IfcOpeningElement") or entity.HasFillings:
+        return False
+    host = openings.host(entity)
+    return host is not None and host.is_a("IfcWall") and not hosting.is_object_opening(entity)
+
+
 def _opening_delete_ops(opening) -> list[Op]:
     """Exclui a abertura e as portas e janelas do BrasBim que a preenchem (porta §6.4).
     Outros elementos que preenchem (ex.: de outra origem) só são desligados."""

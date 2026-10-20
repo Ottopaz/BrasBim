@@ -311,7 +311,9 @@ class View3D(QOpenGLWidget, ToolInput):
         if len(selection) != 1:
             return None, None
         element = doc.find(next(iter(selection)))
-        if element is None or not (element.is_a("IfcDoor") or element.is_a("IfcWindow")):
+        from brasbim.core.structure import skylights
+
+        if element is None or not (element.is_a("IfcDoor") or element.is_a("IfcWindow"))                 or skylights.is_skylight(element):
             return None, None
         host = transform.host_wall(element)
         storey = storey_of(element)

@@ -563,9 +563,59 @@ def _object_ops(doc: Document, found, moving: set[str], mode: str, fn=None, vect
     return ops
 
 
-def _with_objects(label: str, doc: Document, gids, core, objects_ops) -> Transaction:
+def _grid_ops(doc: Document, grids_, fn, turn: float = 0.0, mirror_axis=None,
+              copying: bool = False) -> list[Op]:
+    """Eixos de projeto levados pela transformação (spec/ui 20 §2)."""
+    from brasbim.core import grids
+
+    ops = []
+    for g in grids_:
+        state = grids.read_state(g)
+        changes = grids.mapped(state, fn, turn, mirror_axis)
+        if copying:
+            ops.append(Op("grid.create", guid.new(), data={**copy.deepcopy(state), **changes}))
+        else:
+            ops += grids.edit_grid(doc, g, **changes).ops
+    return ops
+
+
+def _skylight_ops(doc: Document, gids, fn, turn: float = 0.0, mirror_axis=None,
+                  copying: bool = False) -> list[Op]:
+    """Claraboias da seleção e as das lajes e coberturas que se movem (spec/ui 20 §4)."""
+    from brasbim.core.structure import skylights
+
+    chosen = {g if isinstance(g, str) else g.GlobalId for g in gids}
+    ops = []
+    for w in skylights.all_skylights(doc):
+        state = skylights.read_state(w)
+        selected, with_host = w.GlobalId in chosen, state["host"] in chosen
+        if not (selected or with_host) or (copying and not selected):
+            continue
+        center = fn(tuple(state["center"]))
+        angle = (2 * mirror_axis - state["angle"] if mirror_axis is not None
+                 else state["angle"] + turn) % 360.0
+        changes = {"center": [float(center[0]), float(center[1])], "angle": angle}
+        if copying:
+            ops.append(Op("skylight.create", guid.new(), data={
+                **copy.deepcopy(state), **changes, "code": skylights.next_code(doc)}))
+        elif with_host:  # a laje anda junto: grava o estado novo sem conferir agora
+            ops.append(Op("skylight.edit", w.GlobalId,
+                          before={k: copy.deepcopy(state[k]) for k in changes},
+                          after=changes))
+        else:
+            ops += skylights.edit_skylight(doc, w, **changes).ops
+    return ops
+
+
+def _with_objects(label: str, doc: Document, gids, core, objects_ops,
+                  grid_ops=lambda found: [], sky_ops=lambda gids: []) -> Transaction:
+    from brasbim.core.structure import skylights
+
     others, found = _objects(doc, gids)
-    extra = objects_ops(found)
+    grid_list = [doc.get(g) for g in others if doc.get(g).is_a("IfcGrid")]
+    others = [g for g in others if not doc.get(g).is_a("IfcGrid")
+              and not skylights.is_skylight(doc.get(g))]
+    extra = objects_ops(found) + (grid_ops(grid_list) if grid_list else []) + sky_ops(gids)
     if not others:
         if not extra and not found:
             raise OpError("nada selecionado")
@@ -585,7 +635,9 @@ def move_elements(doc: Document, gids, vector) -> Transaction:
     return _with_objects("Mover", doc, gids, lambda rest: _with_annotations(
         "Mover", doc, rest, lambda others: _move_elements_core(doc, others, vector),
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, moving)),
-        lambda found: _object_ops(doc, found, moving, "move", fn, vector))
+        lambda found: _object_ops(doc, found, moving, "move", fn, vector),
+        lambda found: _grid_ops(doc, found, fn),
+        lambda ids: _skylight_ops(doc, ids, fn))
 
 
 def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
@@ -596,7 +648,9 @@ def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
     return _with_objects("Girar", doc, gids, lambda rest: _with_annotations(
         "Girar", doc, rest, lambda others: _rotate_elements_core(doc, others, center, angle),
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a + deg, False, moving)),
-        lambda found: _object_ops(doc, found, moving, "rotate", fn, angle=angle))
+        lambda found: _object_ops(doc, found, moving, "rotate", fn, angle=angle),
+        lambda found: _grid_ops(doc, found, fn, deg),
+        lambda ids: _skylight_ops(doc, ids, fn, deg))
 
 
 def copy_elements(doc: Document, gids, vector) -> Transaction:
@@ -606,7 +660,9 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
     tx = _with_objects("Copiar", doc, gids, lambda rest: _with_annotations(
         "Copiar", doc, rest, lambda others: _copy_elements_core(doc, others, vector),
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True)),
-        lambda found: _object_ops(doc, found, moving, "copy", fn, vector))
+        lambda found: _object_ops(doc, found, moving, "copy", fn, vector),
+        lambda found: _grid_ops(doc, found, fn, copying=True),
+        lambda ids: _skylight_ops(doc, ids, fn, copying=True))
     tx = _hosted_copies(doc, tx, gids, vector)
     return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
 
@@ -625,7 +681,9 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda annos: _anno_ops(doc, annos, fn, lambda x: 2 * axis - x, True, moving,
                                 copy_=keep)),
         lambda found: _object_ops(doc, found, _moving(doc, gids),
-                                  "mirror_copy" if keep else "mirror", fn, axis=axis))
+                                  "mirror_copy" if keep else "mirror", fn, axis=axis),
+        lambda found: _grid_ops(doc, found, fn, mirror_axis=axis, copying=keep),
+        lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep))
     return display_layers.inherit(doc, tx, gids) if keep else tx
 
 

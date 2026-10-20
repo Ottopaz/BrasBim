@@ -153,6 +153,14 @@ ICONS = {
     "detach": '<path d="M3.75 3.5 V20.5 M7.25 3.5 V20.5"/>'
               '<rect x="12.75" y="8.75" width="7.5" height="6.5"/>'
               '<path d="M9.5 12 H11.5" stroke-width="1" stroke-dasharray="1 1"/>',
+    # eixos de projeto (spec/ui 20): dois eixos cruzados com círculo nas pontas
+    "grid": '<path d="M8 6.5 V21 M3 16 H17.5" stroke-dasharray="3 1.2 0.8 1.2"/>'
+            '<circle cx="8" cy="4" r="2.5"/><circle cx="20" cy="16" r="2.5"/>',
+    # vão e nicho na parede, claraboia
+    "wall_opening": '<path d="M2 8.75 H8.25 V15.25 H2 M22 8.75 H15.75 V15.25 H22"/>'
+                    '<path d="M8.25 8.75 H15.75" stroke-width="1" stroke-dasharray="1.5 1.5"/>',
+    "skylight": '<path d="M2.5 16.5 L12 6.5 L21.5 16.5"/>'
+                '<path d="M8.5 13.5 L12 9.8 L15.5 13.5 Z" stroke-width="1"/>',
     # desenho 2D (spec/ui 19): curva, círculo, arco, cotas de raio e de ângulo, rótulo,
     # marcador de alteração
     "spline2d": '<path d="M3 17 C7 3, 11 21, 15 9 S19 5, 21 7"/>'

@@ -43,7 +43,8 @@ IMPORTED_GROUP = "Importadas"
 # Ferramentas (tipos de elemento do BrasBim) que têm camada padrão (§3.2).
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
          "text", "line2d", "hatch", "level_mark", "north", "view", "circle2d", "arc2d",
-         "spline2d", "radius_dim", "angle_dim", "label", "revision", "object:furniture",
+         "spline2d", "radius_dim", "angle_dim", "label", "revision", "grid",
+         "object:furniture",
          "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
 # Conjunto inicial (§3.1): grupo → [(camada, ferramentas que vão para ela)].
@@ -57,7 +58,8 @@ INITIAL = (
                       ("Textos e rótulos", ("text", "label")),
                       ("Linhas e hachuras", ("line2d", "hatch", "circle2d", "arc2d",
                                              "spline2d")),
-                      ("Símbolos", ("level_mark", "north", "view", "revision")))),
+                      ("Símbolos", ("level_mark", "north", "view", "revision",
+                                    "grid")))),
     ("Entorno", (("Terreno", ()), ("Vegetação", ("object:vegetation",)))),
     # Equipamentos (louças, eletrodomésticos) nasce no primeiro uso (objeto-parametrico §2.5).
     ("Interiores", (("Mobiliário", ("object:furniture",)),)),
@@ -164,7 +166,7 @@ def _roofs():
 # Ferramenta parecida, para arquivo antigo sem a camada padrão das novas (spec/ui 19 §6).
 FALLBACK = {"circle2d": "line2d", "arc2d": "line2d", "spline2d": "line2d",
             "radius_dim": "dimension", "angle_dim": "dimension", "label": "text",
-            "revision": "north"}
+            "revision": "north", "grid": "north"}
 
 
 def default_layer(config: dict, kind: str | None) -> str | None:
@@ -191,6 +193,8 @@ def kind_of(element) -> str | None:
 
     if objects.is_object(element) or objects.is_part(element):
         return objects.kind_of(element)
+    if element.is_a("IfcGrid"):
+        return "grid"
     for cls, kind in (("IfcWall", "wall"), ("IfcDoor", "door"), ("IfcWindow", "window"),
                       ("IfcColumn", "column"), ("IfcBeam", "beam"), ("IfcRoof", "roof"),
                       ("IfcSpace", "space"), ("IfcSlab", "slab")):

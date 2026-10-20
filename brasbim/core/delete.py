@@ -23,7 +23,11 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
     (``{"IfcDoor": n, "IfcWindow": m}``)."""
     entities = [doc.find(g) for g in sorted(gids)]
     entities = [e for e in entities if e is not None]
-    door_list = [e for e in entities if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
+    from brasbim.core.structure import skylights
+
+    sky = [e for e in entities if skylights.is_skylight(e)]
+    door_list = [e for e in entities if (e.is_a("IfcDoor") or e.is_a("IfcWindow"))
+                 and e not in sky]
     wall_list = [e for e in entities if e.is_a("IfcWall")]
     ops, seen, cascade = [], set(), {"IfcDoor": 0, "IfcWindow": 0}
 
@@ -33,6 +37,9 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
                 seen.add((op.op, op.id))
                 ops.append(op)
 
+    for element in [*sky, *(w for e in entities if sc.is_structure(e)
+                             for w in skylights.hosted_by(doc, e.GlobalId) if w not in sky)]:
+        add(skylights.delete_ops(doc, element))  # a claraboia sai antes da laje/cobertura
     for element in entities:  # objetos antes das paredes (o vão do objeto fica na parede)
         if objects.is_object(element):
             add(oc.delete_ops(doc, element))
@@ -52,6 +59,15 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
                 add(oc.delete_ops(doc, hosted))
         add(cmd.delete_wall(doc, wall).ops)
     for element in entities:
+        if cmd.is_wall_opening(element):
+            if openings.host(element) not in wall_list:
+                add(cmd.delete_opening(doc, element).ops)
+            continue
+        if element.is_a("IfcGrid"):
+            from brasbim.core import grids
+
+            add(grids.delete_ops(doc, element))
+            continue
         if ac.is_annotation(element):
             ops += ac.delete_ops(doc, element)
         elif sc.is_structure(element) or slab_openings.is_slab_opening(element):

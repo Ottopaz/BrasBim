@@ -8,16 +8,19 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 > **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
 > depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
-> Pacotes 12 (camadas, `spec/ui/18-camadas.md`) e 13 (objetos paramétricos e biblioteca,
-> `spec/elementos/objeto-parametrico.md`, OB01–OB21) **implementados**, aguardando o
-> revisor usar (pontos de revisão (a)–(k) do 13 ficaram como propostos). Próximo:
-> pacote 14 (desenho 2D). Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
-> função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
+> Pacotes 12 (camadas) e 13 (objetos paramétricos) implementados. **Fluxo do MVP**
+> (decisão do revisor, 2026‑10‑20): spec curta "em revisão" + implementação na sequência,
+> sem esperar aprovação; o revisor revisa spec e programa juntos. No MVP entram 14
+> (desenho 2D, `spec/ui/19`, **feito**), 15–16 (eixos, vão/nicho, claraboia,
+> `spec/ui/20`, **feito**), 17–18 (escada, guarda-corpo, terreno) e salvamento
+> automático, vistas 3D padrão, câmera salva e o fluxo de pôr vista na prancha. Pele de
+> vidro e forma livre ficam para depois do MVP. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
+> > função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (620 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (635 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -40,6 +43,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
 | `spec/elementos/objeto-parametrico.md` | aprovada e implementada (pacote 13; OB01–OB21 em `tests/test_objetos*.py` e `test_interface_objetos.py`). Nome "objeto paramétrico" ("Objeto" nos menus), editor por formulário + prévia, fórmulas, escolha e visibilidade, preso à parede, aninhados; biblioteca com mobiliário, louças, eletrodomésticos e vegetação |
+| `spec/ui/19-desenho-2d` | **em revisão**, implementada (pacote 14; D2D01–D2D08 em `tests/test_desenho_2d.py` e `test_interface_desenho_2d.py`) |
+| `spec/ui/20-eixos-vaos-claraboia` | **em revisão**, implementada (pacotes 15–16; EV01–EV06 em `tests/test_eixos_vaos.py` e `test_interface_eixos.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
@@ -447,6 +452,27 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   Biblioteca de objetos / Pastas da biblioteca / Novo objeto…, editor
   (`object_editor.py`) e diálogo Editar tipo (`object_dialogs.py`). Ícones `object`,
   `library`, `swap_type`, `select_same`, `detach`, `view_plan`, `view_3d`, `folder`.
+
+## Pacotes 14–16 — como ficou (spec/ui 19 e 20)
+- `core/annotations/drawing2d.py`: `circle2d`, `arc2d` (`arc_from_points`), `spline2d`
+  (Catmull-Rom), `radius_dim` (presa por `ref` a círculo, arco ou parede em arco;
+  `curve_of`, `curves_near`, `refresh_radius` na derivação), `angle_dim`, `label` (`field`
+  free/type/name/code; `label_text`) e `revision` (nuvem, `next_revision`). Camadas
+  padrão no conjunto inicial e `display_layers.FALLBACK` (ferramenta parecida) em
+  arquivo antigo. Ferramentas em `tools.py` (`_ClickTool`, `CircleTool`, `ArcTool`,
+  `SplineTool`, `RadiusDimTool`, `AngleDimTool`, `LabelTool`, `RevisionTool`).
+- `core/grids.py`: `IfcGrid` na edificação, estado em `BrasBim_Eixos`, `grid.*`;
+  desenho como anotação em todo pavimento (`plan._documentation`), cruzamentos no snap
+  (`PlanContext.grid_points`), transformações (`transform._grid_ops`). `GridTool`.
+- Vão e nicho: `WallOpeningTool` (subclasse de `_FillingTool`), papel `opening_box` na
+  planta (escolha), `walls.commands.is_wall_opening`/`delete_opening`, painel
+  `_wall_opening`; a mini-barra do vão só tem Excluir.
+- `core/structure/skylights.py`: `IfcWindow` `SKYLIGHT` que preenche um vão (Pset
+  `BrasBim_VaoClaraboia`, fora de `slab_openings.of_slab`) na laje ou na água da
+  cobertura sob o centro, no plano do topo (`support`); `skylight.*`, derivação pela
+  laje/cobertura/tipo, cascata ao excluir o apoio, acompanha mover/girar o apoio
+  (`transform._skylight_ops`). `SkylightTool`, painel `_skylight`, papéis
+  `window_skylight`/`window_glass`.
 
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
