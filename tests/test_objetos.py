@@ -418,3 +418,66 @@ def test_alca_mantem_o_lado_oposto_no_projeto(model):
     # face esquerda: o x local corre para trás; a ponta do início (x local 0) fica
     assert high[0] == pytest.approx(before_high[0], abs=1e-6)
     assert high[0] - low[0] == pytest.approx(2.0, abs=1e-6)
+
+
+def test_ob17_tabelas(model):
+    from brasbim.core.quantities import tables
+
+    load(model, cadeira(), "Cadeira simples")
+    t = load(model, cama(), "Cama casal", codigo="M1")
+    put(model, t, (1, 1))
+    put(model, t, (4, 1))
+    put(model, load(model, mesa(), "Mesa"), (1, 4))
+    tx = model.commit(tables.create_table(model.doc, "objects"))
+    result = tables.compute(model.doc, model.doc.get(tx.ops[0].id))
+    rows = {r.cells[2]: r.cells for r in result.rows if r.kind == "group"}
+    assert rows["Cama casal"][0] == "M1" and rows["Cama casal"][3] == 2
+    assert rows["Mesa"][3] == 1
+    assert rows["Cadeira simples"][3] == 6  # as cadeiras da mesa contam como cadeiras
+    # "parte de" e as colunas de parâmetro
+    state = {"name": "Cadeiras", "category": "furniture",
+             "columns": [{"field": "type"}, {"field": "part_of"}, {"field": "count"}],
+             "group_by": "type", "rows": "group"}
+    result = tables.compute(model.doc, state)
+    chairs = next(r for r in result.rows if r.kind == "group" and r.cells[0] == "Cadeira simples")
+    assert chairs.cells[1] == "Mesa"
+    fields = tables.fields_of("furniture", model.doc)
+    assert "param:largura" in fields and fields["param:largura"].title == "Largura"
+    state = {"name": "Camas", "category": "furniture", "types": [t.GlobalId],
+             "columns": [{"field": "type"}, {"field": "param:largura"}, {"field": "count"}],
+             "group_by": "type", "rows": "group"}
+    result = tables.compute(model.doc, state)
+    (row,) = [r for r in result.rows if r.kind == "group"]
+    assert row.cells[1] == pytest.approx(1.38)
+
+
+def test_ob20_assistente(model):
+    import json
+
+    from brasbim.core.assistant.tools import Context, default_registry
+
+    ctx = Context(model.doc, model.commit, model.terreo.GlobalId)
+
+    def call(tool, **args):
+        result = default_registry().call(ctx, tool, args)
+        text = result["content"][0]["text"]
+        return (text if result["isError"] else json.loads(text)), result["isError"]
+
+    out, err = call("list_objects", query="cama")
+    assert not err, out
+    (cama_lib,) = [o for o in out["na_biblioteca"] if o["objeto"] == "Cama"]
+    assert "Cama de casal 1,38 × 1,88" in cama_lib["tipos"]
+    assert {p["nome"]: p["nivel"] for p in cama_lib["parametros"]}["largura"] == "tipo"
+    out, err = call("insert_object", type="Cama de casal 1,38 × 1,88", at=[2, 2])
+    assert not err, out
+    model_out, _ = call("describe_model")
+    (obj,) = model_out["objetos"]
+    assert obj["tipo"] == "Cama de casal 1,38 × 1,88" and obj["ponto"] == [2.0, 2.0]
+    out, err = call("edit_object", id=obj["id"], rotation=90)
+    assert not err, out
+    assert elements.read_state(model.doc, model.doc.get(obj["id"]))["angle"] == \
+        pytest.approx(90.0)
+    model.wall((0, 0), (5, 0))
+    out, err = call("insert_object", type="Lavatório suspenso", at=[1.5, 0.2])
+    assert not err, out
+    assert elements.read_state(model.doc, model.doc.get(out["id"]))["host"] is not None

@@ -1174,7 +1174,7 @@ class PropertiesPanel(QScrollArea):
         """Definição da tabela (spec/ui 17 §5): cada mudança é um ``table.edit``."""
         doc = self.session.doc
         state = tables.read_state(table)
-        fields = tables.fields_of(state["category"])
+        fields = tables.fields_of(state["category"], doc)
 
         def edit(**changes):
             self._run(lambda: tables.edit_table(doc, table, **changes))

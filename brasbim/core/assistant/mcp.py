@@ -55,6 +55,9 @@ Convenções:
 - Perguntas de quantidade (quantos, quantos m², metros de parede, volume de
   concreto): use table, que lê as quantidades do modelo, em vez de somar à mão
   os dados de describe_model.
+- Mobiliário, louças, eletrodomésticos e vegetação: list_objects mostra o que há no
+  projeto e na biblioteca; insert_object põe pelo nome do tipo (a frente do objeto
+  olha para -y local: gire para a frente dar para o cômodo). Para mudar, edit_object.
 - Se uma ferramenta recusar, leia a mensagem e corrija; não repita igual.
 - Confira o resultado com describe_model (e view_plan, se houver) antes de terminar.
 - A resposta final aparece num painel pequeno, em texto simples: sem Markdown (nada de

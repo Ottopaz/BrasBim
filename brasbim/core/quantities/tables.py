@@ -61,7 +61,23 @@ CATEGORIES = {
     "beams": Category("Vigas", ("IfcBeam",), ("IfcBeamType",)),
     "roofs": Category("Coberturas", ("IfcRoof",), ("IfcSlabType",)),
     "spaces": Category("Ambientes", ("IfcSpace",), ()),
+    # objetos paramétricos (objeto-parametrico.md §8)
+    "furniture": Category("Mobiliário", ("IfcFurniture",), ("IfcFurnitureType",)),
+    "sanitary": Category("Louças e metais", ("IfcSanitaryTerminal",),
+                         ("IfcSanitaryTerminalType",)),
+    "appliances": Category("Eletrodomésticos", ("IfcElectricAppliance",),
+                           ("IfcElectricApplianceType",)),
+    "vegetation": Category("Vegetação", ("IfcGeographicElement",),
+                           ("IfcGeographicElementType",)),
+    "objects": Category("Objetos", ("IfcFurniture", "IfcSanitaryTerminal",
+                                    "IfcElectricAppliance", "IfcGeographicElement",
+                                    "IfcBuildingElementProxy"),
+                        ("IfcFurnitureType", "IfcSanitaryTerminalType",
+                         "IfcElectricApplianceType", "IfcGeographicElementType",
+                         "IfcBuildingElementProxyType")),
 }
+OBJECT_CATEGORIES = ("furniture", "sanitary", "appliances", "vegetation", "objects")
+PARAM_PREFIX = "param:"
 
 
 # --- leitura dos elementos ---------------------------------------------------------------
@@ -73,6 +89,7 @@ class _Reader:
     def __init__(self, doc: Document):
         self.doc = doc
         self._types: dict[str, dict] = {}
+        self._built: dict[str, object] = {}
 
     def storey(self, element):
         current = element
@@ -91,6 +108,18 @@ class _Reader:
             if roofs.is_roof(element):
                 return self.doc.find(roofs.read_state(self.doc, element)["type"] or "")
         return ifcopenshell.util.element.get_type(element)
+
+    def built(self, element):
+        """Cálculo do objeto paramétrico (de primeiro nível ou aninhado), guardado."""
+        from brasbim.core.objects import elements as objects
+
+        gid = element.GlobalId
+        if gid not in self._built:
+            try:
+                self._built[gid] = objects.built_of(self.doc, element)
+            except (OpError, KeyError, TypeError, ValueError):
+                self._built[gid] = None
+        return self._built[gid]
 
     def type_state(self, element_type) -> dict:
         gid = element_type.GlobalId
@@ -202,6 +231,76 @@ class Field:
         return f"{self.title} ({self.unit})" if self.unit else self.title
 
 
+def _object_value(r: _Reader, e, what: str):
+    built = r.built(e)
+    if built is None:
+        return None
+    if what == "object":
+        return built.definition["name"]
+    if what == "code":
+        return built.type_state["values"].get("codigo") or None
+    if what in ("length", "depth", "height"):
+        box = built.box
+        if box is None:
+            return None
+        return {"length": box[1] - box[0], "depth": box[3] - box[2],
+                "height": box[5] - box[4]}[what]
+    return None
+
+
+def _part_of(r: _Reader, e):
+    from brasbim.core.objects import elements as objects
+
+    if not objects.is_part(e):
+        return None
+    return objects.parent_of(e).Name
+
+
+def _object_category(r: _Reader, e):
+    from brasbim.core.objects import definition as od
+
+    built = r.built(e)
+    return od.CATEGORIES[built.definition["category"]][3] if built is not None else None
+
+
+def _param_field(key: str, p: dict | None = None):
+    """Coluna de um parâmetro do objeto (§8): ``param:<identificador>``."""
+    from brasbim.core.objects import formula as fm
+
+    name = key[len(PARAM_PREFIX):]
+    title = (p or {}).get("label") or name
+    unit = {"length": "m", "angle": "°"}.get((p or {}).get("kind"))
+
+    def get(r: _Reader, e):
+        built = r.built(e)
+        if built is None:
+            return None
+        value = built.values.get(fm.key(name))
+        if isinstance(value, bool):
+            return "sim" if value else "não"
+        return value
+
+    return Field(key, title, unit, False, get)
+
+
+class _Fields(dict):
+    """Campos da categoria; nos objetos, ``param:<identificador>`` vale sempre."""
+
+    def __init__(self, items, objects: bool):
+        super().__init__(items)
+        self.objects = objects
+
+    def __missing__(self, key):
+        if self.objects and isinstance(key, str) and key.startswith(PARAM_PREFIX):
+            return _param_field(key)
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        return super().__contains__(key) or (
+            self.objects and isinstance(key, str) and key.startswith(PARAM_PREFIX)
+            and len(key) > len(PARAM_PREFIX))
+
+
 def _storey_name(r: _Reader, e):
     storey = r.storey(e)
     return storey.Name if storey is not None else None
@@ -275,6 +374,16 @@ _OWN = {
               lambda r, e: _q(e, "Qto_RoofBaseQuantities", "NetArea")),
         Field("plan_area", "Área em planta", "m²", True, _plan_area),
     ],
+    **{k: [
+        Field("code", "Código", None, False, lambda r, e: _object_value(r, e, "code")),
+        Field("object", "Objeto", None, False, lambda r, e: _object_value(r, e, "object")),
+        Field("class", "Categoria", None, False, _object_category),
+        Field("part_of", "Parte de", None, False, _part_of),
+        Field("length", "Largura", "m", False, lambda r, e: _object_value(r, e, "length")),
+        Field("depth", "Profundidade", "m", False,
+              lambda r, e: _object_value(r, e, "depth")),
+        Field("height", "Altura", "m", False, lambda r, e: _object_value(r, e, "height")),
+    ] for k in OBJECT_CATEGORIES},
     "spaces": [
         Field("number", "Número", None, False, lambda r, e: e.Name),
         Field("space_name", "Nome do ambiente", None, False, lambda r, e: e.LongName),
@@ -287,10 +396,28 @@ _OWN = {
 _NATURAL = {"doors": "code", "windows": "code", "fillings": "code", "spaces": "number"}
 
 
-def fields_of(category: str) -> dict[str, Field]:
+def fields_of(category: str, doc: Document | None = None) -> dict[str, Field]:
+    """Campos da categoria. Nos objetos, com ``doc``, também os parâmetros dos tipos do
+    projeto daquela categoria (§8)."""
     if category not in CATEGORIES:
         raise OpError(f"categoria de tabela inválida: {category!r}")
-    return {f.key: f for f in (*_COMMON, *_OWN[category])}
+    out = _Fields({f.key: f for f in (*_COMMON, *_OWN[category])},
+                  category in OBJECT_CATEGORIES)
+    if doc is not None and category in OBJECT_CATEGORIES:
+        from brasbim.core.objects import definition as od
+        from brasbim.core.objects import types as ot
+
+        classes = CATEGORIES[category].type_classes
+        for t in ot.all_types(doc):
+            if not any(t.is_a(c) for c in classes):
+                continue
+            for p in ot.definition_of(t)["params"]:
+                if od.is_builtin(p):
+                    continue
+                key = PARAM_PREFIX + p["name"]
+                if key not in dict.keys(out):
+                    out[key] = _param_field(key, p)
+    return out
 
 
 def elements_of(doc: Document, state: dict, reader: _Reader | None = None) -> list:
@@ -301,9 +428,14 @@ def elements_of(doc: Document, state: dict, reader: _Reader | None = None) -> li
     category = CATEGORIES[state["category"]]
     found = {e.GlobalId: e for cls in category.classes for e in doc.ifc.by_type(cls)}
     out = []
+    objects_only = state["category"] in OBJECT_CATEGORIES
+    if objects_only:
+        from brasbim.core.objects import elements as objects
     for e in found.values():
         if state["category"] == "slabs" and roofs.is_part(e):
             continue  # as águas entram pela cobertura
+        if objects_only and not (objects.is_object(e) or objects.is_part(e)):
+            continue  # só os objetos do BrasBim (e os aninhados, que contam por si)
         if state["storeys"]:
             storey = reader.storey(e)
             if storey is None or storey.GlobalId not in state["storeys"]:
@@ -647,6 +779,10 @@ TEMPLATES = {
         {"name": "Estrutura: lajes", "category": "slabs",
          "columns": _cols("type", "count", "volume"), "group_by": "type",
          "rows": "group"}]),
+    "objects": ("Lista de mobiliário e equipamentos", [{
+        "name": "Lista de mobiliário e equipamentos", "category": "objects",
+        "columns": _cols("code", "object", "type", "count"),
+        "group_by": "type", "rows": "group"}]),
     "blank": ("Em branco", [{"category": None, "columns": _cols("type", "count")}]),
 }
 

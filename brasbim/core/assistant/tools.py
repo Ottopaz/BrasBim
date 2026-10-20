@@ -285,8 +285,9 @@ def describe_model(ctx: Context, args: dict) -> dict:
                           "contorno_apoio": [_pt(p) for p in state["outline"]],
                           "area_telhado": _r(q.get("NetArea", 0.0))})
 
+    object_list = _objects_of(doc, storey)
     locked = display_layers.locked_ids(doc)  # aparecem marcados (spec/ui 18 §4)
-    for item in (*walls, *fillings, *rooms, *slab_list, *roof_list):
+    for item in (*walls, *fillings, *rooms, *slab_list, *roof_list, *object_list):
         if item["id"] in locked:
             item["bloqueado"] = True
 
@@ -306,8 +307,166 @@ def describe_model(ctx: Context, args: dict) -> dict:
                   "laje": names("IfcSlabType", _floor),
                   "cobertura": names("IfcSlabType", _roof_type)},
         "paredes": walls, "esquadrias": fillings, "ambientes": rooms, "lajes": slab_list,
-        "coberturas": roof_list,
+        "coberturas": roof_list, "objetos": object_list,
     }
+
+
+# --- objetos paramétricos (objeto-parametrico.md §5.5) ------------------------------------
+
+
+def _objects_of(doc: Document, storey) -> list[dict]:
+    from brasbim.core.objects import elements as objects
+
+    out = []
+    for e in objects.all_objects(doc):
+        try:
+            state = objects.read_state(doc, e)
+        except OpError:
+            continue
+        if state["storey"] != storey.GlobalId or display_layers.is_hidden(doc, e):
+            continue
+        t = doc.find(state["type"])
+        item = {"id": e.GlobalId, "tipo": t.Name if t else None, "ponto": _pt(state["point"]),
+                "rotacao": _r(state["angle"])}
+        if state["host"] is not None:
+            item["parede"] = state["host"]["wall"]
+        if state["values"]:
+            item["valores"] = {k: (_r(v) if isinstance(v, float) else v)
+                               for k, v in state["values"].items()}
+        out.append(item)
+    return out
+
+
+def _params_text(defn: dict) -> list[dict]:
+    from brasbim.core.objects import definition as od
+
+    out = []
+    for p in defn["params"]:
+        if p["name"] in ("codigo", "descricao"):
+            continue
+        item = {"nome": p["name"], "rotulo": p["label"], "nivel": (
+            "ocorrência" if p["level"] == "occurrence" else "tipo"),
+            "valor": od.KIND_LABELS[p["kind"]].lower()}
+        if p.get("formula"):
+            item["formula"] = p["formula"]
+        if p.get("options"):
+            item["opcoes"] = p["options"]
+        out.append(item)
+    return out
+
+
+def _library():
+    from brasbim.core.objects import library
+
+    return library.Index([library.builtin_folder()])
+
+
+def list_objects(ctx: Context, args: dict) -> dict:
+    """Tipos de objeto do projeto e da biblioteca do BrasBim, com os parâmetros."""
+    from brasbim.core.objects import types as ot
+
+    doc = ctx.doc
+    query = str(args.get("query") or "").casefold()
+    project = {}
+    for t in ot.all_types(doc):
+        defn = ot.definition_of(t)
+        if query and query not in t.Name.casefold() and query not in defn["name"].casefold():
+            continue
+        entry = project.setdefault(defn["object_id"], {
+            "objeto": defn["name"], "preso_a_parede": defn["hosting"] == "wall",
+            "parametros": _params_text(defn), "tipos": []})
+        entry["tipos"].append(t.Name)
+    library_out = {}
+    for e in _library().entries():
+        if query and query not in e.name.casefold() and                 query not in e.definition["name"].casefold():
+            continue
+        entry = library_out.setdefault(e.object_id, {
+            "objeto": e.definition["name"], "preso_a_parede": e.definition["hosting"] == "wall",
+            "parametros": _params_text(e.definition), "tipos": []})
+        entry["tipos"].append(e.name)
+    return {"no_projeto": list(project.values()), "na_biblioteca": list(library_out.values())}
+
+
+def _object_type(ctx: Context, name: str):
+    """Tipo pelo nome: do projeto, ou carregado da biblioteca na hora."""
+    from brasbim.core.objects import library
+    from brasbim.core.objects import types as ot
+
+    doc = ctx.doc
+    found = ot.by_name(doc, name)
+    if found is not None:
+        return found
+    index = _library()
+    entries = index.entries()
+    wanted = [e for e in entries if e.name == name] or [
+        e for e in entries if e.name.casefold().startswith(name.casefold())]
+    if not wanted:
+        raise OpError(f"objeto {name!r} não está no projeto nem na biblioteca "
+                      "(veja list_objects)")
+    ctx.commit(library.load(doc, entries, wanted[:1]))
+    return ot.by_name(doc, wanted[0].name)
+
+
+def insert_object(ctx: Context, args: dict) -> dict:
+    from brasbim.core.objects import commands as oc
+    from brasbim.core.objects import types as ot
+
+    doc = ctx.doc
+    storey = _storey(ctx, args)
+    t = _object_type(ctx, str(args.get("type") or ""))
+    defn = ot.definition_of(t)
+    values = dict(args.get("values") or {})
+    if "elevation" in args:
+        values["elevacao"] = float(args["elevation"])
+    host = None
+    point = _point(args.get("at") or [0, 0], "at")
+    if defn["hosting"] == "wall":
+        from brasbim.core.objects import elements as objects
+        from brasbim.core.objects import hosting
+
+        wall = (doc.get(args["wall"], "IfcWall") if args.get("wall")
+                else _wall_at(doc, storey, point)[0])
+        tstate = ot.read(t)
+        built = objects.build(doc, tstate, ot.stored_values(
+            defn, {**tstate["defaults"], **values}, "occurrence"), False)
+        box = built.box or (0, 0, 0, 0, 0, 0)
+        host = hosting.at_point(doc, wall, point, box[1] - box[0])
+        if host is None:
+            raise OpError("parede inválida para o objeto (só paredes retas)")
+        if args.get("side") in ("left", "right"):
+            host["side"] = args["side"]
+        if "distance" in args:
+            host["distance"] = float(args["distance"])
+    tx = oc.create_object(doc, t, storey, point, angle=float(args.get("rotation") or 0.0),
+                          values=values, host=host)
+    ctx.commit(tx)
+    return {"id": tx.ops[-1].id, "tipo": t.Name}
+
+
+def edit_object(ctx: Context, args: dict) -> dict:
+    from brasbim.core.objects import commands as oc
+    from brasbim.core.objects import elements as objects
+
+    doc = ctx.doc
+    element = doc.get(args["id"])
+    if not objects.is_object(element):
+        raise OpError(f"{args['id']} não é objeto")
+    if args.get("type"):
+        t = _object_type(ctx, str(args["type"]))
+        ctx.commit(oc.change_type(doc, [element.GlobalId], t))
+    changes = {}
+    if "at" in args:
+        changes["point"] = list(_point(args["at"], "at"))
+    if "rotation" in args:
+        changes["angle"] = float(args["rotation"])
+    values = dict(args.get("values") or {})
+    if "elevation" in args:
+        values["elevacao"] = float(args["elevation"])
+    if values:
+        changes["values"] = values
+    if changes:
+        ctx.commit(oc.edit_object(doc, element, **changes))
+    return {"id": element.GlobalId, "estado": objects.read_state(doc, element)}
 
 
 # --- criação ------------------------------------------------------------------------------
@@ -845,12 +1004,42 @@ def default_registry() -> Registry:
         "conferir o resultado.",
         _obj({"storey": _STOREY}), describe_model, changes=False))
     reg.add(Tool(
+        "list_objects", "Procurando objetos",
+        "Lista os objetos (mobiliário, louças, eletrodomésticos, vegetação) do projeto e "
+        "da biblioteca do BrasBim, com os tipos e os parâmetros (de tipo ou de "
+        "ocorrência). 'query' filtra pelo nome.",
+        _obj({"query": {"type": "string"}}), list_objects, changes=False))
+    reg.add(Tool(
+        "insert_object", "Inserindo objeto",
+        "Põe um objeto pelo nome do tipo (carrega da biblioteca se preciso). 'at' é o "
+        "ponto de inserção (canto da frente-esquerda do objeto; a frente olha para -y "
+        "local), 'rotation' em graus anti-horário. Objeto preso à parede: 'at' perto da "
+        "parede (ou 'wall'), opcionais 'side' (left/right) e 'distance' ao longo dela. "
+        "'values' muda parâmetros de ocorrência (ex.: {\"largura\": 1.2}); 'elevation' "
+        "é a altura da base acima do piso.",
+        _obj({"type": {"type": "string"}, "at": _XY, "rotation": {"type": "number"},
+              "values": {"type": "object"}, "elevation": {"type": "number"},
+              "wall": {"type": "string"}, "side": {"type": "string",
+                                                   "enum": ["left", "right"]},
+              "distance": {"type": "number"}, "storey": _STOREY}, ["type", "at"]),
+        insert_object))
+    reg.add(Tool(
+        "edit_object", "Editando objeto",
+        "Muda um objeto: posição ('at'), rotação, tipo (outro da mesma categoria), "
+        "parâmetros de ocorrência ('values') ou elevação.",
+        _obj({"id": {"type": "string"}, "at": _XY, "rotation": {"type": "number"},
+              "type": {"type": "string"}, "values": {"type": "object"},
+              "elevation": {"type": "number"}}, ["id"]),
+        edit_object))
+    reg.add(Tool(
         "table", "Calculando quantitativos",
         "Tabela de quantitativos lida do modelo (as quantidades do IFC): contagens, "
         "comprimentos, áreas e volumes por categoria, com filtro, agrupamento e totais. "
         "Use para perguntas de quantidade (\"quantos m² de parede tem o térreo?\", "
         "\"quantas janelas J1?\") em vez de somar à mão. Categorias: walls, doors, "
-        "windows, fillings (portas e janelas), slabs, columns, beams, roofs, spaces. "
+        "windows, fillings (portas e janelas), slabs, columns, beams, roofs, spaces, "
+        "furniture, sanitary, appliances, vegetation, objects (todos os objetos: code, "
+        "object, class, part_of, length, depth, height, param:<parâmetro>). "
         "Campos comuns: storey, type, name, count, guid. Paredes: length, thickness, "
         "height, side_area (líquida, uma face), gross_side_area, volume. Esquadrias: "
         "code, class, width, height, sill, area, operation. Lajes: area, perimeter, "
