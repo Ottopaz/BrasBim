@@ -72,6 +72,18 @@ def representation(product, identifier: str):
     return None
 
 
+def body_shape(settings, product):
+    """Malha do ``Body`` de ``product``. O IfcOpenShell 0.9 processa a primeira
+    representação 3D, que num pilar ou viga é o ``Axis`` (Curve3D) e falha; por isso o
+    corpo é pedido explicitamente. Sem ``Body`` (arquivo de outra origem), fica o padrão."""
+    import ifcopenshell.geom
+
+    body = representation(product, "Body")
+    if body is None:
+        return ifcopenshell.geom.create_shape(settings, product)
+    return ifcopenshell.geom.create_shape(settings, product, body)
+
+
 def replace_representation(doc, product, identifier: str, new_rep) -> None:
     """Troca (ou acrescenta) a representação ``identifier`` e apaga a antiga."""
     shape = product.Representation

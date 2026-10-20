@@ -160,11 +160,6 @@ def test_rc10_validacao_e_3d(model, tmp_path):
     model.wall((0, 0), (5, 0), ref_line="axis")
     _slab(model)
     assert valid(model.reopen(tmp_path))
-    import ifcopenshell.geom
-    import numpy as np
-
-    settings = ifcopenshell.geom.settings()
-    settings.set("use-world-coords", True)
-    verts = np.array(ifcopenshell.geom.create_shape(settings, beam).geometry.verts).reshape(-1, 3)
-    assert verts[:, 0].min() == pytest.approx(0.1) and verts[:, 0].max() == pytest.approx(4.9)
+    lo, hi = bounds(beam)
+    assert lo[0] == pytest.approx(0.1) and hi[0] == pytest.approx(4.9)
     assert snapshot(model.doc.ifc)

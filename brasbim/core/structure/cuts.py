@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import ifcopenshell.util.element
 
-from brasbim.core import clip, geom2d, guid
+from brasbim.core import clip, geom2d, guid, props
 from brasbim.core.document import Document, OpError
 
 log = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ def _foreign_piece(element) -> Piece | None:
     settings = ifcopenshell.geom.settings()
     settings.set("use-world-coords", True)
     try:
-        shape = ifcopenshell.geom.create_shape(settings, element)
+        shape = props.body_shape(settings, element)
     except RuntimeError:
         return None
     verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)

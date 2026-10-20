@@ -21,7 +21,7 @@ import ifcopenshell.geom
 import ifcopenshell.util.element
 import numpy as np
 
-from brasbim.core import clip, materials
+from brasbim.core import clip, materials, props
 from brasbim.core.annotations.drafting import signed
 from brasbim.core.annotations.prims import Text
 from brasbim.core.document import Document, OpError
@@ -92,7 +92,7 @@ def _inside(ring, p) -> bool:
 
 def _mesh(element, settings):
     try:
-        shape = ifcopenshell.geom.create_shape(settings, element)
+        shape = props.body_shape(settings, element)
     except RuntimeError:
         return None
     g = shape.geometry

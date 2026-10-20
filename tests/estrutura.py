@@ -15,7 +15,7 @@ import ifcopenshell.validate
 import numpy as np
 from conftest import PROJECT_ID, snapshot
 
-from brasbim.core import IFC_SCHEMA
+from brasbim.core import IFC_SCHEMA, props
 from brasbim.core.document import Document
 from brasbim.core.ops import History, Transaction
 from brasbim.core.structure import commands as sc
@@ -59,7 +59,7 @@ def bounds(element):
     """(mínimo, máximo) do corpo em coordenadas do mundo."""
     settings = ifcopenshell.geom.settings()
     settings.set("use-world-coords", True)
-    shape = ifcopenshell.geom.create_shape(settings, element)
+    shape = props.body_shape(settings, element)
     verts = np.array(shape.geometry.verts).reshape(-1, 3)
     return verts.min(axis=0), verts.max(axis=0)
 

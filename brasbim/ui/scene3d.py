@@ -21,7 +21,7 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import clip, geom2d, layers, materials, mesh_layers
+from brasbim.core import clip, geom2d, layers, materials, mesh_layers, props
 from brasbim.core.document import OpError
 from brasbim.core.structure import roofs
 from brasbim.core.walls import rebuild
@@ -179,7 +179,7 @@ class Scene:
             return self._roof_mesh(entity)
         self.tessellations += 1
         try:
-            shape = ifcopenshell.geom.create_shape(self._settings, entity)
+            shape = props.body_shape(self._settings, entity)
         except RuntimeError as e:
             log.debug("sem geometria 3D para %s: %s", entity.GlobalId, e)
             return None

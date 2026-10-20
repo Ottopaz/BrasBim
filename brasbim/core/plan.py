@@ -41,7 +41,7 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import clip, geom2d, layers, materials, storeys
+from brasbim.core import clip, geom2d, layers, materials, props, storeys
 from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, geometry, params, window_types
@@ -698,7 +698,7 @@ def _foreign_element(element, storey, kind: str) -> _Element | None:
     settings = ifcopenshell.geom.settings()
     settings.set("use-world-coords", True)
     try:
-        shape = ifcopenshell.geom.create_shape(settings, element)
+        shape = props.body_shape(settings, element)
     except RuntimeError:
         return None
     verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
