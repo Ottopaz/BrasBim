@@ -226,6 +226,10 @@ def create_object(doc: Document, element_type, storey, point, angle: float = 0.0
                                         {**tstate["defaults"], **(values or {})},
                                         "occurrence"),
              "host": copy.deepcopy(host)}
+    if host is not None:
+        _check_host(doc, state)
+    elif tstate["definition"]["hosting"] == "wall":
+        raise OpError("este objeto se prende a uma parede: clique perto de uma parede")
     ops = layer_ops(doc, tstate["definition"]["category"])
     ops.append(Op("object.create", gid or guid.new(), data=state))
     return Transaction("Inserir objeto", ops)
@@ -247,9 +251,43 @@ def edit_object(doc: Document, element, **changes) -> Transaction:
             after[key] = copy.deepcopy(value)
     if not after:
         return Transaction("Editar objeto", [])
+    new_state = {**state, **after}
+    if new_state["host"] is not None and ({"host", "values", "type", "mirror"} & set(after)):
+        _check_host(doc, new_state, exclude=hosting_opening(element))
     return Transaction("Editar objeto", [Op("object.edit", element.GlobalId,
                                             before={k: copy.deepcopy(state[k]) for k in after},
                                             after=after)])
+
+
+def _check_host(doc: Document, state: dict, exclude: str | None = None) -> None:
+    from brasbim.core.objects import hosting
+
+    _, _, built = elements.resolve(doc, state)
+    hosting.check(doc, state, built, exclude=exclude)
+
+
+def hosting_opening(element) -> str:
+    from brasbim.core.objects import hosting
+
+    return hosting.opening_id(element)
+
+
+def detach(doc: Document, element) -> Transaction:
+    """Soltar da parede (§6.3): o objeto fica livre no mesmo lugar, sem o vão."""
+    element = _element(doc, element)
+    state = elements.read_state(doc, element)
+    if state["host"] is None:
+        return Transaction("Soltar da parede", [])
+    tx = edit_object(doc, element, host=None, point=state["point"], angle=state["angle"])
+    return Transaction("Soltar da parede", tx.ops)
+
+
+def attach(doc: Document, element, wall, side: str, distance: float) -> Transaction:
+    """Prender à parede (§6.3)."""
+    element = _element(doc, element)
+    tx = edit_object(doc, element, host={"wall": _gid(wall), "side": side,
+                                         "distance": float(distance)})
+    return Transaction("Prender à parede", tx.ops)
 
 
 def edit_objects(doc: Document, gids, **changes) -> Transaction:

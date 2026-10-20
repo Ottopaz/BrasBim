@@ -506,8 +506,9 @@ A mesma função serve à prévia do editor, que trabalha num documento temporá
 - Os objetos podem se sobrepor livremente (sem aviso de colisão no pacote 13).
 
 ### 6.3 Preso à parede
-- A definição com hospedagem **parede** põe a face de trás do objeto (y = 0 local,
-  depois da rotação) **na face** da parede escolhida, com a frente para fora.
+- A definição com hospedagem **parede** põe o fundo do objeto (o maior y local da caixa
+  que envolve, já que a frente olha para −y) **na face** da parede escolhida, com a
+  frente para fora.
 - Estado: parede (GlobalId), face (`left`/`right`, como no nicho), distância ao longo
   do eixo (como a porta) e elevação.
 - A parede que **se move, gira ou muda de espessura** leva o objeto junto. O objeto

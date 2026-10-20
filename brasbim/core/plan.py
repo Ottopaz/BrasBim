@@ -319,7 +319,7 @@ def _cut_wall(doc: Document, wall, cut: float, show_above: bool) -> _Cut | None:
     pieces = clip.intersection(local, slabs)
     if straight and pieces:
         holes = []
-        for opening in openings.of_wall(wall):
+        for opening in openings.of_wall(wall, objects=True):
             try:
                 o = openings.read_state(opening)
             except OpError:

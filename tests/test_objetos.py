@@ -234,3 +234,162 @@ def test_geometria_das_pecas(model, name, mirror):
     tol = 0.02 if "revolução" in name or "cilindro" in name else 1e-4
     assert low == pytest.approx([x0, y0, z0], abs=tol)
     assert high == pytest.approx([x1, y1, z1], abs=tol)
+
+
+def cadeira():
+    params = [od.new_param("assento", "length", "occurrence", 0.45, label="Altura do assento")]
+    pieces = [od.new_piece("box", name="Assento", x=-0.22, y=-0.22, z="assento - 0,04",
+                           width=0.44, depth=0.44, height=0.04, role="Frame",
+                           material="Madeira")]
+    return od.new_definition("Cadeira", "furniture", predefined_type="CHAIR", params=params,
+                             pieces=pieces)
+
+
+def mesa():
+    params = [
+        od.new_param("comprimento", "length", "occurrence", 1.80, min=0.8,
+                     label="Comprimento", handle={"axis": "x", "side": "end"}),
+        od.new_param("lugares", "integer", "occurrence",
+                     formula="arred_baixo(comprimento / 0,60) * 2", label="Lugares"),
+        od.new_param("cadeira", "object_type", "type", "Cadeira simples", label="Cadeira",
+                     accepts={"category": "furniture", "predefined_type": "CHAIR"}),
+    ]
+    pieces = [
+        od.new_piece("box", name="Tampo", z=0.73, width="comprimento", depth=0.90,
+                     height=0.03, role="Frame", material="Madeira"),
+        od.new_piece("object", name="Cadeiras da frente", type={"param": "cadeira"},
+                     x=0.30, y=-0.15, values={"assento": 0.46},
+                     repeat={"count": "lugares / 2", "dx": 0.60}),
+        od.new_piece("object", name="Cadeiras de trás", type={"param": "cadeira"},
+                     x=0.30, y=1.05, rotation=180, repeat={"count": "lugares / 2", "dx": 0.60}),
+    ]
+    return od.new_definition("Mesa", "furniture", predefined_type="TABLE", params=params,
+                             pieces=pieces)
+
+
+def test_ob09_aninhados(model):
+    simple = load(model, cadeira(), "Cadeira simples")
+    other = load(model, cadeira(), "Cadeira estofada")
+    t = load(model, mesa(), "Mesa")
+    m = put(model, t, (1, 1))
+    parts = elements.parts_of(m)
+    assert len(parts) == 6
+    assert all(ue.get_type(p) == simple for p in parts)
+    assert all(p.Decomposes[0].RelatingObject == m for p in parts)
+    assert all(not p.ContainedInStructure for p in parts)
+    assert ue.get_pset(parts[0], "BrasBim_Parametros")["Altura do assento"] in (
+        pytest.approx(0.46), pytest.approx(0.45))
+    ids = sorted(p.GlobalId for p in parts)
+
+    def longer():
+        model.commit(oc.edit_object(model.doc, m, values={"comprimento": 2.40}))
+
+    check_history(model, longer)
+    assert len(elements.parts_of(m)) == 8
+    model.history.undo()
+    assert sorted(p.GlobalId for p in elements.parts_of(m)) == ids
+    model.commit(oc.edit_type(model.doc, t, values={"cadeira": "Cadeira estofada"}))
+    assert all(ue.get_type(p) == other for p in elements.parts_of(m))
+    # o clique escolhe a mesa; as cadeiras contam como cadeiras
+    p = plan.storey_plan(model.doc, model.terreo)
+    assert {s.owner for s in p.shapes if s.role.startswith("object")} == {m.GlobalId}
+    assert valid(model.doc.ifc)
+
+
+def test_ob09_ciclo_e_tipo_ausente(model):
+    defn = mesa()
+    defn["params"][2]["value"] = "Mesa"
+    t = load(model, defn, "Mesa", cadeira="Cadeira simples")
+    with pytest.raises(OpError, match="não está no projeto"):
+        put(model, t)
+
+
+def lavatorio(void=False):
+    pieces = [od.new_piece("box", name="Cuba", x=0, y=0, z=0, width=0.50, depth=0.40,
+                           height=0.18, role="Body", material="Louça")]
+    if void:
+        pieces.append(od.new_piece("box", name="Nicho", x=0.05, y=0.40, z=0.20, width=0.40,
+                                   depth=0.05, height=0.30, void=True))
+    return od.new_definition("Lavatório suspenso", "sanitary", predefined_type="WASHHANDBASIN",
+                             hosting="wall", elevation=0.80, pieces=pieces)
+
+
+def test_ob10_preso_a_parede(model):
+    wall = model.wall((0, 0), (5, 0))
+    t = load(model, lavatorio(), "Lavatório")
+    assert ue.get_pset(t, "Pset_SanitaryTerminalTypeCommon")
+    tx = model.commit(oc.create_object(model.doc, t, model.terreo, (0, 0),
+                                       host={"wall": wall.GlobalId, "side": "left",
+                                             "distance": 1.0}))
+    e = model.doc.get(tx.ops[-1].id)
+    rel = next(r for r in wall.ConnectedTo if r.is_a() == "IfcRelConnectsElements")
+    assert rel.RelatedElement == e
+    from estrutura import bounds
+
+    from brasbim.core.walls import rebuild
+    from brasbim.core.walls.wall import read_state as read_wall
+
+    face = rebuild.band(model.doc, read_wall(model.doc, wall)).ymax
+    low, high = bounds(e)
+    # o fundo encosta na face esquerda da parede, a frente para +y
+    assert low == pytest.approx([1.0, face, 0.80], abs=1e-4)
+    assert high == pytest.approx([1.5, face + 0.40, 0.98], abs=1e-4)
+    # mover a parede leva o objeto
+    from brasbim.core.walls import commands as wc
+
+    model.commit(transform.move_elements(model.doc, [wall.GlobalId], (0.0, 0.5)))
+    low, _ = bounds(e)
+    assert low[1] == pytest.approx(face + 0.5, abs=1e-4)
+    # mover só o objeto desliza ao longo da parede
+    model.commit(transform.move_elements(model.doc, [e.GlobalId], (0.3, 2.0)))
+    assert elements.read_state(model.doc, e)["host"]["distance"] == pytest.approx(1.3)
+    with pytest.raises(OpError, match="gira"):
+        transform.rotate_elements(model.doc, [e.GlobalId], (0, 0), 1.0)
+    # excluir a parede exclui o objeto, e desfazer devolve os dois
+    from brasbim.core.delete import delete_elements
+
+    before = snapshot(model.doc.ifc)
+    tx, cascade = delete_elements(model.doc, [wall.GlobalId])
+    assert cascade["objects"] == 1
+    model.commit(tx)
+    assert model.doc.find(e.GlobalId) is None
+    model.history.undo()
+    assert snapshot(model.doc.ifc) == before
+    del wc
+    assert valid(model.doc.ifc)
+
+
+def test_ob11_vao_do_objeto(model):
+    wall = model.wall((0, 0), (5, 0))
+    t = load(model, lavatorio(void=True), "Armário com nicho")
+    host = {"wall": wall.GlobalId, "side": "left", "distance": 1.0}
+    tx = model.commit(oc.create_object(model.doc, t, model.terreo, (0, 0), host=host))
+    e = model.doc.get(tx.ops[-1].id)
+    from brasbim.core.walls import openings
+
+    (opening,) = openings.of_wall(wall, objects=True)
+    assert openings.of_wall(wall) == []
+    assert opening.PredefinedType == "RECESS"
+    assert opening.VoidsElements[0].RelatingBuildingElement == wall
+    assert not opening.HasFillings
+    state = openings.read_state(opening)
+    assert state["distance"] == pytest.approx(1.05)
+    assert state["width"] == pytest.approx(0.40)
+    assert state["depth"] == pytest.approx(0.05)
+    assert state["sill"] == pytest.approx(1.0)
+    # objeto sobre uma janela é recusado
+    from brasbim.core.fillings import commands as fc
+
+    model.commit(fc.create_window_type(model.doc, "J1"))
+    (window_type,) = model.doc.ifc.by_type("IfcWindowType")
+    model.commit(fc.create_window(model.doc, window_type, wall, 3.0, width=1.0, height=1.0,
+                                  base=1.0))
+    with pytest.raises(OpError, match="não cabe"):
+        oc.create_object(model.doc, t, model.terreo, (0, 0),
+                         host={**host, "distance": 3.0})
+    # soltar da parede tira o vão
+    model.commit(oc.detach(model.doc, e))
+    assert all(openings.read_state(o)["kind"] == "OPENING"
+               for o in openings.of_wall(wall, objects=True))
+    assert elements.read_state(model.doc, e)["host"] is None
+    assert valid(model.doc.ifc)

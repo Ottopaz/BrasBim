@@ -345,21 +345,25 @@ def write_state(doc: Document, element, state: dict) -> None:
     occ_class, _ = od.classes(tstate["definition"])
     if not element.is_a(occ_class):
         raise OpError(f"o tipo {element_type.Name} é para {occ_class}")
-    if (tstate["definition"]["hosting"] == "wall") != (state["host"] is not None):
-        raise OpError("objeto preso à parede precisa da parede, e o livre não tem parede"
-                      if state["host"] is None else "este objeto não se prende à parede")
+    if state["host"] is not None and tstate["definition"]["hosting"] != "wall":
+        raise OpError("este objeto não se prende à parede")
     state["values"] = ot.stored_values(tstate["definition"], state["values"], "occurrence")
     element.Name = state["name"] or element_type.Name
     common.assign_container(doc, element, storey)
-    elevation = float(built.values.get("elevacao", 0.0))
+    frame = None
     if state["host"] is not None:
         state = hosting.place(doc, state, built)
-    a = math.radians(state["angle"])
+        frame = state.pop("_frame")
+        relative_to, location, direction = (frame["wall"].ObjectPlacement, frame["location"],
+                                            frame["direction"])
+    else:
+        a = math.radians(state["angle"])
+        relative_to, direction = storey.ObjectPlacement, (math.cos(a), math.sin(a))
+        location = (state["point"][0], state["point"][1],
+                    float(built.values.get("elevacao", 0.0)))
     params = {k: copy.deepcopy(state[k]) for k in STATE_KEYS if k not in ("type", "storey")}
-    write_element(doc, element, element_type, built, storey.ObjectPlacement,
-                  (state["point"][0], state["point"][1], elevation),
-                  (math.cos(a), math.sin(a)), params)
-    hosting.sync(doc, element, state, built)
+    write_element(doc, element, element_type, built, relative_to, location, direction, params)
+    hosting.sync(doc, element, {**state, "_frame": frame}, built)
 
 
 def assign_type(doc: Document, element, element_type) -> None:
@@ -396,7 +400,12 @@ def _create(doc: Document, op: Op) -> set[str]:
     except Exception:
         _abort(doc, element)
         raise
-    return {op.id}
+    return {op.id, *_walls(state)}
+
+
+def _walls(state: dict) -> set[str]:
+    host = state.get("host")
+    return {host["wall"]} if host else set()
 
 
 def _abort(doc: Document, element) -> None:
@@ -412,7 +421,8 @@ def _delete(doc: Document, op: Op) -> set[str]:
     element = doc.get(op.id)
     if not is_object(element):
         raise OpError(f"{op.id} não é objeto paramétrico")
-    gone = {op.id, *(p.GlobalId for p in parts_of(element))}
+    gone = {op.id, *(p.GlobalId for p in parts_of(element)),
+            *_walls(read_state(doc, element))}
     hosting.release(doc, element)
     remove_element(doc, element)
     return gone
@@ -427,13 +437,13 @@ def _edit(doc: Document, op: Op) -> set[str]:
     unknown = set(op.after or {}) - set(STATE_KEYS)
     if unknown:
         raise OpError(f"object.edit: campos desconhecidos {sorted(unknown)}")
-    before_parts = {p.GlobalId for p in parts_of(element)}
+    before_parts = {p.GlobalId for p in parts_of(element)} | _walls(state)
     state.update(copy.deepcopy(op.after or {}))
     if "type" in (op.after or {}) and type_of(doc, element) is not None and \
             not element.is_a(od.classes(ot.read(doc.get(state["type"]))["definition"])[0]):
         raise OpError("o tipo novo é de outra classe")
     write_state(doc, element, state)
-    return {op.id, *before_parts, *(p.GlobalId for p in parts_of(element))}
+    return {op.id, *before_parts, *(p.GlobalId for p in parts_of(element)), *_walls(state)}
 
 
 register_inverse_pair("object.create", _create, "object.delete", _delete)

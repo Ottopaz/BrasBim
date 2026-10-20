@@ -49,10 +49,16 @@ def default_state() -> dict:
 # --- leitura -----------------------------------------------------------------
 
 
-def of_wall(wall) -> list:
-    """Aberturas da parede, em ordem de GlobalId."""
-    return sorted((r.RelatedOpeningElement for r in wall.HasOpenings),
-                  key=lambda o: o.GlobalId)
+def of_wall(wall, objects: bool = False) -> list:
+    """Aberturas da parede, em ordem de GlobalId. O vão de um objeto preso à parede
+    (objeto-parametrico.md §6.3) é do objeto: só entra com ``objects`` (desenho, corpo,
+    quantidades e conferência de sobreposição)."""
+    from brasbim.core.objects import hosting
+
+    found = (r.RelatedOpeningElement for r in wall.HasOpenings)
+    if not objects:
+        found = (o for o in found if not hosting.is_object_opening(o))
+    return sorted(found, key=lambda o: o.GlobalId)
 
 
 def host(opening):
@@ -142,7 +148,7 @@ def check_fits(doc: Document, wall, state: dict, exclude: str | None = None) -> 
     if abs(wall_state["tilt"]) > 1e-9:
         raise OpError(TILT_WITH_OPENINGS)
     found = problems(state, band, wall_height, wall_state["top_profile"])
-    for other in of_wall(wall):
+    for other in of_wall(wall, objects=True):
         if other.GlobalId != exclude and _overlap(state, read_state(other)):
             found.append("sobre outro vão da parede")
             break
@@ -227,7 +233,7 @@ def refresh(doc: Document, wall, band, wall_height: float, profile=None) -> None
     Abertura que deixou de caber não é excluída; fica com aviso (spec §6.3).
     """
     spans = []
-    for opening in of_wall(wall):
+    for opening in of_wall(wall, objects=True):
         state = read_state(opening)
         _write_body(doc, opening, state, band)
         found = problems(state, band, wall_height, profile)
@@ -336,7 +342,7 @@ def deductions(wall, band, wall_height: float, profile: list) -> dict:
     """
     poly = geom2d.polygon(profile)
     side = volume = footprint = 0.0
-    for opening in of_wall(wall):
+    for opening in of_wall(wall, objects=True):
         s = read_state(opening)
         x0, x1 = s["distance"], s["distance"] + s["width"]
         h = max(0.0, min(s["sill"] + s["height"], wall_height) - max(s["sill"], 0.0))
