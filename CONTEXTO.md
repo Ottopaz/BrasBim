@@ -4,20 +4,20 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑20 (pacote 12 implementado; spec do pacote 13 em revisão).*
+*Atualizado em 2026‑10‑20 (pacote 13: objetos paramétricos implementados).*
 
 > **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
 > depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
-> Pacote 12 (camadas, `spec/ui/18-camadas.md`) **implementado** (CM01–CM19, 502 testes,
-> ruff limpo), aguardando o revisor usar. Spec do pacote 13 (objetos paramétricos e
-> biblioteca, `spec/elementos/objeto-parametrico.md`) **em revisão**: não implementar
-> antes da aprovação; pontos de revisão (a)–(k) na §11. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
+> Pacotes 12 (camadas, `spec/ui/18-camadas.md`) e 13 (objetos paramétricos e biblioteca,
+> `spec/elementos/objeto-parametrico.md`, OB01–OB21) **implementados**, aguardando o
+> revisor usar (pontos de revisão (a)–(k) do 13 ficaram como propostos). Próximo:
+> pacote 14 (desenho 2D). Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
 > função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (502 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (620 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -39,7 +39,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
-| `spec/elementos/objeto-parametrico.md` | **em revisão** (pacote 13; OB01–OB21). Decisões do revisor de 2026‑10‑20: nome "objeto paramétrico" ("Objeto" nos menus), editor por formulário + prévia, fórmulas, escolha e visibilidade, preso à parede, aninhados; biblioteca com mobiliário, louças, eletrodomésticos e vegetação |
+| `spec/elementos/objeto-parametrico.md` | aprovada e implementada (pacote 13; OB01–OB21 em `tests/test_objetos*.py` e `test_interface_objetos.py`). Nome "objeto paramétrico" ("Objeto" nos menus), editor por formulário + prévia, fórmulas, escolha e visibilidade, preso à parede, aninhados; biblioteca com mobiliário, louças, eletrodomésticos e vegetação |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
@@ -406,6 +406,48 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - `mcp.Server.do_POST` lê o corpo antes de responder (401/404 sem ler derrubavam a conexão
   no Windows: era a falha intermitente do AS06); corpo acima de 16 MB → 413.
 
+## Pacote 13 — como ficou (objetos paramétricos)
+- Núcleo em `core/objects/`: `formula.py` (linguagem própria com vírgula decimal e `;`,
+  analisador sem `eval`; `parse`, `names`, `infer`, `evaluate`, `calc`), `definition.py`
+  (definição em dicionário: parâmetros, peças, símbolo; `problems` com o lugar de cada
+  erro, `evaluate` em ordem de dependência, `solids`, `nested`, `symbol_items`, `bounds`,
+  `handle_shift`), `types.py` (`object_type.*`: tipo IFC da categoria **sem**
+  `RepresentationMaps`, Pset `BrasBim_DefinicaoObjeto` com a definição e os valores em
+  JSON, `BrasBim_Parametros` com os valores como propriedades IFC, Pset comum com
+  `Reference` e nominais, `IfcMaterialConstituentSet` por papel, origem por
+  `IfcRelAssociatesLibrary`), `elements.py` (`object.*`: corpo por ocorrência,
+  `IfcStyledItem` por peça, `Annotation` do símbolo desenhado, `Box`; aninhados
+  agregados com GlobalIds `guid.derived(objeto, "part/<peça>/<cópia>")`), `shapes.py`
+  (peças → itens IFC, com o espelho na própria geometria), `hosting.py` (preso à parede:
+  posição relativa à parede, `IfcRelConnectsElements`, vão `IfcOpeningElement` com o Pset
+  `BrasBim_VaoObjeto`), `plan.py` (papéis `object`, `object_fill`, `object_above`,
+  `object_box`, `plant`, `plant_fill`; símbolo automático por altura do topo),
+  `mesh.py` (malha aproximada para prévia e miniatura), `library.py` (`IfcProjectLibrary`
+  + amostras; `Index`, `load` manter/substituir/novo, `update_from`, `save`),
+  `builtin.py` (27 objetos, 53 tipos; `scripts/gerar_biblioteca.py` grava
+  `brasbim/library/objetos/`), `commands.py` (criar, editar, trocar tipo, alça,
+  soltar/prender, `apply_definition` do editor), `rebuild.py` (tipo e parede mudados
+  refazem as ocorrências).
+- `walls.openings.of_wall` deixa de fora o vão do objeto; `of_wall(..., objects=True)`
+  no desenho, no corpo, nas quantidades e na sobreposição.
+- Integrações: excluir (objetos antes das paredes; a parede leva os presos, cascata
+  "N objetos"), transformações (`transform._with_objects`), camadas (`object:<categoria>`;
+  Mobiliário e Vegetação no conjunto inicial, Equipamentos criada no primeiro uso por
+  `commands.layer_ops`), planta (`plan._objects`, escolha pela caixa), 3D (aninhados na
+  malha do objeto de fora), cortes, tabelas (categorias de objeto, `param:<nome>`, modelo
+  "Lista de mobiliário e equipamentos"), assistente (`list_objects`, `insert_object`,
+  `edit_object`).
+- Interface: ferramenta Objeto (`tools.ObjectTool`, depois da Cobertura), barra Opções
+  (`object_widgets.TypePicker` com busca e miniaturas), painel Biblioteca de objetos
+  (`library_panel.py`, Ctrl+Shift+B, pastas do usuário em `QSettings`
+  `biblioteca/pastas`), lista Objetos no painel Projeto (menu de ações dos tipos), painel
+  de propriedades (`_object`, `_objects`), alças `obj:<parâmetro>` no `SelectTool`,
+  mini-barra (Trocar tipo, Editar tipo, Selecionar todos deste tipo, Soltar da parede),
+  menu do botão direito, Exibir > Etiquetas de objetos (`etiquetas_objetos`), Projeto >
+  Biblioteca de objetos / Pastas da biblioteca / Novo objeto…, editor
+  (`object_editor.py`) e diálogo Editar tipo (`object_dialogs.py`). Ícones `object`,
+  `library`, `swap_type`, `select_same`, `detach`, `view_plan`, `view_3d`, `folder`.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -429,10 +471,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    (pedido do revisor); depois mobiliário básico, salvamento automático, camadas e
    vistas 3D padrão.
 4c. Pedido do revisor (2026‑10‑20), ferramentas básicas, nesta ordem:
-   12 camadas com grupos e combinações (spec 18 **aprovada**; "vegetais" no print do
-   revisor = camadas, não vegetação) · 13 **objetos paramétricos e biblioteca** (o revisor
-   quer inspiração no comportamento do Revit com famílias: só a função, pela documentação
-   pública; vocabulário próprio/IFC, `IfcTypeObject` + ocorrências) e mobiliário ·
+   ~~12 camadas~~ concluído · ~~13 objetos paramétricos e biblioteca~~ concluído
+   (pacote 13) ·
    14 desenho 2D: círculo, arco, curva livre (spline), cota de raio e de ângulo, rótulo,
    marcador de alteração · 15 eixos de projeto (`IfcGrid`) · 16 vão livre na parede
    (ferramenta) e claraboia · 17 escada e guarda-corpo/corrimão · 18 terreno (malha) ·
@@ -448,6 +488,12 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- Objetos (pacote 13): arrastar da biblioteca para a planta não existe (clique duplo
+  ativa a ferramenta); a prévia e as miniaturas são aproximadas (sem OpenGL); o editor não
+  desenha na prévia (V2); o símbolo automático não mostra o que fica sob uma peça mais
+  alta; objeto preso só em parede reta e não tombada; parede dividida não leva o objeto
+  para o trecho novo; vão do objeto não acompanha "copiar parede" sozinho (vai com o
+  objeto); `Qto_*` não gravados (§8); tipo de outra origem sem a definição fica como está.
 - Pranchas (revisor, 2026‑10‑20): pôr a vista na prancha (painel de propriedades da
   prancha > Pôr na prancha) "não está bom ainda"; refazer o fluxo depois, a combinar.
   Vista 3D com câmera salva ainda não existe.

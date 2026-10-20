@@ -481,3 +481,34 @@ def test_ob20_assistente(model):
     out, err = call("insert_object", type="Lavatório suspenso", at=[1.5, 0.2])
     assert not err, out
     assert elements.read_state(model.doc, model.doc.get(out["id"]))["host"] is not None
+
+
+def test_ob12_troca_de_tipo(model):
+    load(model, cadeira(), "Cadeira simples")
+    seis = load(model, mesa(), "Mesa 6")
+    quatro = load(model, mesa(), "Mesa 4")
+    m = put(model, seis, (1, 1), angle=30)
+    layer = display_layers.layer_of(model.doc, m)
+    model.commit(oc.change_type(model.doc, [m.GlobalId], quatro))
+    state = elements.read_state(model.doc, m)
+    assert state["type"] == quatro.GlobalId
+    assert state["point"] == pytest.approx([1.0, 1.0]) and state["angle"] == pytest.approx(30)
+    assert display_layers.layer_of(model.doc, m) == layer
+    # outra classe não aparece entre os tipos compatíveis
+    bench = load(model, bancada(), "Bancada")
+    assert bench not in oc.compatible_types(model.doc, m)
+    with pytest.raises(OpError):
+        oc.change_type(model.doc, [m.GlobalId], bench)
+    # substituir em todas
+    other = put(model, seis, (5, 1))
+    model.commit(oc.replace_all(model.doc, seis, quatro))
+    assert elements.read_state(model.doc, other)["type"] == quatro.GlobalId
+
+
+def test_ob16_etiqueta(model):
+    t = load(model, cama(), "Cama casal", codigo="M1")
+    a = put(model, t, (1, 1))
+    labels = [lb for lb in plan.storey_plan(model.doc, model.terreo).labels
+              if lb.kind == "object"]
+    assert [(lb.owner, lb.code) for lb in labels] == [(a.GlobalId, "M1")]
+    assert labels[0].at == pytest.approx((1.69, 1.965))

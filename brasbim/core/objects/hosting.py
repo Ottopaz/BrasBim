@@ -78,8 +78,9 @@ def place(doc: Document, state: dict, built) -> dict:
     length = frame["band"].path.length
     a, b = frame["span"]
     if a < -1e-6 or b > length + 1e-6:
-        log.warning("objeto preso fora da parede %s (%.2f–%.2f de %.2f m)",
-                    state["host"]["wall"], a, b, length)
+        log.warning("Objeto preso à parede ficou fora dela (de %s a %s m numa parede de "
+                    "%s m): ajuste a distância", f"{a:.2f}".replace(".", ","),
+                    f"{b:.2f}".replace(".", ","), f"{length:.2f}".replace(".", ","))
     return {**state, "point": frame["point"], "angle": frame["angle"], "_frame": frame}
 
 

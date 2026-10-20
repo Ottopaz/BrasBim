@@ -4,7 +4,7 @@ entidade_ifc: IfcFurnitureType / IfcSanitaryTerminalType / IfcElectricApplianceT
 requisito: RF-TIP-01, RF-TIP-04, RF-TIP-05 (parcial), RF-TIP-06 (básica), RF-TIP-07 (parcial), RF-ELE-14
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-20
-status: aprovado
+status: aprovado (implementado)
 revisor: OTTO (aprovado em 2026-10-20, pedido de implementar o pacote)
 ---
 
@@ -591,72 +591,72 @@ Projeto de teste: Térreo com o retângulo de paredes (0, 0)–(6, 4) de 15 cm e
 biblioteca do BrasBim. Testes em `tests/test_objetos.py` (núcleo),
 `test_objetos_formula.py`, `test_objetos_biblioteca.py` e `test_interface_objetos.py`.
 
-- [ ] **OB01** Fórmulas: `máx(1,20 - 2 * 0,10; 0,40)` dá 1,00; `se(tampo = "redondo";
+- [x] **OB01** Fórmulas: `máx(1,20 - 2 * 0,10; 0,40)` dá 1,00; `se(tampo = "redondo";
       1; 0)`; vírgula decimal e `;`. Ciclo, nome desconhecido, tipo de parâmetro
       dependendo de ocorrência e texto onde se espera comprimento são recusados com
       a mensagem certa. A expressão `__import__("os")` é recusada como erro de sintaxe
       (sem `eval`).
-- [ ] **OB02** Carregar "Cama casal": `IfcFurnitureType` `BED` com
+- [x] **OB02** Carregar "Cama casal": `IfcFurnitureType` `BED` com
       `BrasBim_DefinicaoObjeto`, `BrasBim_Parametros` (Largura 1,38, Comprimento 1,88)
       e `Pset_FurnitureTypeCommon` (`Reference`, nominais). Sem `RepresentationMaps`. O
       arquivo passa na validação de esquema do IfcOpenShell.
-- [ ] **OB03** Inserir duas camas: cada `IfcFurniture` tem o próprio `Body` com um
+- [x] **OB03** Inserir duas camas: cada `IfcFurniture` tem o próprio `Body` com um
       `IfcStyledItem` por peça, ligado ao tipo por `IfcRelDefinesByType`, no pavimento,
       na camada Mobiliário. A caixa que envolve mede 1,38 × 1,88.
-- [ ] **OB04** Parâmetro de **tipo**: mudar a largura do tipo para 1,58 refaz as duas
+- [x] **OB04** Parâmetro de **tipo**: mudar a largura do tipo para 1,58 refaz as duas
       camas numa transação. Desfazer volta as duas, e o diário reaplicado reproduz o
       IFC.
-- [ ] **OB05** Parâmetro de **ocorrência**: o comprimento da bancada numa ocorrência
+- [x] **OB05** Parâmetro de **ocorrência**: o comprimento da bancada numa ocorrência
       (2,40) não muda a outra (1,80). O `BrasBim_Parametros` da ocorrência tem 2,40, e
       a leitura "tipo + ocorrência" pela regra do IFC dá 2,40 para uma e 1,80 para a
       outra.
-- [ ] **OB06** Visibilidade e escolha: o sofá sem braço não tem as peças dos braços. A
+- [x] **OB06** Visibilidade e escolha: o sofá sem braço não tem as peças dos braços. A
       mesa com tampo "redondo" tem o tampo em cilindro, e "retangular" em caixa.
-- [ ] **OB07** Repetição: a estante com 5 prateleiras tem 5 itens de prateleira com
+- [x] **OB07** Repetição: a estante com 5 prateleiras tem 5 itens de prateleira com
       espaçamento igual. Mudar para 3 deixa 3.
-- [ ] **OB08** Limites e erros: comprimento abaixo do mínimo e uma fórmula que dá
+- [x] **OB08** Limites e erros: comprimento abaixo do mínimo e uma fórmula que dá
       medida ≤ 0 recusam a operação (`OpError`), e o modelo fica como antes.
-- [ ] **OB09** Aninhados: a mesa de 6 lugares agrega 6 `IfcFurniture` Cadeira
+- [x] **OB09** Aninhados: a mesa de 6 lugares agrega 6 `IfcFurniture` Cadeira
       (`IfcRelAggregates`) posicionadas em relação a ela. Mudar o comprimento para 8
       lugares dá 8 cadeiras, desfazer volta a 6 com os mesmos GlobalIds, e trocar o
       parâmetro `cadeira` por outro tipo troca as 6.
-- [ ] **OB10** Preso à parede: o lavatório suspenso na face interna da parede sul fica
+- [x] **OB10** Preso à parede: o lavatório suspenso na face interna da parede sul fica
       com o fundo na face, `IsBuiltIn` verdadeiro e `IfcRelConnectsElements`. Mover a
       parede 0,50 leva o objeto, e excluir a parede exclui o objeto (desfazer devolve
       os dois).
-- [ ] **OB11** Vão: o armário com nicho cria um `IfcOpeningElement` `RECESS` na parede
+- [x] **OB11** Vão: o armário com nicho cria um `IfcOpeningElement` `RECESS` na parede
       por `IfcRelVoidsElement`, sem `IfcRelFillsElement`. Pôr o objeto sobre uma janela
       é recusado. *Soltar da parede* tira o vão.
-- [ ] **OB12** Trocar tipo: trocar a "Mesa 6 lugares" por "Mesa 4 lugares" mantém
+- [x] **OB12** Trocar tipo: trocar a "Mesa 6 lugares" por "Mesa 4 lugares" mantém
       posição, rotação e camada. Trocar uma cama por uma bacia (outra classe) não
       aparece na lista. Excluir um tipo em uso pede o substituto.
-- [ ] **OB13** Transformações: mover, copiar, girar e espelhar um objeto livre (o
+- [x] **OB13** Transformações: mover, copiar, girar e espelhar um objeto livre (o
       espelho troca o sinal do eixo x local). Girar sozinho um objeto preso à parede é
       recusado.
-- [ ] **OB14** Biblioteca: gravar "Cama" numa pasta do usuário gera um `.ifc` com
+- [x] **OB14** Biblioteca: gravar "Cama" numa pasta do usuário gera um `.ifc` com
       `IfcProjectLibrary`, os tipos declarados por `IfcRelDeclares` e uma ocorrência
       de amostra por tipo. Ele passa na validação. Carregar de volta num projeto vazio
       dá os mesmos valores.
-- [ ] **OB15** Atualizar da biblioteca: a definição v2 com o parâmetro novo
+- [x] **OB15** Atualizar da biblioteca: a definição v2 com o parâmetro novo
       `cabeceira` mantém a largura dos tipos e o comprimento das ocorrências, e o
       parâmetro novo entra com o padrão. Desfazer volta à v1.
-- [ ] **OB16** Planta: o símbolo automático da cama é o contorno da caixa, mais o
+- [x] **OB16** Planta: o símbolo automático da cama é o contorno da caixa, mais o
       travesseiro. O símbolo desenhado da árvore é um círculo com o raio da copa, que
       muda com o parâmetro. Exibir > Etiquetas de objetos mostra o código.
-- [ ] **OB17** Tabelas: "Lista de mobiliário e equipamentos" conta 2 camas casal, 1
+- [x] **OB17** Tabelas: "Lista de mobiliário e equipamentos" conta 2 camas casal, 1
       mesa e 6 cadeiras (as cadeiras "parte de" Mesa). A coluna Largura aparece quando
       a tabela filtra só Cama.
-- [ ] **OB18** Editor: um objeto novo com dois parâmetros (largura de tipo, altura de
+- [x] **OB18** Editor: um objeto novo com dois parâmetros (largura de tipo, altura de
       ocorrência) e uma caixa dá a prévia certa. Gravar com ciclo é recusado na linha.
       *Aplicar ao projeto* sobe a versão e refaz as ocorrências. Valores que deixam uma
       ocorrência inválida não gravam nada e listam a ocorrência.
-- [ ] **OB19** Interface: dar clique duplo num tipo da biblioteca ativa a ferramenta.
+- [x] **OB19** Interface: dar clique duplo num tipo da biblioteca ativa a ferramenta.
       O fantasma segue o cursor, a barra de espaço gira 90°, o clique insere, e Tab dá
       a rotação. No objeto preso à parede, o fantasma encosta na face e Tab dá distância
       e altura. A alça de largura do guarda-roupa muda o valor.
-- [ ] **OB20** Assistente: `insert_object` com "Cama casal" em (2, 2) cria o objeto e
+- [x] **OB20** Assistente: `insert_object` com "Cama casal" em (2, 2) cria o objeto e
       `describe_model` o lista. `list_objects` mostra os parâmetros com o nível.
-- [ ] **OB21** Biblioteca inicial: todos os objetos e tipos da §4.5 carregam, geram
+- [x] **OB21** Biblioteca inicial: todos os objetos e tipos da §4.5 carregam, geram
       corpo e símbolo sem erro e passam na validação de esquema (um teste
       parametrizado por tipo).
 
@@ -743,3 +743,29 @@ comando, layout de diálogo ou objeto de biblioteca de outro software foi copiad
 ## 12. Decisões do revisor (2026-10-20)
 O revisor pediu a implementação do pacote 13 sem mudar a spec. Os pontos de revisão
 (a)–(k) ficam **como propostos**.
+
+## 13. Implementação (2026-10-20)
+Núcleo em `brasbim/core/objects/` (`formula`, `definition`, `types`, `elements`,
+`hosting`, `shapes`, `plan`, `mesh`, `library`, `builtin`, `commands`, `rebuild`);
+interface em `ui/tools.py` (`ObjectTool`), `ui/object_widgets.py`,
+`object_preview.py`, `library_panel.py`, `object_dialogs.py`, `object_editor.py`.
+Testes OB01–OB21 em `tests/test_objetos_formula.py`, `test_objetos.py`,
+`test_objetos_biblioteca.py` e `test_interface_objetos.py`.
+
+O que ficou diferente do texto acima, ou foi decidido na implementação:
+- **Lavatório** são duas definições (*Lavatório de coluna*, livre, e *Lavatório
+  suspenso*, preso à parede): a hospedagem é da definição, não do tipo.
+- **Aninhados e vão** têm GlobalIds derivados do objeto de fora
+  (`guid.derived(objeto, "part/<peça>/<cópia>")` e `"opening"`), em vez de listados no
+  estado: desfazer, refazer e o diário dão sempre os mesmos.
+- O **vão do objeto** é um `IfcOpeningElement` com o Pset `BrasBim_VaoObjeto`; ele fica
+  fora de `openings.of_wall` (copiar, dividir e excluir parede não o tratam como vão
+  comum) e entra só no desenho, no corpo, nas quantidades e na conferência de
+  sobreposição (`of_wall(..., objects=True)`).
+- **Miniaturas e prévia** são desenhadas sem OpenGL (`core/objects/mesh.py` +
+  `ui/object_preview.py`), da definição, sem passar pelo IFC.
+- **Arrastar da biblioteca para a planta** não foi feito: o clique duplo (ou *Inserir*)
+  ativa a ferramenta com o tipo.
+- Na barra Opções, *Mais parâmetros* abre um formulário pequeno com os outros
+  parâmetros de ocorrência.
+- Tabelas: a coluna de um parâmetro é `param:<identificador>`.
