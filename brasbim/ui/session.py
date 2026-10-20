@@ -245,7 +245,7 @@ class Session:
         config = display_layers.read_config(self.doc)
         if config is None or not self.doc.display.locked:
             return
-        for kind, _, _ in display_layers.created(tx):
+        for kind, _, _ in display_layers.created(tx, self.doc):
             target = config["defaults"].get(kind) or display_layers.NONE
             if target in self.doc.display.locked:
                 raise OpError(f"a camada {display_layers.layer_name(self.doc, target)} está "
@@ -256,7 +256,7 @@ class Session:
         if not self.doc.display.hidden:
             return
         shown = []
-        for _, gid, _ in display_layers.created(tx):
+        for _, gid, _ in display_layers.created(tx, self.doc):
             element = self.doc.find(gid)
             if element is None:
                 continue

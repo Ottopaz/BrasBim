@@ -506,6 +506,74 @@ def _with_annotations(label: str, doc: Document, gids, core, annos_ops) -> Trans
     return Transaction(tx.label, tx.ops + extra)
 
 
+# --- objetos paramétricos (objeto-parametrico.md §5.1, §6.3) ------------------------------
+
+
+def _objects(doc: Document, gids) -> tuple[list[str], list]:
+    """(GlobalIds dos outros elementos, objetos paramétricos)."""
+    from brasbim.core.objects import elements as objects
+
+    others, found = [], []
+    for g in dict.fromkeys(gids):
+        e = doc.get(g if isinstance(g, str) else g.GlobalId)
+        if objects.is_part(e):
+            e = objects.parent_of(e)
+        if objects.is_object(e):
+            if e not in found:
+                found.append(e)
+        else:
+            others.append(e.GlobalId)
+    return others, found
+
+
+def _object_ops(doc: Document, found, moving: set[str], mode: str, fn=None, vector=None,
+                angle: float = 0.0, axis: float = 0.0) -> list[Op]:
+    """Operações dos objetos: ``mode`` = move, rotate, copy, mirror, mirror_copy. Preso à
+    parede: acompanha a parede selecionada junto; sozinho, só desliza ao longo dela."""
+    from brasbim.core.objects import commands as oc
+    from brasbim.core.objects import elements as objects
+    from brasbim.core.objects import hosting
+
+    ops = []
+    for e in found:
+        state = objects.read_state(doc, e)
+        copying = mode in ("copy", "mirror_copy")
+        if state["host"] is not None:
+            with_wall = state["host"]["wall"] in moving
+            if with_wall and not copying:
+                continue  # vai junto com a parede (derivação)
+            if mode in ("rotate", "mirror", "mirror_copy") and not with_wall:
+                raise OpError("objeto preso à parede só gira ou espelha junto com a parede")
+            if with_wall and copying:
+                continue  # a cópia da parede leva a cópia (hosting.copied_ops)
+            changes = {"host": hosting.slid(doc, state, vector)}
+        elif mode in ("move", "copy"):
+            changes = {"point": list(fn(state["point"]))}
+        elif mode == "rotate":
+            changes = {"point": list(fn(state["point"])),
+                       "angle": (state["angle"] + math.degrees(angle) + 180.0) % 360.0 - 180.0}
+        else:
+            changes = {"point": list(fn(state["point"])), "mirror": not state["mirror"],
+                       "angle": (2 * axis - state["angle"] - 180.0 + 180.0) % 360.0 - 180.0}
+        if copying:
+            data = {**copy.deepcopy(state), **changes}
+            ops.append(Op("object.create", guid.new(), data=data))
+        else:
+            ops += oc.edit_object(doc, e, **changes).ops
+    return ops
+
+
+def _with_objects(label: str, doc: Document, gids, core, objects_ops) -> Transaction:
+    others, found = _objects(doc, gids)
+    extra = objects_ops(found)
+    if not others:
+        if not extra and not found:
+            raise OpError("nada selecionado")
+        return Transaction(label, extra)
+    tx = core(others)
+    return Transaction(tx.label, tx.ops + extra)
+
+
 def _moving(doc: Document, gids) -> set[str]:
     return {g if isinstance(g, str) else g.GlobalId for g in gids}
 
@@ -513,26 +581,33 @@ def _moving(doc: Document, gids) -> set[str]:
 def move_elements(doc: Document, gids, vector) -> Transaction:
     """Desloca a seleção pelo vetor (spec/ui 02 §6.1), com ambientes e anotações."""
     fn = geom2d.translation(tuple(vector))
-    return _with_annotations(
-        "Mover", doc, gids, lambda others: _move_elements_core(doc, others, vector),
-        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, _moving(doc, gids)))
+    moving = _moving(doc, gids)
+    return _with_objects("Mover", doc, gids, lambda rest: _with_annotations(
+        "Mover", doc, rest, lambda others: _move_elements_core(doc, others, vector),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, moving)),
+        lambda found: _object_ops(doc, found, moving, "move", fn, vector))
 
 
 def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
     """Gira a seleção ``angle`` radianos, anti-horário, em torno de ``center``."""
     fn = geom2d.rotation(tuple(center), angle)
     deg = math.degrees(angle)
-    return _with_annotations(
-        "Girar", doc, gids, lambda others: _rotate_elements_core(doc, others, center, angle),
-        lambda annos: _anno_ops(doc, annos, fn, lambda a: a + deg, False, _moving(doc, gids)))
+    moving = _moving(doc, gids)
+    return _with_objects("Girar", doc, gids, lambda rest: _with_annotations(
+        "Girar", doc, rest, lambda others: _rotate_elements_core(doc, others, center, angle),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a + deg, False, moving)),
+        lambda found: _object_ops(doc, found, moving, "rotate", fn, angle=angle))
 
 
 def copy_elements(doc: Document, gids, vector) -> Transaction:
     """Cópia deslocada pelo vetor (spec/ui 02 §6.2); as cotas copiadas ficam soltas."""
     fn = geom2d.translation(tuple(vector))
-    tx = _with_annotations(
-        "Copiar", doc, gids, lambda others: _copy_elements_core(doc, others, vector),
-        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True))
+    moving = _moving(doc, gids)
+    tx = _with_objects("Copiar", doc, gids, lambda rest: _with_annotations(
+        "Copiar", doc, rest, lambda others: _copy_elements_core(doc, others, vector),
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True)),
+        lambda found: _object_ops(doc, found, moving, "copy", fn, vector))
+    tx = _hosted_copies(doc, tx, gids, vector)
     return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
 
 
@@ -543,9 +618,21 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
     fn = geom2d.reflection(tuple(a), tuple(b))
     axis = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
     moving = set() if keep else _moving(doc, gids)
-    tx = _with_annotations(
-        "Espelhar cópia" if keep else "Espelhar", doc, gids,
+    label = "Espelhar cópia" if keep else "Espelhar"
+    tx = _with_objects(label, doc, gids, lambda rest: _with_annotations(
+        label, doc, rest,
         lambda others: _mirror_elements_core(doc, others, a, b, keep),
         lambda annos: _anno_ops(doc, annos, fn, lambda x: 2 * axis - x, True, moving,
-                                copy_=keep))
+                                copy_=keep)),
+        lambda found: _object_ops(doc, found, _moving(doc, gids),
+                                  "mirror_copy" if keep else "mirror", fn, axis=axis))
     return display_layers.inherit(doc, tx, gids) if keep else tx
+
+
+def _hosted_copies(doc: Document, tx: Transaction, gids, vector) -> Transaction:
+    """Parede copiada junto com o objeto preso a ela: a cópia do objeto vai na cópia da
+    parede (§6.3)."""
+    from brasbim.core.objects import hosting
+
+    extra = hosting.copied_ops(doc, tx, _objects(doc, gids)[1], vector)
+    return Transaction(tx.label, tx.ops + extra) if extra else tx

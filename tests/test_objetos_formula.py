@@ -2,6 +2,7 @@
 """Fórmulas e definição dos objetos paramétricos (objeto-parametrico.md §3, OB01, OB06–OB08
 no núcleo)."""
 
+import itertools
 import math
 
 import pytest
@@ -187,7 +188,7 @@ def test_ob07_repeticao_distribuida():
     shelves = od.solids(defn, od.evaluate(defn))
     zs = [s.origin[2] for s in shelves]
     assert len(zs) == 5
-    steps = [b - a for a, b in zip(zs, zs[1:])]
+    steps = [b - a for a, b in itertools.pairwise(zs)]
     assert all(step == pytest.approx(steps[0]) for step in steps)
     assert zs[-1] == pytest.approx(1.78)
     assert len(od.solids(defn, od.evaluate(defn, {"prateleiras": 3}))) == 3

@@ -23,6 +23,7 @@ import numpy as np
 
 from brasbim.core import clip, display_layers, geom2d, layers, materials, mesh_layers, props
 from brasbim.core.document import OpError
+from brasbim.core.objects import elements as objects
 from brasbim.core.structure import roofs
 from brasbim.core.walls import rebuild
 from brasbim.core.walls.wall import read_state as read_wall
@@ -145,10 +146,21 @@ def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh |
                               if glass_col else None))
 
 
+def _all_parts(element) -> list:
+    """Objetos aninhados em todos os níveis (§6.4)."""
+    out, stack = [], list(objects.parts_of(element))
+    while stack:
+        part = stack.pop(0)
+        out.append(part)
+        stack += objects.parts_of(part)
+    return out
+
+
 class Scene:
     """Malhas por GlobalId."""
 
-    CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof")
+    CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof",
+               *objects.OCCURRENCE_CLASSES)
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
@@ -165,6 +177,9 @@ class Scene:
             return False
         if entity.is_a("IfcRoof"):  # a cobertura é a soma das águas (cobertura.md §2.1)
             return roofs.is_roof(entity)
+        if any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
+            # objeto paramétrico: os aninhados vão na malha do objeto de fora (§6.4)
+            return objects.is_object(entity)
         return (any(entity.is_a(c) for c in self.CLASSES) and entity.Representation is not None
                 and not roofs.is_part(entity))
 
@@ -176,9 +191,29 @@ class Scene:
                     np.concatenate([m.colors for m in found]),
                     np.concatenate([m.edges for m in found]), found[0].base)
 
+    def _object_mesh(self, element) -> Mesh | None:
+        found = [m for m in (self._single(e) for e in [element, *_all_parts(element)])
+                 if m is not None]
+        if not found:
+            return None
+        if len(found) == 1:
+            return found[0]
+        glass = [m.glass for m in found if m.glass is not None]
+        glass_colors = [m.glass_colors for m in found if m.glass is not None]
+        return Mesh(np.concatenate([m.vertices for m in found]),
+                    np.concatenate([m.colors for m in found]),
+                    np.concatenate([m.edges for m in found]), found[0].base,
+                    glass=np.concatenate(glass) if glass else None,
+                    glass_colors=np.concatenate(glass_colors) if glass else None)
+
     def _mesh(self, entity) -> Mesh | None:
         if entity.is_a("IfcRoof"):
             return self._roof_mesh(entity)
+        if objects.is_object(entity):
+            return self._object_mesh(entity)
+        return self._single(entity)
+
+    def _single(self, entity) -> Mesh | None:
         self.tessellations += 1
         try:
             shape = props.body_shape(self._settings, entity)
@@ -193,7 +228,7 @@ class Scene:
             return None
         color = material_color(entity)
         tri = verts[faces]
-        if entity.is_a("IfcDoor") or entity.is_a("IfcWindow"):
+        if entity.is_a("IfcDoor") or entity.is_a("IfcWindow") or                 any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
             styled = _styled_mesh(entity, g, tri, verts[edges], color)
             if styled is not None:
                 return styled

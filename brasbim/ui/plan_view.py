@@ -31,6 +31,8 @@ _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 _FRAME_MAX_SCALE = 200.0  # enquadrar a seleção não aproxima mais que isto (spec/ui 07 §4)
 _FRAME_MARGIN = 0.2
 
+_OBJECT_ROLES = ("object", "object_fill", "object_above")
+
 # Cores da planta (spec/ui 11 §2).
 C = {
     "background": QColor(theme.PAPER),
@@ -40,6 +42,7 @@ C = {
     "wall_line": QColor(theme.INK),
     "below": QColor("#bdbab2"),
     "door": QColor(theme.INK),
+    "object": QColor(theme.INK_SOFT),
     "swing": QColor(theme.INK_SOFT),
     "select": QColor(theme.ACCENT),
     "preview": QColor(theme.ACCENT),
@@ -217,6 +220,9 @@ class PlanView(QWidget, ToolInput):
         rest = []
         for shape in plan.shapes:
             role = shape.role
+            if role in _OBJECT_ROLES:  # mobiliário e equipamentos: sob as paredes cortadas
+                self._draw_object(painter, shape, shape.owner in selection)
+                continue
             if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above",
                             "slab_opening", "slab_opening_x"):
                 rest.append(shape)
@@ -244,8 +250,11 @@ class PlanView(QWidget, ToolInput):
             selected = shape.owner in selection
             path = self._path(shape.points, shape.closed)
             role = shape.role
-            if role in ("annotation", "roof_edge"):
-                continue  # desenhada por ``_draw_annotations``
+            if role in ("annotation", "roof_edge", "object_box"):
+                continue  # desenhada por ``_draw_annotations`` (a caixa não aparece)
+            if role in ("plant", "plant_fill"):  # vegetação: por cima das paredes
+                self._draw_object(painter, shape, selected)
+                continue
             if role in ("wall", "column", "beam", "slab", "space", "roof"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
@@ -270,6 +279,19 @@ class PlanView(QWidget, ToolInput):
                 painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
+
+    def _draw_object(self, painter: QPainter, shape, selected: bool) -> None:
+        """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno
+        com fundo cobre o que fica por baixo; acima do plano de corte, tracejado."""
+        path = self._path(shape.points, shape.closed)
+        color = C["select"] if selected else C["object"]
+        width = 1.6 * self.unit if selected else max(self.unit, self._px(ABOVE_WEIGHT))
+        style = Qt.DashLine if shape.role == "object_above" else Qt.SolidLine
+        if shape.role in ("object_fill", "plant_fill") and shape.closed:
+            painter.fillPath(path, C["background"])
+        painter.setPen(QPen(color, width, style))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(path)
 
     def _draw_region(self, painter: QPainter, path: QPainterPath, fill: dict) -> None:
         """Mancha de tipo ou de material; a hachura parte da origem do pavimento, para

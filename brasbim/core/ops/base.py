@@ -81,6 +81,9 @@ HANDLER_MODULES = (
     "brasbim.core.drawings.views",
     "brasbim.core.drawings.sheets",
     "brasbim.core.quantities.tables",
+    "brasbim.core.objects.types",
+    "brasbim.core.objects.elements",
+    "brasbim.core.objects.rebuild",
     "brasbim.core.display_layers",
 )
 _loaded = False

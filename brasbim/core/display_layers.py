@@ -42,7 +42,8 @@ IMPORTED_GROUP = "Importadas"
 
 # Ferramentas (tipos de elemento do BrasBim) que têm camada padrão (§3.2).
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
-         "text", "line2d", "hatch", "level_mark", "north", "view")
+         "text", "line2d", "hatch", "level_mark", "north", "view", "object:furniture",
+         "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
 # Conjunto inicial (§3.1): grupo → [(camada, ferramentas que vão para ela)].
 INITIAL = (
@@ -54,8 +55,9 @@ INITIAL = (
     ("Documentação", (("Cotas", ("dimension",)), ("Textos e rótulos", ("text",)),
                       ("Linhas e hachuras", ("line2d", "hatch")),
                       ("Símbolos", ("level_mark", "north", "view")))),
-    ("Entorno", (("Terreno", ()), ("Vegetação", ()))),
-    ("Interiores", (("Mobiliário", ()),)),
+    ("Entorno", (("Terreno", ()), ("Vegetação", ("object:vegetation",)))),
+    # Equipamentos (louças, eletrodomésticos) nasce no primeiro uso (objeto-parametrico §2.5).
+    ("Interiores", (("Mobiliário", ("object:furniture",)),)),
 )
 # Combinações iniciais (§6.1): nome → (grupos ocultos, camadas ocultas, camadas visíveis
 # apesar do grupo).
@@ -168,6 +170,10 @@ def kind_of(element) -> str | None:
             return "view"
         kind = base.kind_of(element)
         return kind.prefix if kind else None
+    from brasbim.core.objects import elements as objects
+
+    if objects.is_object(element) or objects.is_part(element):
+        return objects.kind_of(element)
     for cls, kind in (("IfcWall", "wall"), ("IfcDoor", "door"), ("IfcWindow", "window"),
                       ("IfcColumn", "column"), ("IfcBeam", "beam"), ("IfcRoof", "roof"),
                       ("IfcSpace", "space"), ("IfcSlab", "slab")):
@@ -195,7 +201,12 @@ def layerable(element) -> bool:
 
 
 def owner(element):
-    """Quem responde pela camada: a água da cobertura responde pela cobertura."""
+    """Quem responde pela camada: a água da cobertura responde pela cobertura, e o objeto
+    aninhado, pelo objeto de fora."""
+    from brasbim.core.objects import elements as objects
+
+    if objects.is_part(element):
+        return objects.parent_of(element)
     if element is not None and element.is_a("IfcSlab"):
         roof = _roofs().roof_of(element)
         if roof is not None:
@@ -859,12 +870,18 @@ def assign(doc: Document, gids, layer_id: str | None):
     return Transaction("Mudar camada", ops)
 
 
-def created(tx) -> list[tuple[str, str, str | None]]:
+def created(tx, doc: Document | None = None) -> list[tuple[str, str, str | None]]:
     """(ferramenta, GlobalId criado, GlobalId de origem conhecido) na ordem da transação."""
     out = []
     for op in tx.ops:
         prefix, _, action = op.op.rpartition(".")
-        if action == "create" and prefix in KINDS:
+        if op.op == "object.create" and doc is not None:
+            from brasbim.core.objects import elements as objects
+
+            found = objects.kind_of_type(doc.find(op.data.get("type") or ""))
+            if found:
+                out.append((found, op.id, None))
+        elif action == "create" and prefix in KINDS:
             out.append((prefix, op.id, None))
         elif op.op == "wall.split":  # o trecho novo é da mesma camada (§5)
             out.append(("wall", op.data["new"], op.id))
@@ -891,7 +908,7 @@ def inherit(doc: Document, tx, sources):
                     filling = rel.RelatedBuildingElement
                     by_kind.setdefault(kind_of(filling), []).append(layer_of(doc, filling))
     config = read_config(doc)
-    made = created(tx)
+    made = created(tx, doc)
     counts: dict[str, int] = {}
     for kind, _, _ in made:
         counts[kind] = counts.get(kind, 0) + 1

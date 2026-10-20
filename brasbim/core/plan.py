@@ -143,8 +143,8 @@ class Plan:
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
                 return owner
         for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("wall",),
-                      ("wall_view", "wall_above"), _OPENING_ROLES, ("space",), _SLAB_ROLES,
-                      _ROOF_ROLES):
+                      ("wall_view", "wall_above"), _OPENING_ROLES, ("object_box",),
+                      ("space",), _SLAB_ROLES, _ROOF_ROLES):
             found = [s for s in self.shapes if s.role in roles and s.owner not in self.locked]
             for s in found:
                 if s.closed and _inside(s.points, p):
@@ -169,7 +169,8 @@ class Plan:
         out = []
         groups = {**self.owners("wall"),
                   **self.owners(("door", "window", "column", "beam", "slab", "space",
-                                 "annotation", "roof"))}
+                                 "annotation", "roof")),
+                  **self.owners("object_box")}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
             if not shapes or owner in self.locked:
@@ -938,9 +939,28 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
         label = door_label(doc, door, storey)
         if label is not None:
             plan.labels.append(label)
+    _objects(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     return plan
+
+
+def _objects(doc: Document, storey, plan: Plan, cut: float) -> None:
+    """Objetos paramétricos (objeto-parametrico.md §7): símbolo, caixa e etiqueta."""
+    from brasbim.core.objects import elements as objects
+    from brasbim.core.objects import plan as object_plan
+
+    found = sorted((e for cls in objects.OCCURRENCE_CLASSES
+                    for e in _contained(storey, cls, doc) if objects.is_object(e)),
+                   key=lambda e: e.GlobalId)
+    for element in found:
+        plan.shapes += object_plan.shapes(doc, element, storey, cut)
+        try:
+            label = object_plan.label(doc, element, storey, 0.0)
+        except OpError:
+            label = None
+        if label is not None:
+            plan.labels.append(label)
 
 
 # --- cobertura (cobertura.md §7) -----------------------------------------------------------

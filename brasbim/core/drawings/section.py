@@ -27,7 +27,10 @@ from brasbim.core.annotations.prims import Text
 from brasbim.core.document import Document, OpError
 from brasbim.core.drawings import views
 
-CLASSES = ("IfcWall", "IfcSlab", "IfcColumn", "IfcBeam", "IfcDoor", "IfcWindow")
+CLASSES = ("IfcWall", "IfcSlab", "IfcColumn", "IfcBeam", "IfcDoor", "IfcWindow",
+           # objetos paramétricos (objeto-parametrico.md §7): sem hachura no corte
+           "IfcFurniture", "IfcSanitaryTerminal", "IfcElectricAppliance",
+           "IfcGeographicElement", "IfcBuildingElementProxy")
 CUT_WEIGHT, VIEW_WEIGHT, OPENING_WEIGHT = 0.5, 0.18, 0.25  # mm (spec/ui 13 §8)
 _EPS = 1e-6
 _FAR = 1e4
@@ -284,16 +287,26 @@ def _slab_layers(doc: Document, slab) -> list[tuple[str | None, float, float]]:
 
 
 def _owner(element) -> str:
-    """Quem a peça representa: a água da cobertura responde pela cobertura."""
+    """Quem a peça representa: a água da cobertura responde pela cobertura, e o objeto
+    aninhado, pelo objeto de fora."""
+    from brasbim.core.objects import elements as objects
     from brasbim.core.structure import roofs
 
     roof = roofs.roof_of(element) if element.is_a("IfcSlab") else None
+    if objects.is_part(element):
+        roof = objects.parent_of(element)
     return (roof or element).GlobalId
+
+
+def _is_object(element) -> bool:
+    from brasbim.core.objects import elements as objects
+
+    return objects.is_object(element) or objects.is_part(element)
 
 
 def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
     gid = _owner(element)
-    if element.is_a("IfcDoor") or element.is_a("IfcWindow"):
+    if element.is_a("IfcDoor") or element.is_a("IfcWindow") or _is_object(element):
         return [Item("cut", rings=rings, owner=gid, fill={"pattern": "none", "source": "type"},
                      weight=OPENING_WEIGHT)]
     pieces: list[tuple[str | None, list]] = []
@@ -331,7 +344,9 @@ def draw(doc: Document, view) -> Drawing:
     hidden = display_layers.hidden_ids(doc)  # spec/ui 18 §4
     for cls in CLASSES:
         for element in sorted(doc.ifc.by_type(cls), key=lambda e: e.GlobalId):
-            if element.Representation is None or element.GlobalId in hidden:
+            if element.Representation is None or _owner(element) in hidden:
+                continue
+            if element.is_a("IfcBuildingElementProxy") and not _is_object(element):
                 continue
             mesh = _mesh(element, settings)
             if mesh is None:

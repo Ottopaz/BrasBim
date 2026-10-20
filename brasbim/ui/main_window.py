@@ -73,10 +73,13 @@ def _settings() -> QSettings:
     return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim")
 
 
-def cascade_text(doors_n: int, windows_n: int) -> str:
-    """"1 porta e 2 janelas" (spec/ui 09 §4.1)."""
+def cascade_text(doors_n: int, windows_n: int, objects_n: int = 0) -> str:
+    """"1 porta e 2 janelas" (spec/ui 09 §4.1), e os objetos presos às paredes."""
     parts = [f"{n} {one if n == 1 else many}" for n, one, many in
-             ((doors_n, "porta", "portas"), (windows_n, "janela", "janelas")) if n]
+             ((doors_n, "porta", "portas"), (windows_n, "janela", "janelas"),
+              (objects_n, "objeto", "objetos")) if n]
+    if len(parts) > 2:
+        return ", ".join(parts[:-1]) + " e " + parts[-1]
     return " e ".join(parts)
 
 
@@ -86,7 +89,8 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
     repetidas (abertura, junção entre duas paredes excluídas) entram uma vez. Devolve a
     transação e o que sai junto com as paredes ("1 porta e 2 janelas"; vazio se nada)."""
     tx, cascade = delete_elements(session.doc, session.selection)
-    return tx, cascade_text(cascade["IfcDoor"], cascade["IfcWindow"])
+    return tx, cascade_text(cascade["IfcDoor"], cascade["IfcWindow"],
+                            cascade.get("objects", 0))
 
 
 class MainWindow(QMainWindow):
