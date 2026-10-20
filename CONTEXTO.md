@@ -448,6 +448,9 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- Pranchas (revisor, 2026‑10‑20): pôr a vista na prancha (painel de propriedades da
+  prancha > Pôr na prancha) "não está bom ainda"; refazer o fluxo depois, a combinar.
+  Vista 3D com câmera salva ainda não existe.
 - Camadas: arrastar no painel só testado pelo núcleo (`layer.order`/`layer.edit`, CM19);
   clique em elemento bloqueado não chega ao menu do botão direito (para desbloquear, só
   pelo painel); `inherit` liga cópia e original por ordem (se a conta não fecha, usa a

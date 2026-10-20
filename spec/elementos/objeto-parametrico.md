@@ -4,8 +4,8 @@ entidade_ifc: IfcFurnitureType / IfcSanitaryTerminalType / IfcElectricApplianceT
 requisito: RF-TIP-01, RF-TIP-04, RF-TIP-05 (parcial), RF-TIP-06 (básica), RF-TIP-07 (parcial), RF-ELE-14
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-20
-status: em revisão
-revisor: OTTO
+status: aprovado
+revisor: OTTO (aprovado em 2026-10-20, pedido de implementar o pacote)
 ---
 
 # Objeto paramétrico (pacote 13)
@@ -738,3 +738,7 @@ comando, layout de diálogo ou objeto de biblioteca de outro software foi copiad
   (j) sem `Qto_*` nos objetos; as medidas ficam nas nominais (§8);
   (k) o clique sempre escolhe o objeto de fora, e o aninhado não se edita sozinho
       (§6.4).
+
+## 12. Decisões do revisor (2026-10-20)
+O revisor pediu a implementação do pacote 13 sem mudar a spec. Os pontos de revisão
+(a)–(k) ficam **como propostos**.
