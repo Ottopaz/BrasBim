@@ -122,7 +122,7 @@ def edit_type(doc: Document, element_type, **changes) -> Transaction:
 
 
 def edit_definition(doc: Document, object_id: str, definition: dict,
-                    keep_version: bool = False) -> Transaction:
+                    keep_version: bool = False, library: dict | None = None) -> Transaction:
     """Grava a definição em todos os tipos dela (versão + 1, §5.3) e acerta os valores
     guardados: o que tem o mesmo identificador e tipo do valor fica; o novo recebe o
     padrão (§4.3)."""
@@ -141,6 +141,8 @@ def edit_definition(doc: Document, object_id: str, definition: dict,
         after = {"definition": new,
                  "values": _kept(state["definition"], new, state["values"], "type"),
                  "defaults": _kept(state["definition"], new, state["defaults"], "occurrence")}
+        if library is not None:
+            after["library"] = copy.deepcopy(library)
         ops.append(Op("object_type.edit", t.GlobalId,
                       before={k: copy.deepcopy(state[k]) for k in after}, after=after))
         for e in ifcopenshell.util.element.get_types(t):

@@ -58,6 +58,15 @@ LIBRARY = {
     "Telha de fibrocimento": {"color": "#A9ADA8", "cut": _cut("solid", background="#8F938E")},
     "Telha metálica": {"color": "#9AA3AD", "cut": _cut("solid", background="#7F8892")},
     "Impermeabilização": {"color": "#4A4A48", "cut": _cut("solid", background="#3A3A38")},
+    # Objetos paramétricos (objeto-parametrico.md §4.5)
+    "Tecido": {"color": "#8E949E", "cut": _cut("none")},
+    "Madeira MDF branca": {"color": "#ECEAE4", "cut": _cut("none")},
+    "Louça": {"color": "#F4F4F1", "cut": _cut("none")},
+    "Inox": {"color": "#BCC2C7", "cut": _cut("none")},
+    "Granito": {"color": "#6F6A66", "cut": _cut("none")},
+    "Folhagem": {"color": "#7FA36A", "cut": _cut("none")},
+    "Barro": {"color": "#B5714A", "cut": _cut("none")},
+    "Eletrodoméstico": {"color": "#E3E5E6", "cut": _cut("none")},
 }
 _PALETTE = ("#C9A37D", "#9EB5C7", "#A8C499", "#D4B582", "#BAA3C9", "#C99999")
 
