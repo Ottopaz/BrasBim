@@ -99,10 +99,11 @@ def _item_painter(doc, item: dict, center: QPointF, px_per_mm: float, unit: floa
         return None
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
     origin = QPointF(center.x() - cx * scale, center.y() + cy * scale)
-    if item["kind"] == "plan":
-        storey = doc.find(item["storey"])
-        return _PlanPainter(None, plan_mod.storey_plan(doc, storey), scale, origin, unit)
-    return _SectionPainter(section.draw(doc, doc.find(item["view"])), scale, origin, unit)
+    with sheets.item_display(doc, item):  # combinação de camadas da vista (spec/ui 18 §6.2)
+        if item["kind"] == "plan":
+            storey = doc.find(item["storey"])
+            return _PlanPainter(None, plan_mod.storey_plan(doc, storey), scale, origin, unit)
+        return _SectionPainter(section.draw(doc, doc.find(item["view"])), scale, origin, unit)
 
 
 def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPointF,

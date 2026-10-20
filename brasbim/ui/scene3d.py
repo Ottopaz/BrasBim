@@ -21,7 +21,7 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import clip, geom2d, layers, materials, mesh_layers, props
+from brasbim.core import clip, display_layers, geom2d, layers, materials, mesh_layers, props
 from brasbim.core.document import OpError
 from brasbim.core.structure import roofs
 from brasbim.core.walls import rebuild
@@ -153,6 +153,8 @@ class Scene:
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
         self.meshes: dict[str, Mesh] = {}
+        # Malhas das camadas ocultas (spec/ui 18 §4), guardadas para voltar sem tesselar.
+        self._hidden: dict[str, Mesh] = {}
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
         self.tessellations = 0
         self._settings = ifcopenshell.geom.settings()
@@ -239,12 +241,22 @@ class Scene:
             self.doc = doc
         self._layers.clear()
         self.meshes.clear()
+        self._hidden.clear()
         for cls in self.CLASSES:
             for entity in ifc.by_type(cls):
                 if self._wanted(entity):
                     mesh = self._mesh(entity)
                     if mesh is not None:
                         self.meshes[entity.GlobalId] = mesh
+        self.apply_layers()
+
+    def apply_layers(self) -> None:
+        """Tira da cena as malhas das camadas ocultas e devolve as que voltaram a aparecer."""
+        hidden = display_layers.hidden_ids(self.doc) if self.doc is not None else set()
+        for gid in [g for g in self.meshes if g in hidden]:
+            self._hidden[gid] = self.meshes.pop(gid)
+        for gid in [g for g in self._hidden if g not in hidden]:
+            self.meshes[gid] = self._hidden.pop(gid)
 
     def update(self, ifc, changed: set[str]) -> None:
         self._layers.clear()
@@ -253,6 +265,7 @@ class Scene:
                 entity = ifc.by_guid(gid)
             except RuntimeError:
                 entity = None
+            self._hidden.pop(gid, None)
             if not self._wanted(entity):
                 self.meshes.pop(gid, None)
                 continue
@@ -261,6 +274,7 @@ class Scene:
                 self.meshes.pop(gid, None)
             else:
                 self.meshes[gid] = mesh
+        self.apply_layers()
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray] | None:
         if not self.meshes:

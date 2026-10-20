@@ -12,7 +12,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, guid, storeys
+from brasbim.core import display_layers, geom2d, guid, storeys
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.history import combine
@@ -147,7 +147,7 @@ def split_wall(doc: Document, wall, at) -> Transaction:
                           after={"wall": new, "distance": o["distance"] - s}))
     ops += connections.sync_ops(doc, {wall.GlobalId: {**state, "path": first.to_dict()},
                                       new: {**state, "path": second.to_dict()}})
-    return Transaction("Dividir parede", ops)
+    return display_layers.inherit(doc, Transaction("Dividir parede", ops), [wall])
 
 
 def edit_walls(doc: Document, walls, **changes) -> Transaction:

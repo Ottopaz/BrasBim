@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, transform
+from brasbim.core import display_layers, geom2d, transform
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import spaces
 from brasbim.core.assistant import layout
@@ -76,6 +76,8 @@ class Registry:
         if tool is None:
             return _error(f"ferramenta desconhecida: {name}")
         try:
+            if tool.changes:
+                _check_unlocked(ctx.doc, args or {})
             out = tool.fn(ctx, dict(args or {}))
         except OpError as e:
             return _error(str(e))
@@ -84,6 +86,21 @@ class Registry:
         if isinstance(out, list):
             return {"content": out, "isError": False}
         return {"content": [_text(out)], "isError": False}
+
+
+def _check_unlocked(doc: Document, args: dict) -> None:
+    """Elemento de camada bloqueada não é editado pela IA (spec/ui 18 §4)."""
+    locked = display_layers.locked_ids(doc)
+    if not locked:
+        return
+    ids = [args["id"]] if isinstance(args.get("id"), str) else []
+    ids += [g for g in args.get("ids") or [] if isinstance(g, str)]
+    for gid in ids:
+        if gid in locked:
+            element = doc.find(gid)
+            name = display_layers.layer_name(doc, display_layers.layer_of(doc, element))
+            raise OpError(f"{gid} está na camada {name}, que está bloqueada; peça ao usuário "
+                          "para desbloqueá-la no painel Camadas")
 
 
 def _text(data) -> dict:
@@ -152,11 +169,13 @@ def _type(doc: Document, ifc_class: str, name: str | None, what: str, where=None
     raise OpError(f"tipo de {what} {name!r} não existe (há: {names})")
 
 
-def _contained(storey, ifc_class: str) -> list:
+def _contained(storey, ifc_class: str, doc: Document) -> list:
+    """Elementos da classe no pavimento, menos os das camadas ocultas (spec/ui 18 §4)."""
     from brasbim.core.structure import roofs
 
+    hidden = display_layers.hidden_ids(doc)
     return [e for e in ifcopenshell.util.element.get_decomposition(storey)
-            if e.is_a(ifc_class) and not roofs.is_part(e)]
+            if e.is_a(ifc_class) and not roofs.is_part(e) and e.GlobalId not in hidden]
 
 
 def _wall_info(doc: Document, wall) -> dict | None:
@@ -178,7 +197,7 @@ def _wall_at(doc: Document, storey, p, gid: str | None = None):
     """Parede que passa pelo ponto ``p`` (ou a ``gid``) e onde: (parede, info, posição ao
     longo do caminho, y local)."""
     best = None
-    walls = [doc.get(gid, "IfcWall")] if gid else _contained(storey, "IfcWall")
+    walls = [doc.get(gid, "IfcWall")] if gid else _contained(storey, "IfcWall", doc)
     for wall in walls:
         info = _wall_info(doc, wall)
         if info is None:
@@ -206,7 +225,7 @@ def describe_model(ctx: Context, args: dict) -> dict:
     doc = ctx.doc
     storey = _storey(ctx, args)
     walls, fillings = [], []
-    for wall in _contained(storey, "IfcWall"):
+    for wall in _contained(storey, "IfcWall", doc):
         info = _wall_info(doc, wall)
         if info is None:
             walls.append({"id": wall.GlobalId, "nome": wall.Name, "outra_origem": True})
@@ -222,6 +241,8 @@ def describe_model(ctx: Context, args: dict) -> dict:
             o = openings.read_state(opening)
             for rel in opening.HasFillings:
                 el = rel.RelatedBuildingElement
+                if display_layers.is_hidden(doc, el):
+                    continue
                 etype = ifcopenshell.util.element.get_type(el)
                 mid_t = o["distance"] + o["width"] / 2
                 center = info["frame"].to_global(path.point(sum(info["band"]) / 2, mid_t))
@@ -232,14 +253,15 @@ def describe_model(ctx: Context, args: dict) -> dict:
                     "centro": _pt(center), "largura": _r(o["width"]),
                     "altura": _r(o["height"]), "peitoril": _r(o["sill"])})
     rooms = []
-    for space in [e for e in doc.ifc.by_type("IfcSpace") if spaces.storey_of(e) == storey]:
+    for space in [e for e in doc.ifc.by_type("IfcSpace") if spaces.storey_of(e) == storey
+                  and not display_layers.is_hidden(doc, e)]:
         state = spaces.read_state(space)
         if state["outline"]:
             rooms.append({"id": space.GlobalId, "numero": state["number"],
                           "nome": state["name"], "area": _r(spaces.area(state["outline"])),
                           "contorno": [_pt(p) for p in state["outline"]]})
     slab_list = []
-    for slab in _contained(storey, "IfcSlab"):
+    for slab in _contained(storey, "IfcSlab", doc):
         try:
             state = slabs.read_state(doc, slab)
         except (OpError, ValueError, KeyError):
@@ -248,7 +270,7 @@ def describe_model(ctx: Context, args: dict) -> dict:
         slab_list.append({"id": slab.GlobalId, "tipo": stype.Name if stype else None,
                           "contorno": [_pt(p) for p in state["outline"]]})
     roof_list = []
-    for roof in _contained(storey, "IfcRoof"):
+    for roof in _contained(storey, "IfcRoof", doc):
         if not roofs.is_roof(roof):
             continue
         state = roofs.read_state(doc, roof)
@@ -262,6 +284,11 @@ def describe_model(ctx: Context, args: dict) -> dict:
                           "lado": None if state["side"] is None else state["side"] + 1,
                           "contorno_apoio": [_pt(p) for p in state["outline"]],
                           "area_telhado": _r(q.get("NetArea", 0.0))})
+
+    locked = display_layers.locked_ids(doc)  # aparecem marcados (spec/ui 18 §4)
+    for item in (*walls, *fillings, *rooms, *slab_list, *roof_list):
+        if item["id"] in locked:
+            item["bloqueado"] = True
 
     def names(cls, where=None):
         return [t.Name for t in sorted(doc.ifc.by_type(cls), key=lambda t: t.Name or "")

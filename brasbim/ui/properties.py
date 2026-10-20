@@ -14,6 +14,7 @@ campo ao valor anterior (o painel é refeito a partir do modelo).
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 from collections import Counter
@@ -37,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import geom2d
+from brasbim.core import display_layers, geom2d
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -278,6 +279,8 @@ class PropertiesPanel(QScrollArea):
                 self._add(cls, QLabel(str(n)))
         else:
             self._tool_options()
+        if active is None and selection:
+            self._layer_field(selection)
         self.lying = self.wants_lying()
         if self.lying:
             self._render_lying()
@@ -1085,6 +1088,22 @@ class PropertiesPanel(QScrollArea):
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
 
+    def _layer_field(self, selection) -> None:
+        """Camada de um ou vários elementos (spec/ui 18 §5): "várias" quando discordam."""
+        doc = self.session.doc
+        if display_layers.read_config(doc) is None:
+            return
+        elements = [display_layers.owner(e) for e in selection]
+        elements = [e for e in elements if display_layers.layerable(e)]
+        if not elements:
+            return
+        current = {display_layers.layer_of(doc, e) or display_layers.NONE for e in elements}
+        self._section("Organização")
+        self._combo("Camada", display_layers.choices(doc),
+                    current.pop() if len(current) == 1 else None,
+                    lambda v: self._run(lambda: display_layers.assign(
+                        doc, [e.GlobalId for e in elements], v)))
+
     def _sheet(self, sheet) -> None:
         """Prancha (spec/ui 15 §5)."""
         doc = self.session.doc
@@ -1101,11 +1120,28 @@ class PropertiesPanel(QScrollArea):
         self._combo("Orientação", [("Horizontal", "landscape"), ("Vertical", "portrait")],
                     state["orientation"], lambda v: edit(orientation=v))
         self._section("Vistas na prancha")
-        for item in state["views"]:
+        config = display_layers.read_config(doc)
+        combinations = [("Como na janela", None)] + [
+            (c["name"], c["id"]) for c in (config["combinations"] if config else [])]
+
+        def set_combination(index, value):
+            items = copy.deepcopy(state["views"])
+            items[index].pop("combination", None)
+            if value:
+                items[index]["combination"] = value
+            edit(views=items)
+
+        for i, item in enumerate(state["views"]):
             target = doc.find(item.get("storey") or item.get("view"))
             name = ((f"Planta: {target.Name}" if item["kind"] == "plan"
                      else views.read_state(target)["name"]) if target is not None else "—")
             self._read(name, f"1:{sheets.scale_of(doc, item)}")
+            if config is not None:  # combinação de camadas da vista (spec/ui 18 §6.2)
+                current = item.get("combination")
+                if display_layers.combination(doc, current or "") is None:
+                    current = None
+                self._combo("  Camadas", combinations, current,
+                            lambda v, i=i: set_combination(i, v))
         present = {it.get("storey") or it.get("view") for it in state["views"]}
         options = [(f"Planta: {s.Name}", {"kind": "plan", "storey": s.GlobalId})
                    for s in doc.storeys() if s.GlobalId not in present]

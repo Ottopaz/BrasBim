@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 SERVER_NAME = "brasbim"
 PATH = "/mcp"
+MAX_BODY = 16 * 1024 * 1024  # pedido maior que isso é recusado (413)
 
 INSTRUCTIONS = """\
 Você está desenhando no BrasBim, um software BIM livre que guarda o modelo em IFC 4.3.
@@ -161,13 +162,22 @@ class Server:
                 return secrets.compare_digest(self.headers.get("Authorization", ""), expected)
 
             def do_POST(self):
+                # O corpo é lido antes de qualquer resposta: recusar sem ler faz o Windows
+                # derrubar a conexão, e o cliente não recebe o 401.
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    length = -1
+                if not 0 <= length <= MAX_BODY:
+                    self.close_connection = True
+                    return self._send(413)
+                raw = self.rfile.read(length)
                 if urlparse(self.path).path != PATH:
                     return self._send(404)
                 if not self._allowed():
                     return self._send(401)
                 try:
-                    length = int(self.headers.get("Content-Length", "0"))
-                    message = json.loads(self.rfile.read(length) or b"null")
+                    message = json.loads(raw or b"null")
                 except (ValueError, UnicodeDecodeError):
                     body = json.dumps(_fail(None, -32700, "JSON inválido")).encode()
                     return self._send(400, body)

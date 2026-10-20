@@ -21,7 +21,7 @@ import ifcopenshell.geom
 import ifcopenshell.util.element
 import numpy as np
 
-from brasbim.core import clip, materials, props
+from brasbim.core import clip, display_layers, materials, props
 from brasbim.core.annotations.drafting import signed
 from brasbim.core.annotations.prims import Text
 from brasbim.core.document import Document, OpError
@@ -328,9 +328,10 @@ def draw(doc: Document, view) -> Drawing:
     settings.set("use-world-coords", True)
     painted: list[tuple[float, int, Item]] = []
     cut_items: list[Item] = []
+    hidden = display_layers.hidden_ids(doc)  # spec/ui 18 §4
     for cls in CLASSES:
         for element in sorted(doc.ifc.by_type(cls), key=lambda e: e.GlobalId):
-            if element.Representation is None:
+            if element.Representation is None or element.GlobalId in hidden:
                 continue
             mesh = _mesh(element, settings)
             if mesh is None:

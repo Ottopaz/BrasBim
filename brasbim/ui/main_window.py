@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from brasbim.core import display_layers
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -40,6 +41,7 @@ from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import feedback, theme
 from brasbim.ui.assistant import AssistantPanel
+from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.plan_view import PlanView
@@ -171,6 +173,12 @@ class MainWindow(QMainWindow):
         self.assistant_dock = self._dock("Assistente", "assistente", self.assistant,
                                          Qt.RightDockWidgetArea)
         self.assistant_dock.hide()
+        # Camadas (spec/ui 18 §7): painel separado, solto; fechado até ser pedido
+        self.layers = LayersPanel(self.session)
+        self.layers_dock = self._dock("Camadas", "camadas", self.layers, Qt.RightDockWidgetArea)
+        self.layers_dock.setFloating(True)
+        self.layers_dock.resize(320, 480)
+        self.layers_dock.hide()
 
     def _action(self, menu, text, slot, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -224,6 +232,9 @@ class MainWindow(QMainWindow):
         assistant_action = self.assistant_dock.toggleViewAction()
         assistant_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.panels_menu.addAction(assistant_action)
+        layers_action = self.layers_dock.toggleViewAction()
+        layers_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self.panels_menu.addAction(layers_action)
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
@@ -397,6 +408,11 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "storey":
             self.ctx.invalidate()
+            self._refresh_all()
+        elif event == "layers":  # exibição das camadas (spec/ui 18 §4)
+            self.ctx.invalidate()
+            self._refresh_section_views()
+            self.scene.apply_layers()
             self._refresh_all()
         elif event == "selection":
             self.properties.refresh()
@@ -744,9 +760,27 @@ class MainWindow(QMainWindow):
         if not gid:
             return [("Enquadrar tudo", view.fit)]
         if view is self.view3d:
-            return [("Mostrar na planta", lambda: self.show_in_plan(gid)),
-                    ("Enquadrar a seleção", view.frame_selection)]
-        return [("Mostrar no 3D", self.show_in_3d), ("Enquadrar a seleção", view.frame_selection)]
+            actions = [("Mostrar na planta", lambda: self.show_in_plan(gid)),
+                       ("Enquadrar a seleção", view.frame_selection)]
+        else:
+            actions = [("Mostrar no 3D", self.show_in_3d),
+                       ("Enquadrar a seleção", view.frame_selection)]
+        return actions + self._layer_actions(gid)
+
+    def _layer_actions(self, gid) -> list[tuple[str, object]]:
+        """Camada do elemento sob o cursor (spec/ui 18 §5): ocultar, bloquear, isolar."""
+        doc = self.session.doc
+        element = doc.find(gid)
+        if display_layers.read_config(doc) is None or not display_layers.layerable(
+                display_layers.owner(element)):
+            return []
+        layer_id = display_layers.layer_of(doc, element) or display_layers.NONE
+        key = ("layer", layer_id)
+        return [("Ocultar a camada deste elemento",
+                 lambda: self.layers.set_visible(key, False)),
+                ("Bloquear a camada deste elemento",
+                 lambda: self.layers.set_locked(key, True)),
+                ("Mostrar só a camada deste elemento", lambda: self.layers.isolate(key))]
 
     def show_context_menu(self, view, gid, pos) -> None:
         menu = QMenu(self)

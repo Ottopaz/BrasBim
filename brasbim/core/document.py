@@ -26,6 +26,12 @@ class Document:
         self.orphan_profiles: list = []
         # Elementos que um pilar, viga ou laje excluído cortava: refeitos na derivação.
         self.cut_victims: set[str] = set()
+        # Camadas (spec/ui 18): camada conhecida de cada elemento, montada do IFC na primeira
+        # consulta; e a exibição (ocultas, bloqueadas), que não é operação.
+        from brasbim.core.display_layers import Display
+
+        self.element_layers: dict | None = None
+        self.display = Display()
 
     # --- criação e arquivo ---------------------------------------------------
 
@@ -72,6 +78,9 @@ class Document:
         doc.body_context  # noqa: B018 - cria os contextos
         doc.axis_context  # noqa: B018
         doc.profile_context  # noqa: B018
+        from brasbim.core import display_layers
+
+        display_layers.setup(doc)  # conjunto inicial de camadas (spec/ui 18 §3.1)
         return doc
 
     @classmethod

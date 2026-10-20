@@ -53,6 +53,7 @@ DeriveFn = Callable[[Document, set[str]], None]
 _APPLY: dict[str, ApplyFn] = {}
 _INVERT: dict[str, InvertFn] = {}
 _DERIVE: list[DeriveFn] = []
+_DERIVE_LAST: list[DeriveFn] = []  # depois de todos os corpos refeitos (camadas)
 
 # Módulos que registram handlers; importados sob demanda para evitar ciclos.
 HANDLER_MODULES = (
@@ -80,6 +81,7 @@ HANDLER_MODULES = (
     "brasbim.core.drawings.views",
     "brasbim.core.drawings.sheets",
     "brasbim.core.quantities.tables",
+    "brasbim.core.display_layers",
 )
 _loaded = False
 
@@ -129,8 +131,8 @@ def check_before(op: Op, current: dict) -> None:
             raise OpError(f"{op.op} {op.id}: '{key}' é {current.get(key)!r}, esperado {value!r}")
 
 
-def register_derive(fn: DeriveFn) -> None:
-    _DERIVE.append(fn)
+def register_derive(fn: DeriveFn, last: bool = False) -> None:
+    (_DERIVE_LAST if last else _DERIVE).append(fn)
 
 
 def apply_op(doc: Document, op: Op) -> set[str]:
@@ -149,5 +151,5 @@ def invert_op(op: Op) -> Op:
 
 def derive(doc: Document, dirty: set[str]) -> None:
     _ensure_loaded()
-    for fn in _DERIVE:
+    for fn in (*_DERIVE, *_DERIVE_LAST):
         fn(doc, dirty)

@@ -157,8 +157,26 @@ def title_items(doc: Document, sheet, date: str) -> tuple[list[Stroke], list[Tex
 # --- vistas na prancha --------------------------------------------------------------------
 
 
+def item_display(doc: Document, item: dict):
+    """Contexto de desenho da vista da prancha: com ``combination`` (spec/ui 18 §6.2), os
+    estados daquela combinação, sem mudar a janela; sem ela, a exibição atual."""
+    import contextlib
+
+    from brasbim.core import display_layers
+
+    comb = display_layers.combination(doc, item["combination"])         if item.get("combination") else None
+    if comb is None:
+        return contextlib.nullcontext()
+    return display_layers.using(doc, display_layers.display_of(comb["states"]))
+
+
 def view_bounds(doc: Document, item: dict):
     """Retângulo do desenho (m) da planta ou da vista, ou ``None``."""
+    with item_display(doc, item):
+        return _view_bounds(doc, item)
+
+
+def _view_bounds(doc: Document, item: dict):
     if item["kind"] == "plan":
         from brasbim.core import plan
 

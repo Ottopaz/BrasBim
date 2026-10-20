@@ -13,6 +13,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
 
+from brasbim.core import display_layers
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
@@ -23,7 +24,9 @@ from brasbim.ui.tools import (
     BeamTool,
     ColumnTool,
     DimensionTool,
+    DoorTool,
     HatchTool,
+    LevelTool,
     LineTool,
     NorthTool,
     RoofTool,
@@ -236,6 +239,19 @@ def history_bar(window) -> QToolBar:
     return bar
 
 
+def tool_kind(tool) -> str | None:
+    """Ferramenta de criação → tipo de elemento (chave das camadas padrão, spec/ui 18)."""
+    for cls, kind in ((SpaceTool, "space"), (HatchTool, "hatch"), (LineTool, "line2d"),
+                      (TextTool, "text"), (DimensionTool, "dimension"), (NorthTool, "north"),
+                      (ViewTool, "view"), (LevelTool, "level_mark"), (BeamTool, "beam"),
+                      (SlabOpeningTool, None), (RoofTool, "roof"), (SlabTool, "slab"),
+                      (_WallTool, "wall"), (ColumnTool, "column"), (WindowTool, "window"),
+                      (DoorTool, "door")):
+        if isinstance(tool, cls):
+            return kind
+    return None
+
+
 class OptionsBar(QToolBar):
     """Opções da ferramenta de criação ativa (§4); escondida nas outras."""
 
@@ -270,9 +286,8 @@ class OptionsBar(QToolBar):
         elif isinstance(tool, DimensionTool):
             self._choices(DIM_DIRECTIONS, tool.direction,
                           lambda v: setattr(tool, "direction", v))
-        elif isinstance(tool, (NorthTool, ViewTool)):
-            self.hide()
-            return
+        elif isinstance(tool, (NorthTool, ViewTool, LevelTool)):
+            pass  # só a camada
         elif isinstance(tool, BeamTool):
             self._beam(tool)
         elif isinstance(tool, SlabOpeningTool):
@@ -291,8 +306,27 @@ class OptionsBar(QToolBar):
         else:
             self.hide()
             return
+        self._layer(tool)
+        if not self.actions():
+            self.hide()
+            return
         if self.wanted:
             self.show()
+
+    def _layer(self, tool) -> None:
+        """Camada padrão da ferramenta (spec/ui 18 §3.2), gravada no projeto."""
+        session = self.window_.session
+        doc = session.doc
+        kind = tool_kind(tool)
+        config = display_layers.read_config(doc)
+        if kind is None or config is None:
+            return
+        self.addSeparator()
+        self._label("Camada")
+        current = config["defaults"].get(kind) or display_layers.NONE
+        self._combo(display_layers.choices(doc), current,
+                    lambda v: session.run(lambda: display_layers.set_default(doc, kind, v)),
+                    "Camada em que esta ferramenta desenha")
 
     def refresh(self) -> None:
         if self.tool is not None and self.isVisible():

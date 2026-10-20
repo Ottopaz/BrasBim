@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from brasbim.core import display_layers
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import History, Transaction
@@ -179,13 +180,20 @@ class Session:
         self._write_journal()
 
     def open(self, path: str) -> None:
-        self._attach(Document.open(path), path)
+        doc = Document.open(path)
+        doc.display = display_layers.read_display(doc)  # spec/ui 18 §5.1
+        self._attach(doc, path)
         self.message(f"Aberto: {path}")
+        organize = display_layers.organize(doc)  # arquivo sem camadas (§3.1, CM12)
+        if organize is not None:
+            self.history.commit(organize)
+            self.message("Projeto organizado em camadas (pode ser desfeito)")
 
     def save(self, path: str | None = None) -> None:
         path = path or self.path
         if not path:
             raise OpError("escolha onde salvar")
+        display_layers.write_display(self.doc, self.doc.display)  # §5.1: só ao salvar
         self.doc.save(path)
         self.path = path
         self.modified = False
@@ -209,11 +217,59 @@ class Session:
             tx = build() if callable(build) else build
             if not tx.ops:
                 return False
+            self._check_layers(tx)
             self.history.commit(tx)
         except OpError as e:
             self.message(str(e), "recusa")
             return False
+        self._show_created(tx)
         return True
+
+    # --- camadas (spec/ui 18) ----------------------------------------------------------
+
+    @property
+    def display(self) -> display_layers.Display:
+        return self.doc.display
+
+    def set_display(self, display: display_layers.Display) -> None:
+        """Exibição das camadas (§5.1): não é operação. Elementos que ficaram ocultos ou
+        bloqueados saem da seleção (§4)."""
+        self.doc.display = display
+        blocked = display_layers.hidden_ids(self.doc) | display_layers.locked_ids(self.doc)
+        self.selection -= blocked
+        self._emit("layers")
+        self._emit("selection")
+
+    def _check_layers(self, tx: Transaction) -> None:
+        """Criação em camada bloqueada é recusada (§3.2)."""
+        config = display_layers.read_config(self.doc)
+        if config is None or not self.doc.display.locked:
+            return
+        for kind, _, _ in display_layers.created(tx):
+            target = config["defaults"].get(kind) or display_layers.NONE
+            if target in self.doc.display.locked:
+                raise OpError(f"a camada {display_layers.layer_name(self.doc, target)} está "
+                              "bloqueada; desbloqueie-a no painel Camadas para desenhar nela")
+
+    def _show_created(self, tx: Transaction) -> None:
+        """Elemento criado em camada oculta: a camada é mostrada, com aviso (§3.2)."""
+        if not self.doc.display.hidden:
+            return
+        shown = []
+        for _, gid, _ in display_layers.created(tx):
+            element = self.doc.find(gid)
+            if element is None:
+                continue
+            target = display_layers.layer_of(self.doc, element) or display_layers.NONE
+            if target in self.doc.display.hidden and target not in shown:
+                shown.append(target)
+        if shown:
+            display = self.doc.display
+            for target in shown:
+                display = display.with_layer(target, visible=True)
+            self.set_display(display)
+            names = ", ".join(display_layers.layer_name(self.doc, x) for x in shown)
+            self.message(f"Camada {names} mostrada para exibir o que foi criado")
 
     def undo(self) -> None:
         tx = self.history.undo()
@@ -238,6 +294,8 @@ class Session:
 
     def select(self, gids, add: bool = False) -> None:
         gids = {g for g in gids if g}
+        if self.doc.display.hidden or self.doc.display.locked:  # spec/ui 18 §4
+            gids -= display_layers.hidden_ids(self.doc) | display_layers.locked_ids(self.doc)
         if add:
             self.selection ^= gids
         else:

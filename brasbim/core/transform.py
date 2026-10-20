@@ -15,7 +15,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, guid
+from brasbim.core import display_layers, geom2d, guid
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import doors
@@ -530,9 +530,10 @@ def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
 def copy_elements(doc: Document, gids, vector) -> Transaction:
     """Cópia deslocada pelo vetor (spec/ui 02 §6.2); as cotas copiadas ficam soltas."""
     fn = geom2d.translation(tuple(vector))
-    return _with_annotations(
+    tx = _with_annotations(
         "Copiar", doc, gids, lambda others: _copy_elements_core(doc, others, vector),
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True))
+    return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
 
 
 def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
@@ -542,8 +543,9 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
     fn = geom2d.reflection(tuple(a), tuple(b))
     axis = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
     moving = set() if keep else _moving(doc, gids)
-    return _with_annotations(
+    tx = _with_annotations(
         "Espelhar cópia" if keep else "Espelhar", doc, gids,
         lambda others: _mirror_elements_core(doc, others, a, b, keep),
         lambda annos: _anno_ops(doc, annos, fn, lambda x: 2 * axis - x, True, moving,
                                 copy_=keep))
+    return display_layers.inherit(doc, tx, gids) if keep else tx

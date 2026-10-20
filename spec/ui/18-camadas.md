@@ -3,7 +3,7 @@ documento: Camadas de organização (grupos, visibilidade, bloqueio e combinaç�
 requisito: RF-NUC-08, RF-NUC-04 (filtro por camada)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-20
-status: aprovado
+status: aprovado (implementado)
 revisor: OTTO
 ---
 
@@ -28,8 +28,8 @@ com a escala (RF-DOC-08).
 
 ## 2. Mapeamento IFC
 - **Camada no arquivo** = `IfcPresentationLayerWithStyle`:
-  - `Name` é o nome da camada. `Identifier` é o código estável do BrasBim (12 caracteres),
-    que continua o mesmo quando a camada é renomeada.
+  - `Name` é o nome da camada. `Identifier` é o código estável do BrasBim (no formato do
+    GlobalId, 22 caracteres), que continua o mesmo quando a camada é renomeada.
   - `LayerOn`, `LayerBlocked` e `LayerFrozen` (este último sempre `.F.`) guardam o estado
     de exibição **gravado ao salvar** (§5.1). `LayerStyles` fica vazio.
   - `AssignedItems` lista as **representações** (`IfcShapeRepresentation`) de cada
@@ -195,46 +195,46 @@ desenhados em `scripts/gerar_icones.py`, no estilo dos outros.
 Casa de teste: retângulo de paredes (0, 0)–(8, 5), uma porta P1, uma janela J1, um pilar,
 uma laje, um ambiente, uma cota e um texto, no Térreo.
 
-- [ ] **CM01** Projeto novo: grupos e camadas da §3.1 no `BrasBim_Camadas`. Cada elemento
+- [x] **CM01** Projeto novo: grupos e camadas da §3.1 no `BrasBim_Camadas`. Cada elemento
       criado tem as representações em uma `IfcPresentationLayerWithStyle` com o nome
       certo, e o arquivo passa na validação de esquema.
-- [ ] **CM02** A camada sobrevive à edição: mover uma parede, mudar o tipo, a altura ou a
+- [x] **CM02** A camada sobrevive à edição: mover uma parede, mudar o tipo, a altura ou a
       forma do topo e desfazer deixa as representações novas na mesma camada, sem
       representação solta em `AssignedItems`.
-- [ ] **CM03** Camada vazia: tirar o último elemento apaga a entidade IFC e a camada
+- [x] **CM03** Camada vazia: tirar o último elemento apaga a entidade IFC e a camada
       continua no JSON. Pôr um elemento de volta cria a entidade de novo.
-- [ ] **CM04** Ocultar Paredes: `storey_plan`, `Scene` (3D) e o corte não têm nenhuma
+- [x] **CM04** Ocultar Paredes: `storey_plan`, `Scene` (3D) e o corte não têm nenhuma
       parede. A porta continua na planta. Seleção, janela de seleção e snap ignoram as
       paredes.
-- [ ] **CM05** Bloquear Paredes: as paredes são desenhadas e o snap acha a ponta, mas
+- [x] **CM05** Bloquear Paredes: as paredes são desenhadas e o snap acha a ponta, mas
       clique, janela de seleção, Del e as alças não pegam a parede.
-- [ ] **CM06** Grupo: desligar Estrutura desliga Pilares, Vigas e Lajes estruturais.
+- [x] **CM06** Grupo: desligar Estrutura desliga Pilares, Vigas e Lajes estruturais.
       Religar uma delas deixa o grupo "misto".
-- [ ] **CM07** `layer.assign` de vários elementos, com desfazer e refazer: o diário
+- [x] **CM07** `layer.assign` de vários elementos, com desfazer e refazer: o diário
       reaplicado reproduz o IFC. Reabrir o arquivo traz camadas, grupos e combinações.
-- [ ] **CM08** Excluir uma camada com elementos leva os elementos para a camada escolhida.
+- [x] **CM08** Excluir uma camada com elementos leva os elementos para a camada escolhida.
       Excluir um grupo mantém as camadas.
-- [ ] **CM09** Combinação: aplicar **Estrutura** deixa visíveis só Estrutura e Cotas.
+- [x] **CM09** Combinação: aplicar **Estrutura** deixa visíveis só Estrutura e Cotas.
       Mudar uma camada mostra "(alterada)". Uma camada criada depois entra visível nas
       combinações que já existem.
-- [ ] **CM10** Prancha: duas vistas da mesma planta, uma com a combinação **Tudo** e outra
+- [x] **CM10** Prancha: duas vistas da mesma planta, uma com a combinação **Tudo** e outra
       com **Arquitetura**. O PDF da segunda não tem pilar nem cota, e a janela não muda.
-- [ ] **CM11** Arquivo de outra origem com `IfcPresentationLayerAssignment`: as camadas
+- [x] **CM11** Arquivo de outra origem com `IfcPresentationLayerAssignment`: as camadas
       aparecem no grupo "Importadas", e ocultar uma delas some com os elementos dela. Os
       elementos sem camada ficam em "Sem camada".
-- [ ] **CM12** Arquivo antigo do BrasBim (sem `BrasBim_Camadas`): abrir organiza os
+- [x] **CM12** Arquivo antigo do BrasBim (sem `BrasBim_Camadas`): abrir organiza os
       elementos em camadas, numa transação que pode ser desfeita.
-- [ ] **CM13** Criar uma parede com a camada Paredes oculta mostra a camada e avisa. Com a
+- [x] **CM13** Criar uma parede com a camada Paredes oculta mostra a camada e avisa. Com a
       camada bloqueada, a criação é recusada.
-- [ ] **CM14** Interface: o olho no painel Camadas oculta as paredes na planta e no 3D.
+- [x] **CM14** Interface: o olho no painel Camadas oculta as paredes na planta e no 3D.
       Alt + clique isola a camada. O campo Camada do painel de propriedades muda a camada
       de dois elementos numa transação só.
-- [ ] **CM15** Assistente: `describe_model` não lista elemento oculto, e `edit_wall` em
+- [x] **CM15** Assistente: `describe_model` não lista elemento oculto, e `edit_wall` em
       parede bloqueada volta como erro.
-- [ ] **CM16** Exibição fora do desfazer: ocultar, bloquear e aplicar combinação não
+- [x] **CM16** Exibição fora do desfazer: ocultar, bloquear e aplicar combinação não
       acrescentam nada ao histórico nem ao diário. Salvar grava `LayerOn`/`LayerBlocked` e o
       `state`, e reabrir traz o mesmo estado.
-- [ ] **CM17** Painel: a busca "cot" deixa só Cotas, com o grupo Documentação aberto.
+- [x] **CM17** Painel: a busca "cot" deixa só Cotas, com o grupo Documentação aberto.
 
 ## 9. Fontes públicas
 - **IFC 4.3**: `IfcPresentationLayerAssignment` e `IfcPresentationLayerWithStyle`

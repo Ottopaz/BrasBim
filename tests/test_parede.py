@@ -236,7 +236,8 @@ def test_excluir_sem_orfaos(model):
     model.commit(cmd.delete_wall(model.doc, wall))
     assert not model.doc.ifc.by_type("IfcWall")
     assert not model.doc.ifc.by_type("IfcMaterialLayerSetUsage")
-    assert not model.doc.ifc.by_type("IfcPropertySet")
+    # Só o Pset das camadas, que é do projeto (spec/ui 18 §2).
+    assert [p.Name for p in model.doc.ifc.by_type("IfcPropertySet")] == ["BrasBim_Camadas"]
     assert not model.doc.ifc.by_type("IfcElementQuantity")
     assert not model.doc.ifc.by_type("IfcShapeRepresentation")
     assert not model.doc.ifc.by_type("IfcRelContainedInSpatialStructure")

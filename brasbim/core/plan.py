@@ -41,7 +41,7 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import clip, geom2d, layers, materials, props, storeys
+from brasbim.core import clip, display_layers, geom2d, layers, materials, props, storeys
 from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import door_types, doors, geometry, params, window_types
@@ -115,6 +115,8 @@ class Plan:
     # Anotações (spec/ui 13): (GlobalId, primitivas) — traços, textos e preenchimentos.
     annotations: list = field(default_factory=list)
     views: set = field(default_factory=set)  # donos dos símbolos de corte e fachada
+    # Elementos de camada bloqueada (spec/ui 18 §4): desenhados, mas fora da escolha.
+    locked: set = field(default_factory=set)
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -134,6 +136,8 @@ class Plan:
         """Elemento sob o ponto, nesta prioridade (spec/ui 10 §4.1): esquadria (caixa
         envolvente), pilar, viga, parede (as cortadas primeiro) e laje."""
         for owner, shapes in sorted(self.owners(("door", "window")).items()):
+            if owner in self.locked:
+                continue
             pts = [q for s in shapes for q in s.points]
             if (min(q[0] for q in pts) - tol <= p[0] <= max(q[0] for q in pts) + tol
                     and min(q[1] for q in pts) - tol <= p[1] <= max(q[1] for q in pts) + tol):
@@ -141,7 +145,7 @@ class Plan:
         for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("wall",),
                       ("wall_view", "wall_above"), _OPENING_ROLES, ("space",), _SLAB_ROLES,
                       _ROOF_ROLES):
-            found = [s for s in self.shapes if s.role in roles]
+            found = [s for s in self.shapes if s.role in roles and s.owner not in self.locked]
             for s in found:
                 if s.closed and _inside(s.points, p):
                     return s.owner
@@ -168,7 +172,7 @@ class Plan:
                                  "annotation", "roof"))}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
-            if not shapes:
+            if not shapes or owner in self.locked:
                 continue
             # A laje (e a abertura nela) só entra inteira, mesmo no cruzamento (spec/ui 10
             # §4.1).
@@ -754,7 +758,7 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
     cortados (que recorta as paredes)."""
     found = [e for e in (_structure_element(doc, x, storey)
                          for cls in ("IfcSlab", "IfcColumn", "IfcBeam")
-                         for x in _contained(storey, cls)) if e is not None]
+                         for x in _contained(storey, cls, doc)) if e is not None]
     shapes: list[Shape] = []
     cut_columns: Rings = []
     for e in found:
@@ -874,25 +878,27 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
 # --- pavimento ----------------------------------------------------------------------
 
 
-def _contained(storey, ifc_class: str) -> list:
+def _contained(storey, ifc_class: str, doc: Document) -> list:
     """Elementos da classe no pavimento; as águas da cobertura ficam de fora (quem aparece
-    é a cobertura, ``_roofs``)."""
+    é a cobertura, ``_roofs``), e os das camadas ocultas também (spec/ui 18 §4)."""
     from brasbim.core.structure import roofs
 
+    hidden = display_layers.hidden_ids(doc)
     return sorted((e for e in ifcopenshell.util.element.get_decomposition(storey)
-                   if e.is_a(ifc_class) and not roofs.is_part(e)), key=lambda e: e.GlobalId)
+                   if e.is_a(ifc_class) and not roofs.is_part(e) and e.GlobalId not in hidden),
+                  key=lambda e: e.GlobalId)
 
 
 def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "simple",
                 show_above: bool = True) -> Plan:
     """Planta do pavimento. ``detail``: ``simple`` ou ``layers`` (spec/ui 06 §2);
     ``show_above``: paredes e vãos acima do plano em tracejado (§3.2)."""
-    plan = Plan()
+    plan = Plan(locked=display_layers.locked_ids(doc))
     if show_below:
         storeys_ = doc.storeys()
         i = storeys_.index(storey)
         if i > 0:
-            for wall in _contained(storeys_[i - 1], "IfcWall"):
+            for wall in _contained(storeys_[i - 1], "IfcWall", doc):
                 plan.shapes += wall_shapes(doc, wall, role="below")
     cut = storeys.cut_height(storey)
     found, structure, cut_columns = _structure(doc, storey, cut, show_above)
@@ -900,7 +906,7 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     plan.shapes += [s for s in structure if s.role.startswith("slab")]
     _structure_regions(plan, found, cut, ("slab",))
     cuts = [c for c in (_cut_wall(doc, wall, cut, show_above)
-                        for wall in _continuous_last(_contained(storey, "IfcWall")))
+                        for wall in _continuous_last(_contained(storey, "IfcWall", doc)))
             if c is not None]
     order = {"wall_above": 0, "wall_view": 1}  # acima, abaixo, cortadas (§3.2)
     plan.shapes += sorted((s for c in cuts for s in c.shapes), key=lambda s: order.get(s.role, 2))
@@ -911,7 +917,13 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     _structure_regions(plan, found, cut, ("column", "beam"))
     plan.labels += structure_labels(found)
     crossed = {o for c in cuts for o in c.crossed}
-    fillings = sorted(_contained(storey, "IfcDoor") + _contained(storey, "IfcWindow"),
+    # A esquadria segue a própria camada (spec/ui 18 §4): o vão de parede oculta também conta.
+    hidden = display_layers.hidden_ids(doc)
+    for wall in ifcopenshell.util.element.get_decomposition(storey):
+        if wall.GlobalId in hidden and wall.is_a("IfcWall"):
+            c = _cut_wall(doc, wall, cut, show_above)
+            crossed |= set(c.crossed) if c is not None else set()
+    fillings = sorted(_contained(storey, "IfcDoor", doc) + _contained(storey, "IfcWindow", doc),
                       key=lambda e: e.GlobalId)
     for door in fillings:
         opening = door.FillsVoids[0].RelatingOpeningElement if door.FillsVoids else None
@@ -986,7 +998,7 @@ def _roofs(doc: Document, storey, plan: Plan, cut: float, show_above: bool) -> N
     cima (projeção da cobertura)."""
     from brasbim.core.structure import roofs
 
-    for roof in _contained(storey, "IfcRoof"):
+    for roof in _contained(storey, "IfcRoof", doc):
         if not roofs.is_roof(roof):
             continue
         try:
@@ -1013,7 +1025,7 @@ def _roofs(doc: Document, storey, plan: Plan, cut: float, show_above: bool) -> N
         return
     from brasbim.core.annotations.prims import Prims, Stroke
 
-    for roof in _contained(storeys_[i + 1], "IfcRoof"):
+    for roof in _contained(storeys_[i + 1], "IfcRoof", doc):
         if not roofs.is_roof(roof):
             continue
         try:
@@ -1039,7 +1051,10 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
     height = storeys.paper(storey, LABEL_MM)
     plan.labels = [dataclasses.replace(lb, height=height) for lb in plan.labels]
     hatches = []
+    hidden = display_layers.hidden_ids(doc)
     for e in ifcopenshell.util.element.get_decomposition(storey):
+        if e.GlobalId in hidden:
+            continue
         if e.is_a("IfcSpace"):
             try:
                 state = spaces.read_state(e)
@@ -1078,7 +1093,7 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             state = views.read_state(view)
         except OpError:
             continue
-        if not views.shown_on(state, storey):
+        if not views.shown_on(state, storey) or view.GlobalId in hidden:
             continue
         prims = views.symbol(state)
         plan.annotations.append((view.GlobalId, prims))

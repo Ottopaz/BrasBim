@@ -121,6 +121,20 @@ ICONS = {
     "down": '<path d="M6.5 9.5 L12 15 L17.5 9.5"/>',
     "edit_type": '<path d="M4.5 19.5 L5.5 15.5 L15.5 5.5 L18.5 8.5 L8.5 18.5 Z"/>'
                  '<path d="M13.5 7.5 L16.5 10.5"/>',
+    # camadas (spec/ui 18 §7): visível, oculta, livre, bloqueada, grupo, nova, mostrar todas
+    "eye": '<path d="M2.5 12 Q12 3.5 21.5 12 Q12 20.5 2.5 12 Z"/>'
+           '<circle cx="12" cy="12" r="3"/>',
+    "eye_off": '<path d="M2.5 12 Q12 3.5 21.5 12 Q12 20.5 2.5 12 Z" stroke-width="1"/>'
+               '<path d="M4 20 L20 4"/>',
+    "lock": '<rect x="5.75" y="10.75" width="12.5" height="9.5"/>'
+            '<path d="M8.5 10.75 V7.5 A3.5 3.5 0 0 1 15.5 7.5 V10.75"/>',
+    "unlock": '<rect x="5.75" y="10.75" width="12.5" height="9.5" stroke-width="1"/>'
+              '<path d="M8.5 10.75 V7.5 A3.5 3.5 0 0 1 15.5 7.5" stroke-width="1"/>',
+    "layer_group": '<path d="M2.75 6.75 H9.5 L11.5 8.75 H21.25 V19.25 H2.75 Z"/>',
+    "layer_new": '<path d="M12 4 L21 8.5 L12 13 L3 8.5 Z"/>'
+                 '<path d="M3 13 L12 17.5 L14 16.5 M17.5 14.5 V21.5 M14 18 H21"/>',
+    "layers_all": '<path d="M12 3.5 L21 8 L12 12.5 L3 8 Z"/>'
+                  '<path d="M3 12 L12 16.5 L21 12 M3 16 L12 20.5 L21 16"/>',
 }
 
 out = Path("brasbim/ui/icons")

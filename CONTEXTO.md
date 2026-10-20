@@ -4,18 +4,19 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑20 (spec do pacote 12, camadas, aprovada).*
+*Atualizado em 2026‑10‑20 (pacote 12: camadas implementadas).*
 
 > **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
 > depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
-> Spec `spec/ui/18-camadas.md` **aprovada** (decisões §10); próximo: implementar o pacote
-> 12. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
+> Pacote 12 (camadas, `spec/ui/18-camadas.md`) **implementado** (CM01–CM19, 502 testes,
+> ruff limpo), aguardando o revisor usar. Próximo: spec do pacote 13 (objetos
+> paramétricos inspirados no comportamento das famílias do Revit, e mobiliário). Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
 > função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
 
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (480 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (502 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -37,7 +38,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
-| `spec/ui/18-camadas` | aprovada (pacote 12; CM01–CM17; decisões §10), a implementar |
+| `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
 | `spec/elementos/laje.md`, `pilar.md`, `viga.md` e `spec/ui/10-laje-pilar-viga` | aprovadas e implementadas (pacote 4, básico; LA01–12 em `tests/test_laje.py`, PI01–14 em `test_pilar.py`, VI01–13 em `test_viga.py`, UI96–UI109 em `test_interface_estrutura.py`). `pilar.md` §11 (e): correção do `CardinalPoint` **a confirmar pelo revisor** |
@@ -367,6 +368,42 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Assistente: ferramenta `table` (só leitura) e linha nas `INSTRUCTIONS` para usá-la
   nas perguntas de quantidade.
 
+## Pacote 12 — como ficou (spec/ui 18, camadas)
+- **Nomes:** `core/layers.py`, `tests/test_camadas.py` e `test_interface_camadas.py` já eram
+  das **camadas de material** da parede (pacote 2). As camadas de organização são
+  `core/display_layers.py`, `ui/layers_panel.py` e `tests/test_*camadas_organizacao.py`.
+- Definições em JSON no Pset `BrasBim_Camadas` do projeto (`Parametros`: grupos, camadas,
+  combinações, `defaults` por ferramenta); `Document.new` grava o conjunto inicial
+  (`display_layers.setup`). Exibição gravada só ao salvar (`Exibicao` + `LayerOn`/
+  `LayerBlocked`, `write_display`; `Session.save`), lida em `Session.open`.
+- Camada do elemento = `IfcPresentationLayerWithStyle` (`Identifier` = código) com todas
+  as representações; águas da cobertura seguem a `IfcRoof` (`display_layers.owner`).
+  `Document.element_layers` lembra a camada de cada elemento já visto (inclusive os
+  excluídos): desfazer a exclusão devolve a camada sem mexer nos comandos de excluir.
+- Derivação `sync` (`register_derive(..., last=True)`: roda depois de todos os corpos):
+  elemento novo → camada padrão da ferramenta; representação nova herda a camada;
+  representação que saiu do produto é tirada da camada e apagada (o `remove_deep2` não
+  apaga o que a camada ainda cita); camada sem itens perde a entidade.
+- Operações: `layer.create/delete/edit`, `layer_group.*`, `layer.order`, `layer.assign`,
+  `layer_combination.*`, `layer.defaults`, `layers.setup/teardown` (organizar arquivo antigo
+  ou de outra origem: `display_layers.organize`, chamado em `Session.open`; camadas que já
+  estavam no arquivo vão para o grupo "Importadas" e são adotadas pelo nome).
+- `display_layers.inherit`: copiar, espelhar com cópia e dividir acrescentam `layer.assign`
+  para a cópia ficar na camada do original (por ferramenta e ordem de criação).
+- Filtros: `plan._contained(storey, cls, doc)`, `_documentation`, símbolos de vista,
+  `section.draw`, `Scene.apply_layers` (malhas guardadas em `_hidden`, sem tesselar de
+  novo), `assistant.tools._contained`. Vão de parede oculta conta como atravessado (a
+  esquadria segue a própria camada). `Plan.locked`: `pick`/`in_rect` pulam os
+  bloqueados; `Session.select` tira ocultos e bloqueados; `Session.run` recusa criar em
+  camada padrão bloqueada e mostra a oculta (`_show_created`).
+- Interface: painel solto (Exibir > Painéis > Camadas, Ctrl+Shift+L, `MainWindow.layers`),
+  campo Camada no painel de propriedades (seção Organização) e na barra Opções
+  (`toolbars.tool_kind`), menu do botão direito (ocultar/bloquear/isolar a camada do
+  elemento), combinação por vista da prancha (painel da prancha, `sheets.item_display`).
+  Ícones `eye`, `eye_off`, `lock`, `unlock`, `layer_group`, `layer_new`, `layers_all`.
+- `mcp.Server.do_POST` lê o corpo antes de responder (401/404 sem ler derrubavam a conexão
+  no Windows: era a falha intermitente do AS06); corpo acima de 16 MB → 413.
+
 ## Próximos passos (nesta ordem)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
@@ -409,6 +446,12 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- Camadas: arrastar no painel só testado pelo núcleo (`layer.order`/`layer.edit`, CM19);
+  clique em elemento bloqueado não chega ao menu do botão direito (para desbloquear, só
+  pelo painel); `inherit` liga cópia e original por ordem (se a conta não fecha, usa a
+  camada comum ou a padrão); vista de prancha cuja combinação foi excluída volta a
+  "Como na janela" sem aviso; `hidden_ids` percorre todos os elementos a cada planta
+  (medir em projeto grande).
 - Tabelas: as portas da biblioteca não têm código curto (o `Reference` é o nome do tipo,
   "P1 – giro 80", como na etiqueta da planta); as janelas têm ("J1"). Sem tabela na
   prancha, fórmulas e filtro por propriedade (V1); o pátio interno fechado por paredes

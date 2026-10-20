@@ -277,7 +277,11 @@ def test_ui71_mostrar_na_planta(window):
     assert s.storey.GlobalId == terreo.GlobalId
     s.select([wall.GlobalId])
     actions = dict(window.context_actions(window.view3d, wall.GlobalId))
-    assert list(actions) == ["Mostrar na planta", "Enquadrar a seleção"]
+    assert list(actions) == ["Mostrar na planta", "Enquadrar a seleção",
+                             # camada do elemento (spec/ui 18 §5)
+                             "Ocultar a camada deste elemento",
+                             "Bloquear a camada deste elemento",
+                             "Mostrar só a camada deste elemento"]
     actions["Mostrar na planta"]()
     QApplication.processEvents()
     assert s.storey.GlobalId == superior.GlobalId
@@ -285,7 +289,7 @@ def test_ui71_mostrar_na_planta(window):
     x0, y0, x1, y1 = window.plan.selection_rect()
     assert 0 <= x0 < x1 <= window.plan.width() and 0 <= y0 < y1 <= window.plan.height()
     assert x1 - x0 <= 220  # 1 m não ocupa a tela inteira (aproximação máxima)
-    assert list(dict(window.context_actions(window.plan, wall.GlobalId))) == [
+    assert list(dict(window.context_actions(window.plan, wall.GlobalId)))[:2] == [
         "Mostrar no 3D", "Enquadrar a seleção"]
     assert list(dict(window.context_actions(window.plan, None))) == ["Enquadrar tudo"]
 
