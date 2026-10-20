@@ -43,14 +43,16 @@ IMPORTED_GROUP = "Importadas"
 # Ferramentas (tipos de elemento do BrasBim) que têm camada padrão (§3.2).
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
          "text", "line2d", "hatch", "level_mark", "north", "view", "circle2d", "arc2d",
-         "spline2d", "radius_dim", "angle_dim", "label", "revision", "grid",
+         "spline2d", "radius_dim", "angle_dim", "label", "revision", "grid", "stair",
+         "railing", "terrain",
          "object:furniture",
          "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
 # Conjunto inicial (§3.1): grupo → [(camada, ferramentas que vão para ela)].
 INITIAL = (
     ("Arquitetura", (("Paredes", ("wall",)), ("Esquadrias", ("door", "window")),
-                     ("Pisos e lajes", ("slab",)), ("Cobertura", ("roof",)),
+                     ("Pisos e lajes", ("slab", "stair", "railing")),
+                     ("Cobertura", ("roof",)),
                      ("Ambientes", ("space",)))),
     ("Estrutura", (("Pilares", ("column",)), ("Vigas", ("beam",)),
                    ("Lajes estruturais", ()))),
@@ -60,7 +62,7 @@ INITIAL = (
                                              "spline2d")),
                       ("Símbolos", ("level_mark", "north", "view", "revision",
                                     "grid")))),
-    ("Entorno", (("Terreno", ()), ("Vegetação", ("object:vegetation",)))),
+    ("Entorno", (("Terreno", ("terrain",)), ("Vegetação", ("object:vegetation",)))),
     # Equipamentos (louças, eletrodomésticos) nasce no primeiro uso (objeto-parametrico §2.5).
     ("Interiores", (("Mobiliário", ("object:furniture",)),)),
 )
@@ -166,7 +168,7 @@ def _roofs():
 # Ferramenta parecida, para arquivo antigo sem a camada padrão das novas (spec/ui 19 §6).
 FALLBACK = {"circle2d": "line2d", "arc2d": "line2d", "spline2d": "line2d",
             "radius_dim": "dimension", "angle_dim": "dimension", "label": "text",
-            "revision": "north", "grid": "north"}
+            "revision": "north", "grid": "north", "stair": "slab", "railing": "slab"}
 
 
 def default_layer(config: dict, kind: str | None) -> str | None:
@@ -195,6 +197,15 @@ def kind_of(element) -> str | None:
         return objects.kind_of(element)
     if element.is_a("IfcGrid"):
         return "grid"
+    from brasbim.core import terrain
+    from brasbim.core.structure import railings, stairs
+
+    if stairs.is_stair(element):
+        return "stair"
+    if railings.is_railing(element):
+        return "railing"
+    if terrain.is_terrain(element):
+        return "terrain"
     for cls, kind in (("IfcWall", "wall"), ("IfcDoor", "door"), ("IfcWindow", "window"),
                       ("IfcColumn", "column"), ("IfcBeam", "beam"), ("IfcRoof", "roof"),
                       ("IfcSpace", "space"), ("IfcSlab", "slab")):
@@ -228,6 +239,11 @@ def owner(element):
 
     if objects.is_part(element):
         return objects.parent_of(element)
+    from brasbim.core.structure import stairs
+
+    stair = stairs.stair_of(element) if element is not None else None
+    if stair is not None:
+        return stair
     if element is not None and element.is_a("IfcSlab"):
         roof = _roofs().roof_of(element)
         if roof is not None:

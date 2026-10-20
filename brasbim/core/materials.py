@@ -67,6 +67,8 @@ LIBRARY = {
     "Folhagem": {"color": "#7FA36A", "cut": _cut("none")},
     "Barro": {"color": "#B5714A", "cut": _cut("none")},
     "Eletrodoméstico": {"color": "#E3E5E6", "cut": _cut("none")},
+    # Terreno (escada-terreno.md §4)
+    "Terra": {"color": "#B9A98A", "cut": _cut("lines", angle=45.0, spacing=0.10)},
 }
 _PALETTE = ("#C9A37D", "#9EB5C7", "#A8C499", "#D4B582", "#BAA3C9", "#C99999")
 

@@ -93,7 +93,15 @@ def roof_of(entity):
 
 
 def is_part(entity) -> bool:
-    return entity is not None and entity.is_a("IfcSlab") and roof_of(entity) is not None
+    """Água da cobertura, ou patamar da escada (escada-terreno.md §2.1): lajes que não
+    entram nas listas de lajes; quem responde por elas é a cobertura ou a escada."""
+    if entity is None or not entity.is_a("IfcSlab"):
+        return False
+    if roof_of(entity) is not None:
+        return True
+    from brasbim.core.structure import stairs
+
+    return stairs.stair_of(entity) is not None
 
 
 def parts_of(roof) -> list:

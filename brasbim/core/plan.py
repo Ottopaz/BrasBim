@@ -945,10 +945,49 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
             plan.labels.append(label)
     _wall_openings(doc, storey, plan)
     _skylights(doc, storey, plan)
+    _stairs_and_railings(doc, storey, plan, cut)
     _objects(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     return plan
+
+
+def _stairs_and_railings(doc: Document, storey, plan: Plan, cut: float) -> None:
+    """Escadas, guarda-corpos soltos e, no pavimento mais baixo, o terreno
+    (escada-terreno.md §2.3, §3, §4): desenhados como anotações."""
+    from brasbim.core import terrain
+    from brasbim.core.structure import railings, stairs
+
+    hidden = display_layers.hidden_ids(doc)
+    for stair in _contained(storey, "IfcStair", doc):
+        if not stairs.is_stair(stair):
+            continue
+        try:
+            state = stairs.read_state(stair)
+            prims = stairs.plan_prims(doc, state, cut)
+            rings = stairs.footprint(doc, state)
+        except (OpError, ValueError, ZeroDivisionError):
+            continue
+        plan.annotations.append((stair.GlobalId, prims))
+        plan.shapes += [Shape(stair.GlobalId, "annotation", tuple(r), True) for r in rings]
+    for railing in _contained(storey, "IfcRailing", doc):
+        if not railings.is_railing(railing):
+            continue
+        from brasbim.core.annotations.prims import Prims, Stroke
+
+        pts = tuple(railings.plan_points(railings.read_state(railing)))
+        plan.annotations.append((railing.GlobalId, Prims(strokes=[Stroke(pts, False, 0.25)])))
+        plan.shapes.append(Shape(railing.GlobalId, "annotation", pts, False))
+    lowest = doc.storeys()[0] if doc.storeys() else None
+    if lowest is not None and lowest.GlobalId == storey.GlobalId:
+        for t in terrain.all_terrains(doc):
+            if t.GlobalId in hidden:
+                continue
+            state = terrain.read_state(t)
+            prims = terrain.plan_prims(state, storey)
+            plan.annotations.insert(0, (t.GlobalId, prims))
+            plan.shapes.append(Shape(t.GlobalId, "annotation",
+                                     tuple(terrain.hull(state["points"])), False))
 
 
 def _skylights(doc: Document, storey, plan: Plan) -> None:

@@ -514,6 +514,15 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- **Pacotes 17–18 em andamento (2026‑10‑20, parado pelo limite de uso):** spec
+  `spec/elementos/escada-terreno.md` escrita; núcleo `core/structure/stairs.py`,
+  `railings.py` e `core/terrain.py` escritos e registrados, sem testes ainda. Já ligados:
+  camadas, planta (`plan._stairs_and_railings`), `roofs.is_part` (patamar). **Falta:** 3D
+  (`scene3d`: classes, malha da escada, `_styled_class`), corte (`section`), excluir
+  (`delete.py`), transformações (`transform._misc_ops`; o script de patch estava em
+  `patch_stairs.py` no scratchpad), ferramentas Escada/Guarda-corpo/Terreno, painel,
+  ícones e os testes ET01–ET08. Depois: salvamento automático, vistas 3D padrão, câmera
+  salva e o fluxo de pôr vista na prancha.
 - Objetos (pacote 13): arrastar da biblioteca para a planta não existe (clique duplo
   ativa a ferramenta); a prévia e as miniaturas são aproximadas (sem OpenGL); o editor não
   desenha na prévia (V2); o símbolo automático não mostra o que fica sob uma peça mais
