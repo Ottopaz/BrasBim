@@ -4,13 +4,14 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑20 (pacote 12: camadas implementadas).*
+*Atualizado em 2026‑10‑20 (pacote 12 implementado; spec do pacote 13 em revisão).*
 
 > **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
 > depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
 > Pacote 12 (camadas, `spec/ui/18-camadas.md`) **implementado** (CM01–CM19, 502 testes,
-> ruff limpo), aguardando o revisor usar. Próximo: spec do pacote 13 (objetos
-> paramétricos inspirados no comportamento das famílias do Revit, e mobiliário). Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
+> ruff limpo), aguardando o revisor usar. Spec do pacote 13 (objetos paramétricos e
+> biblioteca, `spec/elementos/objeto-parametrico.md`) **em revisão**: não implementar
+> antes da aprovação; pontos de revisão (a)–(k) na §11. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
 > função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
 
 ## Comandos
@@ -38,6 +39,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/15-pranchas-e-pdf` | aprovada e implementada (pacote 8; `tests/test_pranchas.py`, `test_interface_pranchas.py`) |
 | `spec/ui/16-assistente` | **em revisão**, implementado para teste (pacote 9; AS01–AS14 em `tests/test_assistente.py`, `test_interface_assistente.py`); pontos de revisão §9 |
 | `spec/elementos/cobertura.md` | aprovada e implementada (pacote 10; CB01–CB13 em `tests/test_cobertura.py`, CB14–CB17 em `test_interface_cobertura.py`) |
+| `spec/elementos/objeto-parametrico.md` | **em revisão** (pacote 13; OB01–OB21). Decisões do revisor de 2026‑10‑20: nome "objeto paramétrico" ("Objeto" nos menus), editor por formulário + prévia, fórmulas, escolha e visibilidade, preso à parede, aninhados; biblioteca com mobiliário, louças, eletrodomésticos e vegetação |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
