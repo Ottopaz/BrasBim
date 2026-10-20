@@ -406,3 +406,75 @@ def hosted_by(doc: Document, wall) -> list:
     from brasbim.core.objects import hosting
 
     return hosting.hosted_by(doc, wall)
+
+
+def apply_definition(doc: Document, object_id: str | None, definition: dict,
+                     types: list[dict]) -> Transaction:
+    """Editor do objeto (§5.3), *Aplicar ao projeto*: a definição (versão + 1) e os tipos
+    numa transação. ``types``: ``{"gid": GlobalId ou None (novo), "name", "values",
+    "defaults"}``; os tipos da definição que não estão na lista são excluídos (recusa se
+    em uso). Antes de montar, confere se todas as ocorrências aceitam os valores novos e
+    recusa listando as que não aceitam."""
+    defn = od.normalized(definition)
+    current = ot.types_of_definition(doc, object_id) if object_id else []
+    if object_id:
+        defn["object_id"] = object_id
+        defn["version"] = int(ot.read(current[0])["definition"]["version"]) + 1 if current \
+            else int(defn.get("version") or 1)
+    od.validate(defn)
+    if not types:
+        raise OpError("o objeto precisa de pelo menos um tipo")
+    names = [str(t["name"]).strip() for t in types]
+    if len({n.casefold() for n in names}) != len(names) or not all(names):
+        raise OpError("os tipos precisam de nomes diferentes")
+    kept = {t["gid"] for t in types if t.get("gid")}
+    ops: list[Op] = []
+    problems: list[str] = []
+    for t in current:
+        if t.GlobalId not in kept:
+            users = occurrences(doc, t)
+            if users:
+                raise OpError(f"o tipo {t.Name} tem {len(users)} ocorrência(s): troque o "
+                              "tipo delas antes de tirá-lo")
+            ops.append(Op("object_type.delete", t.GlobalId, data=ot.read(t)))
+    categories = []
+    for spec in types:
+        values = ot.stored_values(defn, spec.get("values") or {}, "type")
+        defaults = ot.stored_values(defn, spec.get("defaults") or {}, "occurrence")
+        gid = spec.get("gid")
+        if gid:
+            element_type = doc.get(gid, "IfcTypeObject")
+            state = ot.read(element_type)
+            new_state = {**state, "definition": defn, "values": values,
+                         "defaults": defaults, "name": str(spec["name"]).strip()}
+            for e in occurrences(doc, element_type):
+                occ = elements.read_state(doc, e)
+                occ_values = _kept(state["definition"], defn, occ["values"], "occurrence")
+                try:
+                    built = elements.build(doc, new_state, ot.stored_values(
+                        defn, {**defaults, **occ_values}, "occurrence"), occ["mirror"])
+                    del built
+                except OpError as err:
+                    problems.append(f"{e.Name or element_type.Name} ({e.GlobalId[:6]}…): "
+                                    f"{err}")
+                    continue
+                if occ_values != occ["values"]:
+                    ops.append(Op("object.edit", e.GlobalId,
+                                  before={"values": occ["values"]},
+                                  after={"values": occ_values}))
+            after = {k: new_state[k] for k in ("name", "definition", "values", "defaults")
+                     if new_state[k] != state[k]}
+            if after:
+                ops.insert(0, Op("object_type.edit", gid,
+                                 before={k: copy.deepcopy(state[k]) for k in after},
+                                 after=copy.deepcopy(after)))
+        else:
+            state = type_state(defn, str(spec["name"]).strip(), values, defaults)
+            ot.evaluate(state)  # recusa valores fora dos limites antes de gravar
+            categories.append(defn["category"])
+            ops.insert(0, Op("object_type.create", guid.new(), data=state))
+    if problems:
+        raise OpError("estas ocorrências não aceitam a definição nova:\n- "
+                      + "\n- ".join(problems))
+    layer = layer_ops(doc, defn["category"]) if categories else []
+    return Transaction(f"Editar objeto {defn['name']}", layer + ops)

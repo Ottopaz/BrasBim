@@ -9,6 +9,7 @@ Desenho rápido sem OpenGL: a planta mostra o símbolo 2D; o 3D projeta os triâ
 from __future__ import annotations
 
 import json
+import logging
 import math
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
@@ -22,6 +23,7 @@ from brasbim.core.objects import plan as object_plan
 from brasbim.ui import theme
 
 _LIGHT = (0.35, -0.55, 0.76)
+log = logging.getLogger(__name__)
 
 
 class _Built:
@@ -128,8 +130,29 @@ def paint_plan(painter: QPainter, rect: QRectF, symbol, zoom: float = 1.0) -> No
         painter.drawPath(path)
 
 
-def symbol_of(defn: dict, values: dict):
-    return object_plan.local_symbol(_Built(defn, values))
+def symbol_of(defn: dict, values: dict, resolver=None, depth: int = 0):
+    """Símbolo 2D no sistema local, com os aninhados (``resolver`` como na malha)."""
+    out = object_plan.local_symbol(_Built(defn, values))
+    if resolver is None or depth >= od.MAX_NESTING:
+        return out
+    for n in od.nested(defn, values):
+        state = resolver(n.type_name)
+        if state is None:
+            continue
+        try:
+            inner = od.evaluate(state["definition"], state["values"],
+                                {**state["defaults"], **n.values})
+            parts = symbol_of(state["definition"], inner, resolver, depth + 1)
+        except Exception as e:  # noqa: BLE001 - aninhado que não se calcula fica de fora
+            log.debug("prévia sem o aninhado %s: %s", n.type_name, e)
+            continue
+        a = math.radians(n.rotation)
+        c, sn = math.cos(a), math.sin(a)
+        k = -1.0 if n.mirror else 1.0
+        for points, closed, fill in parts:
+            out.append(([(n.origin[0] + c * k * x - sn * y, n.origin[1] + sn * k * x + c * y)
+                         for x, y in points], closed, fill))
+    return out
 
 
 _CACHE: dict = {}
@@ -150,7 +173,7 @@ def thumbnail(state: dict, size: int = 64, mode: str = "3d", resolver=None) -> Q
         values = od.evaluate(state["definition"], state.get("values") or {},
                              state.get("defaults") or {})
         if mode == "plan":
-            paint_plan(painter, rect, symbol_of(state["definition"], values))
+            paint_plan(painter, rect, symbol_of(state["definition"], values, resolver))
         else:
             paint_3d(painter, rect, object_mesh.object_mesh(state["definition"], values,
                                                             resolver))

@@ -62,8 +62,8 @@ def test_ob19_biblioteca_e_ferramenta(window, app):
     # Tab: rotação digitada
     tool.fix("angle", 45.0)
     tool.press((5.0, 2.0), Mods())
-    assert elements.read_state(window.session.doc, _objects(window)[-1])["angle"] == \
-        pytest.approx(45.0)
+    (new,) = [x for x in _objects(window) if x != e]
+    assert elements.read_state(window.session.doc, new)["angle"] == pytest.approx(45.0)
     # biblioteca mostra que o tipo está no projeto
     window.library.refresh()
     texts = []
@@ -129,3 +129,61 @@ def test_ob19_alca_e_painel(window, app):
     s.run(lambda: oc.change_type(s.doc, [e.GlobalId], other))
     assert elements.read_state(s.doc, e)["type"] == other
     assert ot.by_name(s.doc, "Guarda-roupa 3 portas").GlobalId == other
+
+
+def test_ob18_editor(window, app, monkeypatch):
+    from brasbim.core.objects import definition as od
+    from brasbim.ui import object_editor
+    from brasbim.ui.object_editor import ObjectEditor
+
+    warnings = []
+    monkeypatch.setattr(object_editor.QMessageBox, "warning",
+                        lambda *a, **k: warnings.append(a[2]))
+    s = window.session
+    editor = ObjectEditor(s, None, parent=window)
+    editor._set_defn("name", "Banco")
+    editor.defn["params"].insert(0, od.new_param("largura", "length", "type", 1.2,
+                                                 label="Largura"))
+    editor.defn["params"].insert(1, od.new_param("altura", "length", "occurrence", 0.45,
+                                                 label="Altura"))
+    editor.defn["pieces"].append(od.new_piece("box", width="largura", depth=0.4,
+                                              height="altura", material="Madeira"))
+    editor._fill_params()
+    editor._fill_items("pieces")
+    editor._fill_types()
+    editor._update()
+    assert not editor.problems
+    assert editor.preview.tris and editor.apply_button.isEnabled()
+    # ciclo: recusado na linha, sem gravar
+    editor.defn["params"][0]["formula"] = "altura * 2"
+    editor.defn["params"][1]["formula"] = "largura / 2"
+    editor._update()
+    assert editor.problems and not editor.apply_button.isEnabled()
+    rows = {p.where[1] for p in editor.problems if p.where[0] == "param"}
+    assert rows & {0, 1}
+    editor.defn["params"][0]["formula"] = None
+    editor.defn["params"][1]["formula"] = None
+    editor._update()
+    assert editor.apply()
+    (t,) = [x for x in ot.all_types(s.doc) if ot.definition_of(x)["name"] == "Banco"]
+    assert ot.read(t)["definition"]["version"] == 1
+    tool = window.toolbox.tools["object"]
+    tool.set_type(t.GlobalId)
+    window.activate_tool("object")
+    tool.press((1.0, 1.0), Mods())
+    (e,) = _objects(window)
+    # editar a definição: versão + 1 e a ocorrência refeita
+    editor = ObjectEditor(s, ot.definition_of(t)["object_id"], parent=window)
+    editor.defn["pieces"][0]["depth"] = 0.5
+    editor._update()
+    assert editor.apply()
+    assert ot.read(t)["definition"]["version"] == 2
+    box = next(r for r in e.Representation.Representations
+               if r.RepresentationIdentifier == "Box").Items[0]
+    assert box.YDim == pytest.approx(0.5)
+    # valores que deixam a ocorrência inválida: nada é gravado e a mensagem lista
+    editor.defn["pieces"][0]["height"] = "altura - 1"
+    editor._update()
+    assert not editor.apply()
+    assert warnings and "Banco" in warnings[-1]
+    assert ot.read(t)["definition"]["version"] == 2

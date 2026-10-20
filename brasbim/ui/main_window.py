@@ -160,6 +160,8 @@ class MainWindow(QMainWindow):
         self.project.use_object_type = self.use_object_type
         self.project.edit_object_type = self.edit_object_type
         self.project.save_to_library = self.save_object_to_library
+        self.project.edit_object = self.edit_object
+        self.project.new_object = self.new_object
         self.project_dock = self._dock("Projeto", "projeto", self.project,
                                        Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
@@ -170,6 +172,7 @@ class MainWindow(QMainWindow):
         self.properties.open_table = self.open_table
         self.properties.edit_project_info = self.edit_project_info
         self.properties.edit_object_type = self.edit_object_type
+        self.properties.edit_object = self.edit_object
         self.properties_dock = self._dock("Propriedades", "propriedades", self.properties,
                                           Qt.RightDockWidgetArea)
         self.messages = QListWidget()
@@ -316,6 +319,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
+        self._action(project_menu, "Novo objeto…", lambda: self.new_object())
         self._action(project_menu, "Pastas da biblioteca…", self.edit_library_folders)
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
@@ -735,6 +739,41 @@ class MainWindow(QMainWindow):
         self.session.message(f"Gravado na biblioteca: {', '.join(names)} em {path}")
         self.library.refresh()
         return path
+
+    def edit_object(self, object_id: str):
+        """Editor do objeto (§5.3) aberto na definição do projeto."""
+        from brasbim.ui.object_editor import ObjectEditor
+
+        self.toolbox.active.cancel()
+        try:
+            editor = ObjectEditor(self.session, object_id, parent=self)
+        except OpError as e:
+            self.session.message(str(e), "recusa")
+            return None
+        editor.exec()
+        self._after_object_edit()
+        return editor
+
+    def new_object(self, base_id: str | None = None):
+        """Novo objeto, em branco ou a partir de uma cópia da definição ``base_id``."""
+        from brasbim.core.objects import types as ot
+        from brasbim.ui.object_editor import ObjectEditor
+
+        self.toolbox.active.cancel()
+        base = None
+        if base_id:
+            found = ot.types_of_definition(self.session.doc, base_id)
+            base = ot.read(found[0])["definition"] if found else None
+        editor = ObjectEditor(self.session, None, base, parent=self)
+        editor.exec()
+        self._after_object_edit()
+        return editor
+
+    def _after_object_edit(self) -> None:
+        self.options_bar.refresh()
+        self.properties.refresh()
+        self.project.refresh()
+        self.plan.update()
 
     def edit_object_type(self, gid: str) -> None:
         """Editar tipo (§5.4): nome, código e parâmetros de tipo."""
