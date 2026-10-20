@@ -393,3 +393,28 @@ def test_ob11_vao_do_objeto(model):
                for o in openings.of_wall(wall, objects=True))
     assert elements.read_state(model.doc, e)["host"] is None
     assert valid(model.doc.ifc)
+
+
+def test_alca_mantem_o_lado_oposto_no_projeto(model):
+    from estrutura import bounds
+
+    t = load(model, bancada(), "Bancada")
+    e = put(model, t, (1.0, 1.0), angle=90)
+    model.commit(oc.handle_value_ops(model.doc, e, "comprimento", 2.4))
+    low, high = bounds(e)
+    # girada 90°: o comprimento corre em y; a alça "end" estica, a origem fica
+    assert (low[1], high[1]) == pytest.approx((1.0, 3.4), abs=1e-6)
+    wall = model.wall((0, 0), (5, 0))
+    defn = bancada()
+    defn["hosting"] = "wall"
+    defn["params"][0]["handle"]["side"] = "end"
+    t2 = load(model, defn, "Bancada na parede")
+    tx = model.commit(oc.create_object(model.doc, t2, model.terreo, (0, 0), host={
+        "wall": wall.GlobalId, "side": "left", "distance": 1.0}))
+    h = model.doc.get(tx.ops[-1].id)
+    _, before_high = bounds(h)
+    model.commit(oc.handle_value_ops(model.doc, h, "comprimento", 2.0))
+    low, high = bounds(h)
+    # face esquerda: o x local corre para trás; a ponta do início (x local 0) fica
+    assert high[0] == pytest.approx(before_high[0], abs=1e-6)
+    assert high[0] - low[0] == pytest.approx(2.0, abs=1e-6)

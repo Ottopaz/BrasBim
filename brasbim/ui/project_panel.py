@@ -9,11 +9,12 @@ criam e excluem pavimentos.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -21,6 +22,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -89,6 +92,29 @@ class ProjectPanel(QWidget):
         self.new_table_button.setMenu(self._templates_menu())
         self.delete_table_button = QPushButton("Excluir tabela")
         self.delete_table_button.clicked.connect(self.delete_table)
+        # Objetos paramétricos (objeto-parametrico.md §5.4)
+        self.objects = QTreeWidget()
+        self.objects.setHeaderHidden(True)
+        self.objects.setIconSize(QSize(28, 28))
+        self.objects.setIndentation(12)
+        self.objects.setToolTip("Clique duplo num tipo: inserir; botão direito: ações")
+        self.objects.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.objects.customContextMenuRequested.connect(
+            lambda pos: self._objects_menu().exec(self.objects.viewport().mapToGlobal(pos)))
+        self.objects.itemDoubleClicked.connect(self._object_double)
+        self.objects_button = QPushButton("Ações do objeto")
+        self.objects_button.clicked.connect(
+            lambda: self._objects_menu().exec(self.objects_button.mapToGlobal(
+                self.objects_button.rect().bottomLeft())))
+        self.library_button = QPushButton("Biblioteca…")
+        self.library_button.clicked.connect(lambda: self.open_library and self.open_library())
+        self.open_library = None  # postos pela janela principal
+        self.use_object_type = None
+        self.edit_object_type = None
+        self.edit_object = None
+        self.new_object = None
+        self.save_to_library = None
+        self.library_index = None
         self.add_button = QPushButton("Novo pavimento")
         self.add_button.clicked.connect(self.add_storey)
         self.delete_button = QPushButton("Excluir pavimento")
@@ -114,6 +140,16 @@ class ProjectPanel(QWidget):
         table_buttons.addWidget(self.new_table_button)
         table_buttons.addWidget(self.delete_table_button)
         layout.addLayout(table_buttons)
+        layout.addWidget(QLabel("Objetos"))
+        layout.addWidget(self.objects)
+        object_buttons = QHBoxLayout()
+        object_buttons.addWidget(self.objects_button)
+        object_buttons.addWidget(self.library_button)
+        layout.addLayout(object_buttons)
+        # listas baixas no mínimo: o painel não empurra os outros (as listas crescem juntas)
+        for widget in (self.views, self.sheets, self.tables, self.objects):
+            widget.setMinimumHeight(44)
+        self.table.setMinimumHeight(80)
         # o nome do pavimento cabe inteiro ao lado das outras três colunas
         self.setMinimumWidth(320)
         self.refresh()
@@ -173,6 +209,151 @@ class ProjectPanel(QWidget):
             item.setData(Qt.UserRole, table.GlobalId)
             self.tables.addItem(item)
         self.delete_table_button.setEnabled(self.tables.count() > 0)
+        self._refresh_objects()
+
+    # --- objetos paramétricos ---------------------------------------------------------------
+
+    def _refresh_objects(self) -> None:
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import definition as od
+        from brasbim.core.objects import library
+        from brasbim.core.objects import types as ot
+        from brasbim.ui import object_preview
+        from brasbim.ui.object_widgets import resolver_for
+
+        doc = self.session.doc
+        closed = {self.objects.topLevelItem(i).text(0)
+                  for i in range(self.objects.topLevelItemCount())
+                  if not self.objects.topLevelItem(i).isExpanded()}
+        self.objects.clear()
+        updates = library.updates(doc, self.library_index) if self.library_index else {}
+        groups, defs = {}, {}
+        resolve = resolver_for(doc)
+        for t in ot.all_types(doc):
+            state = ot.read(t)
+            defn = state["definition"]
+            label = od.CATEGORIES[defn["category"]][3]
+            group = groups.get(label)
+            if group is None:
+                group = groups[label] = QTreeWidgetItem(self.objects, [label])
+            parent = defs.get(defn["object_id"])
+            if parent is None:
+                text = defn["name"] + ("  · atualização disponível"
+                                       if defn["object_id"] in updates else "")
+                parent = defs[defn["object_id"]] = QTreeWidgetItem(group, [text])
+                parent.setData(0, Qt.UserRole, ("definition", defn["object_id"]))
+                parent.setIcon(0, object_preview.icon(state, 56, "3d", resolve))
+            count = len(oc.occurrences(doc, t))
+            item = QTreeWidgetItem(parent, [f"{t.Name}  ({count})"])
+            item.setData(0, Qt.UserRole, ("type", t.GlobalId))
+        for label, group in groups.items():
+            group.setExpanded(label not in closed)
+        if not groups:
+            empty = QTreeWidgetItem(self.objects, ["Nenhum: traga da biblioteca"])
+            empty.setFlags(Qt.ItemIsEnabled)
+
+    def _object_double(self, item, _column=0) -> None:
+        data = item.data(0, Qt.UserRole)
+        if data and data[0] == "type" and self.use_object_type:
+            self.use_object_type(data[1])
+
+    def _current_object(self):
+        from brasbim.core.objects import types as ot
+
+        item = self.objects.currentItem()
+        data = item.data(0, Qt.UserRole) if item is not None else None
+        if not data:
+            return None, None
+        if data[0] == "type":
+            t = self.session.doc.find(data[1])
+            return data[1], ot.definition_of(t)["object_id"] if t is not None else None
+        return None, data[1]
+
+    def _objects_menu(self) -> QMenu:
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import library
+
+        doc = self.session.doc
+        type_gid, object_id = self._current_object()
+        menu = QMenu(self)
+        has_type = type_gid is not None
+        has_def = object_id is not None
+
+        def add(text, slot, enabled=True):
+            action = menu.addAction(text, slot)
+            action.setEnabled(bool(enabled))
+            return action
+
+        add("Inserir", lambda: self.use_object_type and self.use_object_type(type_gid),
+            has_type)
+        add("Editar tipo…", lambda: self.edit_object_type and self.edit_object_type(type_gid),
+            has_type)
+        add("Duplicar tipo", lambda: self.session.run(
+            lambda: oc.duplicate_type(doc, type_gid)), has_type)
+        add("Renomear tipo…", lambda: self._rename_type(type_gid), has_type)
+        add("Selecionar ocorrências", lambda: self.session.select(
+            [e.GlobalId for e in oc.occurrences(doc, type_gid)]), has_type)
+        add("Substituir tipo…", lambda: self._replace_type(type_gid), has_type)
+        add("Excluir tipo", lambda: self._delete_type(type_gid), has_type)
+        menu.addSeparator()
+        add("Editar objeto…", lambda: self.edit_object and self.edit_object(object_id),
+            has_def and self.edit_object)
+        add("Novo objeto…", lambda: self.new_object and self.new_object(object_id),
+            self.new_object)
+        updates = library.updates(doc, self.library_index) if self.library_index else {}
+        add("Atualizar da biblioteca", lambda: self.session.run(
+            lambda: library.update_from(doc, updates[object_id])),
+            has_def and object_id in updates)
+        add("Gravar na biblioteca…", lambda: self.save_to_library and self.save_to_library(
+            object_id), has_def and self.save_to_library)
+        add("Excluir objeto", lambda: self._delete_definition(object_id), has_def)
+        return menu
+
+    def _rename_type(self, gid) -> None:
+        from brasbim.core.objects import commands as oc
+
+        doc = self.session.doc
+        t = doc.get(gid)
+        name, ok = QInputDialog.getText(self, "Renomear tipo", "Nome:", text=t.Name or "")
+        if ok and name.strip():
+            self.session.run(lambda: oc.edit_type(doc, gid, name=name.strip()))
+
+    def _delete_type(self, gid) -> None:
+        from brasbim.core.objects import commands as oc
+        from brasbim.ui.object_dialogs import ask_replacement
+
+        doc = self.session.doc
+        t = doc.get(gid)
+        replacement = None
+        if oc.occurrences(doc, t):
+            replacement = ask_replacement(self, doc, t)
+            if replacement is None:
+                self.session.message("escolha o tipo substituto (ou exclua os objetos antes)",
+                                     "recusa")
+                return
+        self.session.run(lambda: oc.delete_type(doc, gid, replacement))
+
+    def _replace_type(self, gid) -> None:
+        from brasbim.core.objects import commands as oc
+        from brasbim.ui.object_dialogs import ask_replacement
+
+        doc = self.session.doc
+        target = ask_replacement(self, doc, doc.get(gid))
+        if target is not None:
+            self.session.run(lambda: oc.replace_all(doc, gid, target))
+
+    def _delete_definition(self, object_id) -> None:
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import types as ot
+
+        doc = self.session.doc
+        used = [e for t in ot.types_of_definition(doc, object_id)
+                for e in oc.occurrences(doc, t)]
+        if used:
+            self.session.message(f"{len(used)} objeto(s) usam este objeto: exclua-os ou troque "
+                                 "o tipo antes", "recusa")
+            return
+        self.session.run(lambda: oc.delete_definition(doc, object_id))
 
     def storey_at(self, row: int):
         item = self.table.item(row, 0)

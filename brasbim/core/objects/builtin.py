@@ -36,14 +36,14 @@ def _types(defn: dict, *types) -> list[dict]:
     return out
 
 
-def _wavy(radius: str, points: int = 12, inner: float = 0.82) -> list[list[str]]:
-    """Contorno ondulado (copa, arbusto) com raios alternados, em fórmulas."""
+def _wavy(radius: str, waves: int = 8, depth: float = 0.08,
+          points: int = 48) -> list[list[str]]:
+    """Contorno ondulado (copa, arbusto): raio (0,9 + profundidade × cos(ondas × θ))."""
     out = []
     for k in range(points):
         a = 360.0 * k / points
-        r = f"{radius} * {1.0 if k % 2 == 0 else inner:.2f}".replace(".", ",")
-        out.append([f"{r} * cos({a:.1f})".replace(".", ","),
-                    f"{r} * sen({a:.1f})".replace(".", ",")])
+        r = f"({radius}) * (0,92 + {_f(depth)} * cos({_f(round(waves * a, 1))}))"
+        out.append([f"{r} * cos({_f(round(a, 1))})", f"{r} * sen({_f(round(a, 1))})"])
     return out
 
 
@@ -348,8 +348,8 @@ def _oval(cx: str, cy: str, rx: str, ry: str, steps: int = 16) -> list[list[str]
     out = []
     for k in range(steps):
         a = 360.0 * k / steps
-        out.append([f"{cx} + {rx} * cos({_f(round(a, 1))})",
-                    f"{cy} + {ry} * sen({_f(round(a, 1))})"])
+        out.append([f"{cx} + ({rx}) * cos({_f(round(a, 1))})",
+                    f"{cy} + ({ry}) * sen({_f(round(a, 1))})"])
     return out
 
 
@@ -596,7 +596,7 @@ def arvore() -> list[dict]:
           role="Canopy", material="Folhagem"),
     ], symbol={"mode": "drawn", "items": [
         C("circle", radius="copa / 2"),
-        C("polyline", points=_wavy("copa / 2 * 0,90"), closed=True),
+        C("polyline", points=_wavy("copa / 2"), closed=True),
         C("circle", radius="máx(copa * 0,03; 0,08)"),
     ]})
     return _types(defn, ("Árvore pequena", {}, {"copa": 2.0, "altura": 4.0}),
@@ -630,7 +630,7 @@ def arbusto() -> list[dict]:
         B("revolution", name="Arbusto", points=_crown("diametro / 2", "0", "altura"),
           role="Canopy", material="Folhagem"),
     ], symbol={"mode": "drawn", "items": [
-        C("polyline", points=_wavy("diametro / 2", 14, 0.85), closed=True),
+        C("polyline", points=_wavy("diametro / 2", 10, 0.07), closed=True),
     ]})
     return _types(defn, ("Arbusto", {}))
 
@@ -650,7 +650,7 @@ def vaso() -> list[dict]:
           role="Canopy", material="Folhagem"),
     ], symbol={"mode": "drawn", "items": [
         C("circle", radius="diametro / 2"),
-        C("polyline", points=_wavy("diametro / 2 * 1,2", 10, 0.8), closed=True),
+        C("polyline", points=_wavy("diametro / 2 * 1,2", 7, 0.10), closed=True),
     ]})
     return _types(defn, ("Vaso com planta", {}))
 

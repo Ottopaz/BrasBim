@@ -42,6 +42,7 @@ from brasbim.core.walls import commands as cmd
 from brasbim.ui import feedback, theme
 from brasbim.ui.assistant import AssistantPanel
 from brasbim.ui.layers_panel import LayersPanel
+from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.plan_view import PlanView
@@ -155,6 +156,10 @@ class MainWindow(QMainWindow):
         self.project.open_view = self.open_view
         self.project.open_sheet = self.open_sheet
         self.project.open_table = self.open_table
+        self.project.open_library = self.show_library
+        self.project.use_object_type = self.use_object_type
+        self.project.edit_object_type = self.edit_object_type
+        self.project.save_to_library = self.save_object_to_library
         self.project_dock = self._dock("Projeto", "projeto", self.project,
                                        Qt.LeftDockWidgetArea)
         self.properties = PropertiesPanel(self.session, self.toolbox)
@@ -164,6 +169,7 @@ class MainWindow(QMainWindow):
         self.properties.open_sheet = self.open_sheet
         self.properties.open_table = self.open_table
         self.properties.edit_project_info = self.edit_project_info
+        self.properties.edit_object_type = self.edit_object_type
         self.properties_dock = self._dock("Propriedades", "propriedades", self.properties,
                                           Qt.RightDockWidgetArea)
         self.messages = QListWidget()
@@ -183,6 +189,16 @@ class MainWindow(QMainWindow):
         self.layers_dock.setFloating(True)
         self.layers_dock.resize(320, 480)
         self.layers_dock.hide()
+        # Biblioteca de objetos (objeto-parametrico.md §4.2): solta, fechada até ser pedida
+        self.library = LibraryPanel(self.session)
+        self.library.use_type.connect(self.use_object_type)
+        self.project.library_index = self.library.index
+        self.library_dock = self._dock("Biblioteca de objetos", "biblioteca", self.library,
+                                       Qt.RightDockWidgetArea)
+        self.library_dock.setFloating(True)
+        self.library_dock.resize(380, 560)
+        self.library_dock.hide()
+        self.project.library_index = self.library.index
 
     def _action(self, menu, text, slot, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -239,6 +255,9 @@ class MainWindow(QMainWindow):
         layers_action = self.layers_dock.toggleViewAction()
         layers_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         self.panels_menu.addAction(layers_action)
+        library_action = self.library_dock.toggleViewAction()
+        library_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
+        self.panels_menu.addAction(library_action)
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
@@ -253,6 +272,9 @@ class MainWindow(QMainWindow):
         self.structure_tags_action = self._action(
             view_menu, "Etiquetas de estrutura",
             lambda v: self._set_plan_option("show_structure_tags", v))
+        self.object_tags_action = self._action(
+            view_menu, "Etiquetas de objetos",
+            lambda v: self._set_plan_option("show_object_tags", v))
         self.space_numbers_action = self._action(
             view_menu, "Número dos ambientes",
             lambda v: self._set_plan_option("show_space_numbers", v))
@@ -263,6 +285,7 @@ class MainWindow(QMainWindow):
             lambda v: self._set_plan_option("show_view_symbols", v))
         for action, value in ((self.tags_action, True), (self.tag_size_action, False),
                               (self.structure_tags_action, True),
+                              (self.object_tags_action, False),
                               (self.space_numbers_action, False), (self.weights_action, True),
                               (self.view_symbols_action, True)):
             action.setCheckable(True)
@@ -291,6 +314,9 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de viga…", lambda: self.edit_type("IfcBeamType"))
         self._action(project_menu, "Tipos de laje…", lambda: self.edit_type("IfcSlabType"))
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
+        project_menu.addSeparator()
+        self._action(project_menu, "Biblioteca de objetos", self.show_library)
+        self._action(project_menu, "Pastas da biblioteca…", self.edit_library_folders)
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -368,6 +394,8 @@ class MainWindow(QMainWindow):
                                      "show_tag_size"),
                                     (self.structure_tags_action, "etiquetas_estrutura",
                                      "show_structure_tags"),
+                                    (self.object_tags_action, "etiquetas_objetos",
+                                     "show_object_tags"),
                                     (self.space_numbers_action, "numeros_ambientes",
                                      "show_space_numbers"),
                                     (self.weights_action, "espessuras_linha", "show_weights"),
@@ -611,6 +639,131 @@ class MainWindow(QMainWindow):
     def _hook_tools(self) -> None:
         self.toolbox.tools["text"].ask = self.ask_text
         self.toolbox.tools["select"].ask_text = self.ask_text
+        self.toolbox.tools["object"].on_missing_type = self.show_library
+
+    # --- objetos paramétricos (objeto-parametrico.md §4) --------------------------------------
+
+    def show_library(self) -> None:
+        """Abre o painel Biblioteca de objetos (Ctrl+Shift+B)."""
+        self.library.refresh()
+        self.library_dock.show()
+        self.library_dock.raise_()
+
+    def edit_library_folders(self) -> None:
+        dialog = FoldersDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            set_user_folders(dialog.folders())
+            self.library.index = make_index()
+            self.library.refresh()
+
+    def use_object_type(self, gid: str) -> None:
+        """Ferramenta Objeto com o tipo escolhido (clique duplo na biblioteca)."""
+        tool = self.toolbox.tools["object"]
+        tool.set_type(gid)
+        self.activate_tool("object")
+
+    def _object_action(self, key: str) -> None:
+        """Ações da mini-barra sobre objetos paramétricos (§5.1)."""
+        from PySide6.QtGui import QCursor
+
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import elements as objects
+
+        session, doc = self.session, self.session.doc
+        found = [doc.get(g) for g in sorted(session.selection)
+                 if objects.is_object(doc.find(g))]
+        if not found:
+            return
+        types = {objects.read_state(doc, e)["type"] for e in found}
+        if key == "edit_object_type" and len(types) == 1:
+            self.edit_object_type(next(iter(types)))
+        elif key == "select_same" and len(types) == 1:
+            t = doc.get(next(iter(types)))
+            storey = session.storey_id
+            same = [e.GlobalId for e in oc.occurrences(doc, t)
+                    if objects.read_state(doc, e)["storey"] == storey]
+            session.select(same)
+        elif key == "detach" and len(found) == 1:
+            session.run(lambda: oc.detach(doc, found[0]))
+        elif key == "swap_type":
+            menu = QMenu(self)
+            common = None
+            for e in found:
+                ids = [t.GlobalId for t in oc.compatible_types(doc, e)]
+                common = ids if common is None else [g for g in common if g in ids]
+            for gid in common or []:
+                t = doc.get(gid)
+                action = menu.addAction(t.Name)
+                action.setCheckable(True)
+                action.setChecked(types == {gid})
+                action.triggered.connect(lambda _=False, g=gid: session.run(
+                    lambda: oc.change_type(doc, [e.GlobalId for e in found], g)))
+            menu.addSeparator()
+            menu.addAction("Mais na biblioteca…", self.show_library)
+            menu.exec(QCursor.pos())
+
+    def save_object_to_library(self, object_id: str, path: str | None = None) -> str | None:
+        """Gravar na biblioteca (§4.3): arquivo novo ou existente numa pasta do usuário."""
+        from brasbim.core.objects import library
+        from brasbim.core.objects import types as ot
+        from brasbim.ui.library_panel import user_folders
+
+        doc = self.session.doc
+        found = ot.types_of_definition(doc, object_id)
+        if not found:
+            return None
+        if path is None:
+            folders = user_folders()
+            if not folders:
+                self.session.message("acrescente uma pasta sua em Projeto > Pastas da "
+                                     "biblioteca… para gravar objetos", "recusa")
+                self.edit_library_folders()
+                folders = user_folders()
+                if not folders:
+                    return None
+            name = ot.definition_of(found[0])["name"]
+            path, _ = QFileDialog.getSaveFileName(self, "Gravar na biblioteca",
+                                                  str(Path(folders[0]) / f"{name}.ifc"),
+                                                  "IFC (*.ifc)")
+            if not path:
+                return None
+        try:
+            names = library.save(doc, path, object_id)
+        except (OpError, OSError) as e:
+            self.session.message(str(e), "recusa")
+            return None
+        self.session.message(f"Gravado na biblioteca: {', '.join(names)} em {path}")
+        self.library.refresh()
+        return path
+
+    def edit_object_type(self, gid: str) -> None:
+        """Editar tipo (§5.4): nome, código e parâmetros de tipo."""
+        from brasbim.ui.object_dialogs import TypeDialog
+
+        self.toolbox.active.cancel()
+        TypeDialog(self.session, gid, self).exec()
+        self.options_bar.refresh()
+        self.properties.refresh()
+
+    def object_values_dialog(self, tool, params) -> None:
+        """Outros parâmetros de ocorrência do próximo objeto (barra Opções, *Mais*)."""
+        from brasbim.ui import object_widgets as ow
+
+        state = tool.type_state()
+        if state is None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Parâmetros do próximo objeto")
+        form = QFormLayout(dialog)
+        values = {**state["defaults"], **tool.values}
+        for p in params:
+            form.addRow(ow.label(p), ow.param_widget(
+                p, values.get(p["name"], p["value"]),
+                lambda v, n=p["name"]: tool.values.__setitem__(n, v), self.session.doc))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(dialog.accept)
+        form.addRow(buttons)
+        dialog.exec()
 
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
@@ -732,6 +885,9 @@ class MainWindow(QMainWindow):
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
             self.hint.setText(tool.hint())
             return
+        if key in ("swap_type", "edit_object_type", "select_same", "detach"):
+            self._object_action(key)
+            return
         if key == "auto_dimension":
             wall = next(iter(session.selection), None)
             session.run(lambda: ac.auto_dimension_wall(doc, wall))
@@ -769,7 +925,42 @@ class MainWindow(QMainWindow):
         else:
             actions = [("Mostrar no 3D", self.show_in_3d),
                        ("Enquadrar a seleção", view.frame_selection)]
-        return actions + self._layer_actions(gid)
+        return actions + self._object_context(gid) + self._layer_actions(gid)
+
+    def _object_context(self, gid) -> list[tuple[str, object]]:
+        """Objeto paramétrico sob o cursor: editar o tipo, soltar ou prender à parede."""
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import elements as objects
+        from brasbim.core.objects import hosting
+        from brasbim.core.objects import types as ot
+
+        doc = self.session.doc
+        element = objects.parent_of(doc.find(gid)) if doc.find(gid) else None
+        if not objects.is_object(element):
+            return []
+        state = objects.read_state(doc, element)
+        out = [("Editar tipo…", lambda: self.edit_object_type(state["type"]))]
+        if self.properties.edit_object is not None:
+            object_id = ot.read(doc.get(state["type"]))["definition"]["object_id"]
+            out.append(("Editar objeto…", lambda: self.properties.edit_object(object_id)))
+        if state["host"] is not None:
+            out.append(("Soltar da parede", lambda: self.session.run(
+                lambda: oc.detach(doc, element))))
+        elif ot.read(doc.get(state["type"]))["definition"]["hosting"] == "wall":
+            from brasbim.core import snap
+
+            walls = [w for w in self.ctx.walls if w.straight]
+            hit = snap.wall_at(walls, tuple(state["point"]), 1.0)
+            if hit is not None:
+                built = objects.resolve(doc, state)[2]
+                box = built.box or (0, 0, 0, 0, 0, 0)
+                host = hosting.at_point(doc, doc.get(hit.wall.gid), tuple(state["point"]),
+                                        box[1] - box[0])
+                if host is not None:
+                    out.append(("Prender à parede", lambda: self.session.run(
+                        lambda: oc.attach(doc, element, host["wall"], host["side"],
+                                          host["distance"]))))
+        return out
 
     def _layer_actions(self, gid) -> list[tuple[str, object]]:
         """Camada do elemento sob o cursor (spec/ui 18 §5): ocultar, bloquear, isolar."""
@@ -889,6 +1080,7 @@ class MainWindow(QMainWindow):
         settings.setValue("etiquetas_porta", self.tags_action.isChecked())
         settings.setValue("medidas_etiqueta", self.tag_size_action.isChecked())
         settings.setValue("etiquetas_estrutura", self.structure_tags_action.isChecked())
+        settings.setValue("etiquetas_objetos", self.object_tags_action.isChecked())
         settings.setValue("numeros_ambientes", self.space_numbers_action.isChecked())
         settings.setValue("espessuras_linha", self.weights_action.isChecked())
         settings.setValue("simbolos_corte", self.view_symbols_action.isChecked())

@@ -49,6 +49,7 @@ from brasbim.core.document import OpError
 from brasbim.core.drawings import sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
+from brasbim.core.objects import elements as objects
 from brasbim.core.ops.history import combine
 from brasbim.core.quantities import tables
 from brasbim.core.structure import beams, columns, profiles, roofs, slab_openings, slabs
@@ -202,6 +203,8 @@ class PropertiesPanel(QScrollArea):
         self.open_table = None  # abre uma tabela (idem)
         self.active_table = None  # tabela da aba à frente: o painel é o dela (spec/ui 17 §5)
         self.edit_project_info = None  # dados do projeto para o carimbo (idem)
+        self.edit_object_type = None  # editar tipo de objeto paramétrico (idem)
+        self.edit_object = None  # editor do objeto paramétrico (idem)
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
@@ -254,6 +257,8 @@ class PropertiesPanel(QScrollArea):
             self._annotation(selection[0])
         elif len(selection) == 1 and slab_openings.is_slab_opening(selection[0]):
             self._slab_opening(selection[0])
+        elif len(selection) == 1 and objects.is_object(selection[0]):
+            self._object(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
             {"IfcColumn": self._column, "IfcBeam": self._beam, "IfcSlab": self._slab,
              "IfcRoof": self._roof}[selection[0].is_a()](selection[0])
@@ -272,9 +277,12 @@ class PropertiesPanel(QScrollArea):
                 found = [e for e in selection if e.is_a(cls)]
                 if found:
                     self._structures(found)
+            found_objects = [e for e in selection if objects.is_object(e)]
+            if found_objects:
+                self._objects(found_objects)
             known = ("IfcWall", "IfcDoor", "IfcWindow", "IfcColumn", "IfcBeam", "IfcSlab")
             others = Counter(e.is_a() for e in selection
-                             if not any(e.is_a(c) for c in known))
+                             if not any(e.is_a(c) for c in known) and not objects.is_object(e))
             for cls, n in sorted(others.items()):
                 self._add(cls, QLabel(str(n)))
         else:
@@ -1460,6 +1468,161 @@ class PropertiesPanel(QScrollArea):
     def _edit_type_button(self, ifc_class: str, gid: str) -> None:
         if self.edit_type is not None:
             self._buttons(("Editar tipo…", lambda: self.edit_type(ifc_class, gid)))
+
+    # --- objeto paramétrico (objeto-parametrico.md §5.1) -------------------------------
+
+    def _object_params(self, defn: dict, values: dict, stored: dict, commit) -> None:
+        """Parâmetros de ocorrência em grupos; os calculados só para ler, com a fórmula na
+        dica."""
+        from brasbim.core.objects import definition as od
+        from brasbim.core.objects import formula as fm
+        from brasbim.ui import object_widgets as ow
+
+        doc = self.session.doc
+        params = [p for p in od.occurrence_params(defn) if p["name"] != "elevacao"]
+        for group in od.GROUPS:
+            found = [p for p in params if p.get("group", "Outros") == group]
+            if not found:
+                continue
+            self._section(group)
+            for p in found:
+                value = values.get(fm.key(p["name"]))
+                if od.editable(p):
+                    widget = ow.param_widget(p, stored.get(p["name"], value),
+                                             lambda v, n=p["name"]: commit(n, v), doc)
+                    self._add(ow.label(p), widget)
+                else:
+                    shown = QLabel(ow.value_text(p, value))
+                    shown.setStyleSheet(f"color: {theme.INK_SOFT}")
+                    shown.setToolTip(f"Calculado: = {p['formula']}")
+                    self._add(ow.label(p), shown)
+
+    def _object(self, element) -> None:
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import definition as od
+        from brasbim.core.objects import elements as objects
+        from brasbim.core.objects import formula as fm
+        from brasbim.core.objects import types as ot
+        from brasbim.ui import object_widgets as ow
+
+        doc = self.session.doc
+        state = objects.read_state(doc, element)
+        element_type = doc.get(state["type"])
+        tstate = ot.read(element_type)
+        defn = tstate["definition"]
+        try:
+            values = objects.values_of(doc, element)
+        except OpError:
+            values = {}
+
+        def edit(**changes):
+            self._run(lambda: oc.edit_object(doc, element, **changes))
+
+        self._title(defn["name"])
+        types = [(t.Name, t.GlobalId) for t in oc.compatible_types(doc, element)]
+        self._combo("Tipo", types, state["type"],
+                    lambda v: self._run(lambda: oc.change_type(doc, [element.GlobalId], v)))
+        buttons = [("Editar tipo…", lambda: self.edit_object_type(element_type.GlobalId))]
+        if self.edit_object is not None:
+            buttons.append(("Editar objeto…", lambda: self.edit_object(defn["object_id"])))
+        self._buttons(*buttons)
+        self._section("Posição")
+        host = state["host"]
+        if host is not None:
+            wall = doc.find(host["wall"])
+            self._read("Parede", (wall.Name or "parede") if wall else "—")
+            self._combo("Face", [("Esquerda", "left"), ("Direita", "right")], host["side"],
+                        lambda v: edit(host={**host, "side": v}))
+            self._number("Distância (m)", host["distance"],
+                         lambda v: edit(host={**host, "distance": v}))
+            self._number("Altura (m)", values.get("elevacao", 0.0),
+                         lambda v: edit(values={"elevacao": v}))
+            self._buttons(("Soltar da parede",
+                           lambda: self._run(lambda: oc.detach(doc, element))))
+        else:
+            self._number("Rotação (°)", state["angle"], lambda v: edit(angle=v))
+            self._number("Elevação (m)", values.get("elevacao", 0.0),
+                         lambda v: edit(values={"elevacao": v}))
+            if defn["hosting"] == "wall":
+                note = QLabel("Solto da parede: mova para perto de uma parede e use "
+                              "Prender à parede no menu do botão direito.")
+                note.setWordWrap(True)
+                note.setStyleSheet(f"color: {theme.INK_SOFT}")
+                self._add(note)
+        mirror = QCheckBox()
+        mirror.setChecked(bool(state["mirror"]))
+        mirror.toggled.connect(lambda v: edit(mirror=bool(v)))
+        self._add("Espelhado", mirror)
+        self._object_params(defn, values, state["values"],
+                            lambda name, v: edit(values={name: v}))
+        self._section("Parâmetros do tipo")
+        users = len(oc.occurrences(doc, element_type))
+        type_values = {}
+        try:
+            type_values = ot.evaluate(tstate, level="type")
+        except OpError:
+            pass
+        for p in od.type_params(defn):
+            if p["name"] == "descricao" and not type_values.get("descricao"):
+                continue
+            shown = QLabel(ow.value_text(p, type_values.get(fm.key(p["name"]))))
+            shown.setStyleSheet(f"color: {theme.INK_SOFT}")
+            shown.setToolTip(f"Do tipo {element_type.Name}: mudar vale para as {users} "
+                             "ocorrência(s); use Editar tipo…" + (
+                                 f"\nCalculado: = {p['formula']}" if p.get("formula") else ""))
+            self._add(ow.label(p), shown)
+        self._section("Identificação")
+        self._read("GlobalId", element.GlobalId)
+
+    def _objects(self, elements_) -> None:
+        """Vários objetos (§5.1): os parâmetros que todos têm; "vários" onde diferem."""
+        from brasbim.core.objects import commands as oc
+        from brasbim.core.objects import definition as od
+        from brasbim.core.objects import elements as objects
+        from brasbim.core.objects import formula as fm
+        from brasbim.core.objects import types as ot
+        from brasbim.ui import object_widgets as ow
+
+        doc = self.session.doc
+        gids = [e.GlobalId for e in elements_]
+        self._section(f"Objetos ({len(elements_)})")
+        states = [objects.read_state(doc, e) for e in elements_]
+        defns = [ot.read(doc.get(s["type"]))["definition"] for s in states]
+        values = []
+        for e in elements_:
+            try:
+                values.append(objects.values_of(doc, e))
+            except OpError:
+                values.append({})
+        classes = {e.is_a() for e in elements_}
+        if len(classes) == 1:
+            common = None
+            for e in elements_:
+                ids = {t.GlobalId for t in oc.compatible_types(doc, e)}
+                common = ids if common is None else common & ids
+            items = [(t.Name, t.GlobalId) for t in ot.all_types(doc) if t.GlobalId in common]
+            current = _common([s["type"] for s in states])
+            self._combo("Tipo", items, current,
+                        lambda v: self._run(lambda: oc.change_type(doc, gids, v)))
+
+        def key_of(p):
+            return (fm.key(p["name"]), p["kind"])
+
+        shared = None
+        for defn in defns:
+            found = {key_of(p): p for p in od.occurrence_params(defn) if od.editable(p)}
+            shared = found if shared is None else {k: v for k, v in shared.items()
+                                                   if k in found}
+        for k, p in sorted((shared or {}).items(), key=lambda kv: kv[1]["label"]):
+            current = _common([v.get(k[0]) for v in values])
+
+            def commit(v, name=p["name"]):
+                self._run(lambda: oc.edit_objects(doc, gids, values={name: v}))
+
+            widget = ow.param_widget(p, current, commit, doc)
+            if current is None and isinstance(widget, QLineEdit):
+                widget.setPlaceholderText(MIXED)
+            self._add(ow.label(p), widget)
 
     def _tool_options(self) -> None:
         """Sem seleção: só o pavimento ativo e a dica (spec/ui 03 §4.3)."""

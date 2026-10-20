@@ -32,6 +32,12 @@ ACTIONS = {
                      "desenhe uma abertura (escada, shaft) dentro da laje selecionada"),
     "auto_dimension": ("dimension", "Cotar",
                        "cota em cadeia na face externa: pontas da parede e bordas dos vãos"),
+    "swap_type": ("swap_type", "Trocar tipo", "escolhe outro tipo para os objetos"),
+    "edit_object_type": ("edit_type", "Editar tipo",
+                         "valores do tipo; valem para todas as ocorrências dele"),
+    "select_same": ("select_same", "Selecionar todos deste tipo",
+                    "seleciona as ocorrências do mesmo tipo no pavimento"),
+    "detach": ("detach", "Soltar da parede", "o objeto fica livre, no mesmo lugar, sem o vão"),
     "delete": ("delete", "Excluir", "exclui a seleção (Delete)"),
 }
 

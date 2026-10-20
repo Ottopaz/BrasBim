@@ -135,6 +135,31 @@ ICONS = {
                  '<path d="M3 13 L12 17.5 L14 16.5 M17.5 14.5 V21.5 M14 18 H21"/>',
     "layers_all": '<path d="M12 3.5 L21 8 L12 12.5 L3 8 Z"/>'
                   '<path d="M3 12 L12 16.5 L21 12 M3 16 L12 20.5 L21 16"/>',
+    # objetos paramétricos (objeto-parametrico.md §4.4): cadeira de lado, assento e encosto
+    "object": '<path d="M7.25 3.5 V20.5 M7.25 13.25 H16.75 V20.5"/>'
+              '<path d="M7.25 9.5 H11" stroke-width="1"/>',
+    # biblioteca: três volumes numa prateleira, um inclinado
+    "library": '<path d="M3 20.25 H21"/><rect x="4.75" y="6.75" width="3.5" height="13.5"/>'
+               '<rect x="9.75" y="4.75" width="3.5" height="15.5"/>'
+               '<path d="M15.2 7.6 L18.6 6.7 L21.9 19.3 L18.5 20.2 Z"/>',
+    # trocar o tipo: duas setas opostas
+    "swap_type": '<path d="M4 8.75 H18.5 M15 5.25 L18.5 8.75 L15 12.25"/>'
+                 '<path d="M20 15.25 H5.5 M9 11.75 L5.5 15.25 L9 18.75"/>',
+    # selecionar os do mesmo tipo: três quadrados, dois cheios
+    "select_same": '<rect x="2.75" y="8.75" width="5.5" height="5.5" fill="currentColor"/>'
+                   '<rect x="9.25" y="8.75" width="5.5" height="5.5" fill="currentColor"/>'
+                   '<rect x="15.75" y="8.75" width="5.5" height="5.5"/>',
+    # soltar da parede: parede e o objeto afastado
+    "detach": '<path d="M3.75 3.5 V20.5 M7.25 3.5 V20.5"/>'
+              '<rect x="12.75" y="8.75" width="7.5" height="6.5"/>'
+              '<path d="M9.5 12 H11.5" stroke-width="1" stroke-dasharray="1 1"/>',
+    # vistas da prévia: planta e 3D
+    "view_plan": '<rect x="4.75" y="4.75" width="14.5" height="14.5"/>'
+                 '<path d="M4.75 12 H19.25 M12 4.75 V19.25" stroke-width="1"/>',
+    "view_3d": '<path d="M12 3.5 L20 7.75 V16.25 L12 20.5 L4 16.25 V7.75 Z"/>'
+               '<path d="M4 7.75 L12 12 L20 7.75 M12 12 V20.5" stroke-width="1"/>',
+    "folder": '<path d="M2.75 6.75 H9.5 L11.5 8.75 H21.25 V19.25 H2.75 Z"/>'
+              '<path d="M12 11.5 V16.5 M9.5 14 H14.5" stroke-width="1"/>',
 }
 
 out = Path("brasbim/ui/icons")

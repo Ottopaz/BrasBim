@@ -23,6 +23,11 @@ from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
+from brasbim.core.objects import commands as object_cmd
+from brasbim.core.objects import elements as objects
+from brasbim.core.objects import hosting
+from brasbim.core.objects import plan as object_plan
+from brasbim.core.objects import types as object_types
 from brasbim.core.structure import beams, columns, profiles, roofs, rooms, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
@@ -406,10 +411,36 @@ def _band_marks_of(ctx: PlanContext, tx, style="preview") -> list[Mark]:
     return marks
 
 
+def _object_marks(doc, op, style="preview") -> list[Mark]:
+    """Símbolo do objeto com o estado novo de um ``object.edit`` (alça, pré-visualização)."""
+    element = doc.find(op.id)
+    if element is None:
+        return []
+    state = {**objects.read_state(doc, element), **(op.after or {})}
+    try:
+        _, _, built = objects.resolve(doc, state)
+        if state["host"] is not None:
+            frame = hosting.local_frame(doc, state["host"], built)
+            origin, angle = frame["point"], frame["angle"]
+        else:
+            origin, angle = state["point"], state["angle"]
+    except OpError:
+        return []
+    a = math.radians(angle)
+    c, s_ = math.cos(a), math.sin(a)
+    k = -1.0 if built.mirror else 1.0
+    return [Mark(tuple((origin[0] + c * k * x - s_ * y, origin[1] + s_ * k * x + c * y)
+                       for x, y in points), closed, style)
+            for points, closed, _ in object_plan.local_symbol(built)]
+
+
 def _structure_marks(doc, tx, style="preview") -> list[Mark]:
     """Pilares, vigas e lajes da transação na forma nova (operações ``*.edit``)."""
     marks = []
     for op in tx.ops:
+        if op.op == "object.edit":
+            marks += _object_marks(doc, op, style)
+            continue
         prefix, _, kind = op.op.partition(".")
         if op.op == "slab_opening.edit":
             marks.append(Mark(tuple(tuple(q) for q in op.after["outline"]), True, style))
@@ -465,10 +496,45 @@ class _Grip:
     gid: str
 
 
+def object_handles(doc, element) -> list[tuple[str, Point, Point]]:
+    """Alças dos parâmetros de comprimento do objeto (objeto-parametrico.md §5.1):
+    (``obj:<parâmetro>``, ponto, direção para fora), na borda da caixa que envolve."""
+    from brasbim.core.objects import definition as od
+
+    try:
+        state = objects.read_state(doc, element)
+        _, tstate, built = objects.resolve(doc, state)
+    except OpError:
+        return []
+    if built.box is None or element.ObjectPlacement is None:
+        return []
+    storey = doc.find(state["storey"])
+    m = object_plan._matrix(storey, element)
+    k = -1.0 if built.mirror else 1.0
+    x0, x1, y0, y1, _, _ = built.box
+    out = []
+    for p in od.handle_params(tstate["definition"]):
+        axis, side = p["handle"]["axis"], p["handle"]["side"]
+        if axis == "z":
+            continue
+        end = side != "start"
+        if axis == "x":
+            local, outward = ((x1 if end else x0), (y0 + y1) / 2), ((1.0 if end else -1.0), 0.0)
+        else:
+            local, outward = ((x0 + x1) / 2, (y1 if end else y0)), (0.0, (1.0 if end else -1.0))
+        q = m @ [k * local[0], local[1], 0.0, 1.0]
+        d = m @ [k * outward[0], outward[1], 0.0, 0.0]
+        out.append((f"obj:{p['name']}", (float(q[0]), float(q[1])),
+                    (float(d[0]), float(d[1]))))
+    return out
+
+
 def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
     """Alças na planta (spec/ui 10 §4.1): ponto de inserção do pilar, pontas e meio da
     viga, vértices e meio dos lados da laje. Elementos de outra origem não têm alças."""
     element = doc.find(gid)
+    if objects.is_object(element):
+        return [(which, q) for which, q, _ in object_handles(doc, element)]
     if slab_openings.is_slab_opening(element):
         return _outline_handles(slab_openings.read_state(element)["outline"])
     if element is not None and element.is_a("IfcSpace"):
@@ -665,10 +731,35 @@ class SelectTool(Tool):
         at = d["wall"].frame.to_global((distance + width / 2, d["wall"].ymax + 0.15))
         return build, at, f"{fmt(width)} m"
 
+    def _object_value(self, gid: str, which: str, p: Point) -> tuple[float, Point]:
+        """Valor novo do parâmetro da alça pelo cursor e o ponto do rótulo."""
+        from brasbim.core.objects import definition as od
+
+        doc = self.session.doc
+        element = doc.get(gid)
+        name = which[4:]
+        handle = next(h for h in object_handles(doc, element) if h[0] == which)
+        _, q, d = handle
+        state = objects.read_state(doc, element)
+        _, tstate, built = objects.resolve(doc, state)
+        current = built.values[name.casefold()]
+        delta = (p[0] - q[0]) * d[0] + (p[1] - q[1]) * d[1]
+        param = od.param(tstate["definition"], name)
+        step = 2.0 if param["handle"]["side"] == "symmetric" else 1.0
+        value = current + step * delta
+        if self.ctx.grid:
+            value = round(value / 0.01) * 0.01  # centímetro
+        return value, (q[0] + d[0] * delta, q[1] + d[1] * delta)
+
     def _structure_build(self, p: Point, mods: Mods):
         """Alça de pilar, viga ou laje (spec/ui 10 §4.1)."""
         d = self.drag
         gid, which, doc = d["wall"].gid, d["which"], self.session.doc
+        if which.startswith("obj:"):
+            self.snapped = snap.Snap(p, "free")
+            value, at = self._object_value(gid, which, p)
+            return (lambda: object_cmd.handle_value_ops(doc, gid, which[4:], value), at,
+                    f"{fmt(value)} m")
         extra = self.ctx.column_points
         if which in ("beam_start", "beam_end"):
             state = sc.read_state(doc, doc.get(gid))
@@ -824,6 +915,8 @@ class SelectTool(Tool):
             side = (-1.0 if cursor and _edge_offset(sc.outline_of(doc, gid), index, cursor) < 0
                     else 1.0)
             build = lambda: sc.offset_slab_edge(doc, gid, index, side * value)
+        elif which.startswith("obj:"):  # a medida digitada é o valor do parâmetro
+            build = lambda: object_cmd.handle_value_ops(doc, gid, which[4:], value)
         else:
             return False
         self.drag = None
@@ -3056,8 +3149,238 @@ class MirrorTool(_SelectionTool):
                 *_shape_marks(self._shapes(), fn)]
 
 
+# --- Objeto paramétrico (objeto-parametrico.md §4.4) ---------------------------------------
+
+HOST_REACH = 0.60  # m: até onde, na frente da parede, o objeto preso ainda encosta nela
+
+
+class ObjectTool(Tool):
+    """Objeto paramétrico: um clique põe o tipo escolhido. Livre: barra de espaço gira 90°,
+    Tab digita a rotação, Shift + clique e um segundo clique dão a direção da frente. Preso à
+    parede: encosta na face mais próxima; Tab digita a distância e a altura."""
+
+    name, label = "object", "Objeto"
+    type_class = None  # tipos de objeto: a ferramenta confere o seu (``check_types`` pula)
+    creates = True
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.type: str | None = None
+        self.angle = 0.0
+        self.mirror = False
+        self.values: dict = {}  # parâmetros de ocorrência escolhidos na barra Opções
+        self.point: Point | None = None
+        self.first: Point | None = None  # Shift + clique: ponto, falta a direção
+        self.host: dict | None = None
+        self._cache = None
+        self.on_missing_type = None  # sem tipo: a janela abre a biblioteca
+
+    # tipo e cálculo
+
+    def type_entity(self):
+        doc = self.session.doc
+        t = doc.find(self.type) if self.type else None
+        if t is None or not object_types.is_object_type(t):
+            self.type = None
+            return None
+        return t
+
+    def type_state(self) -> dict | None:
+        t = self.type_entity()
+        return object_types.read(t) if t is not None else None
+
+    def built(self):
+        t = self.type_entity()
+        if t is None:
+            return None
+        key = (t.GlobalId, repr(sorted(self.values.items())), self.mirror,
+               len(self.session.history.undo_stack))
+        if self._cache is None or self._cache[0] != key:
+            tstate = object_types.read(t)
+            values = object_types.stored_values(tstate["definition"],
+                                                {**tstate["defaults"], **self.values},
+                                                "occurrence")
+            try:
+                built = objects.build(self.session.doc, tstate, values, self.mirror)
+            except OpError as e:
+                self._cache = (key, None, str(e))
+            else:
+                self._cache = (key, built, None)
+        return self._cache[1]
+
+    def hosted(self) -> bool:
+        built = self.built()
+        return built is not None and built.definition["hosting"] == "wall"
+
+    def set_type(self, gid: str | None) -> None:
+        self.type, self.values, self.first = gid, {}, None
+        if self.cursor is not None:
+            self.move(self.cursor, self.mods)
+
+    # campos
+
+    def hint(self):
+        if self.type_entity() is None:
+            return "Escolha o objeto na barra Opções ou na biblioteca (Ctrl+Shift+B)"
+        if self.hosted():
+            return "Passe o cursor perto de uma parede e clique; Tab digita distância e altura"
+        if self.first is not None:
+            return "Clique a direção da frente do objeto; Esc cancela"
+        return ("Clique o ponto de inserção; barra de espaço gira 90°; Shift + clique "
+                "e um segundo clique dão a direção")
+
+    def fields(self):
+        if self.cursor is None or self.type_entity() is None:
+            return []
+        if self.hosted():
+            if self.host is None:
+                return []
+            built = self.built()
+            elevation = float(built.values.get("elevacao", 0.0)) if built else 0.0
+            return [Field("distance", "Distância", "m", self.host["distance"],
+                          self.fixed.get("distance")),
+                    Field("elevation", "Altura", "m", elevation, self.fixed.get("elevation"))]
+        return [Field("angle", "Rotação", "°", self.angle)]
+
+    def fix(self, key, value):
+        if key == "angle":
+            if value is not None:
+                self.angle = (value + 180.0) % 360.0 - 180.0
+            if self.cursor is not None:
+                self.move(self.cursor, self.mods)
+            return None
+        return super().fix(key, value)
+
+    # movimento
+
+    def _wall_hit(self, p: Point):
+        walls = [w for w in self.ctx.walls if w.straight]
+        return snap.wall_at(walls, p, max(self.ctx.tol, HOST_REACH))
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        if self.hosted():
+            self.snapped = None
+            self.point = p
+            hit = self._wall_hit(p)
+            built = self.built()
+            if hit is None or built is None:
+                self.host = None
+                return
+            box = built.box or (0, 0, 0, 0, 0, 0)
+            wall = self.session.doc.find(hit.wall.gid)
+            host = hosting.at_point(self.session.doc, wall, p, box[1] - box[0])
+            if host is not None and "distance" in self.fixed:
+                host["distance"] = self.fixed["distance"]
+            self.host = host
+            return
+        self.host = None
+        if self.first is not None:
+            self.snapped = self.ctx.snap(p, mods, origin=self.first)
+            q = self.snapped.point
+            if math.dist(q, self.first) > 1e-6:
+                # a frente (−y local) olha para o segundo ponto
+                angle = math.degrees(math.atan2(q[1] - self.first[1], q[0] - self.first[0]))
+                self.angle = (angle + 90.0 + 180.0) % 360.0 - 180.0
+            self.point = self.first
+            return
+        self.snapped = self.ctx.snap(p, mods, extra=self.ctx.vertices)
+        self.point = self.snapped.point
+
+    def key(self, key):
+        if key == "space" and not self.hosted():
+            self.angle = (self.angle + 90.0 + 180.0) % 360.0 - 180.0
+            return True
+        return False
+
+    def cancel(self):
+        if self.first is not None:
+            self.first = None
+            return True
+        self.fixed.clear()
+        return self.release_reference()
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        if self.type_entity() is None:
+            self.session.message("escolha o objeto na barra Opções ou na biblioteca",
+                                 "recusa")
+            if self.on_missing_type is not None:
+                self.on_missing_type()
+            return
+        if self.session.storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+            return
+        if not self.hosted() and mods.shift and self.first is None:
+            self.move(p, mods)
+            self.first = self.point
+            return
+        self.move(p, mods)
+        doc, storey = self.session.doc, self.session.storey
+        values = dict(self.values)
+        if self.hosted():
+            if self.host is None:
+                self.session.message("clique perto de uma parede reta", "recusa")
+                return
+            if "elevation" in self.fixed:
+                values["elevacao"] = self.fixed["elevation"]
+            host = dict(self.host)
+            self.session.run(lambda: object_cmd.create_object(
+                doc, self.type, storey, (0.0, 0.0), mirror=self.mirror, values=values,
+                host=host))
+        else:
+            point, angle = self.point, self.angle
+            self.session.run(lambda: object_cmd.create_object(
+                doc, self.type, storey, point, angle=angle, mirror=self.mirror,
+                values=values))
+        self.first = None
+        self.fixed.clear()
+        self.reference = self.tracking = None
+        self.move(p, mods)
+
+    # desenho
+
+    def _ghost(self) -> list[tuple[list[Point], bool]]:
+        built = self.built()
+        if built is None or self.point is None:
+            return []
+        if self.hosted():
+            if self.host is None:
+                return []
+            try:
+                frame = hosting.local_frame(self.session.doc, self.host, built)
+            except OpError:
+                return []
+            origin, angle = frame["point"], frame["angle"]
+        else:
+            origin, angle = self.point, self.angle
+        a = math.radians(angle)
+        c, s_ = math.cos(a), math.sin(a)
+        k = -1.0 if self.mirror else 1.0
+        out = []
+        for points, closed, _ in object_plan.local_symbol(built):
+            out.append(([(origin[0] + c * k * x - s_ * y, origin[1] + s_ * k * x + c * y)
+                         for x, y in points], closed))
+        return out
+
+    def preview(self):
+        if self.type_entity() is None or self.cursor is None:
+            return []
+        style = "invalid" if self.hosted() and self.host is None else "preview"
+        marks = [Mark(tuple(points), closed, style) for points, closed in self._ghost()]
+        if self.first is not None:
+            marks.append(Mark((self.first, self.cursor), False, "guide"))
+        return marks + self.reference_marks()
+
+    def labels(self):
+        if self._cache is not None and self._cache[2] and self.cursor is not None:
+            return [(self.cursor, self._cache[2])]
+        return []
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool, ColumnTool,
-         BeamTool, SlabTool, RoofTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+         BeamTool, SlabTool, RoofTool, ObjectTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
@@ -3077,8 +3400,10 @@ def selection_actions(doc, gids) -> list[str]:
     walls = [e for e in elements if e.is_a("IfcWall")]
     door_list = [e for e in elements if e.is_a("IfcDoor") or e.is_a("IfcWindow")]
     structure = [e for e in elements if sc.is_structure(e) or ac.is_annotation(e)]
+    found_objects = [e for e in elements if objects.is_object(e)]
+    free = [e for e in found_objects if objects.read_state(doc, e)["host"] is None]
     out = ["move", "copy"]
-    if walls or structure:
+    if walls or structure or free:
         out += ["rotate", "mirror"]
     if len(elements) == 1 and walls and isinstance(
             geom2d.path_from_dict(cmd.read_state(doc, walls[0])["path"]), geom2d.LinePath):
@@ -3094,6 +3419,12 @@ def selection_actions(doc, gids) -> list[str]:
         out.append("flip_opening")
         if all(fc.hand(doc, d) for d in door_list):
             out.append("flip_hinges")
+    if found_objects and len(found_objects) == len(elements):  # objeto-parametrico §5.1
+        out.append("swap_type")
+        if len({objects.read_state(doc, e)["type"] for e in found_objects}) == 1:
+            out += ["edit_object_type", "select_same"]
+        if len(found_objects) == 1 and not free:
+            out.append("detach")
     out.append("delete")
     return out
 

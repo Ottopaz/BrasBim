@@ -29,6 +29,7 @@ from brasbim.ui.tools import (
     LevelTool,
     LineTool,
     NorthTool,
+    ObjectTool,
     RoofTool,
     SlabOpeningTool,
     SlabTool,
@@ -65,6 +66,8 @@ CREATE_TOOLS = [
      "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
     ("roof", "roof", "Cobertura",
      "clique dentro da edificação, ou desenhe o contorno de apoio; escolha a forma na barra"),
+    ("object", "object", "Objeto",
+     "escolha o objeto na barra de opções e clique; barra de espaço gira 90°"),
 ]
 # Grupo Documentação (spec/ui 13 §9): anotação da planta.
 DOC_TOOLS = [
@@ -241,6 +244,11 @@ def history_bar(window) -> QToolBar:
 
 def tool_kind(tool) -> str | None:
     """Ferramenta de criação → tipo de elemento (chave das camadas padrão, spec/ui 18)."""
+    if isinstance(tool, ObjectTool):  # a camada vem da categoria do objeto escolhido
+        from brasbim.core.objects import elements as objects
+
+        t = tool.type_entity()
+        return objects.kind_of_type(t) if t is not None else None
     for cls, kind in ((SpaceTool, "space"), (HatchTool, "hatch"), (LineTool, "line2d"),
                       (TextTool, "text"), (DimensionTool, "dimension"), (NorthTool, "north"),
                       (ViewTool, "view"), (LevelTool, "level_mark"), (BeamTool, "beam"),
@@ -301,6 +309,8 @@ class OptionsBar(QToolBar):
             self._wall(tool)
         elif isinstance(tool, ColumnTool):
             self._column(tool)
+        elif isinstance(tool, ObjectTool):
+            self._object(tool)
         elif isinstance(tool, _FillingTool):
             self._door(tool)
         else:
@@ -529,6 +539,64 @@ class OptionsBar(QToolBar):
         else:
             self._number(tool.top_offset, lambda v: setattr(tool, "top_offset", v),
                          "Deslocamento do topo (m)")
+
+    # --- objeto paramétrico (objeto-parametrico.md §4.4) -------------------------------------
+
+    def _object(self, tool) -> None:
+        from brasbim.core.objects import definition as od
+        from brasbim.ui import object_widgets as ow
+
+        window = self.window_
+        doc = window.session.doc
+        picker = ow.TypePicker(doc, tool.type)
+
+        def chosen(value):
+            if value == "library":
+                window.show_library()
+                return
+            tool.set_type(value)
+            self.show_for(tool)
+            window.hint.setText(tool.hint())
+
+        picker.chosen.connect(chosen)
+        self.addWidget(picker)
+        state = tool.type_state()
+        if state is None:
+            return
+        defn = state["definition"]
+        self.addSeparator()
+        if defn["hosting"] != "wall":
+            self._label("Rotação")
+            self.angle_field = self._number(tool.angle, lambda v: setattr(tool, "angle", v),
+                                            "Rotação do objeto (graus, anti-horário)")
+        mirror = make_action(self, "mirror", "Espelhar", "o próximo objeto sai espelhado",
+                             checkable=True)
+        mirror.setChecked(tool.mirror)
+        mirror.toggled.connect(lambda v: setattr(tool, "mirror", bool(v)))
+        self.addAction(mirror)
+        values = {**state["defaults"], **tool.values}
+        elevation = od.param(defn, "elevacao")
+        self._label("Elevação" if defn["hosting"] != "wall" else "Altura")
+        self._number(values.get("elevacao", elevation["value"] if elevation else 0.0),
+                     lambda v: tool.values.__setitem__("elevacao", v),
+                     "Altura da base do objeto acima do piso (m)")
+        shown = [p for p in od.occurrence_params(defn)
+                 if od.editable(p) and p["group"] == "Dimensões" and p["name"] != "elevacao"][:3]
+        if shown:
+            self.addSeparator()
+        for p in shown:
+            self._label(ow.label(p))
+
+            def commit(v, name=p["name"]):
+                tool.values[name] = v
+            self.addWidget(ow.param_widget(p, values.get(p["name"], p["value"]), commit, doc))
+        more = [p for p in od.occurrence_params(defn)
+                if od.editable(p) and p not in shown and p["name"] != "elevacao"]
+        if more:
+            action = make_action(self, "edit_type", "Mais parâmetros",
+                                 "os outros parâmetros de ocorrência do próximo objeto")
+            action.triggered.connect(lambda: window.object_values_dialog(tool, more))
+            self.addAction(action)
 
     def _beam(self, tool) -> None:
         options = tool.options

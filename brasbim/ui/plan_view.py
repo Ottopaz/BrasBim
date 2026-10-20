@@ -73,6 +73,7 @@ class PlanView(QWidget, ToolInput):
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
         self.show_tag_size = False
         self.show_structure_tags = True  # etiquetas de pilar e viga (spec/ui 12 §5)
+        self.show_object_tags = False  # código dos objetos (objeto-parametrico.md §7)
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
@@ -347,6 +348,10 @@ class PlanView(QWidget, ToolInput):
                 if not self.show_structure_tags:
                     continue
                 lines = [label.code] + ([label.size] if label.size else [])
+            elif label.kind == "object":
+                if not self.show_object_tags:
+                    continue
+                lines = [label.code]
             elif label.kind == "space":
                 code = (f"{label.number} · {label.code}" if self.show_space_numbers
                         and label.number else label.code)

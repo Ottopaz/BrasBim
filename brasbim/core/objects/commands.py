@@ -360,7 +360,7 @@ def compatible_types(doc: Document, element) -> list:
 
 
 def handle_value_ops(doc: Document, element, name: str, value: float) -> Transaction:
-    """Alça (§5.1): muda o valor e desloca o ponto para o lado oposto ficar no lugar."""
+    """Alça (§5.1): muda o valor e desloca o objeto para o lado oposto ficar no lugar."""
     import math
 
     element = _element(doc, element)
@@ -368,19 +368,32 @@ def handle_value_ops(doc: Document, element, name: str, value: float) -> Transac
     tstate = ot.read(doc.get(state["type"]))
     defn = tstate["definition"]
     occ = {**tstate["defaults"], **state["values"]}
+    p = od.param(defn, name)
+    changes = {"values": {p["name"]: float(value)}}
     dx, dy, _ = od.handle_shift(defn, tstate["values"], occ, name, value)
     if state["mirror"]:
         dx = -dx
-    a = math.radians(state["angle"])
-    shift = (math.cos(a) * dx - math.sin(a) * dy, math.sin(a) * dx + math.cos(a) * dy)
-    p = od.param(defn, name)
-    changes = {"values": {p["name"]: float(value)}}
-    if state["host"] is None and math.hypot(*shift) > 1e-9:
-        changes["point"] = [state["point"][0] + shift[0], state["point"][1] + shift[1]]
-    elif state["host"] is not None and abs(dx) > 1e-9:
-        host = dict(state["host"])
-        host["distance"] = float(host["distance"]) + (dx if host.get("side") != "right"
-                                                      else -dx)
+    if state["host"] is None:
+        a = math.radians(state["angle"])
+        shift = (math.cos(a) * dx - math.sin(a) * dy, math.sin(a) * dx + math.cos(a) * dy)
+        if math.hypot(*shift) > 1e-9:
+            changes["point"] = [state["point"][0] + shift[0], state["point"][1] + shift[1]]
+        return edit_object(doc, element, **changes)
+    # preso à parede: a posição vem da distância e da caixa (``hosting.local_frame``)
+    from brasbim.core.objects import shapes
+
+    def box(values):
+        found = od.bounds(od.solids(defn, od.evaluate(defn, tstate["values"], values)))
+        return shapes.mirrored_box(found, bool(state["mirror"])) or (0, 0, 0, 0, 0, 0)
+
+    old, new = box(occ), box({**occ, p["name"]: float(value)})
+    host = dict(state["host"])
+    d = float(host["distance"])
+    if host["side"] == "left":  # o x local corre para trás ao longo da parede
+        host["distance"] = d + old[1] - dx - new[1]
+    else:
+        host["distance"] = d - old[0] + dx + new[0]
+    if abs(host["distance"] - d) > 1e-9:
         changes["host"] = host
     return edit_object(doc, element, **changes)
 
