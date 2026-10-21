@@ -353,9 +353,18 @@ class OptionsBar(QToolBar):
                                               if key == "base" else ""))
         elif isinstance(tool, TerrainTool):
             o = tool.options
-            self._label("Cota")
-            self._number(o.z, lambda v: setattr(o, "z", v),
-                         "Cota do próximo ponto (m); Tab digita junto ao cursor")
+            self._combo([("Contorno", "outline"), ("Pontos cotados", "points")], o.mode,
+                        lambda v: (setattr(o, "mode", v), tool.cancel(), self.show_for(tool)),
+                        "Desenhar o contorno do terreno ou pontos com cota")
+            if o.mode == "outline":
+                self._label("Cota do contorno")
+                self._number(o.boundary_z, lambda v: setattr(o, "boundary_z", v),
+                             "Cota do contorno (m); vazio: calculada pelas curvas de nível",
+                             placeholder="pelas curvas", allow_empty=True)
+            else:
+                self._label("Cota")
+                self._number(o.z, lambda v: setattr(o, "z", v),
+                             "Cota do próximo ponto (m); Tab digita junto ao cursor")
             self._label("Curvas a cada")
             self._number(o.interval, lambda v: setattr(o, "interval", v),
                          "Intervalo das curvas de nível (m)")

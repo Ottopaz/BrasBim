@@ -1722,10 +1722,22 @@ class PropertiesPanel(QScrollArea):
         self._title(state["name"])
         self._text("Nome", state["name"], lambda v: v and edit(name=v))
         self._number("Curvas a cada (m)", state["interval"], lambda v: edit(interval=v))
-        self._points_field("Pontos (x y z; …)", state["points"], 3, lambda v: edit(points=v))
-        zs = [q[2] for q in state["points"]]
-        self._read("Pontos", str(len(zs)))
-        self._read("Cotas", f"{fmt(min(zs))} a {fmt(max(zs))} m")
+        if state["boundary"]:
+            self._number("Cota do contorno (m)", state["boundary_z"],
+                         lambda v: edit(boundary_z=v), placeholder="pelas curvas",
+                         allow_empty=True)
+        curves = state["curves"]
+        pending = sum(1 for c in curves if c["z"] is None)
+        if curves:
+            self._read("Curvas de nível", f"{len(curves)}" + (
+                f" ({pending} sem cota)" if pending else ""))
+        if state["points"] or not state["boundary"]:
+            self._points_field("Pontos (x y z; …)", state["points"], 3,
+                               lambda v: edit(points=v))
+        verts, _ = terrain.surface(state)
+        zs = [q[2] for q in verts]
+        if zs:
+            self._read("Cotas", f"{fmt(min(zs))} a {fmt(max(zs))} m")
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
 

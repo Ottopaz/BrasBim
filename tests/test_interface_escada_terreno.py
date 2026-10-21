@@ -83,6 +83,7 @@ def test_et08_terreno(window, app):
     s = window.session
     window.activate_tool("terrain")
     tool = window.toolbox.active
+    tool.options.mode = "points"
     window.options_bar.show_for(tool)
     for p, z in (((0, 0), 0.0), ((10, 0), 1.0), ((10, 8), 3.0), ((0, 8), None)):
         tool.move(p, Mods(alt=True))

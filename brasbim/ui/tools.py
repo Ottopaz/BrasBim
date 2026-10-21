@@ -2977,6 +2977,8 @@ class _TerrainOptions:
     type_class = None
 
     def __init__(self, session: Session):
+        self.mode = "outline"  # outline (contorno) ou points (pontos cotados)
+        self.boundary_z: float | None = None  # cota do contorno; None = pelas curvas
         self.z = 0.0  # cota do próximo ponto
         self.interval = 1.0
         self.type = None
@@ -2986,8 +2988,9 @@ class _TerrainOptions:
 
 
 class TerrainTool(LineTool):
-    """Terreno: clique os pontos; Tab digita a cota de cada um; Enter encerra (pelo menos
-    3; escada-terreno.md §4). A cota digitada fica para os pontos seguintes."""
+    """Terreno (escada-terreno.md §4): desenhe o contorno (Enter ou clique no primeiro
+    ponto fecha), ou, no modo de pontos cotados, clique os pontos com Tab para a cota de
+    cada um (a cota digitada fica para os seguintes). Pelo menos 3 pontos."""
 
     name, label = "terrain", "Terreno"
     options_class = _TerrainOptions
@@ -2997,18 +3000,28 @@ class TerrainTool(LineTool):
         self.zs: list[float] = []
 
     def hint(self):
+        if self.options.mode == "outline":
+            if not self.points:
+                return "Clique o primeiro ponto do contorno do terreno"
+            return ("Clique o próximo ponto do contorno; clique no primeiro ponto, Enter ou "
+                    "clique duplo fecha")
         if not self.points:
             return "Clique o primeiro ponto do terreno; Tab digita a cota"
         return ("Clique o próximo ponto; Tab digita a cota; Enter, clique duplo ou botão "
                 "direito encerra (pelo menos 3 pontos)")
 
     def point_fields(self):
+        if self.options.mode == "outline":
+            return super().point_fields()  # comprimento e ângulo do lado
         return [Field("z", "Cota", "m", self.options.z, self.fixed.get("z"))]
 
     def _resolve(self, q):
-        return q
+        return super()._resolve(q) if self.options.mode == "outline" else q
 
     def press(self, p, mods, button="left"):
+        if self.options.mode == "outline":
+            super().press(p, mods, button)
+            return
         z = self.fixed.get("z", self.options.z)
         before = len(self.points)
         super().press(p, mods, button)
@@ -3023,16 +3036,26 @@ class TerrainTool(LineTool):
         return done
 
     def finish(self, closed: bool = False) -> None:
+        from brasbim.core import terrain
+
+        o, doc = self.options, self.session.doc
+        if o.mode == "outline":
+            ring = list(self.points)
+            self.points, self.zs = [], []
+            if len(ring) < 3:
+                if ring:
+                    self.session.message("o contorno precisa de pelo menos 3 pontos", "recusa")
+                return
+            self.session.run(lambda: terrain.create_terrain(
+                doc, interval=o.interval, boundary=ring, boundary_z=o.boundary_z))
+            return
         points = [(*q, z) for q, z in zip(self.points, self.zs, strict=False)]
         self.points, self.zs = [], []
         if len(points) < 3:
             if points:
                 self.session.message("o terreno precisa de pelo menos 3 pontos", "recusa")
             return
-        from brasbim.core import terrain
-
-        doc, interval = self.session.doc, self.options.interval
-        self.session.run(lambda: terrain.create_terrain(doc, points, interval))
+        self.session.run(lambda: terrain.create_terrain(doc, points, o.interval))
 
     def shape_preview(self):
         pts = list(self.points)
@@ -3041,7 +3064,204 @@ class TerrainTool(LineTool):
         return [Mark(tuple(pts), len(pts) >= 3)] if len(pts) >= 2 else []
 
     def labels(self):
+        if self.options.mode == "outline":
+            return []
         return [(q, fmt(z)) for q, z in zip(self.points, self.zs, strict=False)]
+
+
+class _TerrainCurveTool(Tool):
+    """Base das ações sobre as curvas de um terreno selecionado (escada-terreno.md §4.4)."""
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.terrain: str | None = None  # GlobalId do terreno
+
+    def _state(self):
+        from brasbim.core import terrain as terrain_data
+
+        element = self.session.doc.find(self.terrain) if self.terrain else None
+        if element is None or not terrain_data.is_terrain(element):
+            return None
+        return terrain_data.read_state(element)
+
+    def _tol(self) -> float:
+        return max(self.ctx.tol, 0.05)
+
+    def cancel(self):
+        return False  # Esc encerra a ação e volta para Selecionar
+
+
+class PickCurvesTool(_TerrainCurveTool):
+    """Pegar linhas: a linha do desenho (importado ou 2D) sob o cursor vira curva de nível
+    do terreno com um clique ou Enter; a cota que ela trazia vem junto (§4.4)."""
+
+    name, label = "terrain_pick", "Pegar linhas"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.hover: dict | None = None  # {"points", "closed", "z"}
+        self._cache = (None, [])
+
+    def hint(self):
+        return ("Passe o cursor sobre uma linha do desenho e clique ou tecle Enter para pô-la "
+                "no terreno como curva de nível; Esc encerra")
+
+    def _candidates(self) -> list[tuple[str, dict]]:
+        """(GlobalId, {"lines": [...]}) das linhas da planta que podem virar curva."""
+        current = self.ctx.plan
+        if self._cache[0] is current:
+            return self._cache[1]
+        doc, out = self.session.doc, []
+        for gid, prims in current.annotations:
+            element = doc.find(gid)
+            kind = annotation_base.kind_of(element)
+            if kind is None:
+                continue
+            if kind.prefix == "reference2d":
+                out.append((gid, annotation_base.read_state(element)))
+            elif kind.prefix in ("line2d", "spline2d", "arc2d", "circle2d"):
+                out.append((gid, {"lines": [
+                    {"points": [list(q) for q in s.points], "closed": s.closed, "z": None}
+                    for s in prims.strokes]}))
+        self._cache = (current, out)
+        return out
+
+    def move(self, p, mods):
+        from brasbim.core.annotations import reference
+
+        super().move(p, mods)
+        found = reference.lines_near(self._candidates(), p, self._tol())
+        self.hover = found[0][3] if found else None
+
+    def _pick(self) -> None:
+        from brasbim.core import terrain as terrain_data
+
+        if self.hover is None:
+            self.session.message("passe o cursor sobre uma linha do desenho", "recusa")
+            return
+        if self._state() is None:
+            self.session.message("selecione um terreno antes", "recusa")
+            return
+        line, doc = self.hover, self.session.doc
+        if not self.session.run(lambda: terrain_data.add_curves(doc, self.terrain, [line])):
+            self.session.message("essa linha já está no terreno")
+
+    def press(self, p, mods, button="left"):
+        if button == "left":
+            self.move(p, mods)
+            self._pick()
+
+    def key(self, key):
+        if key == "enter":
+            self._pick()
+            return True
+        return False
+
+    def preview(self):
+        if self.hover is None:
+            return []
+        return [Mark(tuple(tuple(q) for q in self.hover["points"]), self.hover["closed"])]
+
+    def labels(self):
+        if self.hover is None or self.cursor is None:
+            return []
+        z = self.hover["z"]
+        return [(self.cursor, "sem cota" if z is None else f"cota {fmt(z)}")]
+
+
+class CurveLevelTool(_TerrainCurveTool):
+    """Cota das curvas: clique a curva do terreno e digite a cota (Enter aceita a
+    sugestão, a última mais o intervalo das curvas) (§4.4)."""
+
+    name, label = "terrain_level", "Cota das curvas"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.hover: int | None = None
+        self.chosen: int | None = None
+        self.last: float | None = None
+
+    def hint(self):
+        if self.chosen is None:
+            return "Clique uma curva de nível do terreno (as tracejadas ainda não têm cota)"
+        return "Digite a cota da curva e tecle Enter; clique outra curva para trocar"
+
+    def move(self, p, mods):
+        from brasbim.core import terrain as terrain_data
+
+        super().move(p, mods)
+        state = self._state()
+        self.hover = terrain_data.curve_near(state, p, self._tol()) if state else None
+
+    def suggestion(self) -> float | None:
+        state = self._state()
+        if state is None or self.chosen is None or self.chosen >= len(state["curves"]):
+            return None
+        z = state["curves"][self.chosen]["z"]
+        if z is not None:
+            return z
+        return None if self.last is None else self.last + float(state["interval"])
+
+    def fields(self):
+        if self.chosen is None:
+            return []
+        return [Field("z", "Cota", "m", self.suggestion(), self.fixed.get("z"))]
+
+    def _apply(self, z: float) -> None:
+        from brasbim.core import terrain as terrain_data
+
+        doc, index = self.session.doc, self.chosen
+        if self.session.run(lambda: terrain_data.set_curve_level(doc, self.terrain, index, z)):
+            self.last = z
+        self.chosen = None
+        self.fixed.clear()
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        if self.chosen is not None and "z" in self.fixed:
+            self._apply(self.fixed["z"])
+            return
+        self.move(p, mods)
+        if self._state() is None:
+            self.session.message("selecione um terreno antes", "recusa")
+            return
+        if self.hover is None:
+            self.session.message("clique sobre uma curva de nível do terreno", "recusa")
+            return
+        self.chosen = self.hover
+
+    def key(self, key):
+        if key == "enter" and self.chosen is not None:
+            z = self.fixed.get("z", self.suggestion())
+            if z is None:
+                self.session.message("digite a cota da curva", "recusa")
+            else:
+                self._apply(z)
+            return True
+        return False
+
+    def cancel(self):
+        if self.chosen is not None:
+            self.chosen = None
+            self.fixed.clear()
+            return True
+        return False
+
+    def preview(self):
+        state = self._state()
+        if state is None:
+            return []
+        marks = []
+        for i, c in enumerate(state["curves"]):
+            pts = tuple(tuple(q) for q in c["points"])
+            if i == self.chosen:
+                marks.append(Mark(pts, c["closed"], "preview"))
+            elif i == self.hover:
+                marks.append(Mark(pts, c["closed"], "guide"))
+            elif c["z"] is None:
+                marks.append(Mark(pts, c["closed"], "invalid"))
+        return marks
 
 
 class ViewTool(_PointTool):
@@ -4262,13 +4482,14 @@ class ObjectTool(Tool):
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
-         GridTool, TerrainTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+         GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
-SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening")
+SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",
+                   "terrain_pick", "terrain_level")
 
 
 # --- mini-barra da seleção (spec/ui 03 §5) -------------------------------------------------
@@ -4307,6 +4528,10 @@ def selection_actions(doc, gids) -> list[str]:
         out.append("flip_opening")
         if all(fc.hand(doc, d) for d in door_list):
             out.append("flip_hinges")
+    from brasbim.core import terrain as terrain_data
+
+    if len(elements) == 1 and terrain_data.is_terrain(elements[0]):  # escada-terreno §4.4
+        out += ["pick_curves", "curve_level"]
     if found_objects and len(found_objects) == len(elements):  # objeto-parametrico §5.1
         out.append("swap_type")
         if len({objects.read_state(doc, e)["type"] for e in found_objects}) == 1:

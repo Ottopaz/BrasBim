@@ -170,6 +170,13 @@ ICONS = {
     "terrain": '<path d="M2 18 C6 12, 9 16, 13 10 S19 7, 22 9"/>'
                '<path d="M3 21 C7 17, 11 20, 15 15 S20 13, 22 14" stroke-width="1"/>'
                '<path d="M6 8 C9 5, 13 7, 16 4" stroke-width="1"/>',
+    # pegar linhas do desenho para o terreno e dar cota às curvas (escada-terreno §4.4)
+    "pick_curves": '<path d="M2.5 15 C7 11, 11 18, 16 13" stroke-dasharray="2 1.5"/>'
+                   '<path d="M2.5 20 C7 16, 11 23, 16 18"/>'
+                   '<path d="M19 3.5 V10.5 M16.5 8 L19 10.5 L21.5 8" stroke-width="1.25"/>',
+    "curve_level": '<path d="M2.5 17 C7 12, 11 20, 21.5 13"/>'
+                   '<path d="M9 3.5 H20 V9.5 H9 Z" stroke-width="1"/>'
+                   '<path d="M12 6.5 H17" stroke-width="1"/>',
     # desenho 2D (spec/ui 19): curva, círculo, arco, cotas de raio e de ângulo, rótulo,
     # marcador de alteração
     "spline2d": '<path d="M3 17 C7 3, 11 21, 15 9 S19 5, 21 7"/>'

@@ -38,6 +38,10 @@ ACTIONS = {
     "select_same": ("select_same", "Selecionar todos deste tipo",
                     "seleciona as ocorrências do mesmo tipo no pavimento"),
     "detach": ("detach", "Soltar da parede", "o objeto fica livre, no mesmo lugar, sem o vão"),
+    "pick_curves": ("pick_curves", "Pegar linhas",
+                    "clique ou tecle Enter sobre as linhas do desenho para pô-las no terreno"),
+    "curve_level": ("curve_level", "Cota das curvas",
+                    "clique uma curva do terreno e digite a cota"),
     "delete": ("delete", "Excluir", "exclui a seleção (Delete)"),
 }
 

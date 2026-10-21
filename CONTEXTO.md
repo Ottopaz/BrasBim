@@ -20,7 +20,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (658 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (666 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -528,9 +528,14 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   (ezdxf; DWG pelo ODA File Converter ou `dwg2dxf`, chamados à parte; **o conversor não
   está instalado nesta máquina**), anotação `reference2d` por camada
   (`core/annotations/reference.py`, `compact`: `IfcIndexedPolyCurve`), camada inicial
-  Levantamento, `ui/import_dialog.py`, Arquivo > Importar desenho. **Em andamento:**
-  parte B, terreno com contorno e curvas pegas do desenho (fluxo do revisor: desenha o
-  contorno, seleciona o terreno, pega as linhas com Enter, clica na curva e dá a cota).
+  Levantamento, `ui/import_dialog.py`, Arquivo > Importar desenho.
+- **Terreno por contorno e curvas feito (2026‑10‑21, escada-terreno.md §4 revisada,
+  TR01–TR08):** estado com `boundary`, `boundary_z`, `curves`; superfície por Delaunay do
+  GEOS (`terrain.surface`) com correção de patamar falso; ferramenta Terreno com modos
+  Contorno/Pontos cotados; mini-barra do terreno com **Pegar linhas**
+  (`PickCurvesTool`, clique ou Enter, traz a cota do DWG) e **Cota das curvas**
+  (`CurveLevelTool`, sugestão = última + intervalo). Pendente: pegar várias linhas por
+  janela; triangulação com as curvas como restrição (hoje ponto no meio do patamar).
 - **Salvamento automático feito (2026‑10‑21, spec/ui 21):** `ui/recovery.py` (sem Qt) +
   `Session.backup/heartbeat/orphan_backups/recover`; cópia IFC separada do arquivo do
   projeto na pasta de dados do usuário (`QStandardPaths.AppLocalDataLocation/recuperacao`),

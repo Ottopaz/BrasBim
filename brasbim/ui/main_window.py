@@ -969,6 +969,11 @@ class MainWindow(QMainWindow):
             wall = next(iter(session.selection), None)
             session.run(lambda: ac.auto_dimension_wall(doc, wall))
             return
+        if key in ("pick_curves", "curve_level"):  # escada-terreno.md §4.4
+            name = "terrain_pick" if key == "pick_curves" else "terrain_level"
+            self.toolbox.tools[name].terrain = next(iter(session.selection), None)
+            self.activate_tool(name)
+            return
         if key == "slab_opening":
             tool = self.toolbox.tools["slab_opening"]
             tool.slab = next(iter(session.selection), None)
