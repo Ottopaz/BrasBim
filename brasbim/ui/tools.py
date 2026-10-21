@@ -2827,6 +2827,223 @@ class SkylightTool(_PointTool):
                                                            self.length, self.angle))
 
 
+# --- Escada, guarda-corpo e terreno (escada-terreno.md) -------------------------------------
+
+
+class _StairOptions:
+    type_class = None
+
+    def __init__(self):
+        self.shape = "straight"
+        self.width = 1.20
+        self.turn = "left"
+        self.railing = "both"
+        self.type = None
+
+
+class StairTool(_PointTool):
+    """Escada: clique o início (canto direito do primeiro degrau, de quem sobe) e a
+    direção de subida (escada-terreno.md §2.4); Tab digita o ângulo."""
+
+    name, label = "stair", "Escada"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.options = _StairOptions()
+        self.start: Point | None = None
+
+    def hint(self):
+        if self.start is None:
+            return ("Clique o início da escada: o canto direito do primeiro degrau, de quem "
+                    "sobe")
+        return "Clique a direção de subida; Tab digita o ângulo; Shift prende a 45°"
+
+    def move(self, p, mods):
+        Tool.move(self, p, mods)
+        self.snapped = self.ctx.snap(p, mods, origin=self.start, extra=self.ctx.vertices)
+
+    def _angle(self) -> float:
+        if "angle" in self.fixed:
+            return self.fixed["angle"]
+        if self.start is None or self.snapped is None:
+            return 0.0
+        q = self.snapped.point
+        if math.dist(self.start, q) < 1e-6:
+            return 0.0
+        return _degrees(q[0] - self.start[0], q[1] - self.start[1])
+
+    def fields(self):
+        if self.start is None:
+            return []
+        return [Field("angle", "Ângulo", "°", self._angle(), self.fixed.get("angle"))]
+
+    def _state(self):
+        from brasbim.core.structure import stairs
+
+        storey = self.session.storey
+        if storey is None or self.snapped is None:
+            return None
+        o = self.options
+        start = self.start if self.start is not None else self.snapped.point
+        return {**stairs.default_state(), "storey": storey.GlobalId, "start": list(start),
+                "angle": self._angle(), "shape": o.shape, "width": o.width, "turn": o.turn,
+                "railing": o.railing}
+
+    def press(self, p, mods, button="left"):
+        from brasbim.core.structure import stairs
+
+        if button != "left":
+            return
+        self.move(p, mods)
+        storey = self._storey()
+        if storey is None:
+            return
+        if self.start is None:
+            self.start = self.snapped.point
+            return
+        start, angle, o = self.start, self._angle(), self.options
+        if "angle" not in self.fixed and math.dist(start, self.snapped.point) < 1e-6:
+            return  # o segundo clique precisa dar a direção
+        self.start = None
+        self.fixed.clear()
+        doc = self.session.doc
+        self.session.run(lambda: stairs.create_stair(
+            doc, storey, start, angle, shape=o.shape, width=o.width, turn=o.turn,
+            railing=o.railing))
+
+    def cancel(self):
+        self.fixed.clear()
+        if self.start is not None:
+            self.start = None
+            return True
+        return False
+
+    def preview(self):
+        from brasbim.core.structure import stairs
+
+        state = self._state()
+        if state is None:
+            return []
+        try:
+            prims = stairs.plan_prims(self.session.doc, state,
+                                      storeys.cut_height(self.session.storey))
+        except (OpError, ValueError, ZeroDivisionError):
+            return []
+        return [Mark(st.points, st.closed) for st in prims.strokes]
+
+
+class _RailingOptions:
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.height = 1.10
+        self.base = 0.0
+        self.spacing = 1.20
+        self.type = None
+
+    def band(self, doc):
+        return (0.0, 0.0)
+
+
+class RailingTool(LineTool):
+    """Guarda-corpo solto: clique os pontos; Enter, clique duplo ou botão direito encerra;
+    clicar no primeiro ponto fecha (escada-terreno.md §3)."""
+
+    name, label = "railing", "Guarda-corpo"
+    options_class = _RailingOptions
+
+    def hint(self):
+        if not self.points:
+            return "Clique o primeiro ponto do guarda-corpo"
+        return ("Clique o próximo ponto; Tab digita comprimento e ângulo; Enter ou clique "
+                "duplo encerra; clique no primeiro ponto fecha")
+
+    def finish(self, closed: bool = False) -> None:
+        from brasbim.core.structure import railings
+
+        points = list(self.points)
+        self.points = []
+        if closed and points and math.dist(points[-1], points[0]) > 1e-6:
+            points.append(points[0])
+        if len(points) < 2:
+            return
+        o, doc, storey = self.options, self.session.doc, self.session.storey
+        if storey is not None:
+            self.session.run(lambda: railings.create_railing(doc, storey, points, o.base,
+                                                             o.height, o.spacing))
+
+
+class _TerrainOptions:
+    type_class = None
+
+    def __init__(self, session: Session):
+        self.z = 0.0  # cota do próximo ponto
+        self.interval = 1.0
+        self.type = None
+
+    def band(self, doc):
+        return (0.0, 0.0)
+
+
+class TerrainTool(LineTool):
+    """Terreno: clique os pontos; Tab digita a cota de cada um; Enter encerra (pelo menos
+    3; escada-terreno.md §4). A cota digitada fica para os pontos seguintes."""
+
+    name, label = "terrain", "Terreno"
+    options_class = _TerrainOptions
+
+    def __init__(self, ctx, options=None):
+        super().__init__(ctx, options)
+        self.zs: list[float] = []
+
+    def hint(self):
+        if not self.points:
+            return "Clique o primeiro ponto do terreno; Tab digita a cota"
+        return ("Clique o próximo ponto; Tab digita a cota; Enter, clique duplo ou botão "
+                "direito encerra (pelo menos 3 pontos)")
+
+    def point_fields(self):
+        return [Field("z", "Cota", "m", self.options.z, self.fixed.get("z"))]
+
+    def _resolve(self, q):
+        return q
+
+    def press(self, p, mods, button="left"):
+        z = self.fixed.get("z", self.options.z)
+        before = len(self.points)
+        super().press(p, mods, button)
+        if len(self.points) > before:
+            self.zs = [*self.zs[:before], z]
+            self.options.z = z
+
+    def cancel(self):
+        done = super().cancel()
+        if not self.points:
+            self.zs = []
+        return done
+
+    def finish(self, closed: bool = False) -> None:
+        points = [(*q, z) for q, z in zip(self.points, self.zs, strict=False)]
+        self.points, self.zs = [], []
+        if len(points) < 3:
+            if points:
+                self.session.message("o terreno precisa de pelo menos 3 pontos", "recusa")
+            return
+        from brasbim.core import terrain
+
+        doc, interval = self.session.doc, self.options.interval
+        self.session.run(lambda: terrain.create_terrain(doc, points, interval))
+
+    def shape_preview(self):
+        pts = list(self.points)
+        if pts and self.snapped:
+            pts.append(self.snapped.point)
+        return [Mark(tuple(pts), len(pts) >= 3)] if len(pts) >= 2 else []
+
+    def labels(self):
+        return [(q, fmt(z)) for q, z in zip(self.points, self.zs, strict=False)]
+
+
 class ViewTool(_PointTool):
     """Corte ou fachada (spec/ui 14 §7): clique A, clique B e clique do lado olhado."""
 
@@ -4044,7 +4261,8 @@ class ObjectTool(Tool):
 
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
-         BeamTool, SlabTool, RoofTool, SkylightTool, ObjectTool, GridTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
+         BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
+         GridTool, TerrainTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool)
@@ -4073,7 +4291,7 @@ def selection_actions(doc, gids) -> list[str]:
     if all(cmd.is_wall_opening(e) for e in elements):  # vão e nicho (spec/ui 20 §3)
         return ["delete"]
     out = ["move", "copy"]
-    if walls or structure or free:
+    if walls or structure or free or transform._misc(doc, [e.GlobalId for e in elements]):
         out += ["rotate", "mirror"]
     if len(elements) == 1 and walls and isinstance(
             geom2d.path_from_dict(cmd.read_state(doc, walls[0])["path"]), geom2d.LinePath):

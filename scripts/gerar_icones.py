@@ -161,6 +161,15 @@ ICONS = {
                     '<path d="M8.25 8.75 H15.75" stroke-width="1" stroke-dasharray="1.5 1.5"/>',
     "skylight": '<path d="M2.5 16.5 L12 6.5 L21.5 16.5"/>'
                 '<path d="M8.5 13.5 L12 9.8 L15.5 13.5 Z" stroke-width="1"/>',
+    # escada, guarda-corpo e terreno (escada-terreno.md)
+    "stair": '<path d="M3 20.5 H7.5 V16 H12 V11.5 H16.5 V7 H21"/>'
+             '<path d="M3 13 L13.5 3.5" stroke-width="1"/><path d="M10 3.5 H13.5 V7"'
+             ' stroke-width="1"/>',
+    "railing": '<path d="M2.5 6.5 H21.5 M2.5 13.5 H21.5" />'
+               '<path d="M4 6.5 V20.5 M12 6.5 V20.5 M20 6.5 V20.5" stroke-width="1.25"/>',
+    "terrain": '<path d="M2 18 C6 12, 9 16, 13 10 S19 7, 22 9"/>'
+               '<path d="M3 21 C7 17, 11 20, 15 15 S20 13, 22 14" stroke-width="1"/>'
+               '<path d="M6 8 C9 5, 13 7, 16 4" stroke-width="1"/>',
     # desenho 2D (spec/ui 19): curva, círculo, arco, cotas de raio e de ângulo, rótulo,
     # marcador de alteração
     "spline2d": '<path d="M3 17 C7 3, 11 21, 15 9 S19 5, 21 7"/>'

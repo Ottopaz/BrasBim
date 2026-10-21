@@ -146,6 +146,20 @@ ROW_HEIGHT = 27  # altura de uma linha de campo no arranjo deitado (px)
 TITLE_HEIGHT = 22
 
 
+def _misc_kind(element) -> str | None:
+    """Método do painel da escada, do guarda-corpo solto ou do terreno."""
+    from brasbim.core import terrain
+    from brasbim.core.structure import railings, stairs
+
+    if stairs.is_stair(element):
+        return "_stair"
+    if railings.is_railing(element):
+        return "_railing"
+    if terrain.is_terrain(element):
+        return "_terrain"
+    return None
+
+
 class _Group:
     """Grupo de campos: título e linhas (nome ou None, widget)."""
 
@@ -263,6 +277,8 @@ class PropertiesPanel(QScrollArea):
             self._wall_opening(selection[0])
         elif len(selection) == 1 and selection[0].is_a("IfcGrid"):
             self._grid(selection[0])
+        elif len(selection) == 1 and _misc_kind(selection[0]):
+            getattr(self, _misc_kind(selection[0]))(selection[0])
         elif len(selection) == 1 and objects.is_object(selection[0]):
             self._object(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
@@ -1594,6 +1610,124 @@ class PropertiesPanel(QScrollArea):
         self._combo("Círculos", [("Nas duas pontas", "both"), ("No início", "start"),
                                  ("No fim", "end"), ("Sem círculo", "none")],
                     state["bubbles"], lambda v: edit(bubbles=v))
+
+    # --- escada, guarda-corpo e terreno (escada-terreno.md) ---------------------------
+
+    def _points_field(self, label: str, points, size: int, commit) -> None:
+        """Pontos como "x y; x y" (ou "x y z; …"); recusa o texto mal formado."""
+
+        def done(text):
+            try:
+                pts = [[parse_number(c) for c in chunk.split()]
+                       for chunk in (text or "").split(";") if chunk.strip()]
+                if any(len(q) != size for q in pts):
+                    raise ValueError
+            except ValueError:
+                coords = "x y z" if size == 3 else "x y"
+                self.session.message(f"pontos inválidos (ex.: {coords}; {coords})", "recusa")
+                self.refresh()
+                return
+            commit(pts)
+
+        self._text(label, "; ".join(" ".join(fmt(c) for c in q) for q in points), done)
+
+    def _stair(self, stair) -> None:
+        """Escada (escada-terreno.md §2.4): todos os campos, com espelho, piso e Blondel
+        calculados."""
+        from brasbim.core.structure import stairs
+
+        doc = self.session.doc
+        state = stairs.read_state(stair)
+        lay = stairs.layout(doc, state)
+
+        def edit(**changes):
+            self._run(lambda: stairs.edit_stair(doc, stair, **changes))
+
+        def whole(v):
+            return None if v is None else round(v)
+
+        self._title(state["name"])
+        self._text("Nome", state["name"], lambda v: v and edit(name=v))
+        self._combo("Forma", [("Reta", "straight"), ("Em L", "L"), ("Em U", "U")],
+                    state["shape"], lambda v: edit(shape=v))
+        self._number("Largura (m)", state["width"], lambda v: edit(width=v))
+        self._number("Altura (m)", state["height"], lambda v: edit(height=v),
+                     placeholder=f"{fmt(lay.height)} (até o pavimento de cima)",
+                     allow_empty=True)
+        self._number("Espelhos", state["risers"], lambda v: edit(risers=whole(v)),
+                     placeholder=f"{lay.risers} (calculado)", allow_empty=True)
+        self._number("Piso (m)", state["tread"], lambda v: edit(tread=v),
+                     placeholder=f"{fmt(lay.tread)} (calculado)", allow_empty=True)
+        if state["shape"] != "straight":
+            self._combo("Giro", [("À esquerda", "left"), ("À direita", "right")],
+                        state["turn"], lambda v: edit(turn=v))
+            self._number("Espelhos no 1º lance", state["split"],
+                         lambda v: edit(split=whole(v)),
+                         placeholder=f"{lay.flights[0].treads + 1} (metade)",
+                         allow_empty=True)
+        self._number("Espessura (m)", state["waist"], lambda v: edit(waist=v))
+        self._combo("Guarda-corpo", [("Dos dois lados", "both"), ("À esquerda", "left"),
+                                     ("À direita", "right"), ("Nenhum", "none")],
+                    state["railing"], lambda v: edit(railing=v))
+        if state["railing"] != "none":
+            self._number("Altura do guarda-corpo (m)", state["railing_height"],
+                         lambda v: edit(railing_height=v))
+        self._section("Cálculo")
+        self._read("Espelho", f"{lay.riser * 100:.1f} cm".replace(".", ","))
+        self._read("Piso", f"{lay.tread * 100:.1f} cm".replace(".", ","))
+        self._read("Blondel (2e + p)",
+                   f"{(2 * lay.riser + lay.tread) * 100:.1f} cm".replace(".", ","))
+        for text in stairs.warnings_of(lay):
+            self._read("Aviso", f"{text} (conferir na norma)")
+        self._section("Posição")
+        self._number("Início x (m)", state["start"][0],
+                     lambda v: edit(start=[v, state["start"][1]]))
+        self._number("Início y (m)", state["start"][1],
+                     lambda v: edit(start=[state["start"][0], v]))
+        self._number("Direção (°)", state["angle"], lambda v: edit(angle=v % 360.0))
+        self._section("Identificação")
+        self._read("GlobalId", stair.GlobalId)
+
+    def _railing(self, railing) -> None:
+        """Guarda-corpo solto (escada-terreno.md §3)."""
+        from brasbim.core.structure import railings
+
+        doc = self.session.doc
+        state = railings.read_state(railing)
+
+        def edit(**changes):
+            self._run(lambda: railings.edit_railing(doc, railing, **changes))
+
+        self._title("Guarda-corpo")
+        self._number("Altura (m)", state["height"], lambda v: edit(height=v))
+        self._number("Base (m)", state["base"], lambda v: edit(base=v))
+        self._number("Montantes a cada (m)", state["spacing"], lambda v: edit(spacing=v))
+        self._points_field("Pontos (x y; …)", state["points"], 2, lambda v: edit(points=v))
+        length = sum(math.dist(a, b) for a, b in zip(state["points"], state["points"][1:],
+                                                       strict=False))
+        self._read("Comprimento", f"{fmt(length)} m")
+        self._section("Identificação")
+        self._read("GlobalId", railing.GlobalId)
+
+    def _terrain(self, element) -> None:
+        """Terreno (escada-terreno.md §4)."""
+        from brasbim.core import terrain
+
+        doc = self.session.doc
+        state = terrain.read_state(element)
+
+        def edit(**changes):
+            self._run(lambda: terrain.edit_terrain(doc, element, **changes))
+
+        self._title(state["name"])
+        self._text("Nome", state["name"], lambda v: v and edit(name=v))
+        self._number("Curvas a cada (m)", state["interval"], lambda v: edit(interval=v))
+        self._points_field("Pontos (x y z; …)", state["points"], 3, lambda v: edit(points=v))
+        zs = [q[2] for q in state["points"]]
+        self._read("Pontos", str(len(zs)))
+        self._read("Cotas", f"{fmt(min(zs))} a {fmt(max(zs))} m")
+        self._section("Identificação")
+        self._read("GlobalId", element.GlobalId)
 
     # --- objeto paramétrico (objeto-parametrico.md §5.1) -------------------------------
 

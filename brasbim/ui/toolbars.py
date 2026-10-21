@@ -33,6 +33,7 @@ from brasbim.ui.tools import (
     NorthTool,
     ObjectTool,
     RadiusDimTool,
+    RailingTool,
     RevisionTool,
     RoofTool,
     SkylightTool,
@@ -40,6 +41,8 @@ from brasbim.ui.tools import (
     SlabTool,
     SpaceTool,
     SplineTool,
+    StairTool,
+    TerrainTool,
     TextTool,
     ViewTool,
     WallOpeningTool,
@@ -78,9 +81,14 @@ CREATE_TOOLS = [
      "clique dentro da edificação, ou desenhe o contorno de apoio; escolha a forma na barra"),
     ("skylight", "skylight", "Claraboia",
      "clique o centro sobre uma laje ou cobertura; barra de espaço gira 90°"),
+    ("stair", "stair", "Escada",
+     "clique o canto direito do primeiro degrau e a direção de subida; forma na barra"),
+    ("railing", "railing", "Guarda-corpo", "clique os pontos; Enter ou clique duplo encerra"),
     ("object", "object", "Objeto",
      "escolha o objeto na barra de opções e clique; barra de espaço gira 90°"),
     ("grid", "grid", "Eixos", "clique a origem e a direção; espaçamentos na barra de opções"),
+    ("terrain", "terrain", "Terreno",
+     "clique os pontos; Tab digita a cota de cada um; Enter encerra"),
 ]
 # Grupo Documentação (spec/ui 13 §9): anotação da planta.
 DOC_TOOLS = [
@@ -276,6 +284,10 @@ def tool_kind(tool) -> str | None:
         return "grid"
     if isinstance(tool, SkylightTool):
         return "window"
+    for cls, kind in ((StairTool, "stair"), (RailingTool, "railing"),
+                      (TerrainTool, "terrain")):
+        if isinstance(tool, cls):
+            return kind
     for cls, kind in ((_ClickTool, None), (RevisionTool, "revision")):
         if isinstance(tool, cls):
             return getattr(tool, "prefix", kind)
@@ -315,7 +327,39 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
-        if isinstance(tool, SkylightTool):
+        if isinstance(tool, StairTool):
+            o = tool.options
+            self._combo([("Reta", "straight"), ("Em L", "L"), ("Em U", "U")], o.shape,
+                        lambda v: (setattr(o, "shape", v), self.show_for(tool)),
+                        "Forma da escada")
+            self._label("Largura")
+            self._number(o.width, lambda v: setattr(o, "width", v), "Largura da escada (m)")
+            if o.shape != "straight":
+                self._combo([("Giro à esquerda", "left"), ("Giro à direita", "right")],
+                            o.turn, lambda v: setattr(o, "turn", v),
+                            "Para que lado o segundo lance vira")
+            self._combo([("Guarda-corpo dos dois lados", "both"),
+                         ("Guarda-corpo à esquerda", "left"),
+                         ("Guarda-corpo à direita", "right"), ("Sem guarda-corpo", "none")],
+                        o.railing, lambda v: setattr(o, "railing", v),
+                        "Lados com guarda-corpo (de quem sobe)")
+        elif isinstance(tool, RailingTool):
+            o = tool.options
+            for key, name in (("height", "Altura"), ("base", "Base"),
+                              ("spacing", "Montantes a cada")):
+                self._label(name)
+                self._number(getattr(o, key), lambda v, k=key: setattr(o, k, v),
+                             f"{name} (m)" + (" acima do piso do pavimento"
+                                              if key == "base" else ""))
+        elif isinstance(tool, TerrainTool):
+            o = tool.options
+            self._label("Cota")
+            self._number(o.z, lambda v: setattr(o, "z", v),
+                         "Cota do próximo ponto (m); Tab digita junto ao cursor")
+            self._label("Curvas a cada")
+            self._number(o.interval, lambda v: setattr(o, "interval", v),
+                         "Intervalo das curvas de nível (m)")
+        elif isinstance(tool, SkylightTool):
             for key, name in (("width", "Largura"), ("length", "Comprimento"),
                               ("angle", "Ângulo")):
                 self._label(name)
