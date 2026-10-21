@@ -607,15 +607,70 @@ def _skylight_ops(doc: Document, gids, fn, turn: float = 0.0, mirror_axis=None,
     return ops
 
 
+def _misc(doc: Document, gids) -> list:
+    """Escadas (também por uma peça), guarda-corpos soltos e terrenos da seleção."""
+    from brasbim.core import terrain
+    from brasbim.core.structure import railings, stairs
+
+    out = []
+    for g in gids:
+        e = doc.get(g if isinstance(g, str) else g.GlobalId)
+        e = stairs.stair_of(e) or e
+        if (stairs.is_stair(e) or railings.is_railing(e) or terrain.is_terrain(e))                 and e not in out:
+            out.append(e)
+    return out
+
+
+def _misc_ops(doc: Document, items, fn, turn: float = 0.0, mirror_axis=None,
+              copying: bool = False) -> list[Op]:
+    """Escada, guarda-corpo e terreno levados pela transformação
+    (``spec/elementos/escada-terreno.md``)."""
+    from brasbim.core import terrain
+    from brasbim.core.structure import railings, stairs
+
+    ops, names = [], {s.Name for s in stairs.all_stairs(doc)}
+    for e in items:
+        if stairs.is_stair(e):
+            module, state = stairs, stairs.read_state(e)
+            changes = stairs.mapped(state, fn, turn, mirror_axis)
+            edit = stairs.edit_stair
+        elif railings.is_railing(e):
+            module, state = railings, railings.read_state(e)
+            changes = {"points": [[float(c) for c in fn(tuple(q))] for q in state["points"]]}
+            edit = railings.edit_railing
+        else:
+            module, state = terrain, terrain.read_state(e)
+            changes = terrain.mapped(state, fn)
+            edit = terrain.edit_terrain
+        if not copying:
+            ops += edit(doc, e, **changes).ops
+            continue
+        data = {**copy.deepcopy(state), **changes}
+        if module is stairs:
+            n = 1
+            while f"Escada {n}" in names:
+                n += 1
+            data["name"] = f"Escada {n}"
+            names.add(data["name"])
+        prefix = {stairs: "stair", railings: "railing", terrain: "terrain"}[module]
+        ops.append(Op(f"{prefix}.create", guid.new(), data=data))
+    return ops
+
+
 def _with_objects(label: str, doc: Document, gids, core, objects_ops,
-                  grid_ops=lambda found: [], sky_ops=lambda gids: []) -> Transaction:
+                  grid_ops=lambda found: [], sky_ops=lambda gids: [],
+                  misc_ops=lambda items: []) -> Transaction:
     from brasbim.core.structure import skylights
 
     others, found = _objects(doc, gids)
+    misc = _misc(doc, others)
+    misc_ids = {e.GlobalId for e in misc} | {
+        p.GlobalId for e in misc for rel in e.IsDecomposedBy or () for p in rel.RelatedObjects}
     grid_list = [doc.get(g) for g in others if doc.get(g).is_a("IfcGrid")]
     others = [g for g in others if not doc.get(g).is_a("IfcGrid")
-              and not skylights.is_skylight(doc.get(g))]
-    extra = objects_ops(found) + (grid_ops(grid_list) if grid_list else []) + sky_ops(gids)
+              and not skylights.is_skylight(doc.get(g)) and g not in misc_ids]
+    extra = (objects_ops(found) + (grid_ops(grid_list) if grid_list else []) + sky_ops(gids)
+             + (misc_ops(misc) if misc else []))
     if not others:
         if not extra and not found:
             raise OpError("nada selecionado")
@@ -637,7 +692,8 @@ def move_elements(doc: Document, gids, vector) -> Transaction:
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, moving)),
         lambda found: _object_ops(doc, found, moving, "move", fn, vector),
         lambda found: _grid_ops(doc, found, fn),
-        lambda ids: _skylight_ops(doc, ids, fn))
+        lambda ids: _skylight_ops(doc, ids, fn),
+        lambda items: _misc_ops(doc, items, fn))
 
 
 def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
@@ -650,7 +706,8 @@ def rotate_elements(doc: Document, gids, center, angle: float) -> Transaction:
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a + deg, False, moving)),
         lambda found: _object_ops(doc, found, moving, "rotate", fn, angle=angle),
         lambda found: _grid_ops(doc, found, fn, deg),
-        lambda ids: _skylight_ops(doc, ids, fn, deg))
+        lambda ids: _skylight_ops(doc, ids, fn, deg),
+        lambda items: _misc_ops(doc, items, fn, deg))
 
 
 def copy_elements(doc: Document, gids, vector) -> Transaction:
@@ -662,7 +719,8 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, set(), copy_=True)),
         lambda found: _object_ops(doc, found, moving, "copy", fn, vector),
         lambda found: _grid_ops(doc, found, fn, copying=True),
-        lambda ids: _skylight_ops(doc, ids, fn, copying=True))
+        lambda ids: _skylight_ops(doc, ids, fn, copying=True),
+        lambda items: _misc_ops(doc, items, fn, copying=True))
     tx = _hosted_copies(doc, tx, gids, vector)
     return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
 
@@ -683,7 +741,8 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda found: _object_ops(doc, found, _moving(doc, gids),
                                   "mirror_copy" if keep else "mirror", fn, axis=axis),
         lambda found: _grid_ops(doc, found, fn, mirror_axis=axis, copying=keep),
-        lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep))
+        lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep),
+        lambda items: _misc_ops(doc, items, fn, mirror_axis=axis, copying=keep))
     return display_layers.inherit(doc, tx, gids) if keep else tx
 
 

@@ -28,6 +28,7 @@ from brasbim.core.document import Document, OpError
 from brasbim.core.drawings import views
 
 CLASSES = ("IfcWall", "IfcSlab", "IfcColumn", "IfcBeam", "IfcDoor", "IfcWindow",
+           "IfcStairFlight", "IfcRailing",  # escada-terreno.md: peças da escada e soltos
            # objetos paramétricos (objeto-parametrico.md §7): sem hachura no corte
            "IfcFurniture", "IfcSanitaryTerminal", "IfcElectricAppliance",
            "IfcGeographicElement", "IfcBuildingElementProxy")
@@ -287,15 +288,15 @@ def _slab_layers(doc: Document, slab) -> list[tuple[str | None, float, float]]:
 
 
 def _owner(element) -> str:
-    """Quem a peça representa: a água da cobertura responde pela cobertura, e o objeto
-    aninhado, pelo objeto de fora."""
+    """Quem a peça representa: a água da cobertura responde pela cobertura, a peça da
+    escada pela escada, e o objeto aninhado, pelo objeto de fora."""
     from brasbim.core.objects import elements as objects
-    from brasbim.core.structure import roofs
+    from brasbim.core.structure import roofs, stairs
 
     roof = roofs.roof_of(element) if element.is_a("IfcSlab") else None
     if objects.is_part(element):
         roof = objects.parent_of(element)
-    return (roof or element).GlobalId
+    return (roof or stairs.stair_of(element) or element).GlobalId
 
 
 def _is_object(element) -> bool:
@@ -306,7 +307,7 @@ def _is_object(element) -> bool:
 
 def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
     gid = _owner(element)
-    if element.is_a("IfcDoor") or element.is_a("IfcWindow") or _is_object(element):
+    if element.is_a("IfcDoor") or element.is_a("IfcWindow") or element.is_a("IfcRailing")             or _is_object(element):
         return [Item("cut", rings=rings, owner=gid, fill={"pattern": "none", "source": "type"},
                      weight=OPENING_WEIGHT)]
     pieces: list[tuple[str | None, list]] = []

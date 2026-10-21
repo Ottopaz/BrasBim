@@ -15,6 +15,8 @@ from brasbim.core.structure import slab_openings
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 
+_LABELS = {"IfcStair": "escada", "IfcRailing": "guarda-corpo", "IfcGeographicElement": "terreno"}
+
 
 def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
     """Esquadrias antes das paredes, depois pilares, vigas, lajes e anotações; operações
@@ -68,6 +70,19 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
 
             add(grids.delete_ops(doc, element))
             continue
+        from brasbim.core import terrain
+        from brasbim.core.structure import railings, stairs
+
+        stair = stairs.stair_of(element) or element  # a peça leva a escada inteira
+        if stairs.is_stair(stair):
+            add(stairs.delete_ops(doc, stair))
+            continue
+        if railings.is_railing(element):
+            add(railings.delete_ops(doc, element))
+            continue
+        if terrain.is_terrain(element):
+            add(terrain.delete_ops(doc, element))
+            continue
         if ac.is_annotation(element):
             ops += ac.delete_ops(doc, element)
         elif sc.is_structure(element) or slab_openings.is_slab_opening(element):
@@ -79,4 +94,6 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
         label = f"Excluir {sc.ELEMENTS[entities[0].is_a()][2]}"
     elif len(entities) == 1 and objects.is_object(entities[0]):
         label = "Excluir objeto"
+    elif len(entities) == 1 and entities[0].is_a() in _LABELS:
+        label = f"Excluir {_LABELS[entities[0].is_a()]}"
     return Transaction(label, ops), cascade

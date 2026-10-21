@@ -75,8 +75,8 @@ intermediária. Pset `BrasBim_GuardaCorpo` (JSON: `points`, `base`, `height`,
 
 ## 5. Critérios de aceite (testes)
 - [x] **ET01** Escada reta de 2,80 m: 16 espelhos de 17,5 cm e piso de 28 cm; `IfcStair`
-      agrega um `IfcStairFlight` com os atributos certos; o topo do último degrau está
-      em 2,80; IFC válido.
+      agrega um `IfcStairFlight` com os atributos certos; o último espelho chega a 2,80
+      (o último piso do lance fica um espelho abaixo); IFC válido.
 - [x] **ET02** Escada em L e em U: dois lances e um patamar na cota certa; giro à direita
       espelha a planta.
 - [x] **ET03** Guarda-corpo dos dois lados acompanha a inclinação; sem guarda-corpo,

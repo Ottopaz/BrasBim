@@ -235,13 +235,14 @@ def _flight_solid(ifc, f: Flight, waist: float):
         steps = [(0.0, h)]
         for i in range(1, k + 1):
             steps += [(i * p, i * h), (i * p, (i + 1) * h)]
+        steps.pop()  # o último espelho encosta no patamar ou na laje de cima
+        # a face de baixo é paralela à linha dos cantos internos (i·p, i·h), a
+        # ``waist`` dela medida na perpendicular
         waist_v = waist / math.cos(math.atan2(h, p))  # espessura medida na vertical
-        end = (k * p, (k + 1) * h - waist_v)
-        a0 = (waist_v - h) * p / h  # onde a face de baixo encontra o piso
-        if a0 > 0:
-            pts = [(0.0, 0.0), *steps, end, (a0, 0.0)]
+        if k * h - waist_v <= 1e-9:  # lance curto: a laje inteira apoiada no piso
+            pts = [(0.0, 0.0), *steps, (k * p, 0.0)]
         else:
-            pts = [(0.0, h - waist_v), *steps, end]
+            pts = [(0.0, 0.0), *steps, (k * p, k * h - waist_v), (waist_v * p / h, 0.0)]
     cleaned = []
     for q in pts:
         if not cleaned or math.dist(q, cleaned[-1]) > 1e-9:
