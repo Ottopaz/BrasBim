@@ -82,6 +82,7 @@ HANDLER_MODULES = (
     "brasbim.core.annotations.drafting",
     "brasbim.core.annotations.dimensions",
     "brasbim.core.annotations.drawing2d",
+    "brasbim.core.annotations.reference",
     "brasbim.core.annotations.rebuild",
     "brasbim.core.drawings.views",
     "brasbim.core.grids",

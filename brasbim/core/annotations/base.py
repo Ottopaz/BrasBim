@@ -42,6 +42,8 @@ class Kind:
     mapped: Callable  # (state, fn, angle_deg, mirrored, moving: set[str]) -> dict
     depends: Callable = field(default=lambda state: set())  # GlobalIds anotados
     validate: Callable = field(default=lambda state: None)
+    # Linhas como IfcIndexedPolyCurve (desenho importado, com milhares de vértices).
+    compact: bool = False
 
 
 KINDS: dict[str, Kind] = {}
@@ -126,7 +128,7 @@ def rebuild(doc: Document, element) -> None:
         return
     state = read_state(element)
     storey = doc.get(state["storey"], "IfcBuildingStorey")
-    prims.write(doc, element, kind.build(doc, storey, state))
+    prims.write(doc, element, kind.build(doc, storey, state), compact=kind.compact)
     doc.changed.add(element.GlobalId)
 
 

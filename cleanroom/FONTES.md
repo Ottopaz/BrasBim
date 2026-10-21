@@ -7,6 +7,7 @@
 - BCF 3.0, IDS 1.0, bSDD: buildingSMART
 - Model Context Protocol (modelcontextprotocol.io) e JSON-RPC 2.0, para o assistente (spec/ui 16)
 - RFC 4180 (CSV) e ECMA-376 / ISO/IEC 29500 (Office Open XML), para exportar tabelas (spec/ui 17)
+- DXF Reference (Autodesk, documentação pública do formato), para importar desenhos (spec/ui 22)
 - Normas ABNT pertinentes (NBR 6492 representação de projetos de arquitetura, NBR 15575, NBR 9050…), conforme acesso legítimo
 
 **Documentação pública de produtos**
@@ -20,6 +21,8 @@
 
 **Projetos open source (respeitando as licenças)**
 - IfcOpenShell, Bonsai (BlenderBIM), FreeCAD BIM, That Open Engine, xBIM, OpenCascade
+- ezdxf (MIT), para ler DXF; conversores externos de DWG instalados pelo usuário
+  (ODA File Converter, gratuito; LibreDWG, GPL), chamados como programas à parte
 
 **Experiência de uso**
 - Usar qualquer software como usuário e descrever *o que* ele faz (entradas, saídas,

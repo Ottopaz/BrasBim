@@ -142,14 +142,29 @@ def _text_item(ifc, t: Text):
     return ifc.createIfcTextLiteralWithExtent(t.text, placement, "RIGHT", extent, box)
 
 
-def write(doc: Document, element, prims: Prims) -> None:
-    """Representação ``Annotation`` (contexto ``Plan``) com as primitivas e os estilos."""
+def _indexed(ifc, s: Stroke):
+    """Linha numa entidade só: ``IfcIndexedPolyCurve`` sobre ``IfcCartesianPointList2D``."""
+    coords = [(float(p[0]), float(p[1])) for p in s.points]
+    segments = None
+    if s.closed:
+        index = [*range(1, len(coords) + 1), 1]
+        segments = [ifc.createIfcLineIndex(index)]
+    return ifc.createIfcIndexedPolyCurve(ifc.createIfcCartesianPointList2D(coords), segments,
+                                         False)
+
+
+def write(doc: Document, element, prims: Prims, compact: bool = False) -> None:
+    """Representação ``Annotation`` (contexto ``Plan``) com as primitivas e os estilos;
+    ``compact``: linhas como ``IfcIndexedPolyCurve`` (desenho importado)."""
     ifc = doc.ifc
     items = []
     by_style: dict[tuple, list] = {}
     for s in prims.strokes:
-        pts = [_point(ifc, p) for p in s.points]
-        curve = ifc.createIfcPolyline([*pts, pts[0]] if s.closed else pts)
+        if compact:
+            curve = _indexed(ifc, s)
+        else:
+            pts = [_point(ifc, p) for p in s.points]
+            curve = ifc.createIfcPolyline([*pts, pts[0]] if s.closed else pts)
         by_style.setdefault((s.weight, s.dash), []).append(curve)
     for (weight, dash), curves in sorted(by_style.items()):
         item = ifc.createIfcGeometricCurveSet(curves)

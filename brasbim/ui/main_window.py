@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -235,6 +236,7 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Salvar", self.save_project, "Ctrl+S")
         self._action(file_menu, "Salvar como…", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
+        self._action(file_menu, "Importar desenho (DXF, DWG)…", lambda: self.import_drawing())
         self._action(file_menu, "Exportar PDF…", self.export_pdf, "Ctrl+P")
         self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
         self._action(file_menu, "Dados do projeto…", self.edit_project_info)
@@ -1116,6 +1118,55 @@ class MainWindow(QMainWindow):
                 self.session.open(path)
             except (OSError, RuntimeError, OpError) as e:
                 self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+
+    # --- importar desenho (spec/ui 22) ---------------------------------------------------
+
+    def import_drawing(self, path: str | None = None, choose=None) -> bool:
+        """Arquivo > Importar desenho: lê o DXF (ou converte o DWG), mostra as camadas e
+        importa no pavimento ativo. ``choose``: substitui o diálogo (testes)."""
+        from brasbim.core.imports import dxf
+        from brasbim.ui.import_dialog import ImportDialog
+
+        storey = self.session.storey
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+            return False
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Importar desenho", "", "Desenhos (*.dxf *.dwg);;DXF (*.dxf);;DWG (*.dwg)")
+            if not path:
+                return False
+        self.statusBar().showMessage(f"Lendo {Path(path).name}…")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            drawing = dxf.read(path)
+        except OpError as e:
+            self.session.message(str(e), "recusa")
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.statusBar().clearMessage()
+        if not drawing.layers:
+            self.session.message(f"{drawing.source} não tem linhas, textos nem pontos",
+                                 "recusa")
+            return False
+        if choose is None:
+            dialog = ImportDialog(drawing, storey.Name or "", self)
+            if dialog.exec() != QDialog.Accepted:
+                return False
+            choice = dialog.choice()
+        else:
+            choice = choose(drawing)
+        layers, unit, offset = choice
+        doc = self.session.doc
+        if not self.session.run(lambda: dxf.import_drawing(doc, storey, drawing, unit, offset,
+                                                           layers)):
+            return False
+        n = sum(len(drawing.layers[name].lines) for name in layers)
+        self.session.message(f"Importado {drawing.source}: {len(layers)} camada"
+                             f"{'' if len(layers) == 1 else 's'}, {n} linhas")
+        self.fit_all()
+        return True
 
     # --- cópia de segurança e recuperação (spec/ui 21) -----------------------------------
 

@@ -66,7 +66,7 @@ def test_cm01_projeto_novo(model, tmp_path):
     config = dl.read_config(model.doc)
     assert [g["name"] for g in config["groups"]] == [
         "Arquitetura", "Estrutura", "Documentação", "Entorno", "Interiores"]
-    assert len(config["layers"]) == 15
+    assert len(config["layers"]) == 16  # com Levantamento (spec/ui 22)
     h = _house(model)
     found = _ifc_layers(model.doc)
     assert {w.GlobalId for w in h["walls"]} == found["Paredes"]

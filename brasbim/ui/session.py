@@ -146,6 +146,7 @@ class Session:
         self.path = path
         self.modified = modified
         self._changes = self._backed_up = 0  # mudanças feitas / já na cópia de segurança
+        self._journal_cache: dict = {}  # transação → texto do diário
         self.selection: set[str] = set()
         self.last_changed: set[str] = set()
         self.last_tx = None  # última transação feita, desfeita ou refeita
@@ -380,9 +381,18 @@ class Session:
             return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            data = {"started": self.started.isoformat(timespec="seconds"),
-                    "file": self.path,
-                    "transactions": [tx.to_dict() for tx in self.history.journal]}
-            path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            # Cada transação vira texto uma vez só (a importação de um desenho pode ter
+            # muitos MB; refazer o JSON inteiro a cada clique ficaria lento).
+            cache = self._journal_cache
+            parts = []
+            for tx in self.history.journal:
+                key = id(tx)
+                if key not in cache or cache[key][0] is not tx:
+                    cache[key] = (tx, json.dumps(tx.to_dict(), ensure_ascii=False))
+                parts.append(cache[key][1])
+            head = json.dumps({"started": self.started.isoformat(timespec="seconds"),
+                               "file": self.path}, ensure_ascii=False)[:-1]
+            path.write_text(f'{head}, "transactions": [{", ".join(parts)}]}}',
+                            encoding="utf-8")
         except OSError as e:
             logging.getLogger(__name__).debug("diário não gravado: %s", e)

@@ -44,7 +44,7 @@ IMPORTED_GROUP = "Importadas"
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
          "text", "line2d", "hatch", "level_mark", "north", "view", "circle2d", "arc2d",
          "spline2d", "radius_dim", "angle_dim", "label", "revision", "grid", "stair",
-         "railing", "terrain",
+         "railing", "terrain", "reference2d",
          "object:furniture",
          "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
@@ -62,7 +62,8 @@ INITIAL = (
                                              "spline2d")),
                       ("Símbolos", ("level_mark", "north", "view", "revision",
                                     "grid")))),
-    ("Entorno", (("Terreno", ("terrain",)), ("Vegetação", ("object:vegetation",)))),
+    ("Entorno", (("Terreno", ("terrain",)), ("Vegetação", ("object:vegetation",)),
+                 ("Levantamento", ("reference2d",)))),
     # Equipamentos (louças, eletrodomésticos) nasce no primeiro uso (objeto-parametrico §2.5).
     ("Interiores", (("Mobiliário", ("object:furniture",)),)),
 )
@@ -168,7 +169,8 @@ def _roofs():
 # Ferramenta parecida, para arquivo antigo sem a camada padrão das novas (spec/ui 19 §6).
 FALLBACK = {"circle2d": "line2d", "arc2d": "line2d", "spline2d": "line2d",
             "radius_dim": "dimension", "angle_dim": "dimension", "label": "text",
-            "revision": "north", "grid": "north", "stair": "slab", "railing": "slab"}
+            "revision": "north", "grid": "north", "stair": "slab", "railing": "slab",
+            "reference2d": "line2d"}
 
 
 def default_layer(config: dict, kind: str | None) -> str | None:

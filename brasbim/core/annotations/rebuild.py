@@ -37,6 +37,12 @@ def derive(doc: Document, dirty: set[str]) -> None:
         kind = base.kind_of(element)
         if kind is None:
             continue
+        if kind.compact:  # desenho importado: não depende de nada além do pavimento, e a
+            # criação/edição já gravou a geometria (o estado pode ter muitos MB)
+            storey = ifcopenshell.util.element.get_container(element)
+            if storey is not None and storey.GlobalId in storeys_touched:
+                base.rebuild(doc, element)
+            continue
         state = base.read_state(element)
         needed = (element.GlobalId in touched or state["storey"] in storeys_touched
                   or bool(kind.depends(state) & touched)
