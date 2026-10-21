@@ -4,18 +4,18 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑20 (pacote 13: objetos paramétricos implementados).*
+*Atualizado em 2026‑10‑21 (pesquisa de mercado; roteiro reorganizado).*
 
-> **Onde paramos (2026‑10‑20):** o revisor achou o assistente "pouco criativo"; fica para
-> depois. Antes, ferramentas básicas que faltam (lista e ordem em "Próximos passos", 4c).
-> Pacotes 12 (camadas) e 13 (objetos paramétricos) implementados. **Fluxo do MVP**
-> (decisão do revisor, 2026‑10‑20): spec curta "em revisão" + implementação na sequência,
-> sem esperar aprovação; o revisor revisa spec e programa juntos. No MVP entram 14
-> (desenho 2D, `spec/ui/19`, **feito**), 15–16 (eixos, vão/nicho, claraboia,
-> `spec/ui/20`, **feito**), 17–18 (escada, guarda-corpo, terreno) e salvamento
-> automático, vistas 3D padrão, câmera salva e o fluxo de pôr vista na prancha. Pele de
-> vidro e forma livre ficam para depois do MVP. Prints de referência do revisor em `feedback/prints/` (usar só como descrição de
-> > função, sem copiar nomes, ícones ou layout). Continuam abertos os itens 0 e 0b.
+> **Onde paramos (2026‑10‑21):** pacotes 14–18, salvamento automático (spec/ui 21),
+> importar DXF/DWG (spec/ui 22) e terreno por curvas pegas do desenho feitos. O revisor
+> pediu que o desenvolvimento passe a se basear no que Archicad, Revit e AutoCAD fazem
+> (e no que usuários reclamam), não só no uso dele: foi feita uma **pesquisa ampla** em
+> fontes públicas (`reports/Pesquisa Archicad Revit AutoCAD.md`, 758 fontes, notas em
+> `research_notes/`). Dela saiu o **roteiro abaixo** ("Roteiro a partir da pesquisa"),
+> que passa a orientar os próximos pacotes. Registro de fontes consolidado em
+> `cleanroom/REGISTRO-DE-FONTES.md`; licenças em `THIRD_PARTY_NOTICES.md`. **Fluxo do
+> MVP** continua: spec curta "em revisão" + implementação na sequência. Prints do revisor
+> em `feedback/prints/` só como descrição de função. Continuam abertos os itens 0 e 0b.
 
 ## Comandos
 | Para | Comando |
@@ -477,7 +477,50 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   (`transform._skylight_ops`). `SkylightTool`, painel `_skylight`, papéis
   `window_skylight`/`window_glass`.
 
-## Próximos passos (nesta ordem)
+## Roteiro a partir da pesquisa (2026‑10‑21)
+Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações priorizadas"
+(23 itens, valor × esforço). Tese: o BrasBim ganha na **última milha brasileira**
+(prancha da prefeitura, quadro de áreas, quantitativo SINAPI, IFC que o engenheiro usa) e
+na velocidade de entrada, não copiando a profundidade de modelagem dos três. Cada item
+passa pelo fluxo spec → implementação com testes de IFC; conferir as fontes marcadas
+"conferir" antes de citá-las na spec.
+
+1. **Pacote "projeto legal"** (itens 1, 2, 3 e 8 do relatório): status de intervenção
+   por elemento (`Pset_*Common.Status` + Pset próprio para "a regularizar"/"a
+   transformar"), **perfil municipal** versionado (escalas, selo, cores — invertidas entre
+   cidades —, notas, limite de PDF, espaço do carimbo digital), **quadro de áreas**
+   automático por regras municipais (computável, CA, TO, permeabilidade), memorial
+   descritivo e quadro de esquadrias. Inclui o fluxo de pôr vista na prancha (pendência
+   do revisor).
+2. **Entrada sem foco** (item 4): número digitado a qualquer momento na direção inferida,
+   trava de eixo por tecla, inferência visual, cota viva editável; **paleta de comandos**
+   em pt-BR e seleção de semelhantes por critérios IFC (item 15).
+3. **Coordenação openBIM** (itens 5, 6, 7): validação IDS embutida (IDS dos cadernos
+   brasileiros), export de compatibilidade IFC4 RV/IFC2x3 com bateria de ida e volta
+   (Revit, Archicad, Eberick, QiBuilder), IFC de outras disciplinas como referência
+   somente leitura, BCF 3.0.
+4. **Documentação por regras** (item 9): cotas e etiquetas automáticas, numeração por
+   regra, tabelas como planilha, vistas na prancha com grade.
+5. **Quantitativos por critério de serviço** (item 10): vãos com limiar, revestimentos por
+   ambiente, `IfcElementQuantity`, NBR 15965 e código SINAPI.
+6. **Refino dos elementos** (itens 11, 12, 16): escada que recalcula com regras
+   brasileiras e guarda-corpo de vidro; terreno com linhas de quebra, natural ×
+   projetado, corte e aterro, platô com talude, SIRGAS 2000; nós de paredes compostas,
+   laje inclinada, beirais diferentes.
+7. **Desempenho do viewport e benchmark aberto** (item 13), **vistas 3D padrão e câmera
+   salva** (pendências do MVP), apresentação regenerável e glTF (item 20).
+8. **Biblioteca IFC brasileira** (item 14), histórico com autoria e opções (17),
+   assistente com plano e diff (18), ponte 2D → BIM (19).
+9. Depois: NBR 15575 simplificada (21), DWF para SP se ainda exigido (22), MEP mínimo e
+   estrutura tipada (23). **Não fazer agora**: cálculo estrutural/instalações por NBR,
+   render próprio, multiusuário no navegador, generativo, scan-to-BIM.
+
+**Segunda rodada de pesquisa** (lacunas listadas no relatório: normas ABNT por acesso
+legítimo, outras prefeituras, Bombeiros, IFC 4.3 com 403, softwares brasileiros, recursos
+clássicos do AutoCAD) quando o limite de buscas da sessão permitir
+(`CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`, decisão do revisor).
+
+## Próximos passos anteriores (histórico)
 Pedido do revisor (2026‑10‑16): seguir para o refinamento sem teste de uso agora (o teste
 de uso fica para quando o programa estiver mais completo) e já incluir as ferramentas de
 documentação do desenho técnico (`spec/REQUISITOS.md` §8).

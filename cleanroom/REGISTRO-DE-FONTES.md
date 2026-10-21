@@ -1,0 +1,699 @@
+# Registro de fontes consultadas
+
+Índice das fontes **efetivamente lidas** para escrever specs e código do BrasBim
+(`PROCESSO.md` §4). As categorias permitidas e proibidas estão em `FONTES.md`; o acesso
+ao material restrito, em `REGISTRO-DE-ACESSO.md`.
+
+- **Parte A**: fontes citadas em cada spec (a seção "Fontes" de cada documento é a
+  referência; aqui ela é reunida para consulta e auditoria).
+- **Parte B**: pesquisa ampla de 2026‑10‑21 sobre Archicad, Revit e AutoCAD (758 fontes
+  públicas), cuja lista completa está no Anexo A de
+  `reports/Pesquisa Archicad Revit AutoCAD.md`, com as notas brutas em
+  `research_notes/Pesquisa Archicad Revit AutoCAD/`.
+
+**Como acrescentar**: cada spec nova ou revisada mantém a sua seção "Fontes" (URL, data
+de acesso, o que foi usado) e o autor regenera este arquivo com
+`scripts/registro_fontes.py` no mesmo commit. Fonte que só apareceu em trecho de
+resultado de busca é marcada "conferir" e não sustenta sozinha uma decisão de spec.
+
+Gerado a partir do repositório; não edite à mão as partes A e B.
+
+## Parte A: fontes citadas nas specs
+
+### `spec/01-modelo-de-dados.md`
+*Modelo de dados — operações serializáveis*; data 2026-10-14; situação rascunho (aguarda revisão).
+
+> **Sem seção "Fontes"**: conferir antes da primeira versão pública (PROCESSO.md §6).
+
+### `spec/elementos/cobertura.md`
+*Cobertura*; data 2026-10-16; situação aprovado.
+
+IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026-10-16. Base: `https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+(`S` = `docs/schemas/shared/IfcSharedBldgElements`, `P` = `reference_schemas/psd`).
+
+| Código | Documento |
+|---|---|
+| IFC-ROOF | `S/Entities/IfcRoof.md` |
+| IFC-ROOFTYPE | `S/Entities/IfcRoofType.md` |
+| IFC-ROOFENUM | `S/Types/IfcRoofTypeEnum.md` |
+| IFC-PSET-R | `S/PropertySets/Pset_RoofCommon.md` e `P/Pset_RoofCommon.xml` |
+| IFC-QTO-R | `S/QuantitySets/Qto_RoofBaseQuantities.md` |
+| IFC-SLAB, IFC-SLABENUM, IFC-PSET-S | como na laje (laje.md §10) |
+
+Outras:
+- **NBR6492**: representação da cobertura em planta; **texto não lido**, a conferir.
+- **CG**: conhecimento geral sobre telhados no Brasil: inclinação em %, beirais usuais
+  e inclinações usuais por tipo de telha, que variam com o fabricante.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/elementos/escada-terreno.md`
+*Escada, guarda-corpo e terreno*; data 2026-10-20; situação em revisão (implementado para teste, fluxo do MVP).
+
+IFC 4.3 (buildingSMART): `IfcStair`/`IfcStairTypeEnum` [IFC-STAIR], `IfcStairFlight`
+[IFC-FLIGHT], `IfcRailing`/`IfcRailingTypeEnum` [IFC-RAIL], `IfcGeographicElement`
+`TERRAIN`, `IfcTriangulatedFaceSet` [IFC-GEO]. Fórmula de Blondel (2e + p = 63 a 64 cm),
+NBR 9077 e NBR 9050 (escadas, guarda-corpo): texto não lido, a conferir. CG:
+triangulação de Delaunay (Bowyer–Watson) e curvas de nível por interpolação nas arestas.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/elementos/janela.md`
+*Janela*; data 2026-10-14; situação aprovado.
+
+Mesmo repositório, ramo e data de `porta.md` §10 (`S` e `A` idem).
+
+| Código | Documento |
+|---|---|
+| IFC-WIN | `S/Entities/IfcWindow.md` |
+| IFC-WINTYPE | `S/Entities/IfcWindowType.md` |
+| IFC-WINENUM | `S/Types/IfcWindowTypeEnum.md` |
+| IFC-WINPART | `S/Types/IfcWindowTypePartitioningEnum.md` |
+| IFC-WLP | `A/Entities/IfcWindowLiningProperties.md` |
+| IFC-WPP | `A/Entities/IfcWindowPanelProperties.md` |
+| IFC-WPOP | `A/Types/IfcWindowPanelOperationEnum.md` |
+| IFC-WPPOS | `A/Types/IfcWindowPanelPositionEnum.md` |
+| IFC-PSET-W | `S/PropertySets/Pset_WindowCommon.md` e `reference_schemas/psd/Pset_WindowCommon.xml` |
+| IFC-QTO-W | `S/QuantitySets/Qto_WindowBaseQuantities.md` e `reference_schemas/psd/Qto_WindowBaseQuantities.xml` |
+
+Outras:
+- **IOS** — IfcOpenShell 0.9: existência de `geometry.add_window_representation`.
+- **IOS-PSET** — modelos `IFC4X3` do IfcOpenShell 0.9: `Pset_WindowLiningProperties` e
+  `Pset_WindowPanelProperties` substituem as entidades a partir do 4.3.2.0.
+- **NBR6492** — como na parede; **texto não lido**.
+- **CG** — tipos de janela usuais no Brasil e seus nomes, dimensões e peitoris comuns,
+  convenções de planta e etiqueta.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/elementos/laje.md`
+*Laje*; data 2026-10-15; situação aprovado.
+
+IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026‑10‑15. Base: `https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+(`S` = `docs/schemas/shared/IfcSharedBldgElements`, `M` =
+`docs/schemas/resource/IfcMaterialResource`, `P` = `reference_schemas/psd`).
+
+| Código | Documento |
+|---|---|
+| IFC-SLAB | `S/Entities/IfcSlab.md` |
+| IFC-SLABTYPE | `S/Entities/IfcSlabType.md` |
+| IFC-SLABENUM | `S/Types/IfcSlabTypeEnum.md` |
+| IFC-MLSU | `M/Entities/IfcMaterialLayerSetUsage.md` |
+| IFC-PSET-S | `S/PropertySets/Pset_SlabCommon.md` e `P/Pset_SlabCommon.xml` |
+| IFC-QTO-S | `S/QuantitySets/Qto_SlabBaseQuantities.md` e `P/Qto_SlabBaseQuantities.xml` |
+
+Outras:
+- **NBR6492**: como na parede; **texto não lido**.
+- **CG**: conhecimento geral (tipos de laje usuais no Brasil e espessuras, convenção de
+  desenho da laje em planta).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/elementos/objeto-parametrico.md`
+*Objeto paramétrico (definição, tipos e ocorrências) e biblioteca de objetos*; data 2026-10-20; situação aprovado (implementado).
+
+IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026-10-20. Base: `https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/docs/schemas/`
+(`K` = `core/IfcKernel`, `PE` = `core/IfcProductExtension`, `F` =
+`shared/IfcSharedFacilitiesElements`, `PL` = `domain/IfcPlumbingFireProtectionDomain`,
+`EL` = `domain/IfcElectricalDomain`; Psets também em
+`reference_schemas/psd/*.xml`).
+
+| Código | Documento |
+|---|---|
+| IFC-TYPEOBJ | `K/Entities/IfcTypeObject.md`: propriedades do tipo compartilhadas, regra "a propriedade da ocorrência prevalece", `HasAssociations` |
+| IFC-TYPEPROD | `K/Entities/IfcTypeProduct.md`: `RepresentationMaps` usadas pelas ocorrências por `IfcMappedItem` |
+| IFC-LIB | `K/Entities/IfcProjectLibrary.md` e `IfcRelDeclares` |
+| IFC-AGG | `K/Entities/IfcRelAggregates.md` (tipos ou ocorrências como todo e partes) e `IfcRelNests.md` |
+| IFC-FURN | `F/Entities/IfcFurniture.md`, `F/Types/IfcFurnitureTypeEnum.md` (constituintes Finish, Frame, Hardware, Padding, Panel) |
+| IFC-PSET-F | `F/PropertySets/Pset_FurnitureTypeCommon.md` e `psd/Pset_FurnitureTypeCommon.xml` (`IsBuiltIn`, nominais) |
+| IFC-SAN | `PL/Types/IfcSanitaryTerminalTypeEnum.md`, `PL/PropertySets/Pset_SanitaryTerminalTypeCommon.md`, `PL/QuantitySets/Qto_SanitaryTerminalBaseQuantities.md` |
+| IFC-PSET-S | `psd/Pset_SanitaryTerminalTypeCommon.xml` |
+| IFC-ELE | `EL/Types/IfcElectricApplianceTypeEnum.md`, `EL/PropertySets/Pset_ElectricApplianceTypeCommon.md`, `EL/QuantitySets/Qto_ElectricApplianceBaseQuantities.md` |
+| IFC-GEO | `PE/Entities/IfcGeographicElement.md`, `PE/Types/IfcGeographicElementTypeEnum.md` (`VEGETATION`), `PE/PropertySets/Pset_VegetationCommon.md` |
+| IFC-OPEN | `PE/Entities/IfcOpeningElement.md` (vão em qualquer elemento, `IfcRelVoidsElement`) |
+
+Outras:
+- **IfcOpenShell** (LGPL): `ifcopenshell.api.type.assign_type` (docstring: tipo com
+  representação obriga as ocorrências a usá-la; `should_map_representations`),
+  `ifcopenshell.api.pset`, `ifcopenshell.api.aggregate`, conforme o código e a
+  documentação públicos.
+- **Ajuda pública do Autodesk Revit** (help.autodesk.com), lida só para entender a
+  função esperada, sem copiar texto, nome de comando nem layout de diálogo:
+  *Creating Family Parameters* (parâmetro de tipo × de ocorrência), *Family Types*
+  (valores e fórmulas por tipo), *Use Visibility Parameters in Families* (vídeo:
+  visibilidade por sim/não e fórmula), *Associate Family Parameters* (ligar parâmetros
+  de um objeto aninhado aos do objeto de fora) e *Workflow: Creating Loadable Families*.
+  O que veio daí são só as ideias da §1. O vocabulário (definição, tipo, ocorrência,
+  peça, aninhado, preso à parede), a linguagem de fórmulas, o editor por formulário e
+  a biblioteca em IFC são do BrasBim.
+- **NBR 9050** (altura da bacia acessível) e **NBR 6492** (desenho de mobiliário em
+  planta): **texto não lido**, a conferir.
+- **CG:** medidas usuais de colchões, móveis e eletrodomésticos no Brasil (variam com o
+  fabricante); linguagem de fórmulas no estilo das planilhas em português (vírgula
+  decimal, `;` entre argumentos).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando, layout de diálogo ou objeto de biblioteca de outro software foi copiado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/docs/schemas/
+
+### `spec/elementos/parede.md`
+*Parede*; data 2026-10-14; situação aprovado.
+
+Documentação IFC 4.3 lida no repositório oficial da buildingSMART (o site
+`ifc43-docs.standards.buildingsmart.org` bloqueia acesso automatizado), ramo `ifc4.3-main`,
+consultado em 2026‑10‑14. Base: `https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+
+| Código | Documento |
+|---|---|
+| IFC-WALL | `docs/schemas/shared/IfcSharedBldgElements/Entities/IfcWall.md` |
+| IFC-EAS | `docs/schemas/resource/IfcGeometricModelResource/Entities/IfcExtrudedAreaSolid.md` (consultado em 2026‑10‑15) |
+| IFC-WALLENUM | `docs/schemas/shared/IfcSharedBldgElements/Types/IfcWallTypeEnum.md` |
+| IFC-RCPE | `docs/schemas/shared/IfcSharedBldgElements/Entities/IfcRelConnectsPathElements.md` |
+| IFC-CTE | `docs/schemas/shared/IfcSharedBldgElements/Types/IfcConnectionTypeEnum.md` |
+| IFC-MLSU | `docs/schemas/resource/IfcMaterialResource/Entities/IfcMaterialLayerSetUsage.md` (+ `Types/IfcDirectionSenseEnum.md`, `Types/IfcLayerSetDirectionEnum.md`) |
+| IFC-ML | `docs/schemas/resource/IfcMaterialResource/Entities/IfcMaterialLayer.md` |
+| IFC-OPEN | `docs/schemas/core/IfcProductExtension/Entities/IfcOpeningElement.md` |
+| IFC-OPENENUM | `docs/schemas/core/IfcProductExtension/Types/IfcOpeningElementTypeEnum.md` |
+| IFC-RVE | `docs/schemas/core/IfcProductExtension/Entities/IfcRelVoidsElement.md` |
+| IFC-RFE | `docs/schemas/core/IfcProductExtension/Entities/IfcRelFillsElement.md` |
+| IFC-PSET | `docs/schemas/shared/IfcSharedBldgElements/PropertySets/Pset_WallCommon.md` e `reference_schemas/psd/Pset_WallCommon.xml` |
+| IFC-QTO | `docs/schemas/shared/IfcSharedBldgElements/QuantitySets/Qto_WallBaseQuantities.md` e `reference_schemas/psd/Qto_WallBaseQuantities.xml` |
+
+Outras:
+- **IOS** — IfcOpenShell 0.9 (https://docs.ifcopenshell.org/): existência das funções
+  `geometry.add_wall_representation`, `geometry.connect_path`, `feature.add_feature`,
+  `feature.add_filling`, `material.add_material_set` (para a implementação).
+- **NBR6492** — ABNT NBR 6492:2021, citada só por título/escopo (ver REQUISITOS §15).
+  **Texto não lido**; §7 é CG até a revisão.
+- **CG** — conhecimento geral de arquitetura e BIM (composições, recortes de junção,
+  plano de corte de 1,50 m, níveis de detalhe).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (2): https://docs.ifcopenshell.org/; https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/elementos/pilar.md`
+*Pilar*; data 2026-10-15; situação aprovado.
+
+Mesmo repositório, ramo e data de `laje.md` §10 (`S`, `M` e `P` idem).
+
+| Código | Documento |
+|---|---|
+| IFC-COL | `S/Entities/IfcColumn.md` |
+| IFC-COLTYPE | `S/Entities/IfcColumnType.md` |
+| IFC-COLENUM | `S/Types/IfcColumnTypeEnum.md` |
+| IFC-MPS | `M/Entities/IfcMaterialProfileSet.md` |
+| IFC-MP | `M/Entities/IfcMaterialProfile.md` |
+| IFC-MPSU | `M/Entities/IfcMaterialProfileSetUsage.md` |
+| IFC-CARD | `M/Types/IfcCardinalPointReference.md` |
+| IFC-PSET-C | `S/PropertySets/Pset_ColumnCommon.md` e `P/Pset_ColumnCommon.xml` |
+| IFC-QTO-C | `S/QuantitySets/Qto_ColumnBaseQuantities.md` e `P/Qto_ColumnBaseQuantities.xml` |
+
+Outras:
+- **CG**: conhecimento geral (seções usuais de pilares de concreto em obras brasileiras,
+  numeração P1, P2…, convenção de planta com o pilar por cima da alvenaria).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/elementos/porta.md`
+*Porta*; data 2026-10-14; situação aprovado.
+
+IFC 4.3 lido no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026‑10‑14. Base: `https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+(`S` = `docs/schemas/shared/IfcSharedBldgElements`,
+`A` = `docs/schemas/domain/IfcArchitectureDomain`).
+
+| Código | Documento |
+|---|---|
+| IFC-DOOR | `S/Entities/IfcDoor.md` |
+| IFC-DOORTYPE | `S/Entities/IfcDoorType.md` |
+| IFC-DOORENUM | `S/Types/IfcDoorTypeEnum.md` |
+| IFC-DOOROP | `S/Types/IfcDoorTypeOperationEnum.md` |
+| IFC-DLP | `A/Entities/IfcDoorLiningProperties.md` |
+| IFC-DPP | `A/Entities/IfcDoorPanelProperties.md` (+ `A/Types/IfcDoorPanelOperationEnum.md`, `A/Types/IfcDoorPanelPositionEnum.md`) |
+| IFC-PSET-D | `S/PropertySets/Pset_DoorCommon.md` e `reference_schemas/psd/Pset_DoorCommon.xml` |
+| IFC-QTO-D | `S/QuantitySets/Qto_DoorBaseQuantities.md` e `reference_schemas/psd/Qto_DoorBaseQuantities.xml` |
+| IFC-RFE | `docs/schemas/core/IfcProductExtension/Entities/IfcRelFillsElement.md` |
+
+Outras:
+- **IOS** — IfcOpenShell 0.9: existência de `geometry.add_door_representation` e
+  `feature.add_filling` (candidatas para a implementação).
+- **IOS-PSET** — modelos de Pset `IFC4X3` do IfcOpenShell 0.9
+  (`ifcopenshell.util.pset`): `Pset_DoorLiningProperties` e `Pset_DoorPanelProperties`,
+  "novos no IFC 4.3.2.0 para substituir" as entidades.
+- **NBR9050** — citada só pelo valor de vão livre de fontes secundárias; **texto não
+  lido**.
+- **NBR6492** — como na spec da parede; **texto não lido**.
+- **CG** — conhecimento geral (tipos de porta usuais no Brasil, dimensões, símbolos em
+  planta, etiquetas).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/elementos/viga.md`
+*Viga*; data 2026-10-15; situação aprovado.
+
+Mesmo repositório, ramo e data de `laje.md` §10 (`S`, `M` e `P` idem).
+
+| Código | Documento |
+|---|---|
+| IFC-BEAM | `S/Entities/IfcBeam.md` |
+| IFC-BEAMTYPE | `S/Entities/IfcBeamType.md` |
+| IFC-BEAMENUM | `S/Types/IfcBeamTypeEnum.md` |
+| IFC-MPSU | `M/Entities/IfcMaterialProfileSetUsage.md` |
+| IFC-CARD | `M/Types/IfcCardinalPointReference.md` |
+| IFC-PSET-B | `S/PropertySets/Pset_BeamCommon.md` e `P/Pset_BeamCommon.xml` |
+| IFC-QTO-B | `S/QuantitySets/Qto_BeamBaseQuantities.md` e `P/Qto_BeamBaseQuantities.xml` |
+
+Outras:
+- **CG**: conhecimento geral (seções usuais de vigas de concreto, numeração V1, V2…,
+  vigas tracejadas na planta de arquitetura).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/README.md`
+*README*; data —; situação —.
+
+> **Sem seção "Fontes"**: conferir antes da primeira versão pública (PROCESSO.md §6).
+
+### `spec/REQUISITOS.md`
+*Requisitos funcionais (levantamento a partir de fontes públicas)*; data 2026-10-14; situação rascunho.
+
+| Código | Fonte | O que foi verificado |
+|---|---|---|
+| **IFC** | buildingSMART, IFC 4.3 (ISO 16739‑1). Documentação: https://ifc43-docs.standards.buildingsmart.org/ (bloqueia acesso automatizado). Fonte lida: https://github.com/buildingSMART/IFC4.x-development (ramo `ifc4.3-main`, `docs/schemas/**/Entities/*.md`, `PropertySets`, `QuantitySets`, `PropertyEnumerations`) | Existência e definição de todas as entidades citadas; `Pset_WallCommon.Status` com `PEnum_ElementStatus` (NEW, EXISTING, DEMOLISH, TEMPORARY); `Qto_SpaceBaseQuantities`; `IfcRoof` como agregação de partes; `IfcDoor`/`IfcWindow` hospedados em aberturas |
+| **BCF** | buildingSMART BCF: https://github.com/buildingSMART/BCF-XML | Página pública acessível |
+| **IDS** | buildingSMART IDS: https://github.com/buildingSMART/IDS | Página pública acessível |
+| **BSDD** | buildingSMART Data Dictionary: https://www.buildingsmart.org/users/services/buildingsmart-data-dictionary/ | Não acessível por ferramenta (HTTP 403); citado pela documentação do IfcOpenShell |
+| **IOS** | IfcOpenShell: https://docs.ifcopenshell.org/ e https://github.com/IfcOpenShell/IfcOpenShell | Ferramentas IfcDiff, IfcTester, BCF, IfcCSV, IfcClash, bSDD; esquemas IFC2X3, IFC4 e IFC4X3; licença LGPL‑3.0 |
+| **BON** | Bonsai: https://docs.bonsaibim.org/ e código em `src/bonsai` do repositório IfcOpenShell | Autoria IFC nativa sobre Blender; licença GPL‑3.0‑or‑later (cabeçalho do código) |
+| **NBR6492** | ABNT NBR 6492:2021, *Documentação técnica para projetos arquitetônicos e urbanísticos — Requisitos*. Título e escopo via questões de concurso e catálogos | Título oficial (edição de 2021); etapas de projeto com implantação, plantas, cortes e elevações. Texto não lido |
+| **NBR16752** | ABNT NBR 16752:2020, *Desenho técnico — Requisitos para apresentação em folhas de desenho*: https://www.normas.com.br/visualizar/abnt-nbr-nm/11569/ | Escopo (formatos, legenda, dobramento, escalas); formatos A0–A4. Texto não lido |
+| **NBR16861** | ABNT NBR 16861:2020, linhas e escrita em desenho técnico (substitui NBR 8403), segundo material didático da UFRN: https://www.vetorial.design.ufrn.br/src/pdfs/Normas.pdf | **A confirmar no catálogo da ABNT** |
+| **NBR9050** | ABNT NBR 9050 (acessibilidade). Rampas até 8,33% (1:12) com limites de desnível por segmento, segundo fontes secundárias | Edição vigente e valores a confirmar no texto oficial |
+| **NBR15965** | ABNT NBR 15965 (série), *Sistema de classificação da informação da construção*. Partes 1, 2, 3 e 7 confirmadas em catálogos (normas.com.br, Target) | Número atual de partes a confirmar |
+| **SINAPI** | CAIXA, SINAPI: https://www.caixa.gov.br/sinapi | Referência oficial, gratuita, atualizada mensalmente por UF (fontes secundárias; site da Caixa não acessível por ferramenta) |
+| **AC-COL** | Graphisoft Help, visão geral da reserva em trabalho colaborativo: https://help.graphisoft.com/AC/25/INT/_AC25_Help/080_Collaboration/080_Collaboration-26.htm | Funcionalidade: reservar antes de alterar; elementos novos sem reserva; pedido a quem reservou; exige projeto atualizado |
+| **REV-COL** | Autodesk Revit Help, empréstimo de elementos: https://help.autodesk.com/cloudhelp/2025/ENU/Revit-Collaborate/files/GUID-27E3B22D-79D3-44F5-A630-6E5F614585B4.htm | Funcionalidade: tornar elemento editável; pedido de edição ao detentor; liberação ao sincronizar |
+| **REV-SHEETS** | Autodesk Revit Help, visão geral de pranchas (2014): https://help.autodesk.com/cloudhelp/2014/ENU/Revit/files/GUID-6D569C3B-B473-4AA9-BB2F-B93088D7D9A9.htm | Funcionalidade: prancha com várias vistas e tabelas |
+| **CG** | Conhecimento geral de arquitetura, construção e BIM | Sem fonte específica nesta etapa |
+
+> Observação de vocabulário: "reserva" é usada aqui como palavra comum do português,
+> não como nome de comando. Ao nomear o recurso na interface, escolher termo próprio
+> e revisar com o `revisor-cleanroom`.
+
+Endereços citados (14): https://docs.bonsaibim.org/; https://docs.ifcopenshell.org/; https://github.com/IfcOpenShell/IfcOpenShell; https://github.com/buildingSMART/BCF-XML; https://github.com/buildingSMART/IDS; https://github.com/buildingSMART/IFC4.x-development; https://help.autodesk.com/cloudhelp/2014/ENU/Revit/files/GUID-6D569C3B-B473-4AA9-BB2F-B93088D7D9A9.htm; https://help.autodesk.com/cloudhelp/2025/ENU/Revit-Collaborate/files/GUID-27E3B22D-79D3-44F5-A630-6E5F614585B4.htm; https://help.graphisoft.com/AC/25/INT/_AC25_Help/080_Collaboration/080_Collaboration-26.htm; https://ifc43-docs.standards.buildingsmart.org/; https://www.buildingsmart.org/users/services/buildingsmart-data-dictionary/; https://www.caixa.gov.br/sinapi; https://www.normas.com.br/visualizar/abnt-nbr-nm/11569/; https://www.vetorial.design.ufrn.br/src/pdfs/Normas.pdf
+
+### `spec/ui/01-janela-e-ferramentas.md`
+*Interface — janela principal e primeiras ferramentas (versão 0.1 testável)*; data 2026-10-14; situação aprovado.
+
+- **RF** — `spec/REQUISITOS.md` (RF-UI, RF-NUC, RF-DES, RF-PRJ).
+- **PAREDE**, **PORTA** — `spec/elementos/parede.md` §4–§7 e `porta.md` §4–§7 (interações e
+  desenho 2D já aprovados).
+- **QT** — documentação pública do Qt for Python 6 (`https://doc.qt.io/qtforpython-6/`):
+  `QMainWindow`, `QDockWidget`, `QOpenGLWidget`, `QPainter`, modo `offscreen`.
+- **PYOPENGL** — `https://pyopengl.sourceforge.net/` (licença).
+- **IOS** — `ifcopenshell.geom` para a triangulação do 3D.
+- **CG** — conhecimento geral de aplicativos de desktop e de CAD (menus, painéis,
+  navegação com roda e botão do meio, grade, *snap*, tecla Esc).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+Endereços citados (2): https://doc.qt.io/qtforpython-6/; https://pyopengl.sourceforge.net/
+
+### `spec/ui/02-edicao.md`
+*Interface — edição de elementos, pavimentos e tipos (versão 0.2)*; data 2026-10-14; situação aprovado.
+
+- **RF** — `spec/REQUISITOS.md` (RF-NUC-04, RF-NUC-05, RF-UI-02, RF-PRJ-04, RF-TIP-01/02).
+- **PAREDE**, **PORTA** — `spec/elementos/parede.md` §5–§6 e `porta.md` §2–§6 (aprovadas).
+- **UI01** — `spec/ui/01-janela-e-ferramentas.md` (aprovada).
+- **IFC** — buildingSMART IFC 4.3: `IfcWallTypeEnum`, `IfcMaterialLayer` (`Category`,
+  `Priority`), `IfcBuildingStorey`.
+- **QT** — documentação pública do Qt for Python 6: `QTableWidget`, `QDialog`, eventos de
+  mouse.
+- **CG** — conhecimento geral de aplicativos de CAD: seleção por janela e por cruzamento
+  conforme o sentido do arrasto, alças nas extremidades e no meio, mover/copiar/girar por
+  ponto de base.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/03-barras-e-icones.md`
+*Interface — barras móveis, ícones, barra de opções, mini-barra da seleção e representação da parede na planta (versão 0.3 da interface)*; data 2026-10-14; situação aprovado.
+
+- **RF** — `spec/REQUISITOS.md` (RF-UI-01..03, RF-TIP-03, RF-DOC-02).
+- **UI01**, **UI02** — specs 0.1 e 0.2 (aprovadas).
+- **IFC** — buildingSMART IFC 4.3: `IfcPropertySet`, `IfcWallType`, `IfcFillAreaStyle`,
+  `IfcFillAreaStyleHatching`, `IfcCurveStyle` (alternativa de §6.2).
+- **NBR8403** — ABNT NBR 8403, série de espessuras de linha (0,13 a 2,0 mm).
+- **QT** — documentação pública do Qt for Python 6: `QToolBar` (áreas permitidas,
+  barras soltas), `QMainWindow.saveState`, `QIcon`, `QSvgRenderer`.
+- **CG** — conhecimento geral de aplicativos de desktop: barras encaixáveis, dicas ao
+  passar o mouse, barra de opções da ferramenta ativa, ações junto à seleção.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/04-painel-de-propriedades.md`
+*Interface — painel de propriedades deitado (em blocos lado a lado)*; data 2026-10-14; situação aprovado.
+
+- **RF** — `spec/REQUISITOS.md` (RF-UI-02).
+- **UI01–UI03** — specs 0.1 §7, 0.2 §9 e 0.3 §4.3 (aprovadas).
+- **QT** — documentação pública do Qt for Python 6: `QDockWidget.dockLocationChanged`,
+  `QGridLayout`, `QScrollArea`.
+- **CG** — conhecimento geral de aplicativos de desktop: painéis que se reorganizam
+  conforme a borda em que estão encaixados.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/05-acabamento-parede-porta.md`
+*Interface — acabamento de parede e porta (espelhar, medidas no painel, alças e etiqueta da porta, propriedades comuns, junções manuais)*; data 2026-10-14; situação aprovado.
+
+- **PAREDE**, **PORTA** — `spec/elementos/parede.md` §3.3, §5.1, §6.2 e `porta.md` §2.2,
+  §3.3, §5.1, §7 (aprovadas).
+- **UI02**, **UI03** — specs de interface 0.2 e 03 (aprovadas).
+- **IFC** — buildingSMART IFC 4.3: `Pset_WallCommon`, `Pset_DoorCommon`,
+  `IfcRelConnectsPathElements`.
+- **CG** — conhecimento geral de aplicativos de CAD: espelhar por eixo de dois pontos,
+  estender até o cruzamento, etiquetas de esquadria.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/06-planta-por-camadas.md`
+*Interface — planta por nível de detalhe, estilos de material e cor por camada no 3D*; data 2026-10-14; situação aprovado.
+
+Documentação IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`,
+consultada em 2026‑10‑14. Base:
+`https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+
+| Código | Documento |
+|---|---|
+| IFC-MDR | `docs/schemas/resource/IfcRepresentationResource/Entities/IfcMaterialDefinitionRepresentation.md` (estilos por contexto, só `IfcStyledRepresentation`) |
+| IFC-FAS | `docs/schemas/resource/IfcPresentationAppearanceResource/Entities/IfcFillAreaStyle.md` (sólido, uma ou duas hachuras, no máximo uma cor; `ModelOrDraughting`) |
+| IFC-FASH | `docs/schemas/resource/IfcPresentationAppearanceResource/Entities/IfcFillAreaStyleHatching.md` (aparência, espaçamento, ângulo; duas instâncias para cruzado) |
+| IFC-ML | `docs/schemas/resource/IfcMaterialResource/Entities/IfcMaterialLayer.md` (`Priority`) |
+
+Outras:
+- **PAREDE** — `spec/elementos/parede.md` §2.3, §6.2, §7 (aprovada).
+- **UI03**, **UI05** — specs de interface 03 §6 e 05 §1, §7.1 (aprovadas).
+- **IOS** — IfcOpenShell 0.9: módulo `ifcopenshell.api.style` (`add_style`,
+  `add_surface_style`, `assign_material_style`) e `ifcopenshell.geom` (para a
+  implementação).
+- **NBR8403** — série de espessuras de linha, como na spec 03. **NBR6492** citada só por
+  título; texto não lido.
+- **CG** — conhecimento geral de desenho arquitetônico: detalhe por escala, prioridade de
+  camadas em junções, convenções de hachura por material, elementos acima do plano em
+  tracejado.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/ui/07-medidas-e-edicao-no-3d.md`
+*Interface — campos de medida ao desenhar (Tab), seleção e edição na vista 3D, mostrar a seleção na outra vista*; data 2026-10-15; situação aprovado.
+
+- **QT** — documentação pública do Qt for Python 6: `QOpenGLWidget`, `QMenu`,
+  `QWidget.event` (tecla Tab), `QLineEdit`.
+- **MT97** — T. Möller e B. Trumbore, "Fast, Minimum Storage Ray/Triangle Intersection",
+  *Journal of Graphics Tools* 2(1), 1997 (algoritmo de interseção raio–triângulo,
+  publicado).
+- **UI01**, **UI02**, **UI03**, **UI05** — specs de interface 01 §5.5, 02, 03 §5 e 05 §3
+  (aprovadas).
+- **CG** — conhecimento geral de aplicativos de CAD e modelagem: entrada numérica junto
+  ao cursor com troca de campo pelo teclado, escolha de objetos por raio, menu de contexto
+  para localizar o objeto em outra vista.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/08-parede-no-3d-topo-e-inclinacao.md`
+*Interface e núcleo — alças da parede no 3D, topo inclinado e empena, parede tombada; ponta de parede unida move só a parede*; data 2026-10-15; situação aprovado.
+
+Documentação IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`,
+consultada em 2026‑10‑15. Base:
+`https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+
+| Código | Documento |
+|---|---|
+| IFC-WALL | `docs/schemas/shared/IfcSharedBldgElements/Entities/IfcWall.md` (parede com camadas: espessura constante, extrusão vertical, `LayerSetDirection = AXIS2`; parede sem camadas: extrusão fora do eixo z permitida; `Body Clipping Geometry` com `IfcBooleanClippingResult` e semiespaços, figuras do recorte por `IfcPolygonalBoundedHalfSpace` e `IfcHalfSpaceSolid`) |
+| IFC-PBHS | `docs/schemas/resource/IfcGeometricModelResource/Entities/IfcPolygonalBoundedHalfSpace.md` (contorno 2D fechado no plano xy da posição, extrudado ao longo de z; limita o semiespaço nas diferenças booleanas) |
+| IFC-EAS | `docs/schemas/resource/IfcGeometricModelResource/Entities/IfcExtrudedAreaSolid.md` (`ExtrudedDirection`: qualquer direção não perpendicular ao z da posição) |
+| IFC-MLSU | `docs/schemas/resource/IfcMaterialResource/Entities/IfcMaterialLayerSetUsage.md` |
+
+Outras:
+- **PAREDE** — `spec/elementos/parede.md` §1, §2, §11 (aprovada).
+- **UI02**, **UI05**, **UI07** — specs de interface 02 §4, 05 §3 e 07 §3 (aprovadas).
+- **CG** — conhecimento geral de modelagem de edifícios: oitão/empena sob telhado,
+  parede inclinada, alças de altura em vistas 3D.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/
+
+### `spec/ui/09-janela.md`
+*Interface — janela (ferramenta, opções, tipos, planta, 3D, painel, alças) e ponto de referência nas ferramentas de criação*; data 2026-10-15; situação aprovado.
+
+- **JANELA**, **PORTA** — `spec/elementos/janela.md` e `porta.md` (aprovadas).
+- **UI01–UI08** — specs de interface aprovadas, nas seções citadas.
+- **IFC** — buildingSMART IFC 4.3: `IfcWindow`, `IfcWindowType`,
+  `IfcWindowLiningProperties`, `IfcWindowPanelProperties`, `Pset_WindowCommon`,
+  `Qto_WindowBaseQuantities`, `IfcStyledItem`, `IfcSurfaceStyle` (mesmas fontes de
+  `janela.md` §10 e spec 06).
+- **CG** — conhecimento geral de desenho arquitetônico brasileiro (símbolos de janela em
+  planta, etiqueta com peitoril) e de aplicativos de CAD (alças nas bordas, desenho do tipo
+  ao editar).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/10-laje-pilar-viga.md`
+*Interface — laje, pilar e viga (ferramentas, opções, tipos, painel, alças, planta e 3D), versão básica*; data 2026-10-15; situação aprovado.
+
+- **LAJE**, **PILAR**, **VIGA**: `spec/elementos/laje.md`, `pilar.md`, `viga.md` (em
+  revisão, com as fontes IFC de cada uma).
+- **UI01–UI09**: specs de interface aprovadas, nas seções citadas.
+- **CG**: conhecimento geral de desenho arquitetônico brasileiro (pilar preenchido por
+  cima da alvenaria, vigas tracejadas, contorno de laje) e de aplicativos de CAD
+  (polígono fechado no primeiro ponto, giro de 90° com a barra de espaço, ponto de
+  inserção num quadradinho de 9 pontos).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/11-aparencia.md`
+*Interface — aparência (tema, cores, fonte, espaçamento, planta e 3D)*; data 2026-10-15; situação em revisão.
+
+- **Archivo**: `github.com/google/fonts/tree/main/ofl/archivo` (arquivo da fonte e
+  `OFL.txt`), licença SIL OFL 1.1, compatível com a distribuição junto ao aplicativo GPL.
+- **CG**: conhecimento geral de desenho de interfaces (contraste, hierarquia
+  tipográfica, uma cor de destaque) e do ofício de desenho técnico (folha, grafite,
+  grade).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhuma cor, ícone ou layout
+de outro software foi copiado.
+
+### `spec/ui/12-estrutura-refinamento.md`
+*Estrutura, refinamento 1 — recortes por prioridade, aberturas na laje, laje pelo contorno das paredes, etiquetas de pilar e viga*; data 2026-10-16; situação aprovado.
+
+IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026‑10‑16 (`S`, `M` como em `laje.md` §10; `C` = `docs/schemas/core/IfcProductExtension`;
+`G` = `docs/schemas/resource/IfcGeometricModelResource`; `R` =
+`docs/schemas/resource/IfcRepresentationResource`).
+
+| Código | Documento |
+|---|---|
+| IFC-SLAB | `S/Entities/IfcSlab.md` (aberturas por `IfcRelVoidsElement`; `Body` `SweptSolid` ou `Clipping`) |
+| IFC-INTERF | `C/Entities/IfcRelInterferesElements.md` (`ImpliedOrder`) |
+| IFC-BOOL | `G/Entities/IfcBooleanResult.md` (diferença entre sólidos) |
+| IFC-SHAPEREP | `R/Entities/IfcShapeRepresentation.md` (tipos `Clipping` e `CSG`) |
+| IFC-COL, IFC-BEAM | como em `pilar.md` e `viga.md` §10 |
+
+Outras:
+- **CG**: conhecimento geral de projeto de concreto armado e de desenho arquitetônico no
+  Brasil (altura da viga com a laje, pilar contínuo, X no vazio da laje, etiquetas P1 e
+  V1 14×40).
+- Specs já aprovadas: `laje.md`, `pilar.md`, `viga.md`, spec/ui 08 (semiespaços limitados
+  no topo da parede) e spec/ui 10.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/13-documentacao-planta.md`
+*Documentação 1 — anotação da planta (ambientes, cotas, cota de nível, textos, linhas, hachuras, norte, escala, espessuras)*; data 2026-10-16; situação aprovado.
+
+IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado em
+2026‑10‑16, e o esquema EXPRESS `IFC4X3_ADD2` distribuído com o IfcOpenShell
+(enumerações `IfcAnnotationTypeEnum`, `IfcSpaceTypeEnum`; atributos de `IfcAnnotation`,
+`IfcSpace`, `IfcTextLiteral`).
+
+| Código | Documento |
+|---|---|
+| IFC-ANNOT | `docs/schemas/core/IfcProductExtension/Entities/IfcAnnotation.md` (contenção no pavimento; `IfcGeometricCurveSet`, `IfcAnnotationFillArea`, `IfcTextLiteral`) |
+| IFC-SPACE | `docs/schemas/core/IfcProductExtension/Entities/IfcSpace.md` (agregação ao pavimento; `Name` = número, `LongName` = nome; `FootPrint` e `Body`; `Qto_SpaceBaseQuantities`) |
+
+Outras:
+- **NBR 8403** (espessuras de linha) e **NBR 6492** (representação de projetos de
+  arquitetura): como nas specs anteriores, **texto não lido**; os valores são
+  conhecimento geral e ficam para conferência.
+- **CG**: convenções usuais do desenho de arquitetura no Brasil (cotas em metros com duas
+  casas, tique a 45°, etiqueta de ambiente com nome e área, símbolo de nível, escalas
+  usuais).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/14-cortes-e-fachadas.md`
+*Documentação 2 — cortes e fachadas gerados do modelo*; data 2026-10-16; situação aprovado.
+
+- IFC 4.3: `IfcAnnotation` (contenção na estrutura espacial, representação 2D), como em
+  spec/ui 13 §11.
+- **IfcOpenShell** (LGPL, `cleanroom/FONTES.md`): as malhas por elemento
+  (`ifcopenshell.geom`), já usadas na vista 3D. O módulo de desenho dele não é usado
+  *(decisão do projeto: o estilo das linhas e as hachuras dos materiais ficam com o
+  BrasBim)*.
+- **NBR 6492**: representação de cortes e fachadas, **texto não lido**; convenções de
+  conhecimento geral, a conferir.
+- **CG**: convenções usuais (linha de corte em traço e ponto com setas e letra, cotas de
+  nível no corte, título com a escala, linha de piso).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/15-pranchas-e-pdf.md`
+*Documentação 3 — pranchas com carimbo e exportação em PDF*; data 2026-10-16; situação aprovado.
+
+- IFC 4.3: `IfcAnnotation` e `IfcProject`, como em spec/ui 13 §11.
+- **NBR 16752** (formatos, margens e legenda) e **NBR 13142** (dobramento): **texto não
+  lido**; os valores acima são de conhecimento geral e ficam para conferência.
+- **Qt** (`QPdfWriter`, licença LGPL do PySide6): geração do PDF.
+- **CG**: carimbo no canto inferior direito, largura para dobra em A4, campos usuais
+  (projeto, endereço, proprietário, responsável técnico, conteúdo, escala, data, folha).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/16-assistente.md`
+*Assistente — pedido em texto, desenhado por uma IA instalada no PC*; data 2026-10-16; situação em revisão (protótipo implementado para teste).
+
+- Model Context Protocol, especificação aberta (modelcontextprotocol.io): mensagens
+  `initialize`, `tools/list`, `tools/call`, transporte Streamable HTTP, recomendações de
+  segurança (escutar em localhost, validar `Origin`).
+- JSON-RPC 2.0 (jsonrpc.org/specification).
+- Claude Code, ajuda da linha de comando (`claude --help`) e documentação pública:
+  `-p`, `--output-format stream-json`, `--mcp-config`, `--strict-mcp-config`, `--tools`,
+  `--allowedTools`.
+
+### `spec/ui/17-tabelas.md`
+*Quantitativos e tabelas (quadro de esquadrias, quadro de áreas, tabelas configuráveis)*; data 2026-10-16; situação aprovado.
+
+- IFC 4.3 (`IfcElementQuantity` e os `Qto_*BaseQuantities` de cada elemento;
+  `IfcAnnotation`; `IfcTable`, só para registrar por que não foi usado), no repositório
+  oficial da buildingSMART, como nas specs dos elementos.
+- **RFC 4180** (CSV) e **ECMA-376 / ISO/IEC 29500** (Office Open XML, SpreadsheetML),
+  públicos: o mínimo para escrever o XLSX (pacote, planilha, estilos, cadeias
+  compartilhadas).
+- **NBR 12721** (áreas para incorporação) e normas municipais de quadro de áreas:
+  **texto não lido**. O quadro de áreas daqui é de conhecimento geral (área útil por
+  ambiente e área construída por pavimento).
+- **CG**: quadro de esquadrias usual no Brasil (código, tipo, dimensões, peitoril,
+  quantidade); CSV com `;` e vírgula decimal nas planilhas em português.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/18-camadas.md`
+*Camadas de organização (grupos, visibilidade, bloqueio e combinações)*; data 2026-10-20; situação aprovado (implementado).
+
+- **IFC 4.3**: `IfcPresentationLayerAssignment` e `IfcPresentationLayerWithStyle`
+  (atributos `Name`, `Identifier`, `AssignedItems` com pelo menos um item, `LayerOn`,
+  `LayerFrozen`, `LayerBlocked`, `LayerStyles`) e `IfcLayeredItem`, no repositório
+  oficial da buildingSMART (ifc43-docs.standards.buildingsmart.org).
+- **IfcOpenShell** (LGPL): `ifcopenshell.api.layer` (`add_layer_with_style`,
+  `assign_layer`, `unassign_layer`, `edit_layer`), conforme a documentação pública.
+- **CG**: camadas para organizar desenho técnico existem nos programas de CAD e BIM em
+  geral. O que vem daqui é só a função: ocultar, bloquear, agrupar e guardar estados com
+  nome. Os nomes das camadas e dos grupos iniciais são próprios, em português.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/19-desenho-2d.md`
+*Desenho 2D (círculo, arco, curva livre, cota de raio e de ângulo, rótulo, marcador de alteração)*; data 2026-10-20; situação em revisão (implementado para teste, fluxo do MVP).
+
+- **IFC 4.3**: `IfcAnnotation` (`PredefinedType` `DIMENSION`, `TEXT`, `SYMBOL`),
+  `IfcGeometricCurveSet`, `IfcTextLiteralWithExtent` [IFC-ANNOT, como na spec/ui 13].
+- **NBR 8403** (espessuras de linha) e **NBR 6492** (cotas e convenções): texto não lido,
+  a conferir, como nas specs anteriores.
+- **CG**: curva de Catmull-Rom (passa pelos pontos de controle); nuvem de revisão e
+  rótulo com linha de chamada são convenções gerais de desenho técnico.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado. Nenhum texto, ícone, nome de
+comando ou layout de diálogo de outro software foi copiado.
+
+### `spec/ui/20-eixos-vaos-claraboia.md`
+*Eixos de projeto, vão e nicho na parede, claraboia*; data 2026-10-20; situação em revisão (implementado para teste, fluxo do MVP).
+
+IFC 4.3 (buildingSMART): `IfcGrid`, `IfcGridAxis` (`AxisTag`, `AxisCurve`) [IFC-GRID];
+`IfcWindow`/`IfcWindowTypeEnum` `SKYLIGHT` [IFC-WINDOW]; `IfcOpeningElement`,
+`IfcRelVoidsElement`, `IfcRelFillsElement` [IFC-OPEN]. NBR 6492 (eixos e claraboia em
+planta): texto não lido, a conferir. CG: malha de eixos numerados × letrados.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/ui/21-salvamento-automatico.md`
+*Salvamento automático e recuperação após falha*; data 2026-10-21; situação em revisão (implementado para teste, fluxo do MVP).
+
+Conhecimento geral de software (CG): gravação atômica por troca de nome, arquivo de
+sinal de vida. Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+### `spec/ui/22-importar-desenho.md`
+*Importar desenho DXF e DWG como referência*; data 2026-10-21; situação em revisão (implementado para teste, fluxo do MVP).
+
+DXF Reference (Autodesk, documentação pública); ezdxf (MIT); IFC 4.3 `IfcAnnotation`,
+`IfcIndexedPolyCurve`, `IfcCartesianPointList2D` [IFC-ANNOT]. Conversores externos
+usados como programas à parte. Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
+
+Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem
+`_restrito/` nem `tools/`. "Página lida" = conteúdo aberto e lido; "trecho de busca" =
+só o resumo do buscador (fórum da Graphisoft, G2 e blogs da Autodesk responderam HTTP 403;
+Reddit inacessível): **conferir antes de citar numa spec**. A coluna "usado para" do
+anexo foi gerada por script a partir das notas e precisa de revisão ao virar spec.
+
+| Tema | Fontes | Página lida | Trecho de busca (conferir) | Notas brutas |
+|---|---|---|---|---|
+| Usuários e mercado brasileiro | 59 | 50 | 9 | `research_notes/Pesquisa Archicad Revit AutoCAD/usuarios_e_mercado_brasil.md` |
+| Archicad: modelagem e interação | 124 | 23 | 101 | `research_notes/Pesquisa Archicad Revit AutoCAD/archicad_modelagem.md` |
+| Archicad: documentação, colaboração e extensões | 37 | 18 | 19 | `research_notes/Pesquisa Archicad Revit AutoCAD/archicad_documentacao_colaboracao.md` |
+| Revit: modelagem e famílias | 43 | 37 | 6 | `research_notes/Pesquisa Archicad Revit AutoCAD/revit_modelagem_familias.md` |
+| Revit: documentação, colaboração e extensões | 41 | 22 | 19 | `research_notes/Pesquisa Archicad Revit AutoCAD/revit_documentacao_colaboracao.md` |
+| AutoCAD, AutoCAD Architecture e Civil 3D | 54 | 42 | 12 | `research_notes/Pesquisa Archicad Revit AutoCAD/autocad.md` |
+| Interface e interação | 42 | 38 | 4 | `research_notes/Pesquisa Archicad Revit AutoCAD/interface_e_interacao.md` |
+| Normas e projeto legal no Brasil | 20 | 10 | 10 | `research_notes/Pesquisa Archicad Revit AutoCAD/normas_e_projeto_legal_brasil.md` |
+| Quantitativos, orçamento e sustentabilidade | 57 | 41 | 16 | `research_notes/Pesquisa Archicad Revit AutoCAD/quantitativos_orcamento_sustentabilidade.md` |
+| Terreno, topografia e implantação | 45 | 41 | 4 | `research_notes/Pesquisa Archicad Revit AutoCAD/terreno_e_implantacao.md` |
+| Estrutura e instalações | 39 | 16 | 23 | `research_notes/Pesquisa Archicad Revit AutoCAD/estrutura_e_instalacoes.md` |
+| Bibliotecas e objetos | 65 | 52 | 13 | `research_notes/Pesquisa Archicad Revit AutoCAD/bibliotecas_e_objetos.md` |
+| Interoperabilidade openBIM | 44 | 37 | 7 | `research_notes/Pesquisa Archicad Revit AutoCAD/interoperabilidade_openbim.md` |
+| Visualização e apresentação | 44 | 32 | 12 | `research_notes/Pesquisa Archicad Revit AutoCAD/visualizacao_apresentacao.md` |
+| Ferramentas emergentes e IA | 44 | 43 | 1 | `research_notes/Pesquisa Archicad Revit AutoCAD/ferramentas_emergentes.md` |
+| **Total** | **758** | | | |
+
+Fontes **proibidas** que apareceram e **não foram usadas**: um endereço que parecia
+hospedar o texto integral pago da ABNT NBR 6492:2021 (marcado "NÃO USAR" no anexo). Normas
+ABNT só entram por título, escopo e resumo públicos, ou por exemplar legítimo.

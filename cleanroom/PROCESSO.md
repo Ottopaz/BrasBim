@@ -73,6 +73,9 @@ necessária para o produto. Ela fica arquivada como estudo e não alimenta a spe
 ## 4. Rastreabilidade
 
 - Cada documento em `spec/` tem cabeçalho com autor, data e **fontes públicas**.
+- `REGISTRO-DE-FONTES.md` reúne as fontes efetivamente lidas (gerado por
+  `scripts/registro_fontes.py` a partir das specs e da pesquisa de mercado).
+- `THIRD_PARTY_NOTICES.md` (na raiz) lista as bibliotecas usadas e as licenças.
 - Cada contribuição de código vem com assinatura **DCO** e uma declaração clean‑room
   (`CONTRIBUTING.md`, modelo em `DECLARACAO-CONTRIBUIDOR.md`).
 - Acesso a `_restrito/` fica registrado em `REGISTRO-DE-ACESSO.md`.
@@ -99,4 +102,4 @@ com análise jurídica própria. Na dúvida, criem os objetos do zero.
 - [ ] Todas as specs com fontes públicas citadas
 - [ ] Todos os commits com DCO
 - [ ] Nenhum ícone, texto ou diálogo copiado (revisão visual)
-- [ ] `THIRD_PARTY_NOTICES` com todas as dependências e licenças
+- [x] `THIRD_PARTY_NOTICES` com todas as dependências e licenças (2026‑10‑21; rever a cada versão)
