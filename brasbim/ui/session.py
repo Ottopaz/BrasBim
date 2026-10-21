@@ -4,13 +4,15 @@
 Guarda documento, histórico, arquivo, pavimento ativo, seleção e mensagens. É o único
 ponto da interface que aplica transações. Não depende de Qt: a janela se inscreve em
 ``listeners`` e é avisada com o nome do evento (``document``, ``model``, ``selection``,
-``storey``, ``messages``).
+``storey``, ``messages``, ``backup``).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import History, Transaction
 from brasbim.core.structure import commands as sc
 from brasbim.core.walls import commands as cmd
+from brasbim.ui import recovery
 
 MAX_MESSAGES = 200
 
@@ -106,15 +109,19 @@ class _MessageHandler(logging.Handler):
 
 
 class Session:
-    def __init__(self, journal_dir: Path | None = None):
+    def __init__(self, journal_dir: Path | None = None, recovery_dir: Path | None = None):
         self.listeners: list[Callable[[str], None]] = []
         self.messages: list[dict] = []
         self.journal_dir = journal_dir
+        self.recovery_dir = recovery_dir  # cópias de segurança (spec/ui 21)
+        self.recovery_path: Path | None = None
         self._handler = _MessageHandler(self)
         logging.getLogger("brasbim").addHandler(self._handler)
         self.new()
 
     def close(self) -> None:
+        """Fechamento normal: a cópia de segurança não é mais necessária (spec/ui 21 §3)."""
+        self.discard_backup()
         logging.getLogger("brasbim").removeHandler(self._handler)
 
     # --- avisos ----------------------------------------------------------------------
@@ -131,12 +138,14 @@ class Session:
 
     # --- documento ---------------------------------------------------------------------
 
-    def _attach(self, doc: Document, path: str | None) -> None:
+    def _attach(self, doc: Document, path: str | None, modified: bool = False) -> None:
+        self.discard_backup()  # o projeto anterior foi salvo ou descartado (spec/ui 21 §3)
         self.doc = doc
         self.history = History(doc)
         self.history.listeners.append(self._on_history)
         self.path = path
-        self.modified = False
+        self.modified = modified
+        self._changes = self._backed_up = 0  # mudanças feitas / já na cópia de segurança
         self.selection: set[str] = set()
         self.last_changed: set[str] = set()
         self.last_tx = None  # última transação feita, desfeita ou refeita
@@ -145,6 +154,9 @@ class Session:
         self.storey_id = (ground or storeys or [None])[0]
         self.storey_id = self.storey_id.GlobalId if self.storey_id is not None else None
         self.started = datetime.now()
+        if self.recovery_dir is not None:
+            self.recovery_path = self.recovery_dir / (
+                f"{self.started:%Y-%m-%d_%H-%M-%S}_{os.getpid()}_{uuid.uuid4().hex[:8]}.ifc")
         self._emit("document")
 
     def new(self) -> None:
@@ -197,8 +209,59 @@ class Session:
         self.doc.save(path)
         self.path = path
         self.modified = False
+        self.discard_backup()  # spec/ui 21 §3
+        self._backed_up = self._changes
         self.message(f"Salvo: {path}")
         self._emit("document")
+
+    # --- cópia de segurança (spec/ui 21) -------------------------------------------------
+
+    @property
+    def backup_due(self) -> bool:
+        return self.recovery_path is not None and self._changes != self._backed_up
+
+    def backup(self, now: datetime | None = None) -> bool:
+        """Grava a cópia de segurança se o projeto mudou desde a última (§2)."""
+        if not self.backup_due:
+            return False
+        try:
+            display_layers.write_display(self.doc, self.doc.display)
+            recovery.write(self.doc, self.recovery_path, self.path, now or datetime.now())
+        except (OSError, RuntimeError) as e:
+            self.message(f"não foi possível gravar a cópia de segurança: {e}", "aviso")
+            return False
+        self._backed_up = self._changes
+        self._emit("backup")
+        return True
+
+    def heartbeat(self, now: datetime | None = None) -> None:
+        """Sinal de vida da cópia desta sessão (§2): ela não é oferecida a outra janela."""
+        if self.recovery_path is not None:
+            recovery.touch(self.recovery_path, now or datetime.now())
+
+    def discard_backup(self) -> None:
+        if getattr(self, "recovery_path", None) is not None:
+            recovery.remove(self.recovery_path)
+
+    def orphan_backups(self, now: datetime | None = None) -> list[dict]:
+        """Cópias de sessões que não fecharam direito, da mais recente (§4)."""
+        return recovery.orphans(self.recovery_dir, self.recovery_path, now or datetime.now())
+
+    def recover(self, entry: dict) -> None:
+        """Abre a cópia como projeto modificado, com o nome do arquivo original; ela
+        passa a ser a cópia desta sessão (§4)."""
+        doc = Document.open(str(entry["path"]))
+        doc.display = display_layers.read_display(doc)
+        self._attach(doc, entry["file"], modified=True)
+        if self.recovery_path is not None:
+            recovery.adopt(entry, self.recovery_path, datetime.now())
+        else:
+            recovery.remove(entry["path"])
+        self.message(f"Projeto recuperado da cópia de segurança de "
+                     f"{entry['saved']:%d/%m às %H:%M}; salve para guardar as alterações")
+
+    def discard_orphan(self, entry: dict) -> None:
+        recovery.remove(entry["path"])
 
     @property
     def storey(self):
@@ -283,6 +346,7 @@ class Session:
 
     def _on_history(self, kind: str, tx: Transaction, changed: set[str]) -> None:
         self.modified = True
+        self._changes += 1
         self.last_changed = changed
         self.last_tx = tx
         self.selection = {g for g in self.selection if self.doc.find(g) is not None}

@@ -5,9 +5,11 @@ mini-barra, ``spec/ui/03-barras-e-icones.md`` §2–§5)."""
 from __future__ import annotations
 
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -74,6 +76,11 @@ def _settings() -> QSettings:
     return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim")
 
 
+BACKUP_CHOICES = ((0, "Desligado"), (2, "A cada 2 minutos"), (5, "A cada 5 minutos"),
+                  (10, "A cada 10 minutos"))
+BACKUP_DEFAULT = 5  # min (spec/ui 21 §2)
+
+
 def cascade_text(doors_n: int, windows_n: int, objects_n: int = 0) -> str:
     """"1 porta e 2 janelas" (spec/ui 09 §4.1), e os objetos presos às paredes."""
     parts = [f"{n} {one if n == 1 else many}" for n, one, many in
@@ -127,6 +134,13 @@ class MainWindow(QMainWindow):
         self._hook_tools()
         self._restore()
         self._refresh_all()
+        # Cópia de segurança (spec/ui 21): o relógio bate a cada minuto, renova o sinal de
+        # vida e grava a cópia quando passou o intervalo escolhido.
+        self._last_backup = time.monotonic()
+        self.backup_timer = QTimer(self)
+        self.backup_timer.setInterval(60_000)
+        self.backup_timer.timeout.connect(self.backup_tick)
+        self.backup_timer.start()
 
     # --- montagem --------------------------------------------------------------------
 
@@ -224,6 +238,18 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Exportar PDF…", self.export_pdf, "Ctrl+P")
         self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
         self._action(file_menu, "Dados do projeto…", self.edit_project_info)
+        file_menu.addSeparator()
+        backup_menu = file_menu.addMenu("Salvamento automático")  # spec/ui 21 §2
+        group = QActionGroup(self)
+        self.backup_actions: dict[int, QAction] = {}
+        for minutes, text in BACKUP_CHOICES:
+            action = backup_menu.addAction(text)
+            action.setCheckable(True)
+            action.triggered.connect(lambda _=False, m=minutes: self.set_backup_minutes(m))
+            group.addAction(action)
+            self.backup_actions[minutes] = action
+        self.backup_minutes = BACKUP_DEFAULT
+        self.backup_actions[BACKUP_DEFAULT].setChecked(True)
         file_menu.addSeparator()
         self._action(file_menu, "Sair", self.close)
         edit_menu = bar.addMenu("&Editar")
@@ -409,6 +435,12 @@ class MainWindow(QMainWindow):
             if value is not None:
                 action.setChecked(str(value).lower() == "true")
                 self._set_plan_option(option, action.isChecked())
+        try:
+            minutes = int(settings.value("salvamento_automatico_min", BACKUP_DEFAULT))
+        except (TypeError, ValueError):
+            minutes = BACKUP_DEFAULT
+        if minutes in self.backup_actions:
+            self.set_backup_minutes(minutes)
         detail = settings.value("detalhe_planta")
         if detail in self.detail_actions:
             self.set_plan_detail(detail)
@@ -459,6 +491,9 @@ class MainWindow(QMainWindow):
             self._refresh_show_actions()
         elif event == "messages":
             self._show_messages()
+        elif event == "backup":
+            self.statusBar().showMessage(
+                f"Cópia de segurança às {datetime.now():%H:%M}", 5000)
 
     def _refresh_all(self) -> None:
         self.project.refresh()
@@ -1081,6 +1116,53 @@ class MainWindow(QMainWindow):
                 self.session.open(path)
             except (OSError, RuntimeError, OpError) as e:
                 self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+
+    # --- cópia de segurança e recuperação (spec/ui 21) -----------------------------------
+
+    def set_backup_minutes(self, minutes: int) -> None:
+        self.backup_minutes = minutes
+        self.backup_actions[minutes].setChecked(True)
+        _settings().setValue("salvamento_automatico_min", minutes)
+
+    def backup_tick(self, now: float | None = None) -> bool:
+        """Renova o sinal de vida e, passado o intervalo, grava a cópia (§2)."""
+        self.session.heartbeat()
+        now = time.monotonic() if now is None else now
+        if not self.backup_minutes or now - self._last_backup < self.backup_minutes * 60 - 1:
+            return False
+        self._last_backup = now
+        return self.session.backup()
+
+    def _ask_recovery(self, text: str) -> str:
+        """"recover", "discard" ou "later" (separado para os testes)."""
+        box = QMessageBox(QMessageBox.Warning, "Recuperar projeto", text, parent=self)
+        recover = box.addButton("Recuperar", QMessageBox.AcceptRole)
+        discard = box.addButton("Descartar", QMessageBox.DestructiveRole)
+        box.addButton("Depois", QMessageBox.RejectRole)
+        box.setDefaultButton(recover)
+        box.exec()
+        clicked = box.clickedButton()
+        return "recover" if clicked is recover else "discard" if clicked is discard else "later"
+
+    def offer_recovery(self) -> None:
+        """Na abertura: oferece a cópia órfã mais recente (§4)."""
+        found = self.session.orphan_backups()
+        if not found:
+            return
+        entry = found[0]
+        name = Path(entry["file"]).name if entry["file"] else "um projeto sem nome"
+        answer = self._ask_recovery(
+            f"O BrasBim fechou sem salvar {name} (cópia de "
+            f"{entry['saved']:%d/%m às %H:%M}). Recuperar?")
+        if answer == "recover":
+            if not self._ask_save():
+                return
+            try:
+                self.session.recover(entry)
+            except (OSError, RuntimeError, OpError) as e:
+                self.session.message(f"não foi possível recuperar a cópia: {e}", "recusa")
+        elif answer == "discard":
+            self.session.discard_orphan(entry)
 
     def save_project(self) -> bool:
         if not self.session.path:
