@@ -4,7 +4,7 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑21 (pesquisa de mercado; roteiro reorganizado).*
+*Atualizado em 2026‑10‑21 (pesquisa de mercado; roteiro reorganizado; instruções para retomar).*
 
 > **Onde paramos (2026‑10‑21):** pacotes 14–18, salvamento automático (spec/ui 21),
 > importar DXF/DWG (spec/ui 22) e terreno por curvas pegas do desenho feitos. O revisor
@@ -16,6 +16,21 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > `cleanroom/REGISTRO-DE-FONTES.md`; licenças em `THIRD_PARTY_NOTICES.md`. **Fluxo do
 > MVP** continua: spec curta "em revisão" + implementação na sequência. Prints do revisor
 > em `feedback/prints/` só como descrição de função. Continuam abertos os itens 0 e 0b.
+
+> **Como retomar (sessão nova):**
+> 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
+> 2. Próximo trabalho: **item 1 do "Roteiro a partir da pesquisa"** (pacote "projeto
+>    legal"). Antes de escrever a spec, ler no relatório as recomendações 1, 2, 3 e 8 e as
+>    notas `research_notes/Pesquisa Archicad Revit AutoCAD/normas_e_projeto_legal_brasil.md`
+>    e `archicad_documentacao_colaboracao.md`/`revit_documentacao_colaboracao.md`;
+>    comparar como os três fazem (só função, com nomes próprios); conferir as fontes
+>    marcadas "conferir"; citar tudo na seção "Fontes" da spec e rodar
+>    `python scripts/registro_fontes.py` no mesmo commit.
+> 3. Estado verificado: 666 testes passando, ruff limpo, último commit `fbe27a2`.
+> 4. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
+>    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
+>    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
+>    (c) itens 0 e 0b das pendências (pilar `CardinalPoint`, revisão do assistente).
 
 ## Comandos
 | Para | Comando |
