@@ -101,3 +101,45 @@ def test_et08_terreno(window, app):
     _click(tool, (25, 0))
     tool.key("enter")
     assert len(terrain.all_terrains(s.doc)) == 1
+
+
+def test_et09_3d(window, app):
+    """Escada (lances, patamar e guarda-corpos numa malha), guarda-corpo solto e terreno
+    na vista 3D, com a cor de cada material; editar refaz a malha."""
+    import numpy as np
+
+    from brasbim.core import materials
+    from brasbim.ui.scene3d import Scene
+
+    s = window.session
+    s.run(lambda: stairs.create_stair(s.doc, s.storey, (0, 0), 0.0, shape="U"))
+    s.run(lambda: railings.create_railing(s.doc, s.storey, [(6, 0), (10, 0)]))
+    s.run(lambda: terrain.create_terrain(s.doc, [(-5, -5, -0.5), (15, -5, 0.0),
+                                                 (15, 10, 1.0), (-5, 10, 0.5)]))
+    (stair,) = stairs.all_stairs(s.doc)
+    rail = next(r for r in s.doc.ifc.by_type("IfcRailing") if railings.is_railing(r))
+    (t,) = terrain.all_terrains(s.doc)
+    scene = Scene()
+    scene.load(s.doc.ifc, s.doc)
+    assert {stair.GlobalId, rail.GlobalId, t.GlobalId} <= set(scene.meshes)
+    assert not {p.GlobalId for p in stairs.parts_of(stair)} & set(scene.meshes)
+    mesh = scene.meshes[stair.GlobalId]
+    assert mesh.vertices[:, 2].max() == pytest.approx(2.80 + 1.10, abs=0.05)
+    # concreto nos degraus e alumínio nos guarda-corpos: duas cores de base
+    concrete = np.array(materials.rgb(materials.LIBRARY["Concreto"]["color"]))
+    aluminium = np.array(materials.rgb(materials.LIBRARY["Alumínio"]["color"]))
+    def hue(c):
+        return tuple(round(float(v), 2) for v in c / c.max())
+
+    hues = {hue(c.astype(np.float64)) for c in mesh.colors}
+    assert hue(concrete) in hues and hue(aluminium) in hues
+    terra = scene.meshes[t.GlobalId]
+    assert len(terra.vertices) == 2 * 3 and len(terra.edges) == 4 * 2  # contorno só
+    hit = scene.pick((10, 8, 10), (0, 0, -1))
+    assert hit is not None and hit[0] == t.GlobalId
+    hit = scene.pick((1.0, 0.6, 10), (0, 0, -1))
+    assert hit is not None and hit[0] == stair.GlobalId
+    s.run(lambda: stairs.edit_stair(s.doc, stair, shape="straight", railing="none"))
+    scene.update(s.doc.ifc, s.last_changed)
+    assert scene.meshes[stair.GlobalId].vertices[:, 2].max() == pytest.approx(2.80 - 0.175)
+    assert not {p.GlobalId for p in stairs.parts_of(stair)} & set(scene.meshes)

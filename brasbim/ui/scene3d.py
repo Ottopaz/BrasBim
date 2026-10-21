@@ -21,10 +21,19 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
 
-from brasbim.core import clip, display_layers, geom2d, layers, materials, mesh_layers, props
+from brasbim.core import (
+    clip,
+    display_layers,
+    geom2d,
+    layers,
+    materials,
+    mesh_layers,
+    props,
+    terrain,
+)
 from brasbim.core.document import OpError
 from brasbim.core.objects import elements as objects
-from brasbim.core.structure import roofs
+from brasbim.core.structure import roofs, stairs
 from brasbim.core.walls import rebuild
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -146,6 +155,40 @@ def _styled_mesh(entity, g, tri: np.ndarray, edges: np.ndarray, color) -> Mesh |
                               if glass_col else None))
 
 
+
+def _styled_class(entity) -> bool:
+    """Peças com a cor do ``IfcStyledItem`` de cada sólido: esquadrias, objetos, peças da
+    escada e guarda-corpos."""
+    return any(entity.is_a(c) for c in ("IfcDoor", "IfcWindow", "IfcStairFlight",
+                                        "IfcRailing", *objects.OCCURRENCE_CLASSES)) or (
+        entity.is_a("IfcSlab") and stairs.stair_of(entity) is not None)
+
+
+def _style_color(entity, fallback):
+    """Cor do primeiro ``IfcStyledItem`` do corpo (o terreno tem um só)."""
+    rep = props.representation(entity, "Body")
+    for item in (rep.Items if rep is not None else []) or []:
+        for styled in item.StyledByItem or ():
+            for style in styled.Styles or ():
+                for element in getattr(style, "Styles", None) or ():
+                    if element.is_a("IfcSurfaceStyleShading") and element.SurfaceColour:
+                        c = element.SurfaceColour
+                        return (c.Red, c.Green, c.Blue)
+    return fallback
+
+
+def _outline_edges(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Arestas de borda de uma malha triangulada (as que só um triângulo usa)."""
+    count: dict[tuple[int, int], int] = {}
+    for t in faces.reshape(-1, 3):
+        for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            key = (min(a, b), max(a, b))
+            count[key] = count.get(key, 0) + 1
+    border = [k for k, n in count.items() if n == 1]
+    if not border:
+        return np.zeros((0, 3), dtype=np.float32)
+    return verts[np.asarray(border, dtype=np.int64).ravel()]
+
 def _all_parts(element) -> list:
     """Objetos aninhados em todos os níveis (§6.4)."""
     out, stack = [], list(objects.parts_of(element))
@@ -160,7 +203,7 @@ class Scene:
     """Malhas por GlobalId."""
 
     CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof",
-               *objects.OCCURRENCE_CLASSES)
+               "IfcStair", "IfcRailing", *objects.OCCURRENCE_CLASSES)
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
@@ -177,6 +220,12 @@ class Scene:
             return False
         if entity.is_a("IfcRoof"):  # a cobertura é a soma das águas (cobertura.md §2.1)
             return roofs.is_roof(entity)
+        if entity.is_a("IfcStair"):  # a escada é a soma das peças (escada-terreno.md §2.1)
+            return stairs.is_stair(entity)
+        if stairs.stair_of(entity) is not None:
+            return False
+        if terrain.is_terrain(entity):
+            return entity.Representation is not None
         if any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
             # objeto paramétrico: os aninhados vão na malha do objeto de fora (§6.4)
             return objects.is_object(entity)
@@ -185,6 +234,15 @@ class Scene:
 
     def _roof_mesh(self, roof) -> Mesh | None:
         found = [m for m in (self._mesh(p) for p in roofs.parts_of(roof)) if m is not None]
+        if not found:
+            return None
+        return Mesh(np.concatenate([m.vertices for m in found]),
+                    np.concatenate([m.colors for m in found]),
+                    np.concatenate([m.edges for m in found]), found[0].base)
+
+    def _stair_mesh(self, stair) -> Mesh | None:
+        """Lances, patamares e guarda-corpos numa malha só, com a cor de cada peça."""
+        found = [m for m in (self._single(p) for p in stairs.parts_of(stair)) if m is not None]
         if not found:
             return None
         return Mesh(np.concatenate([m.vertices for m in found]),
@@ -209,6 +267,8 @@ class Scene:
     def _mesh(self, entity) -> Mesh | None:
         if entity.is_a("IfcRoof"):
             return self._roof_mesh(entity)
+        if entity.is_a("IfcStair"):
+            return self._stair_mesh(entity)
         if objects.is_object(entity):
             return self._object_mesh(entity)
         return self._single(entity)
@@ -227,8 +287,11 @@ class Scene:
         if not len(faces):
             return None
         color = material_color(entity)
+        if terrain.is_terrain(entity):  # a malha toda: só o contorno nas arestas
+            return Mesh(verts[faces], _shaded(verts[faces], _style_color(entity, color)),
+                        _outline_edges(verts, faces), color)
         tri = verts[faces]
-        if entity.is_a("IfcDoor") or entity.is_a("IfcWindow") or                 any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
+        if _styled_class(entity):
             styled = _styled_mesh(entity, g, tri, verts[edges], color)
             if styled is not None:
                 return styled

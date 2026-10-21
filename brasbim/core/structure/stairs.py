@@ -326,6 +326,20 @@ def _railing_paths(state: dict, lay: Layout) -> list[tuple[str, list]]:
             z0 = f.z0 + f.riser
             z1 = f.z0 + f.riser * (f.treads + 1)
             out.append((f"railing/{i}/{side}", [(p0[0], p0[1], z0), (p1[0], p1[1], z1)]))
+    outer = "right" if state["turn"] == "left" else "left"
+    if lay.landings and outer in sides:  # o lado de fora contorna o patamar
+        f1, f2 = lay.flights
+        x1, z = lay.landings[0][1], lay.landings[0][4]
+
+        def lateral(f):
+            return f.width - INSET if outer == "left" else INSET
+
+        a, b = f1.at(f1.length, lateral(f1)), f2.at(0, lateral(f2))
+        path = []
+        for q in (a, (x1 - INSET, a[1]), (x1 - INSET, b[1]), b):
+            if not path or math.dist(q, path[-1]) > 1e-9:
+                path.append(q)
+        out.append(("railing/landing", [(q[0], q[1], z) for q in path]))
     return out
 
 

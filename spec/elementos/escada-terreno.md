@@ -40,7 +40,7 @@ revisor: OTTO
 | Giro (L e U) | à esquerda | esquerda ou direita |
 | Divisão (L e U) | metade dos espelhos no primeiro lance | 1 ≤ n < total |
 | Espessura (laje da escada) | 12 cm | > 0 |
-| Guarda-corpo | dos dois lados | nenhum, esquerda, direita, os dois |
+| Guarda-corpo | dos dois lados | nenhum, esquerda, direita, os dois; em L e U o do lado de fora contorna o patamar |
 | Altura do guarda-corpo | 1,10 m | > 0 |
 
 Fora dos limites usuais (espelho 16–18 cm, piso ≥ 28 cm, Blondel 63–64 cm; NBR 9077 e
@@ -88,6 +88,9 @@ intermediária. Pset `BrasBim_GuardaCorpo` (JSON: `points`, `base`, `height`,
 - [x] **ET07** Terreno por 5 pontos: `IfcTriangulatedFaceSet` válido, no sítio; curvas
       de nível na planta do pavimento mais baixo.
 - [x] **ET08** Interface: as ferramentas criam pelos cliques.
+- [x] **ET09** 3D: a escada numa malha só (concreto nos degraus, alumínio nos
+      guarda-corpos), o guarda-corpo solto e o terreno (só o contorno nas arestas); editar
+      refaz a malha.
 
 ## 6. Fontes públicas
 IFC 4.3 (buildingSMART): `IfcStair`/`IfcStairTypeEnum` [IFC-STAIR], `IfcStairFlight`

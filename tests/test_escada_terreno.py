@@ -9,7 +9,7 @@ import ifcopenshell.util.element as ue
 import pytest
 from estrutura import bounds, check_history, created, valid
 
-from brasbim.core import plan, terrain, transform
+from brasbim.core import guid, plan, terrain, transform
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
 from brasbim.core.drawings import section
@@ -87,10 +87,18 @@ def test_et03_guarda_corpo_da_escada(model):
         assert hi[2] == pytest.approx(2.80 + 1.10, abs=0.05)
     ys = sorted(bounds(r)[0][1] for r in rails)
     assert ys[0] == pytest.approx(stairs.INSET - railings.POST / 2, abs=0.03)
+    # em L, o guarda-corpo de fora contorna o patamar na cota dele
+    model.commit(stairs.edit_stair(model.doc, stair, shape="L"))
+    rails = _parts(stair, "IfcRailing")
+    assert len(rails) == 5
+    (landing,) = [r for r in rails if r.GlobalId == guid.derived(stair.GlobalId,
+                                                                    "railing/landing")]
+    assert bounds(landing)[0][2] == pytest.approx(8 * 0.175, abs=1e-6)
+    assert bounds(landing)[1][2] == pytest.approx(8 * 0.175 + 1.10, abs=1e-3)
     model.commit(stairs.edit_stair(model.doc, stair, railing="none"))
     assert not model.doc.ifc.by_type("IfcRailing")
     model.history.undo()
-    assert len(model.doc.ifc.by_type("IfcRailing")) == 2
+    assert len(model.doc.ifc.by_type("IfcRailing")) == 5
     assert valid(model.doc.ifc)
 
 

@@ -20,7 +20,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (646 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (647 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -45,7 +45,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/objeto-parametrico.md` | aprovada e implementada (pacote 13; OB01–OB21 em `tests/test_objetos*.py` e `test_interface_objetos.py`). Nome "objeto paramétrico" ("Objeto" nos menus), editor por formulário + prévia, fórmulas, escolha e visibilidade, preso à parede, aninhados; biblioteca com mobiliário, louças, eletrodomésticos e vegetação |
 | `spec/ui/19-desenho-2d` | **em revisão**, implementada (pacote 14; D2D01–D2D08 em `tests/test_desenho_2d.py` e `test_interface_desenho_2d.py`) |
 | `spec/ui/20-eixos-vaos-claraboia` | **em revisão**, implementada (pacotes 15–16; EV01–EV06 em `tests/test_eixos_vaos.py` e `test_interface_eixos.py`) |
-| `spec/elementos/escada-terreno.md` | **em revisão**, implementada (pacotes 17–18; ET01–ET07 em `tests/test_escada_terreno.py`, ET08 em `test_interface_escada_terreno.py`); falta o 3D |
+| `spec/elementos/escada-terreno.md` | **em revisão**, implementada (pacotes 17–18; ET01–ET07 em `tests/test_escada_terreno.py`, ET08–ET09 em `test_interface_escada_terreno.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
 | `spec/ui/11-aparencia` | **em revisão**, já implementada (tema em `ui/theme.py`, fonte Archivo em `ui/fonts/`; testes AP01–AP03) |
@@ -515,20 +515,14 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
-- **Pacotes 17–18 (2026‑10‑21), núcleo e interface prontos, falta só o 3D:** spec
-  `spec/elementos/escada-terreno.md` (em revisão); `core/structure/stairs.py`,
-  `railings.py` e `core/terrain.py` com planta, corte (`section.CLASSES` + `_owner`: a
-  peça responde pela escada), excluir (`delete.py`; a peça leva a escada),
-  mover/girar/copiar/espelhar (`transform._misc`/`_misc_ops`; mini-barra com girar e
-  espelhar). Interface: `StairTool` (início + direção, Tab = ângulo), `RailingTool` e
-  `TerrainTool` (Tab = cota, que fica para os pontos seguintes) em `ui/tools.py`; barra
-  Opções; painéis `_stair` (com Cálculo: espelho, piso, Blondel e avisos), `_railing`,
-  `_terrain` (pontos editáveis como texto) em `ui/properties.py`; ícones `stair`,
-  `railing`, `terrain`. Testes ET01–ET07 (`tests/test_escada_terreno.py`) e ET08
-  (`tests/test_interface_escada_terreno.py`). **Falta, por último** (decisão do revisor,
-  2026‑10‑21): o 3D (`scene3d`: classes, malha da escada e do terreno, `_styled_class`).
-  Depois: salvamento automático, vistas 3D padrão, câmera salva e o fluxo de pôr vista na
-  prancha.
+- **Pacotes 17–18 concluídos (2026‑10‑21)**, spec `spec/elementos/escada-terreno.md` em
+  revisão: núcleo (`core/structure/stairs.py`, `railings.py`, `core/terrain.py`), planta,
+  corte, excluir, transformações, ferramentas, barra Opções, painéis, ícones e 3D
+  (`scene3d`: `IfcStair` numa malha só com `_stair_mesh`, peças com cor por
+  `_styled_class`, terreno com só o contorno nas arestas). Guarda-corpo de fora contorna
+  o patamar em L e U (`railing/landing`). Testes ET01–ET09. Sem plataforma (corte e
+  aterro) no terreno; sem degrau em leque. Próximo: salvamento automático, vistas 3D
+  padrão, câmera salva e o fluxo de pôr vista na prancha (a combinar com o revisor).
 - Objetos (pacote 13): arrastar da biblioteca para a planta não existe (clique duplo
   ativa a ferramenta); a prévia e as miniaturas são aproximadas (sem OpenGL); o editor não
   desenha na prévia (V2); o símbolo automático não mostra o que fica sob uma peça mais
