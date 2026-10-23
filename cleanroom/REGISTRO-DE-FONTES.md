@@ -743,6 +743,35 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 Endereços citados (13): https://academy.archistar.ai/using-filter-selection-to-find-objects-in-revit; https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm; https://help.autodesk.com/cloudhelp/2015/ENU/AutoCAD-LT/files/GUID-64F8B700-23B3-4BD6-8C03-66121AA13E8F.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-Core/files/GUID-704C1ADE-A4AE-4A85-8822-454ACAC1345A.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-MAC-Core/files/GUID-A782462F-F85C-4496-85A5-3D9A54548489.htm; https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-LT/files/GUID-C0E4246D-C420-42BD-A6FC-8B1852EFD005.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-GettingStarted/files/GUID-5B6347C1-B458-4336-AB2A-C16AF161B755.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-725D3A7A-5E52-47F0-BA7A-7D15F9EF6D7F.htm; https://help.autodesk.com/cloudhelp/2026/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm; https://help.autodesk.com/cloudhelp/ENU/AutoCAD-Web-Help/files/Drafting-and-Creating/AutoCAD_Web_Help_Drafting_and_Creating_Osnap_html.html; https://help.graphisoft.com/AC/29/INT/_AC29_Help/005_NewFeatures/005_NewFeatures-6.htm; https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts; https://www.cad-notes.com/how-to-selectively-select-objects-in-revit/
 
+### `spec/ui/24-linha-de-comando.md`
+*Linha de comando (barra fixa sob as vistas, apelidos, dica e opções da ferramenta, histórico, coordenadas)*; data 2026-10-23; situação em revisão (fluxo do MVP: implementado na sequência).
+
+Pesquisa do projeto: `reports/Pesquisa Archicad Revit AutoCAD.md` (seção "A velocidade
+nasce de digitar sem foco"); notas `interface_e_interacao.md` §1 (linha de comando do
+Rhino 8, caixa de medidas do SketchUp) e `autocad.md` §1 (apelidos curtos, marcado "sem
+fonte" lá; as fontes abaixo cobrem). Ajuda pública lida para este pacote (trechos de
+busca, **conferir** na página):
+- Teclado vai para a linha de comando sempre que a janela está ativa; autocompletar com
+  busca aproximada; opções clicáveis; histórico: [McNeel, The Rhino window (Rhino 8)](https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm)
+  (F374 no registro).
+- Coordenadas absolutas e relativas digitadas: [SketchUp Help, Drawing basics](https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts);
+  relativa ao último ponto com `@`: [Autodesk, About Entering 2D Cartesian Coordinates (LT 2018)](https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-LT/files/GUID-F64F8008-E1C0-49CC-A268-A6B8C6E9B566.htm).
+- Apelidos de comando editáveis pelo usuário, só para iniciar o comando:
+  [Autodesk, To Manage Command Aliases (2025)](https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-Customization/files/GUID-D4CACED6-DFBA-43C3-BC42-8D980AB3AE75.htm);
+  [Autodesk, Command Aliases, Shortcut Keys, and AutoCorrect (LT 2025)](https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-LT-DidYouKnow/files/GUID-D2B4BF16-B1F7-4EF2-89AF-88ACE85FAD73.htm).
+- Lista de sugestões enquanto se digita, ordenada por uso: [Autodesk, To Work With the Command Line Suggestion List (LT 2026)](https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-74478DCE-92D4-49B1-93E9-DCF09D57FA0D.htm);
+  [Input Search Options Dialog Box (LT 2026)](https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-3179393F-958F-42EA-8A92-E9975A1D160B.htm).
+
+O que veio das fontes é só a **função** (linha de comando com sugestões, apelidos
+editáveis, coordenada relativa ao último ponto). A tabela de apelidos (§7), o separador
+`;`, a ordem de leitura do §4, os textos e o desenho da barra são deste projeto; nenhum
+apelido, nome de comando, texto ou arquivo de configuração de outro programa foi
+copiado. O arquivo de apelidos de outros programas **não** foi aberto.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (7): https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-LT/files/GUID-F64F8008-E1C0-49CC-A268-A6B8C6E9B566.htm; https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-Customization/files/GUID-D4CACED6-DFBA-43C3-BC42-8D980AB3AE75.htm; https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-LT-DidYouKnow/files/GUID-D2B4BF16-B1F7-4EF2-89AF-88ACE85FAD73.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-3179393F-958F-42EA-8A92-E9975A1D160B.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-74478DCE-92D4-49B1-93E9-DCF09D57FA0D.htm; https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem
