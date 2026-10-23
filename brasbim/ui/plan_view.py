@@ -249,6 +249,18 @@ class PlanView(QWidget, ToolInput):
         (regiões e bordas), destaque da seleção e portas."""
         selection = self.ctx.session.selection
         plan = self.ctx.plan
+        # Laje em vista é opaca: cobre a grade, mas fica sob todo o resto (inclusive o
+        # pavimento de baixo); os furos (anéis do mesmo dono e aberturas) ficam vazados.
+        floors: dict[str, list] = {}
+        holes = QPainterPath()
+        for shape in plan.shapes:
+            if shape.role == "slab_view" and shape.closed:
+                floors.setdefault(shape.owner, []).append(shape.points)
+            elif shape.role == "slab_opening" and shape.closed:
+                holes.addPolygon(self._polygon(shape.points))
+                holes.closeSubpath()
+        for rings in floors.values():
+            painter.fillPath(self._rings_path(rings).subtracted(holes), C["background"])
         rest = []
         for shape in plan.shapes:
             role = shape.role

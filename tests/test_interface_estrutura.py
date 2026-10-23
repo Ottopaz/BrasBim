@@ -501,3 +501,26 @@ def test_et01_et02_etiquetas_de_estrutura(window):
     window.plan.grab()  # desenha sem erro com as etiquetas desligadas
     window.structure_tags_action.trigger()
     window.plan.grab()
+
+
+def test_laje_em_vista_cobre_a_grade(window, app):
+    """Relato de 2026-10-23: a laje deixava ver a grade, como se fosse transparente. A
+    laje em vista tem o fundo do papel; a abertura continua vazada."""
+    s = window.session
+    t = next(x for x in s.doc.ifc.by_type("IfcSlabType") if x.PredefinedType != "ROOF")
+    s.run(lambda: sc.create_slab(s.doc, t, s.storey, [(0, 0), (8, 0), (8, 6), (0, 6)]))
+    slab = s.doc.ifc.by_type("IfcSlab")[0]
+    s.run(lambda: sc.create_slab_opening_rectangle(s.doc, slab, (2, 2), (4, 4)))
+    s.select([])
+    window.plan.scale, window.plan.origin = 50.0, QPointF(60, 400)
+    window.ctx.invalidate()
+    image = window.plan.grab().toImage()
+
+    def color(p):
+        q = window.plan.to_screen(p)
+        return image.pixelColor(round(q.x()), round(q.y())).name()
+
+    paper = color((6.5, 4.5))  # dentro da laje, longe das linhas da grade
+    assert color((6.0, 4.5)) == paper, "a linha de 1 m da grade não aparece na laje"
+    assert color((3.0, 2.5)) != paper, "na abertura a grade continua visível"
+    assert color((9.0, 4.5)) != paper, "fora da laje a grade continua"
