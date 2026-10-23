@@ -4,9 +4,16 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑21 (pesquisa de mercado; roteiro reorganizado; instruções para retomar).*
+*Atualizado em 2026‑10‑23 (comparação com a pesquisa; pacote de precisão entra antes do
+projeto legal).*
 
-> **Onde paramos (2026‑10‑21):** pacotes 14–18, salvamento automático (spec/ui 21),
+> **Onde paramos (2026‑10‑23):** todas as specs passaram a ter seção "Fontes"
+> (`c361693`). Foi feita a **comparação das funcionalidades atuais com a pesquisa**
+> (`reports/Comparacao BrasBim x pesquisa.md`): tabela por área com o que temos, o que
+> temos em parte e o que falta. O revisor aprovou a ordem proposta nela: um **pacote curto
+> de precisão** (item 1 do roteiro abaixo) antes do pacote "projeto legal" (item 2).
+
+> **Antes (2026‑10‑21):** pacotes 14–18, salvamento automático (spec/ui 21),
 > importar DXF/DWG (spec/ui 22) e terreno por curvas pegas do desenho feitos. O revisor
 > pediu que o desenvolvimento passe a se basear no que Archicad, Revit e AutoCAD fazem
 > (e no que usuários reclamam), não só no uso dele: foi feita uma **pesquisa ampla** em
@@ -19,15 +26,24 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 > **Como retomar (sessão nova):**
 > 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
-> 2. Próximo trabalho: **item 1 do "Roteiro a partir da pesquisa"** (pacote "projeto
->    legal"). Antes de escrever a spec, ler no relatório as recomendações 1, 2, 3 e 8 e as
->    notas `research_notes/Pesquisa Archicad Revit AutoCAD/normas_e_projeto_legal_brasil.md`
->    e `archicad_documentacao_colaboracao.md`/`revit_documentacao_colaboracao.md`;
->    comparar como os três fazem (só função, com nomes próprios); conferir as fontes
->    marcadas "conferir"; citar tudo na seção "Fontes" da spec e rodar
->    `python scripts/registro_fontes.py` no mesmo commit.
-> 3. Estado verificado: 666 testes passando, ruff limpo, último commit `fbe27a2`.
-> 4. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
+> 2. Próximo trabalho: **item 1 do "Roteiro a partir da pesquisa"** (pacote de
+>    precisão). Antes da spec, ler a seção 3.1–3.2 e 4 de
+>    `reports/Comparacao BrasBim x pesquisa.md`, a seção "A velocidade nasce de digitar
+>    sem foco" do relatório da pesquisa e as notas `interface_e_interacao.md`,
+>    `autocad.md` §1 e `archicad_modelagem.md` §3. Os recursos clássicos do AutoCAD
+>    (deslocar paralela, aparar, concordar, matriz, repetir comando) estão na pesquisa
+>    **sem fonte**: citar a ajuda pública lida ou marcar CG. Ponto de partida no código:
+>    `core/snap.py` (só pontas, meio e eixo de parede, vértices extras e grade),
+>    `ui/measure_box.py` e `Tool.snap` em `ui/tools.py` (Shift = 45°, Alt = sem atração).
+>    Citar tudo na seção "Fontes" da spec e rodar `python scripts/registro_fontes.py` no
+>    mesmo commit.
+> 3. Depois: **item 2** (projeto legal). Antes da spec, ler no relatório as recomendações
+>    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
+>    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
+>    conferir as fontes marcadas "conferir".
+> 4. Estado verificado em 2026‑10‑21: 666 testes passando, ruff limpo (desde então só
+>    mudaram documentos).
+> 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
 >    (c) itens 0 e 0b das pendências (pilar `CardinalPoint`, revisão do assistente).
@@ -498,18 +514,37 @@ Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações pri
 (prancha da prefeitura, quadro de áreas, quantitativo SINAPI, IFC que o engenheiro usa) e
 na velocidade de entrada, não copiando a profundidade de modelagem dos três. Cada item
 passa pelo fluxo spec → implementação com testes de IFC; conferir as fontes marcadas
-"conferir" antes de citá-las na spec.
+"conferir" antes de citá-las na spec. Ordem revista em 2026‑10‑23 a partir de
+`reports/Comparacao BrasBim x pesquisa.md` (aprovada pelo revisor): a precisão subiu
+para o item 1.
 
-1. **Pacote "projeto legal"** (itens 1, 2, 3 e 8 do relatório): status de intervenção
+1. **Pacote de precisão** (itens 4 e 15 do relatório; comparação §3.1–3.2 e §4):
+   - snap em todos os elementos visíveis e no desenho importado (lajes, pilares, linhas
+     2D, eixos), com interseção, perpendicular, centro e tangente, e marcador por tipo
+     (RF‑DES‑02, que o `REQUISITOS.md` põe no MVP);
+   - número digitado sem Tab (a tecla numérica abre o quadro de medidas já preenchendo),
+     setas travando X/Y, Enter no vazio repetindo a última ferramenta;
+   - deslocar paralela, aparar/estender e concordar (raio 0 = canto vivo), para linhas 2D
+     e paredes;
+   - selecionar semelhantes por critérios IFC (classe, tipo, PredefinedType, material,
+     pavimento, camada) em todas as categorias (RF‑NUC‑09);
+   - girar 90° por atalho e paleta de comandos (Ctrl+K) com busca em pt‑BR.
+   Depois, no mesmo eixo: alinhamento a 45° e ângulos configuráveis, aritmética no quadro
+   de medidas, linhas‑guia, cota viva editável, cópia em série (RF‑NUC‑06).
+2. **Pacote "projeto legal"** (itens 1, 2, 3 e 8 do relatório): status de intervenção
    por elemento (`Pset_*Common.Status` + Pset próprio para "a regularizar"/"a
    transformar"), **perfil municipal** versionado (escalas, selo, cores — invertidas entre
    cidades —, notas, limite de PDF, espaço do carimbo digital), **quadro de áreas**
    automático por regras municipais (computável, CA, TO, permeabilidade), memorial
-   descritivo e quadro de esquadrias. Inclui o fluxo de pôr vista na prancha (pendência
-   do revisor).
-2. **Entrada sem foco** (item 4): número digitado a qualquer momento na direção inferida,
-   trava de eixo por tecla, inferência visual, cota viva editável; **paleta de comandos**
-   em pt-BR e seleção de semelhantes por critérios IFC (item 15).
+   descritivo e quadro de esquadrias. Junto: regras gráficas por critério (base das cores
+   de intervenção), **ambiente que se refaz sozinho** quando as paredes do contorno mudam
+   (hoje só com a IA; sem isso o quadro de áreas fica errado), o novo fluxo de pôr vista
+   na prancha com grade e alinhamento (pendência do revisor) e o **export DXF**.
+
+Ajustes pequenos, a qualquer momento: vistas 3D padrão e câmera salva; pegar todas as
+curvas de uma camada no terreno; código curto nas portas da biblioteca; teste de nó com
+3+ paredes compostas; validação IDS se o `ifctester` do IfcOpenShell servir (conferir).
+
 3. **Coordenação openBIM** (itens 5, 6, 7): validação IDS embutida (IDS dos cadernos
    brasileiros), export de compatibilidade IFC4 RV/IFC2x3 com bateria de ida e volta
    (Revit, Archicad, Eberick, QiBuilder), IFC de outras disciplinas como referência
