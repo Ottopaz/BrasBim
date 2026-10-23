@@ -567,7 +567,7 @@ class View3D(QOpenGLWidget, ToolInput):
         return super().event(event)
 
     def keyPressEvent(self, event):
-        if self.tool_key(event):
+        if self.tool_key(event) or self.forward_text(event):
             return
         if event.key() == Qt.Key_Home:
             self.fit()

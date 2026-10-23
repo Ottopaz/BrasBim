@@ -44,6 +44,13 @@ from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import feedback, theme
 from brasbim.ui.assistant import AssistantPanel
+from brasbim.ui.command_line import (
+    VISIBLE_KEY,
+    AliasesDialog,
+    CommandLine,
+    load_aliases,
+    save_aliases,
+)
 from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.materials_dialog import MaterialsDialog
@@ -117,6 +124,7 @@ class MainWindow(QMainWindow):
         self.view3d = View3D(self.scene, self.toolbox)
         self.ctx.input_view = self.plan
         self.split = False
+        self.recent_commands: list[str] = []  # paleta e linha de comando (spec/ui 23, 24)
         self._build_central()
         self._build_docks()
         self._build_actions()
@@ -124,9 +132,9 @@ class MainWindow(QMainWindow):
         session.listeners.append(self._on_session)
         for view in (self.plan, self.view3d):
             view.cursor_moved.connect(self._show_cursor)
-            view.hint_changed.connect(self.hint.setText)
+            view.hint_changed.connect(self._set_hint)
             view.tool_finished.connect(lambda: self.activate_tool("select"))
-            view.tool_options_changed.connect(self.options_bar.refresh)
+            view.tool_options_changed.connect(self._options_changed)
             view.tool_requested.connect(self.activate_tool)
             view.context_requested.connect(
                 lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
@@ -152,8 +160,12 @@ class MainWindow(QMainWindow):
         self.central = QWidget()
         layout = QVBoxLayout(self.central)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(self.tabs)
         layout.addWidget(self.splitter)
+        self.command_line = CommandLine(self)  # spec/ui 24
+        self.command_line.aliases = load_aliases(_settings())
+        layout.addWidget(self.command_line)
         self.splitter.hide()
         self.tabs.addTab(self.plan, "Planta")
         self.tabs.addTab(self.view3d, "3D")
@@ -276,6 +288,7 @@ class MainWindow(QMainWindow):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
         edit_menu.addSeparator()
         self._action(edit_menu, "Paleta de comandos…", self.open_palette, "Ctrl+K")
+        self._action(edit_menu, "Apelidos da linha de comando…", self.edit_aliases)
         view_menu = bar.addMenu("E&xibir")
         self._action(view_menu, "Planta", lambda: self.set_view("plan"))
         self._action(view_menu, "3D", lambda: self.set_view("3d"))
@@ -373,6 +386,10 @@ class MainWindow(QMainWindow):
         self.tool_actions = self.tools_bar.actions_by_tool
         for toolbar in (self.tools_bar, self.history_bar, self.options_bar):
             self.bars_menu.addAction(toolbar.toggleViewAction())
+        self.command_line_action = self._action(self.bars_menu, "Linha de comando",
+                                                self.set_command_line_visible)
+        self.command_line_action.setCheckable(True)
+        self.command_line_action.setChecked(True)
         self.options_bar.toggleViewAction().triggered.connect(
             lambda checked: setattr(self.options_bar, "wanted", checked))
         self.reset_bars()
@@ -418,6 +435,7 @@ class MainWindow(QMainWindow):
         self.hint = QLabel()
         self.coords = QLabel()
         self.statusBar().addWidget(self.hint, 1)
+        self.hint.setVisible(not self.command_line.isVisibleTo(self))
         self.statusBar().addPermanentWidget(self.coords)
         self.statusBar().addPermanentWidget(QLabel(f"Grade {fmt(self.ctx.grid)} m"))
         self.scale_combo = QComboBox()
@@ -463,7 +481,10 @@ class MainWindow(QMainWindow):
         above = settings.value("acima_do_corte")
         if above is not None:
             self.set_show_above(str(above).lower() == "true")
+        visible = settings.value(VISIBLE_KEY)
+        self.set_command_line_visible(visible is None or str(visible).lower() == "true")
         self.options_bar.show_for(self.toolbox.active)
+        self.command_line.refresh_tool()
 
     # --- atualização ------------------------------------------------------------------
 
@@ -525,7 +546,7 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(bool(redo))
         self.undo_action.setToolTip(f"Desfazer {undo[-1].label}" if undo else "Desfazer")
         self.redo_action.setToolTip(f"Refazer {redo[-1].label}" if redo else "Refazer")
-        self.hint.setText(self.toolbox.active.hint())
+        self._set_hint(self.toolbox.active.hint())
         self._refresh_show_actions()
 
     def _refresh_show_actions(self) -> None:
@@ -951,11 +972,39 @@ class MainWindow(QMainWindow):
             self.palette_widget = CommandPalette(self)
         self.palette_widget.open()
 
+    # --- linha de comando (spec/ui 24) ------------------------------------------------------
+
+    def _set_hint(self, text: str) -> None:
+        self.hint.setText(text)
+        self.command_line.set_prompt(text or self.toolbox.active.label)
+
+    def _options_changed(self) -> None:
+        self.options_bar.refresh()
+        self.command_line.refresh_tool()
+
+    def set_command_line_visible(self, visible: bool) -> None:
+        """Exibir > Barras > Linha de comando; escondida, a dica volta à barra de estado."""
+        self.command_line_action.setChecked(bool(visible))
+        self.command_line.setVisible(bool(visible))
+        self.hint.setVisible(not visible)
+
+    def edit_aliases(self) -> bool:
+        from brasbim.ui import command_palette
+
+        commands, _ = command_palette.collect(self)
+        dialog = AliasesDialog(self, commands, self.command_line.aliases)
+        if dialog.exec() != AliasesDialog.Accepted:
+            return False
+        self.command_line.aliases = dialog.values()
+        save_aliases(_settings(), self.command_line.aliases)
+        return True
+
     def activate_tool(self, name: str) -> None:
         tool = self.toolbox.activate(name)
         self.tools_bar.mark(name)
         self.options_bar.show_for(tool)
-        self.hint.setText(tool.hint())
+        self._set_hint(tool.hint())
+        self.command_line.refresh_tool()
         self.properties.refresh()
         self.plan.update()
         self.view3d.update()
@@ -1048,7 +1097,7 @@ class MainWindow(QMainWindow):
             tool = self.toolbox.tools["split"]
             self.activate_tool("split")
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
-            self.hint.setText(tool.hint())
+            self._set_hint(tool.hint())
             return
         if key == "select_similar":
             menu = QMenu(self)
@@ -1360,6 +1409,7 @@ class MainWindow(QMainWindow):
         settings.setValue("simbolos_corte", self.view_symbols_action.isChecked())
         settings.setValue("detalhe_planta", self.ctx.detail)
         settings.setValue("acima_do_corte", self.ctx.show_above)
+        settings.setValue(VISIBLE_KEY, self.command_line_action.isChecked())
         self.assistant.shutdown()
         self.session.close()
         event.accept()

@@ -270,6 +270,14 @@ class MeasureBox(QFrame):
             if key == Qt.Key_Escape:
                 self.escape()
                 return True
+            line = self.view.command_line
+            if event.text() in (";", "@") and line is not None and line.isVisible():
+                text = obj.text() if self.typed else ""  # coordenada (spec/ui 24 §3)
+                self.generic = False
+                self.editing = None
+                self.hide()
+                line.take(text + event.text())
+                return True
             if key in (Qt.Key_Return, Qt.Key_Enter):  # não deixa o Enter chegar à vista
                 self._enter()
                 return True
@@ -342,24 +350,12 @@ class ToolInput:
         """Esc, Enter e números; devolve se a tecla foi usada."""
         key, text = event.key(), event.text()
         tool = self.toolbox.active
-        if key == Qt.Key_Escape and self.ctx.axis_lock is not None:
-            self.ctx.axis_lock = None  # Esc solta a trava de eixo primeiro (spec/ui 23 §3.1)
-            if tool.cursor is not None:
-                tool.move(tool.cursor, tool.mods)
-        elif key == Qt.Key_Escape:
-            busy = tool.cancel()
-            session = self.ctx.session
-            if tool.name in SELECTION_TOOLS or not busy:
-                if tool.name == "select" and session.selection:
-                    session.select([])  # Esc com a mini-barra visível (spec/ui 03 §5)
-                else:
-                    self.tool_finished.emit()
+        if key == Qt.Key_Escape:
+            self.press_escape()
+            return True
         elif key in (Qt.Key_Return, Qt.Key_Enter):
-            tool.key("enter")
-            repeat, tool.repeat = getattr(tool, "repeat", None), None
-            if repeat:
-                self.tool_requested.emit(repeat)  # spec/ui 23 §3.2
-                return True
+            self.press_enter()
+            return True
         elif key in _ARROWS and not event.modifiers() & (Qt.ControlModifier | Qt.AltModifier):
             if not self.ctx.toggle_axis(_ARROWS[key]):  # trava de eixo (spec/ui 23 §3.1)
                 return False
@@ -376,6 +372,49 @@ class ToolInput:
         else:
             return False
         self.after_tool_input()
+        return True
+
+    def press_escape(self) -> None:
+        """Esc da vista (também o da linha de comando vazia, spec/ui 24 §3)."""
+        tool = self.toolbox.active
+        if self.ctx.axis_lock is not None:
+            self.ctx.axis_lock = None  # Esc solta a trava de eixo primeiro (spec/ui 23 §3.1)
+            if tool.cursor is not None:
+                tool.move(tool.cursor, tool.mods)
+        else:
+            busy = tool.cancel()
+            session = self.ctx.session
+            if tool.name in SELECTION_TOOLS or not busy:
+                if tool.name == "select" and session.selection:
+                    session.select([])  # Esc com a mini-barra visível (spec/ui 03 §5)
+                else:
+                    self.tool_finished.emit()
+        self.after_tool_input()
+
+    def press_enter(self) -> None:
+        """Enter da vista (também o da linha de comando vazia, spec/ui 24 §3)."""
+        tool = self.toolbox.active
+        tool.key("enter")
+        repeat, tool.repeat = getattr(tool, "repeat", None), None
+        if repeat:
+            self.tool_requested.emit(repeat)  # spec/ui 23 §3.2
+            return
+        self.after_tool_input()
+
+    @property
+    def command_line(self):
+        """Linha de comando da janela (spec/ui 24), se houver."""
+        return getattr(self.window(), "command_line", None)
+
+    def forward_text(self, event) -> bool:
+        """Tecla de texto que a vista não usou vai para a linha de comando (spec/ui 24
+        §3); devolve se foi."""
+        line = self.command_line
+        text = event.text()
+        if (line is None or not line.isVisible() or not text or not text.isprintable()
+                or text.isspace() or event.modifiers() & (Qt.ControlModifier | Qt.AltModifier)):
+            return False
+        line.take(text)
         return True
 
     def before_press(self) -> None:

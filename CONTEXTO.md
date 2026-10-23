@@ -4,9 +4,17 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑23 (pacote de precisão implementado, spec/ui 23 em revisão).*
+*Atualizado em 2026‑10‑23 (linha de comando implementada, spec/ui 24 em revisão).*
 
-> **Onde paramos (2026‑10‑23, fim do dia):** **pacote de precisão** feito
+> **Onde paramos (2026‑10‑23, noite):** **linha de comando** feita a pedido do revisor
+> (`spec/ui/24-linha-de-comando.md`, em revisão; seção "Linha de comando — como ficou"
+> abaixo): barra fixa sob as vistas; letras digitadas na planta/3D vão para ela; Enter
+> lê coordenada (`x;y`, `@dx;dy`), número, apelido, opção da ferramenta ou busca da
+> paleta; apelidos próprios em pt‑BR editáveis (Editar > Apelidos da linha de comando…);
+> dica da ferramenta no campo vazio; opções clicáveis; histórico. Próximo continua sendo o
+> **item 2 do roteiro** (projeto legal), depois da revisão das specs 23 e 24.
+
+> **Antes (2026‑10‑23, fim da tarde):** **pacote de precisão** feito
 > (`spec/ui/23-precisao.md`, em revisão; seção "Pacote de precisão — como ficou" abaixo):
 > atração em todos os elementos com interseção, perpendicular, centro e tangente e
 > marcador por tipo; setas travam X/Y; Enter repete a última ferramenta; Deslocar
@@ -35,11 +43,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
 > 2. Pedir ao revisor a revisão da spec/ui 23 (pontos §13) e testar no aplicativo:
 >    setas, Enter, as três ferramentas do grupo Edição, Ctrl+R, Ctrl+K, Exibir > Atração.
+>    E a revisão da spec/ui 24 (pontos §12): digitar "PD", "0;0", "@4;0", "@0;3" e Enter
+>    na planta; tabela de apelidos do §7.
 > 3. Depois: **item 2** (projeto legal). Antes da spec, ler no relatório as recomendações
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑23: 682 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑23: 694 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -48,7 +58,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (682 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (694 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -76,6 +86,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/elementos/escada-terreno.md` | **em revisão**, implementada (pacotes 17–18; ET01–ET07 em `tests/test_escada_terreno.py`, ET08–ET09 em `test_interface_escada_terreno.py`) |
 | `spec/ui/21-salvamento-automatico` | **em revisão**, implementada (RF-NUC-10; SA01–SA05 em `tests/test_salvamento_automatico.py`) |
 | `spec/ui/23-precisao` | **em revisão**, implementada (pacote de precisão; PR01–PR05 e PR08–PR12 em `tests/test_precisao.py`, PR06, PR07, PR13–PR15 em `test_interface_precisao.py`); pontos de revisão §13 |
+| `spec/ui/24-linha-de-comando` | **em revisão**, implementada (LC01–LC05 em `tests/test_linha_de_comando.py`, LC03–LC10 em `test_interface_linha_de_comando.py`); pontos de revisão §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
@@ -531,6 +542,30 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
   (`ui/command_search.py` sem Qt, com `SYNONYMS`; `ui/command_palette.py`).
 - Fica para depois (spec §10): prévia do aparar, rastreamento a 45°, aritmética no
   quadro, guias, cota viva, cópia em série, arco entre paredes.
+
+## Linha de comando — como ficou (spec/ui 24)
+- `ui/command_input.py` (sem Qt): `DEFAULT_ALIASES` (2–3 letras na ordem do nome em
+  português; o teste LC03 confere a regra), `parse_point` (";" separa x e y; "@" relativo),
+  `interpret` (ordem: vazio, coordenada, número, apelido exato, opção, busca),
+  `candidates` (sugestões na mesma ordem), `validate_aliases`, `merge_aliases`/
+  `diff_aliases` (preferências guardam só as diferenças), `History`.
+- `ui/command_line.py`: `CommandLine` (campo com a dica como texto-fantasma, opções num
+  `QLabel` com links `opt:g:i` / `menu:g` — nada é recriado ao trocar de ferramenta, o
+  que evitou acumular `deleteLater` e atrasar temporizadores nos testes), `AliasesDialog`,
+  `load_aliases`/`save_aliases` (`QSettings` `linha_comando/apelidos`, `.../visivel`).
+- `command_palette.collect`/`execute`: comandos e alvos comuns à paleta e à linha;
+  recentes em `MainWindow.recent_commands`.
+- `OptionsBar.choices`: (nome, rótulos, atual(), escolher(i)) gravados por `_choices` e
+  `_combo`; grupos com até 6 escolhas aparecem inteiros, maiores viram menu.
+- `ToolInput.press_enter`/`press_escape` (extraídos de `tool_key`), `forward_text` e a
+  propriedade `command_line` (via `self.window()`); no quadro de medidas, ";" ou "@"
+  passam o texto para a linha. `PlanContext.last_point` (clique na planta ou ponto
+  digitado); o ponto anterior de "@" é o da ferramenta (`last_origin`, atualizado com um
+  `move` no lugar) ou, sem ele, `last_point`.
+- Ponto digitado: `move` + `press` com `Mods(alt=True)` (sem atração), trava de eixo e
+  valores fixados limpos. Porta/janela precisam de parede atraída: por coordenada não
+  entram (fica para depois, se o revisor quiser).
+- Exibir > Barras > Linha de comando; escondida, a dica volta à barra de estado.
 
 ## Roteiro a partir da pesquisa (2026‑10‑21)
 Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações priorizadas"

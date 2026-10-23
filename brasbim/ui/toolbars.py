@@ -330,8 +330,14 @@ class OptionsBar(QToolBar):
         self.window_ = window
         self.tool = None
         self.wanted = True  # o usuário pode fechar a barra (Exibir > Barras)
+        # Escolhas montadas para a ferramenta, que a linha de comando também mostra
+        # (spec/ui 24 §5): (nome, [rótulos], índice atual(), escolher(índice)).
+        self.choices: list[tuple[str, list[str], int, object]] = []
+        self._last_label = ""
 
     def _clear(self) -> None:
+        self.choices = []
+        self._last_label = ""
         for action in list(self.actions()):
             self.removeAction(action)
             widget = getattr(action, "defaultWidget", lambda: None)()
@@ -517,12 +523,14 @@ class OptionsBar(QToolBar):
     # --- peças -----------------------------------------------------------------------
 
     def _label(self, text: str) -> None:
+        self._last_label = text
         label = QLabel(f" {text} ")
         label.setStyleSheet(f"color: {theme.INK_SOFT}")
         self.addWidget(label)
 
     def _choices(self, items, current, commit) -> None:
         group = QActionGroup(self)
+        actions = []
         for value, icon_name, name, usage in items:
             action = make_action(self, icon_name, name, usage, checkable=True)
             action.setChecked(value == current)
@@ -530,6 +538,12 @@ class OptionsBar(QToolBar):
             action.triggered.connect(lambda _=False, v=value: commit(v))
             group.addAction(action)
             self.addAction(action)
+            actions.append(action)
+        self.choices.append((self._last_label, [item[2] for item in items],
+                             lambda: next((i for i, a in enumerate(actions) if a.isChecked()),
+                                          -1),
+                             lambda i: actions[i].trigger()))
+        self._last_label = ""
 
     def _combo(self, items, current, commit, tip: str) -> QComboBox:
         combo = QComboBox()
@@ -543,6 +557,10 @@ class OptionsBar(QToolBar):
         combo.setCurrentIndex(max(0, combo.findData(current)))
         combo.currentIndexChanged.connect(lambda i: commit(combo.itemData(i)))
         self.addWidget(combo)
+        self.choices.append((self._last_label or tip, [combo.itemText(i)
+                                                       for i in range(combo.count())],
+                             combo.currentIndex, combo.setCurrentIndex))
+        self._last_label = ""
         return combo
 
     def _number(self, value, commit, tip: str, placeholder: str = "",
@@ -566,6 +584,7 @@ class OptionsBar(QToolBar):
 
         field.editingFinished.connect(done)
         self.addWidget(field)
+        self._last_label = ""
         return field
 
     def _types(self, ifc_class: str):

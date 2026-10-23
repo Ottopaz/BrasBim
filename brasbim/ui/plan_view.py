@@ -575,6 +575,9 @@ class PlanView(QWidget, ToolInput):
         button = {Qt.LeftButton: "left", Qt.RightButton: "right"}.get(event.button())
         if button:
             tool.press(p, self._mods(event), button)
+            if button == "left":  # ponto anterior da coordenada relativa (spec/ui 24 §4)
+                near = tool.snapped is not None and                     math.dist(tool.snapped.point, p) <= 2 * self.ctx.tol
+                self.ctx.last_point = tool.snapped.point if near else p
             self._refresh_hint()
 
     def mouseMoveEvent(self, event):
@@ -624,6 +627,8 @@ class PlanView(QWidget, ToolInput):
 
     def keyPressEvent(self, event):
         if self.tool_key(event):
+            return
+        if event.key() != Qt.Key_Space and self.forward_text(event):
             return
         key = event.key()
         if key == Qt.Key_Home:

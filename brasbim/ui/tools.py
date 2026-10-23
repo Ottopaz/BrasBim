@@ -160,6 +160,7 @@ class PlanContext:
         self.snap_off = False  # Exibir > Atração > Desligar toda a atração
         self.axis_lock: tuple[str, Point] | None = None  # seta: ("x" | "y", origem) (§3.1)
         self.last_tool: tuple[str, str] | None = None  # (nome, rótulo): Enter repete (§3.2)
+        self.last_point: Point | None = None  # último ponto clicado ou digitado (ui/24 §4)
         self.last_origin: Point | None = None  # ponto anterior do último ``snap``
         self._index = None
 
