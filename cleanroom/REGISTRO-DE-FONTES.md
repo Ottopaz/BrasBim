@@ -707,6 +707,42 @@ DXF Reference (Autodesk, documentação pública); ezdxf (MIT); IFC 4.3 `IfcAnno
 `IfcIndexedPolyCurve`, `IfcCartesianPointList2D` [IFC-ANNOT]. Conversores externos
 usados como programas à parte. Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
+### `spec/ui/23-precisao.md`
+*Pacote de precisão (atração completa, teclado no traço, deslocar, aparar, concordar, semelhantes, giro rápido, paleta de comandos)*; data 2026-10-23; situação em revisão (fluxo do MVP: implementado na sequência).
+
+Pesquisa do projeto: `reports/Pesquisa Archicad Revit AutoCAD.md` (seção "A velocidade
+nasce de digitar sem foco") e notas `interface_e_interacao.md` §1–2, `autocad.md` §1,
+`archicad_modelagem.md` §3. Ajuda pública lida para este pacote (trechos de busca,
+**conferir** na página):
+- Tipos de atração (extremidade, meio, centro, interseção, perpendicular, tangente,
+  mais próximo): [Autodesk, Object Snap Tab (AutoCAD for Mac)](https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-MAC-Core/files/GUID-A782462F-F85C-4496-85A5-3D9A54548489.htm);
+  [AutoCAD Web Help, Object Snaps](https://help.autodesk.com/cloudhelp/ENU/AutoCAD-Web-Help/files/Drafting-and-Creating/AutoCAD_Web_Help_Drafting_and_Creating_Osnap_html.html).
+  Formas por tipo de ponto: [Autodesk, About Snaps (Revit 2026)](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm).
+  Inferência por pontos, linhas e cores; setas travam o eixo: [SketchUp Help, Drawing basics](https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts).
+- Deslocar paralela (distância ou por ponto, concêntrico em círculos, repetir com a
+  mesma distância): [Autodesk, OFFSET (AutoCAD LT 2021)](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-LT/files/GUID-C0E4246D-C420-42BD-A6FC-8B1852EFD005.htm);
+  [About Offsetting Objects (2018)](https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-Core/files/GUID-704C1ADE-A4AE-4A85-8822-454ACAC1345A.htm).
+- Aparar/estender com todos os objetos como limite e Shift para inverter:
+  [Autodesk, About Trimming and Extending Objects (LT 2026)](https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-725D3A7A-5E52-47F0-BA7A-7D15F9EF6D7F.htm).
+- Concordar com raio 0 = canto vivo; Shift para raio 0 temporário:
+  [Autodesk, FILLET (AutoCAD LT 2015)](https://help.autodesk.com/cloudhelp/2015/ENU/AutoCAD-LT/files/GUID-64F8B700-23B3-4BD6-8C03-66121AA13E8F.htm).
+- Enter/espaço repetem o último comando: [Autodesk, AutoCAD 2026 Getting Started, Basics](https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-GettingStarted/files/GUID-5B6347C1-B458-4336-AB2A-C16AF161B755.htm).
+- Selecionar todas as instâncias do mesmo tipo e filtro só por categoria (criticado):
+  [CAD Notes](https://www.cad-notes.com/how-to-selectively-select-objects-in-revit/);
+  [Archistar Academy](https://academy.archistar.ai/using-filter-selection-to-find-objects-in-revit).
+- Girar 90° por atalho: [Graphisoft, Quickly Rotate Elements (AC29)](https://help.graphisoft.com/AC/29/INT/_AC29_Help/005_NewFeatures/005_NewFeatures-6.htm).
+- Busca aproximada de comandos: [McNeel, The Rhino window (Rhino 8)](https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm).
+
+IFC 4.3: `IfcRelConnectsPathElements` (junções), `IfcTypeObject`, `PredefinedType`,
+`IfcRelAssociatesMaterial`, `IfcPresentationLayerAssignment`. CG: Ctrl+K para paleta de
+comandos e Ctrl+R para girar são convenções comuns de vários programas; marcadores,
+nomes ("Deslocar paralela", "Aparar/estender", "Concordar", "Selecionar semelhantes") e
+regras de clique são deste projeto. Nada de texto, ícone ou diálogo foi copiado.
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (13): https://academy.archistar.ai/using-filter-selection-to-find-objects-in-revit; https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm; https://help.autodesk.com/cloudhelp/2015/ENU/AutoCAD-LT/files/GUID-64F8B700-23B3-4BD6-8C03-66121AA13E8F.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-Core/files/GUID-704C1ADE-A4AE-4A85-8822-454ACAC1345A.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-MAC-Core/files/GUID-A782462F-F85C-4496-85A5-3D9A54548489.htm; https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-LT/files/GUID-C0E4246D-C420-42BD-A6FC-8B1852EFD005.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-GettingStarted/files/GUID-5B6347C1-B458-4336-AB2A-C16AF161B755.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-725D3A7A-5E52-47F0-BA7A-7D15F9EF6D7F.htm; https://help.autodesk.com/cloudhelp/2026/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm; https://help.autodesk.com/cloudhelp/ENU/AutoCAD-Web-Help/files/Drafting-and-Creating/AutoCAD_Web_Help_Drafting_and_Creating_Osnap_html.html; https://help.graphisoft.com/AC/29/INT/_AC29_Help/005_NewFeatures/005_NewFeatures-6.htm; https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts; https://www.cad-notes.com/how-to-selectively-select-objects-in-revit/
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem
