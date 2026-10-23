@@ -45,7 +45,7 @@ busca perto do cursor não percorra a planta toda.
 | centro | centro de círculo, arco 2D ou parede em arco | não |
 | perpendicular | pé da perpendicular do ponto anterior sobre a aresta | sim |
 | tangente | ponto de tangência, a partir do ponto anterior, num círculo ou arco | sim |
-| na borda | ponto mais próximo sobre uma aresta (substitui "na parede") | não |
+| na parede / na borda | ponto mais próximo sobre o eixo de uma parede / sobre qualquer aresta | não |
 | grade | grade de 10 cm, quando nada acima atrai | não |
 
 Ordem de prioridade dentro da distância de atração (`tol`): extremidade e interseção,
@@ -76,8 +76,8 @@ Com um ponto anterior (parede, viga, linha, laje, mover, copiar…):
 - Com a trava, o ponto é a projeção do cursor sobre a linha travada. Se o cursor atrai
   um ponto (extremidade, meio…), vale a **projeção desse ponto** na linha: assim se
   alinha a parede com o canto de outra sem linha auxiliar.
-- A trava aparece como linha de guia tracejada e no quadro de medidas ("eixo X"); o
-  comprimento digitado vale ao longo dela.
+- A trava aparece como linha de guia tracejada; o ponto atraído fica marcado e ligado à
+  projeção por um pontilhado. O comprimento digitado vale ao longo dela.
 - A trava cai ao confirmar o ponto (o próximo trecho começa livre).
 
 ### 3.2 Enter repete a ferramenta
@@ -87,7 +87,8 @@ A dica da barra de estado mostra "Enter: repetir <Ferramenta>". Com seleção, E
 continua sem efeito (não muda a seleção por engano).
 
 ## 4. Deslocar paralela
-Ferramenta **Deslocar paralela** (grupo Edição, depois de Espelhar):
+Ferramenta **Deslocar paralela** (grupo Edição da barra de ferramentas, depois da
+Documentação; também no menu Editar):
 1. Clique no elemento: parede (reta ou em arco), linha 2D, círculo ou arco 2D, contorno
    de laje, ambiente ou hachura.
 2. O fantasma acompanha o cursor do lado em que ele está; a distância vai no quadro de
@@ -115,8 +116,7 @@ Ferramenta **Aparar/estender** (grupo Edição). Todas as arestas visíveis do p
 - Clique perto de uma ponta solta que **não tem** cruzamento entre o clique e a ponta:
   a ponta avança até o primeiro limite à frente (estender). Shift + clique estende
   mesmo quando haveria o que aparar.
-- O trecho que vai sair aparece em vermelho (`invalid`) antes do clique; a extensão
-  aparece como fantasma.
+- Prévia do trecho que vai sair (em vermelho) e da extensão: fica para depois (§10).
 
 **Paredes retas**: clique perto de uma ponta. Se a parede atravessa outra além dessa
 ponta, a ponta recua até o **eixo** da outra; se não alcança, avança até o eixo da
@@ -158,7 +158,8 @@ seleciona os dois tipos). A função fica no núcleo (`core/select_similar.py`),
 ## 8. Girar 90°
 **Ctrl+R** gira a seleção 90° anti-horário; **Ctrl+Shift+R**, horário. Centro: o centro
 do retângulo que envolve a seleção na planta. Usa a mesma operação da ferramenta Girar
-(uma transação, desfaz com Ctrl+Z). Também no menu Editar e na mini-barra.
+(uma transação, desfaz com Ctrl+Z). Também no menu Editar (a mini-barra não ganha mais
+um botão).
 
 ## 9. Paleta de comandos
 **Ctrl+K** abre um campo de busca no alto da janela com todas as ações dos menus e todas
@@ -177,7 +178,7 @@ marcada com as setas); Esc fecha.
 Rastreamento a 45° e ângulos configuráveis, vários pontos de referência ao mesmo tempo,
 aritmética no quadro ("2*", "+0,15"), linhas-guia persistentes e pontos de divisão, cota
 viva editável, cópia em série, concordância com arco em paredes, aparar paredes em arco,
-selecionar semelhantes no projeto todo.
+selecionar semelhantes no projeto todo, prévia do aparar/estender.
 
 ## 11. Critérios de aceite (testes)
 - **PR01** Índice: aresta de laje, linha 2D, linha do desenho importado e eixo de
@@ -204,7 +205,9 @@ selecionar semelhantes no projeto todo.
 - **PR13** Ctrl+R gira 90° em torno do centro da seleção; Ctrl+Shift+R volta; uma
   transação.
 - **PR14** Busca da paleta: "pard" acha Parede, "ifcwall" e "muro" também; sem acento;
-  recentes primeiro com campo vazio.
+  recentes primeiro com campo vazio; a paleta executa a ferramenta escolhida.
+- **PR15** As três ferramentas pela janela: Deslocar paralela com distância digitada (que
+  continua fixada), Concordar em dois cliques, Aparar com um clique.
 
 ## 12. Fontes públicas
 Pesquisa do projeto: `reports/Pesquisa Archicad Revit AutoCAD.md` (seção "A velocidade

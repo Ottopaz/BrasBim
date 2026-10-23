@@ -77,6 +77,27 @@ def create_arc_wall(doc: Document, wall_type, storey, start, through, end, **opt
     return _create_walls(doc, "Criar parede em arco", wall_type, storey, [path], options)
 
 
+def create_wall_path(doc: Document, wall_type, storey, path: geom2d.Path, label: str,
+                     **options) -> Transaction:
+    """Parede por um caminho pronto (reta ou arco), com as junções (spec/ui 23 §4)."""
+    return _create_walls(doc, label, wall_type, storey, [path], options)
+
+
+def set_wall_ends(doc: Document, ends: dict, label: str) -> Transaction:
+    """Leva pontas de paredes a pontos novos, sem arrastar as vizinhas, numa transação:
+    ``{gid: {"start" | "end": ponto}}`` (aparar, estender e concordar, spec/ui 23 §5–6).
+    As junções se refazem pelas regras de sempre."""
+    paths: dict[str, geom2d.Path] = {}
+    for gid, which in ends.items():
+        wall = doc.get(gid, "IfcWall")
+        current = {gid: geom2d.path_from_dict(read_state(doc, wall)["path"])}
+        for end, point in which.items():
+            if end not in ("start", "end"):
+                raise OpError(f"extremidade inválida: {end!r}")
+            _set_end(current, paths, gid, end, point)
+    return _reshape(doc, label, paths)
+
+
 def create_chain(doc: Document, wall_type, storey, points, closed: bool = False, **options):
     """Cadeia de paredes retas pelos ``points`` (spec §4). ``closed`` liga o último ponto
     ao primeiro. Junções L entre segmentos consecutivos."""

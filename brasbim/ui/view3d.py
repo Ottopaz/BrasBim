@@ -71,6 +71,7 @@ class View3D(QOpenGLWidget, ToolInput):
     hint_changed = Signal(str)
     tool_finished = Signal()
     tool_options_changed = Signal()
+    tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
 
     def __init__(self, scene: Scene, toolbox: ToolBox, parent=None):

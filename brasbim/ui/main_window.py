@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers
+from brasbim.core import display_layers, select_similar, snap
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
             view.hint_changed.connect(self.hint.setText)
             view.tool_finished.connect(lambda: self.activate_tool("select"))
             view.tool_options_changed.connect(self.options_bar.refresh)
+            view.tool_requested.connect(self.activate_tool)
             view.context_requested.connect(
                 lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
             view.selection_bar = SelectionBar(view, self.run_selection_action)
@@ -263,6 +264,18 @@ class MainWindow(QMainWindow):
                           ("mirror", "Espelhar"), ("split", "Dividir")):
             self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
+        edit_menu.addSeparator()  # pacote de precisão (spec/ui 23)
+        self._action(edit_menu, "Girar 90° à esquerda", lambda: self.rotate_quarter(1), "Ctrl+R")
+        self._action(edit_menu, "Girar 90° à direita", lambda: self.rotate_quarter(-1),
+                     "Ctrl+Shift+R")
+        similar_menu = edit_menu.addMenu("Selecionar semelhantes")
+        for key, text in select_similar.CRITERIA:
+            self._action(similar_menu, text, lambda _=False, k=key: self.select_similar(k))
+        for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
+                          ("fillet", "Concordar")):
+            self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        edit_menu.addSeparator()
+        self._action(edit_menu, "Paleta de comandos…", self.open_palette, "Ctrl+K")
         view_menu = bar.addMenu("E&xibir")
         self._action(view_menu, "Planta", lambda: self.set_view("plan"))
         self._action(view_menu, "3D", lambda: self.set_view("3d"))
@@ -322,6 +335,7 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(value)
         view_menu.addSeparator()
+        self._snap_menu(view_menu.addMenu("Atração"))
         detail_menu = view_menu.addMenu("Detalhe da planta")
         group = QActionGroup(self)
         self.detail_actions = {}
@@ -719,12 +733,6 @@ class MainWindow(QMainWindow):
         types = {objects.read_state(doc, e)["type"] for e in found}
         if key == "edit_object_type" and len(types) == 1:
             self.edit_object_type(next(iter(types)))
-        elif key == "select_same" and len(types) == 1:
-            t = doc.get(next(iter(types)))
-            storey = session.storey_id
-            same = [e.GlobalId for e in oc.occurrences(doc, t)
-                    if objects.read_state(doc, e)["storey"] == storey]
-            session.select(same)
         elif key == "detach" and len(found) == 1:
             session.run(lambda: oc.detach(doc, found[0]))
         elif key == "swap_type":
@@ -863,6 +871,86 @@ class MainWindow(QMainWindow):
 
     # --- ações -------------------------------------------------------------------------
 
+    # --- pacote de precisão (spec/ui 23) -----------------------------------------------
+
+    def _snap_menu(self, menu) -> None:
+        """Exibir > Atração (§2.3): um item por tipo e desligar tudo; preferência do
+        usuário, não do projeto."""
+        settings = _settings()
+        saved = settings.value("atracao/tipos", None)
+        if saved is not None:
+            kinds = saved if isinstance(saved, list) else [saved] if saved else []
+            self.ctx.snap_kinds = {k for k in kinds if k in snap.KINDS}
+        self.ctx.snap_off = settings.value("atracao/desligada", "false") in (True, "true")
+        self.snap_actions = {}
+        for kind in snap.KINDS:
+            text = snap.KIND_LABEL[kind].capitalize()
+            action = self._action(menu, text, lambda v, k=kind: self._set_snap_kind(k, v))
+            action.setCheckable(True)
+            action.setChecked(kind in self.ctx.snap_kinds)
+            self.snap_actions[kind] = action
+        menu.addSeparator()
+        self.snap_off_action = self._action(menu, "Desligar toda a atração", self._set_snap_off)
+        self.snap_off_action.setCheckable(True)
+        self.snap_off_action.setChecked(self.ctx.snap_off)
+
+    def _set_snap_kind(self, kind: str, on: bool) -> None:
+        (self.ctx.snap_kinds.add if on else self.ctx.snap_kinds.discard)(kind)
+        _settings().setValue("atracao/tipos", sorted(self.ctx.snap_kinds))
+
+    def _set_snap_off(self, on: bool) -> None:
+        self.ctx.snap_off = bool(on)
+        _settings().setValue("atracao/desligada", "true" if on else "false")
+
+    def select_similar(self, criterion: str) -> None:
+        """Selecionar semelhantes no pavimento ativo (§7)."""
+        session = self.session
+        if not session.selection or session.storey is None:
+            session.message("selecione um elemento antes", "recusa")
+            return
+        found = select_similar.similar(session.doc, session.storey, session.selection,
+                                       criterion)
+        session.select(found)
+        session.message(f"{len(found)} selecionado(s)")
+
+    def rotate_quarter(self, sign: int) -> None:
+        """Ctrl+R / Ctrl+Shift+R: gira a seleção 90° em torno do centro da caixa (§8)."""
+        import math
+
+        from brasbim.core import transform
+
+        session = self.session
+        gids = sorted(session.selection)
+        if not gids:
+            session.message("selecione os elementos antes", "recusa")
+            return
+        pts = [q for s in self.ctx.plan.shapes if s.owner in session.selection
+               for q in s.points]
+        if not pts:
+            session.message("a seleção não aparece na planta", "recusa")
+            return
+        xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+        center = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+        doc = session.doc
+        session.run(lambda: transform.rotate_elements(doc, gids, center, sign * math.pi / 2))
+        self.plan.update()
+        self.view3d.update()
+
+    def tool_commands(self):
+        """Ferramentas para a paleta de comandos (§9)."""
+        from brasbim.ui import command_palette, toolbars
+
+        return command_palette.tool_commands([
+            ("Ferramentas", toolbars.CREATE_TOOLS + toolbars.WALL_FORMS),
+            ("Documentação", toolbars.DOC_TOOLS), ("Edição", toolbars.EDIT_TOOLS)])
+
+    def open_palette(self) -> None:
+        if getattr(self, "palette_widget", None) is None:
+            from brasbim.ui.command_palette import CommandPalette
+
+            self.palette_widget = CommandPalette(self)
+        self.palette_widget.open()
+
     def activate_tool(self, name: str) -> None:
         tool = self.toolbox.activate(name)
         self.tools_bar.mark(name)
@@ -962,7 +1050,15 @@ class MainWindow(QMainWindow):
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
             self.hint.setText(tool.hint())
             return
-        if key in ("swap_type", "edit_object_type", "select_same", "detach"):
+        if key == "select_similar":
+            menu = QMenu(self)
+            for criterion, text in select_similar.CRITERIA:
+                menu.addAction(text, lambda c=criterion: self.select_similar(c))
+            from PySide6.QtGui import QCursor
+
+            menu.exec(QCursor.pos())
+            return
+        if key in ("swap_type", "edit_object_type", "detach"):
             self._object_action(key)
             return
         if key == "auto_dimension":

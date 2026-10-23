@@ -124,7 +124,7 @@ def test_ob19_alca_e_painel(window, app):
     from brasbim.ui.tools import selection_actions
 
     actions = selection_actions(s.doc, s.selection)
-    assert {"swap_type", "edit_object_type", "select_same"} <= set(actions)
+    assert {"swap_type", "edit_object_type", "select_similar"} <= set(actions)
     other = window.library.load([_entry(window, "Guarda-roupa 3 portas")], ask=False)[0]
     s.run(lambda: oc.change_type(s.doc, [e.GlobalId], other))
     assert elements.read_state(s.doc, e)["type"] == other

@@ -205,6 +205,16 @@ ICONS = {
                '<path d="M4 7.75 L12 12 L20 7.75 M12 12 V20.5" stroke-width="1"/>',
     "folder": '<path d="M2.75 6.75 H9.5 L11.5 8.75 H21.25 V19.25 H2.75 Z"/>'
               '<path d="M12 11.5 V16.5 M9.5 14 H14.5" stroke-width="1"/>',
+    # edição de precisão (spec/ui 23 §4–§6): duas paralelas com a medida entre elas;
+    # traço cortado por uma linha, com o pedaço que sai tracejado; canto arredondado
+    "offset": '<path d="M3.5 6.5 H20.5"/><path d="M3.5 17.5 H20.5" stroke-dasharray="2.5 1.5"/>'
+              '<path d="M12 8.5 V15.5 M10 10.5 L12 8.5 L14 10.5" stroke-width="1"/>',
+    "trim": '<path d="M15 3 V21"/><path d="M3 12 H15"/>'
+            '<path d="M15 12 H21.5" stroke-dasharray="1.5 1.5" stroke-width="1"/>',
+    "fillet": '<path d="M4 20.5 V11 A7 7 0 0 1 11 4 H20.5"/>'
+              '<path d="M4 4 H8 M4 4 V8" stroke-dasharray="1.5 1.5" stroke-width="1"/>',
+    "palette": '<rect x="2.75" y="4.75" width="18.5" height="14.5"/>'
+               '<path d="M6 9.5 L9 12 L6 14.5 M11 14.5 H17"/>',
 }
 
 out = Path("brasbim/ui/icons")

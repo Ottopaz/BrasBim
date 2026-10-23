@@ -20,6 +20,7 @@ from brasbim.ui.tools import SELECTION_TOOLS, parse_number
 
 ROWS = 2
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
+_ARROWS = {Qt.Key_Left: "x", Qt.Key_Right: "x", Qt.Key_Up: "y", Qt.Key_Down: "y"}
 DWELL_MS = 400  # cursor parado sobre um vértice: ponto de referência (spec/ui 09 §2.1)
 # Cores do tema (spec/ui 11): o valor do cursor legível, o fixado em negrito.
 _STYLE = {
@@ -287,7 +288,7 @@ class ToolInput:
     a ferramenta ativa e para o quadro de medidas (spec/ui 07 §2.2, §3.1).
 
     A classe que usa precisa ter ``toolbox``, ``ctx`` e os sinais ``hint_changed``,
-    ``tool_finished`` e ``tool_options_changed``."""
+    ``tool_finished``, ``tool_options_changed`` e ``tool_requested``."""
 
     def _init_tool_input(self) -> None:
         self.mouse_pos = None  # última posição do mouse na vista (QPointF)
@@ -341,7 +342,11 @@ class ToolInput:
         """Esc, Enter e números; devolve se a tecla foi usada."""
         key, text = event.key(), event.text()
         tool = self.toolbox.active
-        if key == Qt.Key_Escape:
+        if key == Qt.Key_Escape and self.ctx.axis_lock is not None:
+            self.ctx.axis_lock = None  # Esc solta a trava de eixo primeiro (spec/ui 23 §3.1)
+            if tool.cursor is not None:
+                tool.move(tool.cursor, tool.mods)
+        elif key == Qt.Key_Escape:
             busy = tool.cancel()
             session = self.ctx.session
             if tool.name in SELECTION_TOOLS or not busy:
@@ -351,6 +356,15 @@ class ToolInput:
                     self.tool_finished.emit()
         elif key in (Qt.Key_Return, Qt.Key_Enter):
             tool.key("enter")
+            repeat, tool.repeat = getattr(tool, "repeat", None), None
+            if repeat:
+                self.tool_requested.emit(repeat)  # spec/ui 23 §3.2
+                return True
+        elif key in _ARROWS and not event.modifiers() & (Qt.ControlModifier | Qt.AltModifier):
+            if not self.ctx.toggle_axis(_ARROWS[key]):  # trava de eixo (spec/ui 23 §3.1)
+                return False
+            if tool.cursor is not None:
+                tool.move(tool.cursor, tool.mods)
         elif key == Qt.Key_Space and not event.isAutoRepeat() and tool.key("space"):
             self.tool_options_changed.emit()  # o pilar girou: a barra Opções mostra o ângulo
         elif text and (text.isdigit() or text in ",.-") and tool.wants_number():

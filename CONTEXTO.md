@@ -4,14 +4,21 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑23 (comparação com a pesquisa; pacote de precisão entra antes do
-projeto legal).*
+*Atualizado em 2026‑10‑23 (pacote de precisão implementado, spec/ui 23 em revisão).*
 
-> **Onde paramos (2026‑10‑23):** todas as specs passaram a ter seção "Fontes"
+> **Onde paramos (2026‑10‑23, fim do dia):** **pacote de precisão** feito
+> (`spec/ui/23-precisao.md`, em revisão; seção "Pacote de precisão — como ficou" abaixo):
+> atração em todos os elementos com interseção, perpendicular, centro e tangente e
+> marcador por tipo; setas travam X/Y; Enter repete a última ferramenta; Deslocar
+> paralela, Aparar/estender e Concordar; Selecionar semelhantes; Ctrl+R gira 90°; Ctrl+K
+> paleta de comandos. Ao ler o código, viu-se que o número digitado **já** abria o quadro
+> sem Tab: a comparação foi corrigida. Próximo: **item 2 do roteiro** (projeto legal),
+> depois da revisão da spec 23 (pontos §13).
+
+> **Antes (2026‑10‑23, manhã):** todas as specs passaram a ter seção "Fontes"
 > (`c361693`). Foi feita a **comparação das funcionalidades atuais com a pesquisa**
-> (`reports/Comparacao BrasBim x pesquisa.md`): tabela por área com o que temos, o que
-> temos em parte e o que falta. O revisor aprovou a ordem proposta nela: um **pacote curto
-> de precisão** (item 1 do roteiro abaixo) antes do pacote "projeto legal" (item 2).
+> (`reports/Comparacao BrasBim x pesquisa.md`); o revisor aprovou a ordem: precisão antes
+> do projeto legal.
 
 > **Antes (2026‑10‑21):** pacotes 14–18, salvamento automático (spec/ui 21),
 > importar DXF/DWG (spec/ui 22) e terreno por curvas pegas do desenho feitos. O revisor
@@ -26,23 +33,13 @@ projeto legal).*
 
 > **Como retomar (sessão nova):**
 > 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
-> 2. Próximo trabalho: **item 1 do "Roteiro a partir da pesquisa"** (pacote de
->    precisão). Antes da spec, ler a seção 3.1–3.2 e 4 de
->    `reports/Comparacao BrasBim x pesquisa.md`, a seção "A velocidade nasce de digitar
->    sem foco" do relatório da pesquisa e as notas `interface_e_interacao.md`,
->    `autocad.md` §1 e `archicad_modelagem.md` §3. Os recursos clássicos do AutoCAD
->    (deslocar paralela, aparar, concordar, matriz, repetir comando) estão na pesquisa
->    **sem fonte**: citar a ajuda pública lida ou marcar CG. Ponto de partida no código:
->    `core/snap.py` (só pontas, meio e eixo de parede, vértices extras e grade),
->    `ui/measure_box.py` e `Tool.snap` em `ui/tools.py` (Shift = 45°, Alt = sem atração).
->    Citar tudo na seção "Fontes" da spec e rodar `python scripts/registro_fontes.py` no
->    mesmo commit.
+> 2. Pedir ao revisor a revisão da spec/ui 23 (pontos §13) e testar no aplicativo:
+>    setas, Enter, as três ferramentas do grupo Edição, Ctrl+R, Ctrl+K, Exibir > Atração.
 > 3. Depois: **item 2** (projeto legal). Antes da spec, ler no relatório as recomendações
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑21: 666 testes passando, ruff limpo (desde então só
->    mudaram documentos).
+> 4. Estado verificado em 2026‑10‑23: 681 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -51,7 +48,7 @@ projeto legal).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (666 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (681 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -78,6 +75,7 @@ projeto legal).*
 | `spec/ui/20-eixos-vaos-claraboia` | **em revisão**, implementada (pacotes 15–16; EV01–EV06 em `tests/test_eixos_vaos.py` e `test_interface_eixos.py`) |
 | `spec/elementos/escada-terreno.md` | **em revisão**, implementada (pacotes 17–18; ET01–ET07 em `tests/test_escada_terreno.py`, ET08–ET09 em `test_interface_escada_terreno.py`) |
 | `spec/ui/21-salvamento-automatico` | **em revisão**, implementada (RF-NUC-10; SA01–SA05 em `tests/test_salvamento_automatico.py`) |
+| `spec/ui/23-precisao` | **em revisão**, implementada (pacote de precisão; PR01–PR05 e PR08–PR12 em `tests/test_precisao.py`, PR06, PR07, PR13–PR15 em `test_interface_precisao.py`); pontos de revisão §13 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
@@ -508,6 +506,32 @@ projeto legal).*
   (`transform._skylight_ops`). `SkylightTool`, painel `_skylight`, papéis
   `window_skylight`/`window_glass`.
 
+## Pacote de precisão — como ficou (spec/ui 23)
+- `core/snap.py`: `SnapIndex` (arestas em baldes de 2 m, extremidades, círculos/arcos
+  exatos) feito por `build_index(doc, storey, plan)` a partir de `Plan.shapes` e dos
+  traços de `Plan.annotations` (desenho importado incluído); `polyline_parts` não trata
+  como extremidade vértice com desvio < 12° (curva aproximada). `snap(...)` ganhou
+  `index`, `origin` (perpendicular, tangente) e `kinds`; tipos e prioridade em `KINDS`,
+  `_TIERS`, `KIND_LABEL`. Sem índice, o comportamento antigo continua igual.
+- `PlanContext`: `index`, `snap_kinds`/`snap_off` (Exibir > Atração, `QSettings`
+  `atracao/tipos` e `atracao/desligada`), `axis_lock` + `toggle_axis` (setas;
+  `Snap.source` = ponto atraído antes da projeção), `last_tool` (Enter na seleção vazia,
+  `SelectTool.key` → sinal `tool_requested` das vistas). Marcadores em
+  `plan_view.snap_marker`.
+- `core/edits.py`: `offset_element` (parede reta e em arco, linha 2D, círculo, arco,
+  laje, ambiente, hachura; copiar ou mover), `trim_extend` (linha 2D por trechos entre
+  cruzamentos; parede reta até o eixo da outra; Shift estende), `fillet` (linhas com
+  raio → arco 2D novo; paredes só raio 0). `walls.commands.create_wall_path` e
+  `set_wall_ends` (junções pelas regras de sempre).
+- `core/select_similar.py` (`CRITERIA`, `similar`): mini-barra "Selecionar semelhantes"
+  (substituiu "Selecionar todos deste tipo") e Editar > Selecionar semelhantes.
+- Interface: `OffsetTool`, `TrimTool`, `FilletTool` (grupo Edição na barra Ferramentas,
+  `toolbars.EDIT_TOOLS`, ícones `offset`, `trim`, `fillet`, `palette`), Editar > Girar 90°
+  (`MainWindow.rotate_quarter`, Ctrl+R / Ctrl+Shift+R), paleta Ctrl+K
+  (`ui/command_search.py` sem Qt, com `SYNONYMS`; `ui/command_palette.py`).
+- Fica para depois (spec §10): prévia do aparar, rastreamento a 45°, aritmética no
+  quadro, guias, cota viva, cópia em série, arco entre paredes.
+
 ## Roteiro a partir da pesquisa (2026‑10‑21)
 Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações priorizadas"
 (23 itens, valor × esforço). Tese: o BrasBim ganha na **última milha brasileira**
@@ -518,7 +542,8 @@ passa pelo fluxo spec → implementação com testes de IFC; conferir as fontes 
 `reports/Comparacao BrasBim x pesquisa.md` (aprovada pelo revisor): a precisão subiu
 para o item 1.
 
-1. **Pacote de precisão** (itens 4 e 15 do relatório; comparação §3.1–3.2 e §4):
+1. **Pacote de precisão** — **feito em 2026‑10‑23** (spec/ui 23, em revisão; o que
+   segue é o escopo original). Itens 4 e 15 do relatório; comparação §3.1–3.2 e §4:
    - snap em todos os elementos visíveis e no desenho importado (lajes, pilares, linhas
      2D, eixos), com interseção, perpendicular, centro e tangente, e marcador por tipo
      (RF‑DES‑02, que o `REQUISITOS.md` põe no MVP);

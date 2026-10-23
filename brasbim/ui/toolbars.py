@@ -25,6 +25,7 @@ from brasbim.ui.tools import (
     ColumnTool,
     DimensionTool,
     DoorTool,
+    FilletTool,
     GridTool,
     HatchTool,
     LabelTool,
@@ -32,6 +33,7 @@ from brasbim.ui.tools import (
     LineTool,
     NorthTool,
     ObjectTool,
+    OffsetTool,
     RadiusDimTool,
     RailingTool,
     RevisionTool,
@@ -113,6 +115,15 @@ DOC_TOOLS = [
     ("section", "section", "Corte", "clique os dois pontos da linha e o lado olhado"),
     ("elevation", "elevation", "Fachada",
      "clique os dois pontos da linha, fora do edifício, e o lado olhado"),
+]
+# Grupo Edição (spec/ui 23 §4–§6): edições de precisão que escolhem o elemento no clique.
+EDIT_TOOLS = [
+    ("offset", "offset", "Deslocar paralela",
+     "clique o elemento e o lado; digite a distância; Copiar ou Mover na barra de opções"),
+    ("trim", "trim", "Aparar/estender",
+     "clique o trecho a aparar ou perto da ponta solta; Shift estende"),
+    ("fillet", "fillet", "Concordar",
+     "clique as duas linhas ou paredes do lado que fica; raio na barra de opções"),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -247,7 +258,11 @@ class ToolsBar(QToolBar):
             self.addAction(action)
             self.actions_by_tool[tool] = action
         self.addSeparator()
-        for tool, icon_name, name, usage in DOC_TOOLS:
+        for item in DOC_TOOLS + [None] + EDIT_TOOLS:
+            if item is None:
+                self.addSeparator()
+                continue
+            tool, icon_name, name, usage = item
             action = make_action(self, icon_name, name, usage, checkable=True)
             action.triggered.connect(lambda _=False, t=tool: window.activate_tool(t))
             group.addAction(action)
@@ -389,6 +404,14 @@ class OptionsBar(QToolBar):
                 self._label(name)
                 self._number(getattr(o, key), lambda v, k=key: setattr(o, k, v),
                              f"{name} (m)")
+        elif isinstance(tool, OffsetTool):  # spec/ui 23 §4
+            self._combo([("Copiar", True), ("Mover o original", False)], tool.copy,
+                        lambda v: setattr(tool, "copy", v),
+                        "Cria um elemento novo deslocado, ou desloca o próprio elemento")
+        elif isinstance(tool, FilletTool):  # spec/ui 23 §6
+            self._label("Raio")
+            self._number(tool.radius, lambda v: setattr(tool, "radius", v),
+                         "Raio da concordância (m); 0 = canto vivo")
         elif isinstance(tool, GridTool):
             o = tool.options
             for key, label, tip, width in (

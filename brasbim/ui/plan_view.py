@@ -53,11 +53,42 @@ C = {
 }
 
 
+
+def snap_marker(painter: QPainter, q: QPointF, kind: str, color) -> None:
+    """Marcador próprio de cada tipo de atração (spec/ui 23 §2.4), 8 px."""
+    x, y, r = q.x(), q.y(), 4.0
+    painter.setPen(QPen(color, 1.5))
+    painter.setBrush(Qt.NoBrush)
+    if kind == "end":
+        painter.setBrush(QBrush(color))
+        painter.drawRect(QRectF(x - 3, y - 3, 6, 6))
+    elif kind == "inter":
+        painter.drawLine(QPointF(x - r - 1, y), QPointF(x + r + 1, y))
+        painter.drawLine(QPointF(x, y - r - 1), QPointF(x, y + r + 1))
+    elif kind == "mid":
+        painter.drawPolygon(QPolygonF([QPointF(x, y - r - 1), QPointF(x + r + 1, y),
+                                       QPointF(x, y + r + 1), QPointF(x - r - 1, y)]))
+    elif kind == "center":
+        painter.drawEllipse(q, r + 1, r + 1)
+        painter.drawEllipse(q, 1.5, 1.5)
+    elif kind == "perp":
+        painter.drawLine(QPointF(x - r, y + r), QPointF(x + r, y + r))
+        painter.drawLine(QPointF(x, y + r), QPointF(x, y - r))
+    elif kind == "tan":
+        painter.drawEllipse(q, r, r)
+        painter.drawLine(QPointF(x - r - 2, y - r), QPointF(x + r + 2, y - r))
+    elif kind in ("near", "path"):
+        painter.drawLine(QPointF(x - r - 1, y + r - 1), QPointF(x + r + 1, y - r + 1))
+        painter.drawEllipse(q, 1.5, 1.5)
+    else:  # grade
+        painter.drawEllipse(q, 1.5, 1.5)
+
 class PlanView(QWidget, ToolInput):
     cursor_moved = Signal(float, float)
     hint_changed = Signal(str)
     tool_finished = Signal()
     tool_options_changed = Signal()
+    tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
 
     def __init__(self, toolbox: ToolBox, parent=None):
@@ -454,12 +485,19 @@ class PlanView(QWidget, ToolInput):
             painter.setPen(QPen(C["select"], 1.2))
             painter.setBrush(QBrush(C["select"] if hot else C["background"]))
             painter.drawRect(QRectF(q.x() - r, q.y() - r, 2 * r, 2 * r))
+        for mark in self.ctx.axis_marks():
+            painter.setPen(QPen(C["preview"], 1, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(self._path(mark.points, False))
         snapped = tool.snapped
         if snapped is not None and snapped.kind not in ("free",):
-            q = self.to_screen(snapped.point)
+            q = self.to_screen(snapped.source or snapped.point)
+            if snapped.source is not None:  # projeção na trava de eixo (spec/ui 23 §3.1)
+                painter.setPen(QPen(C["preview"], 1, Qt.DotLine))
+                painter.drawLine(q, self.to_screen(snapped.point))
             painter.setPen(QPen(C["preview"], 1.5))
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(QRectF(q.x() - 4, q.y() - 4, 8, 8))
+            snap_marker(painter, q, snapped.kind, C["preview"])
             label = KIND_LABEL.get(snapped.kind, "")
             if label and snapped.kind != "grid":
                 self._label(painter, QPointF(q.x() + 8, q.y() + 16), label)

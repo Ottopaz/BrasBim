@@ -14,7 +14,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
-from brasbim.core import geom2d, plan, snap, storeys, transform
+from brasbim.core import edits, geom2d, plan, snap, storeys, transform
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
@@ -156,10 +156,16 @@ class PlanContext:
         self._grid_points = None
         self.detail = "simple"  # Exibir > Detalhe da planta (spec/ui 06 §2)
         self.show_above = True  # Exibir > Elementos acima do plano de corte (§3.2)
+        self.snap_kinds = set(snap.KINDS)  # Exibir > Atração (spec/ui 23 §2.3)
+        self.snap_off = False  # Exibir > Atração > Desligar toda a atração
+        self.axis_lock: tuple[str, Point] | None = None  # seta: ("x" | "y", origem) (§3.1)
+        self.last_tool: tuple[str, str] | None = None  # (nome, rótulo): Enter repete (§3.2)
+        self.last_origin: Point | None = None  # ponto anterior do último ``snap``
+        self._index = None
 
     def invalidate(self) -> None:
         self._plan = self._walls = self._vertices = self._columns = None
-        self._grid_points = None
+        self._grid_points = self._index = None
 
     @property
     def plan(self) -> plan.Plan:
@@ -224,13 +230,53 @@ class PlanContext:
             self._columns = found
         return self._columns
 
+    @property
+    def index(self) -> snap.SnapIndex:
+        """Arestas e curvas de todos os elementos visíveis (spec/ui 23 §2.1)."""
+        if self._index is None:
+            storey = self.session.storey
+            self._index = (snap.build_index(self.session.doc, storey, self.plan)
+                           if storey else snap.SnapIndex())
+        return self._index
+
     def snap(self, p: Point, mods: Mods, origin: Point | None = None,
              extra=()) -> snap.Snap:
-        if mods.shift and origin is not None:
+        self.last_origin = origin
+        lock = self.axis_lock if origin is not None and self.axis_lock else None
+        if lock is not None and math.dist(lock[1], origin) > 1e-9:
+            lock = self.axis_lock = None  # o ponto anterior mudou: a trava caiu
+        if mods.shift and origin is not None and lock is None:
             return snap.Snap(snap.constrain(origin, p), "free")
-        if mods.alt:
-            return snap.Snap(tuple(p), "free")
-        return snap.snap(self.walls, p, self.tol, self.grid, list(extra) + self.grid_points)
+        if mods.alt or self.snap_off:
+            found = snap.Snap(tuple(p), "free")
+        else:
+            found = snap.snap(self.walls, p, self.tol, self.grid,
+                              list(extra) + self.grid_points, self.index, origin,
+                              self.snap_kinds)
+        if lock is None:
+            return found
+        q = found.point
+        q = (q[0], origin[1]) if lock[0] == "x" else (origin[0], q[1])
+        attracted = found.kind not in ("free", "grid")
+        return snap.Snap(q, found.kind if attracted else "free", found.wall,
+                         found.point if attracted else None)
+
+    def toggle_axis(self, axis: str) -> bool:
+        """Seta: trava (ou solta) o eixo a partir do ponto anterior (spec/ui 23 §3.1)."""
+        if self.last_origin is None:
+            return False
+        if self.axis_lock is not None and self.axis_lock[0] == axis:
+            self.axis_lock = None
+        else:
+            self.axis_lock = (axis, self.last_origin)
+        return True
+
+    def axis_marks(self) -> list[Mark]:
+        if self.axis_lock is None or self.last_origin is None:
+            return []
+        if math.dist(self.axis_lock[1], self.last_origin) > 1e-9:
+            return []
+        return [_guide(self.last_origin, 0.0 if self.axis_lock[0] == "x" else 90.0, self.tol)]
 
     @property
     def grid_points(self) -> list[Point]:
@@ -636,8 +682,22 @@ class SelectTool(Tool):
                     "os que tocam; Ctrl soma à seleção")
         if d and d["kind"] == "move" and d["active"]:
             return "Solte para mover a seleção (Esc cancela)"
-        return ("Clique para selecionar; Ctrl+clique soma; arraste no vazio para selecionar "
+        text = ("Clique para selecionar; Ctrl+clique soma; arraste no vazio para selecionar "
                 "por janela; arraste as alças ou a seleção para editar")
+        if self.ctx.last_tool and not self.session.selection:
+            text += f"; Enter: repetir {self.ctx.last_tool[1]}"
+        return text
+
+    def key(self, key):
+        """Enter sem seleção e sem nada em andamento repete a última ferramenta de
+        criação (spec/ui 23 §3.2): ``repeat`` fica com o nome, para a vista ativar."""
+        if (key == "enter" and self.ctx.last_tool and self.drag is None
+                and self.drag3d is None and not self.session.selection):
+            self.repeat = self.ctx.last_tool[0]
+            return True
+        return False
+
+    repeat: str | None = None
 
     def wants_number(self) -> bool:
         return self.drag3d is not None or bool(
@@ -4479,13 +4539,217 @@ class ObjectTool(Tool):
         return []
 
 
+# --- deslocar paralela, aparar/estender, concordar (spec/ui 23 §4–§6) ---------------------
+
+
+def _geometry_marks(doc, element, changes: dict, style="preview") -> list[Mark]:
+    """Fantasma do elemento com o estado novo (só o traço)."""
+    if "path" in changes:
+        path = changes["path"]
+        frame = geom2d.frame(path)
+        n = 1 if isinstance(path, geom2d.LinePath) else 24
+        pts = [frame.to_global(path.point(0.0, path.t_end * k / n)) for k in range(n + 1)]
+        return [Mark(tuple(pts), False, style)]
+    if "radius" in changes:
+        state = annotation_base.read_state(element)
+        c, r = state["center"], changes["radius"]
+        a0, a1 = (state.get("start", 0.0), state.get("end", 360.0))
+        sweep = (a1 - a0) % 360.0 or 360.0
+        pts = [(c[0] + r * math.cos(math.radians(a0 + sweep * k / 48)),
+                c[1] + r * math.sin(math.radians(a0 + sweep * k / 48))) for k in range(49)]
+        return [Mark(tuple(pts), False, style)]
+    key = "points" if "points" in changes else "outline"
+    closed = key == "outline" or annotation_base.read_state(element).get("closed", False)
+    return [Mark(tuple(tuple(q) for q in changes[key]), closed, style)]
+
+
+def _cursor_distance(doc, element, kind: str, q: Point) -> float:
+    if kind == "wall":
+        path = geom2d.path_from_dict(cmd.read_state(doc, element)["path"])
+        return abs(path.offset(geom2d.frame(path).to_local(q)))
+    if kind in ("circle2d", "arc2d"):
+        state = annotation_base.read_state(element)
+        return abs(math.dist(q, state["center"]) - state["radius"])
+    if kind == "line2d":
+        state = annotation_base.read_state(element)
+        return edits.distance_to(state["points"], state.get("closed", False), q)
+    state = (annotation_base.read_state(element) if element.is_a("IfcAnnotation")
+             else ac.read_state(doc, element) if kind == "space"
+             else sc.read_state(doc, element))
+    return edits.distance_to(state["outline"], True, q)
+
+
+class OffsetTool(Tool):
+    """Deslocar paralela (spec/ui 23 §4): clique o elemento, depois o lado; a distância
+    vem do cursor ou do quadro e continua fixada para o próximo elemento."""
+
+    name, label = "offset", "Deslocar paralela"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.target: str | None = None
+        self.copy = True  # barra Opções: Copiar / Mover o original
+
+    def _element(self):
+        return self.session.doc.find(self.target) if self.target else None
+
+    def hint(self):
+        if self.target is None:
+            fixed = self.fixed.get("distance")
+            extra = f" (distância fixada: {fmt(fixed)} m; Esc solta)" if fixed else ""
+            return "Clique a parede, linha, círculo, arco ou contorno a deslocar" + extra
+        return "Clique do lado para onde deslocar; digite a distância; Esc escolhe outro"
+
+    def _distance(self) -> float | None:
+        if "distance" in self.fixed:
+            return self.fixed["distance"]
+        element = self._element()
+        if element is None or self.snapped is None:
+            return None
+        return _cursor_distance(self.session.doc, element,
+                                edits.kind_of(self.session.doc, element), self.snapped.point)
+
+    def fields(self):
+        if self.target is None:
+            return []
+        return [Field("distance", "Distância", "m", self._distance(),
+                      self.fixed.get("distance"))]
+
+    def check(self, key, value):
+        return "a distância deve ser positiva" if value <= 0 else None
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self.snapped = self.ctx.snap(p, mods)
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        doc = self.session.doc
+        if self.target is None:
+            gid = self.ctx.plan.pick(p, self.ctx.tol)
+            element = doc.find(gid) if gid else None
+            if edits.kind_of(doc, element) is None:
+                self.session.message("escolha uma parede, linha 2D, círculo, arco ou o "
+                                     "contorno de laje, ambiente ou hachura", "recusa")
+                return
+            self.target = gid
+            return
+        self.move(p, mods)
+        distance = self._distance()
+        element = self._element()
+        if element is None or not distance or distance <= 1e-6:
+            return
+        copy, q = self.copy, self.snapped.point
+        self.session.run(lambda: edits.offset_element(doc, element, distance, q, copy))
+        self.target = None
+
+    def confirm(self):
+        if self.target is None or self.cursor is None:
+            return False
+        self.press(self.cursor, self.mods)
+        return True
+
+    def numeric(self, value):
+        error = self.fix("distance", value)
+        if error:
+            self.session.message(error, "recusa")
+        return True
+
+    def cancel(self):
+        if self.target is not None:
+            self.target = None
+            return True
+        if self.fixed:
+            self.fixed.clear()
+            return True
+        return False
+
+    def preview(self):
+        element, distance = self._element(), self._distance()
+        if element is None or not distance or self.snapped is None:
+            return []
+        try:
+            changes = edits.offset_geometry(self.session.doc, element, distance,
+                                            self.snapped.point)
+        except OpError:
+            return []
+        return _geometry_marks(self.session.doc, element, changes)
+
+
+class TrimTool(Tool):
+    """Aparar/estender (spec/ui 23 §5): todas as arestas visíveis são limite."""
+
+    name, label = "trim", "Aparar/estender"
+
+    def hint(self):
+        return ("Clique o trecho a aparar, ou perto da ponta solta para estender "
+                "(Shift: estende); paredes retas vão até o eixo da outra")
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        if edits.kind_of(doc, element) not in ("line2d", "wall"):
+            self.session.message("clique numa linha 2D ou numa parede reta", "recusa")
+            return
+        index, extend = self.ctx.index, mods.shift
+        self.session.run(lambda: edits.trim_extend(doc, element, p, index, extend))
+
+
+class FilletTool(Tool):
+    """Concordar (spec/ui 23 §6): dois cliques; raio na barra Opções (0 = canto vivo)."""
+
+    name, label = "fillet", "Concordar"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.radius = 0.0
+        self.first: tuple[str, Point] | None = None
+
+    def hint(self):
+        if self.first is None:
+            return "Clique a primeira linha 2D ou parede reta, do lado que fica"
+        return "Clique a segunda, do lado que fica (Shift: raio 0); Esc recomeça"
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        if edits.kind_of(doc, element) not in ("line2d", "wall"):
+            self.session.message("clique numa linha 2D ou numa parede reta", "recusa")
+            return
+        if self.first is None:
+            self.first = (gid, p)
+            return
+        (g1, p1), self.first = self.first, None
+        first, radius = doc.get(g1), 0.0 if mods.shift else self.radius
+        self.session.run(lambda: edits.fillet(doc, first, p1, element, p, radius))
+
+    def cancel(self):
+        if self.first is not None:
+            self.first = None
+            return True
+        return False
+
+    def preview(self):
+        if self.first is None:
+            return []
+        return [Mark(s.points, s.closed) for s in self.ctx.plan.shapes
+                if s.owner == self.first[0]]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
          GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
-         MirrorTool)
+         MirrorTool, OffsetTool, TrimTool, FilletTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",
@@ -4535,10 +4799,10 @@ def selection_actions(doc, gids) -> list[str]:
     if found_objects and len(found_objects) == len(elements):  # objeto-parametrico §5.1
         out.append("swap_type")
         if len({objects.read_state(doc, e)["type"] for e in found_objects}) == 1:
-            out += ["edit_object_type", "select_same"]
+            out.append("edit_object_type")
         if len(found_objects) == 1 and not free:
             out.append("detach")
-    out.append("delete")
+    out += ["select_similar", "delete"]  # spec/ui 23 §7
     return out
 
 
@@ -4617,7 +4881,11 @@ class ToolBox:
     def activate(self, name: str) -> Tool:
         if self.active is not None:
             self.active.cancel()
+            prev = self.active
+            if prev.name != "select" and prev.name not in SELECTION_TOOLS:
+                self.ctx.last_tool = (prev.name, prev.label)
         self.active = self.tools[name]
+        self.ctx.axis_lock = None
         if name in ("wall", "arc", "rectangle"):
             self.wall_form = name
         return self.active
