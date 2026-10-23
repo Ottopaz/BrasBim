@@ -26,3 +26,14 @@ spec/
 ## MVP proposto
 Parede, laje, pilar, viga, cobertura simples, porta e janela, espaço (ambiente), pavimentos,
 planta/corte/fachada com cotas, pranchas em PDF, IFC de entrada e saída, quantitativos básicos.
+
+## Fontes
+Este índice não especifica comportamento; cada spec tem a sua seção "Fontes", reunida em
+`../cleanroom/REGISTRO-DE-FONTES.md`. A lista do MVP é decisão do projeto, com base em:
+- **IFC 4.3** (buildingSMART, `https://github.com/buildingSMART/IFC4.x-development`):
+  classes dos elementos do MVP (`IfcWall`, `IfcSlab`, `IfcColumn`, `IfcBeam`, `IfcRoof`,
+  `IfcDoor`, `IfcWindow`, `IfcSpace`, `IfcBuildingStorey`).
+- **CG**: conhecimento geral do projeto de arquitetura no Brasil (o que um projeto
+  residencial precisa entregar).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.

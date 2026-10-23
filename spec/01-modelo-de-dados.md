@@ -134,3 +134,34 @@ estas operações na mesma transação da criação, edição ou exclusão da pa
 ## 5. Pendências
 - Janelas (RF-ELE-06) entram na cascata como as portas.
 - Reserva de elementos (RF-COL-02): uma operação declara quais GlobalIds exige reservados.
+
+## 6. Fontes públicas
+Seção acrescentada em 2026‑10‑23, sem leitura nova: lista os documentos em que este
+rascunho se apoia. O formato das operações e da transação é decisão do projeto; os
+campos de cada operação vêm das specs citadas na coluna "Situação" do §4, cada uma
+com as suas fontes.
+
+IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`. Base:
+`https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+(`K` = `docs/schemas/core/IfcKernel`, `U` = `docs/schemas/resource/IfcUtilityResource`,
+`M` = `docs/schemas/resource/IfcMaterialResource`, `S` =
+`docs/schemas/shared/IfcSharedBldgElements`).
+
+| Código | Documento | Uso |
+|---|---|---|
+| IFC-GUID | `U/Types/IfcGloballyUniqueId.md` | `id` das operações (§1) e GlobalIds derivados (§3) |
+| IFC-ROOT | `K/Entities/IfcRoot.md` | todo objeto identificado tem GlobalId |
+| IFC-RCPE | `S/Entities/IfcRelConnectsPathElements.md` | junções (§4) |
+| IFC-MLSU | `M/Entities/IfcMaterialLayerSetUsage.md` | efeito derivado (§3) |
+
+Outras:
+- **RFC 9562** (UUID, que substitui a RFC 4122), `https://www.rfc-editor.org/rfc/rfc9562`:
+  UUID versão 5 por nome (SHA‑1) para os GlobalIds derivados (§3).
+- **RFC 8259** (JSON), `https://www.rfc-editor.org/rfc/rfc8259`: formato das operações e
+  do diário.
+- **IfcOpenShell** (LGPL‑3.0), `ifcopenshell.guid.compress`: conversão do UUID para os
+  22 caracteres do GlobalId.
+- **CG**: conhecimento geral de engenharia de software (operações invertíveis, desfazer
+  e refazer por inversa, transação tudo ou nada, diário reaplicável).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.

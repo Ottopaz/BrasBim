@@ -23,7 +23,37 @@ Gerado a partir do repositório; não edite à mão as partes A e B.
 ### `spec/01-modelo-de-dados.md`
 *Modelo de dados — operações serializáveis*; data 2026-10-14; situação rascunho (aguarda revisão).
 
-> **Sem seção "Fontes"**: conferir antes da primeira versão pública (PROCESSO.md §6).
+Seção acrescentada em 2026‑10‑23, sem leitura nova: lista os documentos em que este
+rascunho se apoia. O formato das operações e da transação é decisão do projeto; os
+campos de cada operação vêm das specs citadas na coluna "Situação" do §4, cada uma
+com as suas fontes.
+
+IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`. Base:
+`https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/`
+(`K` = `docs/schemas/core/IfcKernel`, `U` = `docs/schemas/resource/IfcUtilityResource`,
+`M` = `docs/schemas/resource/IfcMaterialResource`, `S` =
+`docs/schemas/shared/IfcSharedBldgElements`).
+
+| Código | Documento | Uso |
+|---|---|---|
+| IFC-GUID | `U/Types/IfcGloballyUniqueId.md` | `id` das operações (§1) e GlobalIds derivados (§3) |
+| IFC-ROOT | `K/Entities/IfcRoot.md` | todo objeto identificado tem GlobalId |
+| IFC-RCPE | `S/Entities/IfcRelConnectsPathElements.md` | junções (§4) |
+| IFC-MLSU | `M/Entities/IfcMaterialLayerSetUsage.md` | efeito derivado (§3) |
+
+Outras:
+- **RFC 9562** (UUID, que substitui a RFC 4122), `https://www.rfc-editor.org/rfc/rfc9562`:
+  UUID versão 5 por nome (SHA‑1) para os GlobalIds derivados (§3).
+- **RFC 8259** (JSON), `https://www.rfc-editor.org/rfc/rfc8259`: formato das operações e
+  do diário.
+- **IfcOpenShell** (LGPL‑3.0), `ifcopenshell.guid.compress`: conversão do UUID para os
+  22 caracteres do GlobalId.
+- **CG**: conhecimento geral de engenharia de software (operações invertíveis, desfazer
+  e refazer por inversa, transação tudo ou nada, diário reaplicável).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (3): https://github.com/buildingSMART/IFC4.x-development/blob/ifc4.3-main/; https://www.rfc-editor.org/rfc/rfc8259; https://www.rfc-editor.org/rfc/rfc9562
 
 ### `spec/elementos/cobertura.md`
 *Cobertura*; data 2026-10-16; situação aprovado.
@@ -283,7 +313,17 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
 ### `spec/README.md`
 *README*; data —; situação —.
 
-> **Sem seção "Fontes"**: conferir antes da primeira versão pública (PROCESSO.md §6).
+Este índice não especifica comportamento; cada spec tem a sua seção "Fontes", reunida em
+`../cleanroom/REGISTRO-DE-FONTES.md`. A lista do MVP é decisão do projeto, com base em:
+- **IFC 4.3** (buildingSMART, `https://github.com/buildingSMART/IFC4.x-development`):
+  classes dos elementos do MVP (`IfcWall`, `IfcSlab`, `IfcColumn`, `IfcBeam`, `IfcRoof`,
+  `IfcDoor`, `IfcWindow`, `IfcSpace`, `IfcBuildingStorey`).
+- **CG**: conhecimento geral do projeto de arquitetura no Brasil (o que um projeto
+  residencial precisa entregar).
+
+Nenhum material de `_restrito/` nem de `tools/` foi usado.
+
+Endereços citados (1): https://github.com/buildingSMART/IFC4.x-development
 
 ### `spec/REQUISITOS.md`
 *Requisitos funcionais (levantamento a partir de fontes públicas)*; data 2026-10-14; situação rascunho.
