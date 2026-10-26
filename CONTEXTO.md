@@ -4,19 +4,20 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑26 (vistas salvas e folhas mestras feitas; penas e seleção em
-andamento).*
+*Atualizado em 2026‑10‑26 (vistas salvas, folhas mestras, tabela de penas e seleção
+como no CAD feitas; specs/ui 25–28 em revisão).*
 
 > **Onde paramos (2026‑10‑26):** antes do item 2 do roteiro, o revisor pediu quatro
-> ajustes, nesta ordem: (1) **vistas salvas** — feito, `spec/ui/25-vistas-salvas.md`
-> (em revisão), botão no canto das abas, painel Projeto > Vistas salvas, vista viva na
-> prancha, 3D como imagem; (2) **folhas mestras** — feito, `spec/ui/26-folhas-mestras.md`
-> (em revisão), papel/margens/carimbo desenhado com campos, aba de edição própria;
-> (3) **tabela de penas** (cores e espessuras) — próximo, spec/ui 27; (4) **seleção como
-> no AutoCAD** — spec/ui 28: clique acumula (Shift+clique tira, Esc limpa), laço ao
-> arrastar no vazio (esquerda→direita só inteiros, direita→esquerda os que tocam),
-> janela retangular por clique‑e‑clique no vazio, destaque ao passar o cursor, janela
-> também no 3D (respostas do revisor em 2026‑10‑26). Depois: item 2 do roteiro.
+> ajustes, todos **feitos** (specs em revisão, seções "como ficou" abaixo):
+> (1) **vistas salvas** (`spec/ui/25-vistas-salvas.md`): botão no canto das abas, painel
+> Projeto > Vistas salvas, vista viva na prancha (arrastar ou botão direito no papel),
+> 3D como imagem; (2) **folhas mestras** (`spec/ui/26-folhas-mestras.md`): papel, margens
+> e carimbo desenhado com campos, aba de edição própria, Nova prancha… escolhe a folha
+> mestra; (3) **tabela de penas** (`spec/ui/27-tabela-de-penas.md`): penas numeradas e
+> categorias de linha, espessura proporcional, Imprimir em preto; (4) **seleção como no
+> CAD** (`spec/ui/28-selecao.md`): clique soma, Shift tira, Esc limpa, janela por dois
+> cliques, laço ao arrastar, destaque, cursor próprio, janela no 3D, Editar > Modo de
+> seleção. Próximo: revisão das specs 23–28 e o **item 2 do roteiro** (projeto legal).
 
 > **Antes (2026‑10‑23, noite):** **linha de comando** feita a pedido do revisor
 > (`spec/ui/24-linha-de-comando.md`, em revisão; seção "Linha de comando — como ficou"
@@ -53,15 +54,16 @@ andamento).*
 
 > **Como retomar (sessão nova):**
 > 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
-> 2. Pedir ao revisor a revisão da spec/ui 23 (pontos §13) e testar no aplicativo:
->    setas, Enter, as três ferramentas do grupo Edição, Ctrl+R, Ctrl+K, Exibir > Atração.
->    E a revisão da spec/ui 24 (pontos §12): digitar "PD", "0;0", "@4;0", "@0;3" e Enter
->    na planta; tabela de apelidos do §7.
+> 2. Pedir ao revisor a revisão das specs/ui 25–28 (pontos de revisão no fim de cada
+>    uma) testando no aplicativo: Salvar vista na planta e no 3D e pô-la numa prancha;
+>    Folhas mestras (desenhar o carimbo, Nova prancha… com ela); Projeto > Tabelas de
+>    penas…; a seleção (clique soma, Shift tira, clique no vazio + clique, arrastar = laço,
+>    Esc). Continuam em revisão a spec/ui 23 (pontos §13) e a 24 (pontos §12).
 > 3. Depois: **item 2** (projeto legal). Antes da spec, ler no relatório as recomendações
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑23: 694 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑26: 718 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -70,7 +72,7 @@ andamento).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (694 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (718 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -99,6 +101,10 @@ andamento).*
 | `spec/ui/21-salvamento-automatico` | **em revisão**, implementada (RF-NUC-10; SA01–SA05 em `tests/test_salvamento_automatico.py`) |
 | `spec/ui/23-precisao` | **em revisão**, implementada (pacote de precisão; PR01–PR05 e PR08–PR12 em `tests/test_precisao.py`, PR06, PR07, PR13–PR15 em `test_interface_precisao.py`); pontos de revisão §13 |
 | `spec/ui/24-linha-de-comando` | **em revisão**, implementada (LC01–LC05 em `tests/test_linha_de_comando.py`, LC03–LC10 em `test_interface_linha_de_comando.py`); pontos de revisão §12 |
+| `spec/ui/25-vistas-salvas` | **em revisão**, implementada (VS01–VS05 em `tests/test_vistas_salvas.py`, VS06–VS07 em `test_interface_vistas_salvas.py`); pontos §9 |
+| `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
+| `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
+| `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
@@ -578,6 +584,66 @@ andamento).*
   valores fixados limpos. Porta/janela precisam de parede atraída: por coordenada não
   entram (fica para depois, se o revisor quiser).
 - Exibir > Barras > Linha de comando; escondida, a dica volta à barra de estado.
+
+## Vistas salvas — como ficou (spec/ui 25)
+- `core/drawings/saved_views.py`: `IfcAnnotation` "VistaSalva" (Pset `BrasBim_VistaSalva`),
+  `kind` plan/section/3d; camadas **copiadas** (`layers` = estados), `options` da planta,
+  `crop`, `camera`, `pens`. `drawing(doc, state)` (camadas + escala), `plan_of`,
+  `size_3d`, `dependents`. Excluir pavimento ou corte leva as vistas salvas dele
+  (`sheets.refs_removed_ops(..., cascade=True)`).
+- Escala só da janela: `storeys.set_scale_override` / `using_scale` / `stored_scale`
+  (a prancha usa `stored_scale` para a planta do pavimento); `section.draw(..., scale)`.
+- Prancha: item `{"kind": "saved", "saved": gid, "at", "width"}`; `sheets.item_key`,
+  `saved_state`, `set_item_width`. `paper._ImagePainter` + `saved_views_ui.render_3d`
+  (OpenGL fora da tela: `QOffscreenSurface` + FBO, cache em `paper._images`);
+  `view3d.draw_scene` é a pintura do 3D reaproveitada. Sem OpenGL, quadro "sem OpenGL".
+- Interface: `ui/saved_views_ui.py` (`capture`, `SaveViewDialog`, `SavedViewList` com
+  arrastar), `MainWindow.save_view/open_saved_view/update_saved_view/close_saved_view`,
+  `active_saved_view` (fecha ao trocar de pavimento), rótulo "Vista: …" na barra de estado.
+  Painel Projeto com abas Vistas salvas | Cortes e fachadas. `SheetView.context_menu`,
+  `put_saved`, `dropEvent`.
+
+## Folhas mestras — como ficou (spec/ui 26)
+- `core/drawings/masters.py`: `IfcAnnotation` "FolhaMestra" (Pset `BrasBim_FolhaMestra`);
+  `FORMATS` mudou para cá (`sheets.FORMATS` aponta); `Layout`, `layout_of`,
+  `standard_layout`, `default_items` (o carimbo padrão como itens com campos), `fill`
+  (texto com campos todos vazios some), `FIELDS`. `sheets.layout(doc, state)`,
+  `paper_of`, `field_values`; `title_items` desenha o quadro, os itens e as dobras pelo
+  layout (prancha sem folha mestra = mesmo carimbo de antes). `prims.Text.bold`.
+- Interface: `ui/master_editor.py` (`MasterEditor` com `MasterCanvas`: Selecionar,
+  Linha, Retângulo, Texto, espessura, Papel e margens…; `snap_point` grade 1 mm + pontas;
+  `pick`, `moved`; `PaperDialog`, `TextDialog` com Inserir campo, `NewSheetDialog`).
+  `MainWindow.open_master`, `master_views`. Painel Projeto com abas Pranchas | Folhas
+  mestras; `ProjectPanel.add_sheet(choice)` (sem `choice` abre o quadro) e `add_master`.
+  Propriedades da prancha: Folha mestra (formato/orientação só sem ela).
+- Fica para depois: logotipo (imagem) no carimbo; coordenadas digitadas na aba da folha
+  mestra.
+
+## Tabela de penas — como ficou (spec/ui 27)
+- `core/pens.py`: `CATEGORIES` (categoria → rótulo, espessura de referência, pena padrão),
+  `DEFAULT_PENS`, `default_config`, `config`, `table`, `resolve(doc, table_id, paper)` →
+  `Resolved` (`pen`, `color`, `scale`, `weight`), `annotation_category`, `NEUTRAL`
+  (cores de borda que seguem a pena), `edit_config`, `use_table`; operação `pens.edit`.
+- `plan.Edge.pen` ("cut"/"layer") e `Plan.pens` (categoria das anotações por dono);
+  `PlanView.pens`, `SectionView.pens` (`section_category`), pintores da prancha com a
+  tabela da vista salva (ou da janela) e `paper=True` (Imprimir em preto).
+- Interface: `ui/pens_dialog.py` (`PensDialog`), Projeto > Tabelas de penas…,
+  Exibir > Tabela de penas ▸; `MainWindow.window_pens` (tabela da vista salva aberta),
+  `refresh_pens`, `use_pen_table`, `edit_pens(apply=…)`.
+- Fica para depois: hachuras pela tabela; penas por camada.
+
+## Seleção como no CAD — como ficou (spec/ui 28)
+- `Plan.in_polygon` (laço) e `_in_area` comum com `in_rect`.
+- `SelectTool`: `ctx.accumulate` (padrão True), estados `pending` → `lasso` (arrastar no
+  vazio; direção pelo primeiro movimento) ou `window` com `clicks` (clique no vazio,
+  segundo clique fecha); `_finish_area` (soma, Shift tira); `ctx.hover` +
+  `PlanView._draw_hover`; clique num selecionado não reduz a seleção.
+- 3D: `View3D.click` soma/Shift tira/vazio abre `window_start`; `finish_window` usa
+  `scene3d.in_screen_rect` (projeção vetorizada `project_points` + envoltória convexa do
+  shapely); `press_escape` cancela a janela antes; destaque via `draw_scene(hover=…)`.
+- Cursor: `measure_box.pick_cursor` aplicado em `ToolInput.apply_cursor`.
+- Editar > Modo de seleção (`QSettings` `selecao/somar_cliques`); os testes antigos de
+  janela por arrasto usam `window.ctx.accumulate = False`.
 
 ## Roteiro a partir da pesquisa (2026‑10‑21)
 Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações priorizadas"
