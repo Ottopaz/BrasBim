@@ -772,6 +772,23 @@ Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 Endereços citados (7): https://docs.mcneel.com/rhino/8/help/en-us/user_interface/rhino_window.htm; https://help.autodesk.com/cloudhelp/2018/ENU/AutoCAD-LT/files/GUID-F64F8008-E1C0-49CC-A268-A6B8C6E9B566.htm; https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-Customization/files/GUID-D4CACED6-DFBA-43C3-BC42-8D980AB3AE75.htm; https://help.autodesk.com/cloudhelp/2025/ENU/AutoCAD-LT-DidYouKnow/files/GUID-D2B4BF16-B1F7-4EF2-89AF-88ACE85FAD73.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-3179393F-958F-42EA-8A92-E9975A1D160B.htm; https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-74478DCE-92D4-49B1-93E9-DCF09D57FA0D.htm; https://help.sketchup.com/en/sketchup/introducing-drawing-basics-and-concepts
 
+### `spec/ui/25-vistas-salvas.md`
+*Vistas salvas (planta, corte e 3D) e como pô-las na prancha*; data 2026-10-26; situação em revisão (implementado para teste, fluxo do MVP).
+
+- Pesquisa do projeto, `research_notes/.../archicad_documentacao_colaboracao.md` §1: no
+  Archicad, vista salva guarda camadas, escala, filtros e sobreposições gráficas, e o
+  desenho posto na folha é composto a partir dela ("modelo → vista salva → desenho na
+  folha"); o mapa de vistas é uma árvore no navegador. Fonte citada lá:
+  [Graphisoft Community, "Archicad Basic Concepts - The Navigator"](https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987)
+  (trecho de busca; **conferir**).
+- `revit_documentacao_colaboracao.md`: modelos de vista guardam propriedades aplicáveis
+  em lote ([Autodesk Help 2024 – View Template Properties](https://help.autodesk.com/cloudhelp/2024/ENU/Revit-Customize/files/GUID-66D789A8-AB92-4AF0-B884-DF3A3302E117.htm)).
+- Pedido do revisor (2026‑10‑26) e pendências do `CONTEXTO.md` (câmera salva; fluxo de
+  pôr vista na prancha "não está bom ainda").
+- Nenhum material de `_restrito/` nem de `tools/` foi usado. Nomes e quadros próprios.
+
+Endereços citados (2): https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987; https://help.autodesk.com/cloudhelp/2024/ENU/Revit-Customize/files/GUID-66D789A8-AB92-4AF0-B884-DF3A3302E117.htm
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem

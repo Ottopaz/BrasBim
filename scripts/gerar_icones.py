@@ -215,6 +215,10 @@ ICONS = {
               '<path d="M4 4 H8 M4 4 V8" stroke-dasharray="1.5 1.5" stroke-width="1"/>',
     "palette": '<rect x="2.75" y="4.75" width="18.5" height="14.5"/>'
                '<path d="M6 9.5 L9 12 L6 14.5 M11 14.5 H17"/>',
+    # vista salva (spec/ui 25): moldura da vista com um marcador de página
+    "save_view": '<path d="M13.25 4.75 H2.75 V19.25 H21.25 V12.75"/>'
+                 '<path d="M15.75 2.75 H21.25 V10.25 L18.5 8 L15.75 10.25 Z"/>'
+                 '<path d="M5.5 16 L9 11.5 L11.5 14 L13.5 12" stroke-width="1"/>',
 }
 
 out = Path("brasbim/ui/icons")

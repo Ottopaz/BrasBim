@@ -58,6 +58,7 @@ DEFAULT_ALIASES = {
     "menu:Editar/Espelhar": "EP",
     "menu:Editar/Dividir": "DV",
     "menu:Exibir/Enquadrar tudo": "EQ",
+    "menu:Exibir/Salvar vista…": "SV",
 }
 MAX_ALIAS = 6
 SUGGESTIONS = 8

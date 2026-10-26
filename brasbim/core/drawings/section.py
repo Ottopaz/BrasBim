@@ -333,8 +333,12 @@ def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
 # --- desenho ---------------------------------------------------------------------------------
 
 
-def draw(doc: Document, view) -> Drawing:
+def draw(doc: Document, view, scale: int | None = None) -> Drawing:
+    """Desenho do corte ou da fachada; ``scale`` troca a escala gravada (vista salva,
+    spec/ui 25)."""
     state = views.read_state(view)
+    if scale:
+        state["scale"] = int(scale)
     a, d, look = views.frame(state)
     section = state["kind"] == "section"
     depth = state["depth"]

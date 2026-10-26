@@ -40,8 +40,8 @@ salva (para mudar, abre-se a vista, muda-se e usa-se **Atualizar com a janela**)
 - Grava uma transação "Salvar vista" (desfazer desfaz).
 
 ## 4. Abrir, atualizar, excluir
-- O painel **Projeto** ganha a lista **Vistas salvas** (a lista "Vistas" passa a se chamar
-  "Cortes e fachadas"). Clique duplo **abre** a vista: troca o pavimento, aplica as
+- O painel **Projeto** ganha a lista **Vistas salvas**, em abas com a lista antiga
+  "Vistas", que passa a se chamar "Cortes e fachadas". Clique duplo **abre** a vista: troca o pavimento, aplica as
   camadas, as opções e a escala na janela (planta), ou leva a câmera ao lugar (3D), ou
   abre a aba do corte com a escala dela.
 - A escala aberta pela vista vale **só para a janela** (não muda a escala gravada no
@@ -51,7 +51,8 @@ salva (para mudar, abre-se a vista, muda-se e usa-se **Atualizar com a janela**)
   na tela, mesma origem), **Renomear**, **Pôr na prancha ▸** (lista as pranchas),
   **Excluir**.
 - Excluir a vista tira-a das pranchas onde ela está, na mesma transação.
-- Mudar de pavimento ou de aba "fecha" a vista: a janela volta à escala do pavimento.
+- Mudar de pavimento (ou abrir outro projeto) "fecha" a vista: a janela volta à escala
+  gravada no pavimento. Trocar de aba não fecha.
 
 ## 5. Pôr na prancha
 - **Arrastar** a vista salva da lista para a aba da prancha aberta: ela fica com o centro
@@ -79,19 +80,19 @@ salva (para mudar, abre-se a vista, muda-se e usa-se **Atualizar com a janela**)
   `"width"` (mm) para a vista 3D.
 
 ## 7. Critérios de aceite (testes)
-- [ ] **VS01** Criar, editar e excluir vista salva (planta, corte, 3D) grava o Pset certo;
+- [x] **VS01** Criar, editar e excluir vista salva (planta, corte, 3D) grava o Pset certo;
       desfazer volta ao IFC anterior; o arquivo salvo e reaberto mantém tudo.
-- [ ] **VS02** A vista guarda uma cópia das camadas: mudar a combinação depois não muda a
+- [x] **VS02** A vista guarda uma cópia das camadas: mudar a combinação depois não muda a
       vista; a planta desenhada pela vista esconde as camadas que ela esconde.
-- [ ] **VS03** A escala da vista vale no desenho (tamanho do texto e da cota no papel) e
+- [x] **VS03** A escala da vista vale no desenho (tamanho do texto e da cota no papel) e
       não muda a escala do pavimento.
-- [ ] **VS04** Recorte: a vista na prancha tem o tamanho do retângulo na escala.
-- [ ] **VS05** Pôr na prancha: item `saved` com o centro dado; repetir na mesma prancha é
+- [x] **VS04** Recorte: a vista na prancha tem o tamanho do retângulo na escala.
+- [x] **VS05** Pôr na prancha: item `saved` com o centro dado; repetir na mesma prancha é
       recusado; excluir a vista tira-a das pranchas (e desfazer devolve).
-- [ ] **VS06** Interface: botão Salvar vista na planta e no 3D; abrir a vista troca o
+- [x] **VS06** Interface: botão Salvar vista na planta e no 3D; abrir a vista troca o
       pavimento, as camadas, a escala da janela e a câmera; Atualizar com a janela
       regrava.
-- [ ] **VS07** Interface: arrastar da lista para a prancha e "Pôr vista salva" no botão
+- [x] **VS07** Interface: arrastar da lista para a prancha e "Pôr vista salva" no botão
       direito do papel; a vista 3D sai como imagem na prancha e no PDF.
 
 ## 8. Fontes

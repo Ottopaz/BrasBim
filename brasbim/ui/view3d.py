@@ -47,6 +47,53 @@ SNAP_PX = 10
 TRANSFORM_TOOLS = ("move", "copy", "rotate", "mirror")
 
 
+def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()) -> None:
+    """Pinta as malhas (com os vidros por último) e as arestas no contexto OpenGL atual:
+    a vista na tela e a imagem da vista 3D salva na prancha (spec/ui 25 §5)."""
+    GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+    GL.glMatrixMode(GL.GL_PROJECTION)
+    GL.glLoadMatrixd(camera.projection(aspect).T.flatten())
+    GL.glMatrixMode(GL.GL_MODELVIEW)
+    GL.glLoadMatrixd(camera.view().T.flatten())
+    GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
+    GL.glEnableClientState(GL.GL_COLOR_ARRAY)
+    for gid, mesh in scene.meshes.items():
+        colors = mesh.colors
+        if gid in selected:
+            colors = (colors * 0.4 + _SELECT * 0.6).astype(np.float32)
+        GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
+        GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
+    _paint_glass(scene, selected)
+    GL.glDisableClientState(GL.GL_COLOR_ARRAY)
+    GL.glColor3f(0.25, 0.25, 0.25)
+    for mesh in scene.meshes.values():
+        if len(mesh.edges):
+            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.edges)
+            GL.glDrawArrays(GL.GL_LINES, 0, len(mesh.edges))
+    GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+
+
+def _paint_glass(scene: Scene, selected) -> None:
+    """Vidros translúcidos, depois das peças opacas (spec/ui 09 §7)."""
+    glass = [(gid, m) for gid, m in scene.meshes.items() if m.glass is not None]
+    if not glass:
+        return
+    GL.glEnable(GL.GL_BLEND)
+    GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+    GL.glDepthMask(GL.GL_FALSE)
+    for gid, mesh in glass:
+        colors = mesh.glass_colors
+        if gid in selected:
+            colors = colors.copy()
+            colors[:, :3] = colors[:, :3] * 0.4 + _SELECT * 0.6
+        GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.glass)
+        GL.glColorPointer(4, GL.GL_FLOAT, 0, colors)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.glass))
+    GL.glDepthMask(GL.GL_TRUE)
+    GL.glDisable(GL.GL_BLEND)
+
+
 def storey_of(element):
     """Pavimento que contém o elemento (a porta, pelo da parede se preciso)."""
     container = ifcopenshell.util.element.get_container(element)
@@ -195,29 +242,9 @@ class View3D(QOpenGLWidget, ToolInput):
     def paintGL(self):
         if self.failed:
             return
-        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
-        aspect = self.width() / max(self.height(), 1)
-        GL.glMatrixMode(GL.GL_PROJECTION)
-        GL.glLoadMatrixd(self.camera.projection(aspect).T.flatten())
-        GL.glMatrixMode(GL.GL_MODELVIEW)
-        GL.glLoadMatrixd(self.camera.view().T.flatten())
         selected = self.selection
+        draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected)
         GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
-        GL.glEnableClientState(GL.GL_COLOR_ARRAY)
-        for gid, mesh in self.scene.meshes.items():
-            colors = mesh.colors
-            if gid in selected:
-                colors = (colors * 0.4 + _SELECT * 0.6).astype(np.float32)
-            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
-            GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
-            GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
-        self._paint_glass(selected)
-        GL.glDisableClientState(GL.GL_COLOR_ARRAY)
-        GL.glColor3f(0.25, 0.25, 0.25)
-        for mesh in self.scene.meshes.values():
-            if len(mesh.edges):
-                GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.edges)
-                GL.glDrawArrays(GL.GL_LINES, 0, len(mesh.edges))
         self._paint_tool()
         self._paint_handles()
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
@@ -225,25 +252,6 @@ class View3D(QOpenGLWidget, ToolInput):
             # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
             # a mini-barra é posta depois que a pintura termina.
             QTimer.singleShot(0, self.selection_bar, self.selection_bar.place)
-
-    def _paint_glass(self, selected) -> None:
-        """Vidros translúcidos, depois das peças opacas (spec/ui 09 §7)."""
-        glass = [(gid, m) for gid, m in self.scene.meshes.items() if m.glass is not None]
-        if not glass:
-            return
-        GL.glEnable(GL.GL_BLEND)
-        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
-        GL.glDepthMask(GL.GL_FALSE)
-        for gid, mesh in glass:
-            colors = mesh.glass_colors
-            if gid in selected:
-                colors = colors.copy()
-                colors[:, :3] = colors[:, :3] * 0.4 + _SELECT * 0.6
-            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.glass)
-            GL.glColorPointer(4, GL.GL_FLOAT, 0, colors)
-            GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.glass))
-        GL.glDepthMask(GL.GL_TRUE)
-        GL.glDisable(GL.GL_BLEND)
 
     @property
     def navigating(self) -> bool:

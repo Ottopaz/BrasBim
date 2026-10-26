@@ -225,10 +225,11 @@ def layerable(element) -> bool:
             element.is_a("IfcSpatialStructureElement") and not element.is_a("IfcSpace")):
         return False
     if element.is_a("IfcAnnotation"):
-        from brasbim.core.drawings import sheets
+        from brasbim.core.drawings import saved_views, sheets
         from brasbim.core.quantities import tables
 
-        return not (sheets.is_sheet(element) or tables.is_table(element))
+        return not (sheets.is_sheet(element) or tables.is_table(element)
+                    or saved_views.is_saved_view(element))
     if element.is_a("IfcRoof"):
         return True
     return not _roofs().is_part(element)

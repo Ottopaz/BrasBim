@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSplitter,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -38,11 +40,12 @@ from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
 from brasbim.core.document import OpError
+from brasbim.core.drawings import saved_views
 from brasbim.core.drawings import sheets as sheets_
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
-from brasbim.ui import feedback, theme
+from brasbim.ui import feedback, paper, saved_views_ui, theme
 from brasbim.ui.assistant import AssistantPanel
 from brasbim.ui.command_line import (
     VISIBLE_KEY,
@@ -51,6 +54,7 @@ from brasbim.ui.command_line import (
     load_aliases,
     save_aliases,
 )
+from brasbim.ui.icons import icon
 from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.materials_dialog import MaterialsDialog
@@ -125,6 +129,8 @@ class MainWindow(QMainWindow):
         self.ctx.input_view = self.plan
         self.split = False
         self.recent_commands: list[str] = []  # paleta e linha de comando (spec/ui 23, 24)
+        self.active_saved_view: str | None = None  # vista salva aberta (spec/ui 25 §4)
+        saved_views_ui.scene_provider = lambda: self.scene
         self._build_central()
         self._build_docks()
         self._build_actions()
@@ -170,6 +176,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.plan, "Planta")
         self.tabs.addTab(self.view3d, "3D")
         self.tabs.currentChanged.connect(self._tab_changed)
+        self.save_view_button = QToolButton()  # spec/ui 25 §3
+        self.save_view_button.setIcon(icon("save_view"))
+        self.save_view_button.setToolTip("Salvar vista (Ctrl+Alt+S): guarda a escala, as "
+                                         "camadas e as opções da vista à frente")
+        self.save_view_button.setAutoRaise(True)
+        self.save_view_button.clicked.connect(lambda: self.save_view())
+        self.tabs.setCornerWidget(self.save_view_button, Qt.TopRightCorner)
         self.setCentralWidget(self.central)
 
     def _dock(self, title: str, name: str, widget, area) -> QDockWidget:
@@ -182,6 +195,8 @@ class MainWindow(QMainWindow):
     def _build_docks(self) -> None:
         self.project = ProjectPanel(self.session)
         self.project.open_view = self.open_view
+        self.project.open_saved_view = self.open_saved_view
+        self.project.update_saved_view = self.update_saved_view
         self.project.open_sheet = self.open_sheet
         self.project.open_table = self.open_table
         self.project.open_library = self.show_library
@@ -295,6 +310,7 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        self._action(view_menu, "Salvar vista…", lambda: self.save_view(), "Ctrl+Alt+S")
         self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
@@ -438,6 +454,9 @@ class MainWindow(QMainWindow):
         self.hint.setVisible(not self.command_line.isVisibleTo(self))
         self.statusBar().addPermanentWidget(self.coords)
         self.statusBar().addPermanentWidget(QLabel(f"Grade {fmt(self.ctx.grid)} m"))
+        self.saved_view_label = QLabel()  # vista salva aberta (spec/ui 25 §4)
+        self.saved_view_label.hide()
+        self.statusBar().addPermanentWidget(self.saved_view_label)
         self.scale_combo = QComboBox()
         self.scale_combo.setToolTip("Escala da planta do pavimento ativo (textos, cotas e "
                                     "símbolos seguem a escala)")
@@ -489,6 +508,16 @@ class MainWindow(QMainWindow):
     # --- atualização ------------------------------------------------------------------
 
     def _on_session(self, event: str) -> None:
+        if event in ("model", "layers", "document"):
+            paper.invalidate_images()
+        if event == "document":
+            self.close_saved_view()
+        elif event == "storey" and self.active_saved_view is not None:
+            entity = self.session.doc.find(self.active_saved_view)
+            state = saved_views.read_state(entity) if entity is not None else None
+            if state is None or state["kind"] != "plan" \
+                    or state["storey"] != self.session.storey_id:
+                self.close_saved_view()
         if event == "document":
             self.toolbox.reset()
             self._hook_tools()
@@ -559,12 +588,149 @@ class MainWindow(QMainWindow):
         self.scale_combo.setCurrentIndex(max(0, self.scale_combo.findData(
             storeys_.scale(storey) if storey is not None else storeys_.DEFAULT_SCALE)))
         self.scale_combo.blockSignals(False)
+        entity = self.session.doc.find(self.active_saved_view) \
+            if self.active_saved_view else None
+        if entity is None:
+            self.saved_view_label.hide()
+            return
+        self.saved_view_label.setText(f"Vista: {saved_views.read_state(entity)['name']}")
+        self.saved_view_label.setToolTip("Vista salva aberta; a escala escolhida aqui vale "
+                                         "só para a janela")
+        self.saved_view_label.show()
 
     def _scale_chosen(self, index: int) -> None:
         storey, doc = self.session.storey, self.session.doc
         value = self.scale_combo.itemData(index)
-        if storey is not None and value != storeys_.scale(storey):
-            self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+        if storey is None or value == storeys_.scale(storey):
+            return
+        if self._window_scale_active():  # vista salva aberta: só a janela (spec/ui 25 §4)
+            storeys_.set_scale_override(storey.GlobalId, value)
+            self.ctx.invalidate()
+            self._refresh_all()
+            return
+        self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    # --- vistas salvas (spec/ui 25) -------------------------------------------------------
+
+    def _window_scale_active(self) -> bool:
+        entity = self.session.doc.find(self.active_saved_view) \
+            if self.active_saved_view else None
+        return entity is not None and saved_views.read_state(entity)["kind"] == "plan"
+
+    def save_view(self, name: str | None = None, crop: bool = False) -> str | None:
+        """Exibir > Salvar vista… e o botão no canto das abas (§3). Com ``name`` dado não
+        pergunta nada; devolve o GlobalId da vista nova."""
+        found = saved_views_ui.capture(self)
+        if found is None:
+            self.session.message("Salvar vista: ponha à frente a planta, o 3D ou um corte",
+                                 "aviso")
+            return None
+        kind, fields, suggested = found
+        if name is None:
+            dialog = saved_views_ui.SaveViewDialog(
+                suggested, saved_views_ui.summary(self, kind, fields), kind == "plan", self)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            name, crop = dialog.name.text(), dialog.crop.isChecked()
+        if crop and kind == "plan":
+            kind, fields, _ = saved_views_ui.capture(self, crop=True)
+        doc = self.session.doc
+        tx = saved_views.create_saved_view(doc, name, kind, **fields) \
+            if name.strip() else None
+        if tx is None or not self.session.run(tx):
+            if tx is None:
+                self.session.message("a vista salva precisa de um nome", "recusa")
+            return None
+        self.active_saved_view = tx.ops[0].id
+        self._refresh_scale()
+        return tx.ops[0].id
+
+    def update_saved_view(self, gid: str) -> bool:
+        """Atualizar com a janela (§4): regrava o que está na tela, mesma origem."""
+        doc = self.session.doc
+        entity = doc.find(gid)
+        if entity is None:
+            return False
+        state = saved_views.read_state(entity)
+        found = saved_views_ui.capture(self, crop=bool(state.get("crop")))
+        if found is None or found[0] != state["kind"]:
+            self.session.message(f"Atualizar vista: ponha à frente a vista de "
+                                 f"{saved_views.KIND_LABEL[state['kind']].lower()}", "aviso")
+            return False
+        fields = found[1]
+        if not self.session.run(lambda: saved_views.edit_saved_view(
+                doc, gid, "Atualizar vista salva", **fields)):
+            return False
+        self.active_saved_view = gid
+        self._refresh_scale()
+        return True
+
+    def open_saved_view(self, gid: str) -> bool:
+        """Abre a vista salva (§4): pavimento, camadas, opções e escala da janela; câmera no
+        3D; aba do corte com a escala dela."""
+        doc = self.session.doc
+        entity = doc.find(gid)
+        if entity is None:
+            return False
+        state = saved_views.read_state(entity)
+        self.close_saved_view()
+        if state["layers"] is not None:
+            self.session.set_display(display_layers.display_of(state["layers"]))
+        if state["kind"] == "plan":
+            storey = doc.find(state["storey"])
+            if storey is None:
+                return False
+            if storey.GlobalId != self.session.storey_id:
+                self.session.set_storey(storey)
+            options = saved_views.options(state)
+            for action, name in ((self.tags_action, "show_tags"),
+                                 (self.tag_size_action, "show_tag_size"),
+                                 (self.structure_tags_action, "show_structure_tags"),
+                                 (self.object_tags_action, "show_object_tags"),
+                                 (self.space_numbers_action, "show_space_numbers"),
+                                 (self.weights_action, "show_weights"),
+                                 (self.view_symbols_action, "show_view_symbols")):
+                action.setChecked(options[name])
+                if name == "show_weights":
+                    self._set_weights(options[name])
+                else:
+                    self._set_plan_option(name, options[name])
+            self.set_plan_detail(options["detail"])
+            self.set_show_above(options["show_above"])
+            stored = storeys_.stored_scale(storey)
+            storeys_.set_scale_override(storey.GlobalId,
+                                        None if state["scale"] == stored else state["scale"])
+            self.ctx.invalidate()
+            if not self.split:
+                self.set_view("plan")
+        elif state["kind"] == "3d":
+            camera, cam = self.view3d.camera, state["camera"]
+            camera.target = np.array(cam["target"], dtype=float)
+            camera.distance, camera.yaw, camera.pitch = (cam["distance"], cam["yaw"],
+                                                         cam["pitch"])
+            if not self.split:
+                self.set_view("3d")
+            self.view3d.update()
+        else:
+            view = self.open_view(state["view"])
+            if view is None:
+                return False
+            view.scale_override = state["scale"]
+            view.show_weights = saved_views.options(state)["show_weights"]
+            view.invalidate()
+        self.active_saved_view = gid
+        self._refresh_all()
+        return True
+
+    def close_saved_view(self) -> None:
+        """A janela volta à escala gravada nos pavimentos e nos cortes."""
+        self.active_saved_view = None
+        storeys_.clear_scale_overrides()
+        for view in self.section_views.values():
+            if view.scale_override is not None:
+                view.scale_override = None
+                view.invalidate()
+        self.ctx.invalidate()
 
     def _set_weights(self, value: bool) -> None:
         self._set_plan_option("show_weights", value)

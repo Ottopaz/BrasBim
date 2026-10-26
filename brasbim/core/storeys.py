@@ -15,6 +15,8 @@ Operações: ``storey.create`` / ``storey.delete`` (data: name, elevation, cut_h
 
 from __future__ import annotations
 
+import contextlib
+
 import ifcopenshell.api.aggregate
 import ifcopenshell.api.root
 import ifcopenshell.util.element
@@ -43,10 +45,48 @@ def read(storey) -> dict:
             "scale": None if scale_ is None else int(scale_)}
 
 
+# Escala que vale no lugar da gravada, por pavimento (spec/ui 25 §4): a da vista salva
+# aberta na janela, ou a de uma vista salva sendo desenhada na prancha.
+_scale_override: dict[str, int | None] = {}
+
+
 def scale(storey) -> int:
     """Denominador da escala de desenho da planta do pavimento (spec/ui 13 §2)."""
+    if storey is not None and _scale_override.get(storey.GlobalId):
+        return _scale_override[storey.GlobalId]
+    return stored_scale(storey)
+
+
+def stored_scale(storey) -> int:
+    """Escala gravada no pavimento, sem a da janela."""
     value = read(storey)["scale"] if storey is not None else None
     return DEFAULT_SCALE if value is None else value
+
+
+def set_scale_override(storey_id: str, value: int | None) -> None:
+    """Escala da janela para o pavimento (``None`` volta à gravada), sem transação."""
+    if value is None:
+        _scale_override.pop(storey_id, None)
+    else:
+        _scale_override[storey_id] = int(value)
+
+
+def clear_scale_overrides() -> None:
+    _scale_override.clear()
+
+
+@contextlib.contextmanager
+def using_scale(storey_id: str, value: int | None):
+    """Desenha o pavimento com a escala ``value`` (``None``: a gravada)."""
+    had, previous = storey_id in _scale_override, _scale_override.get(storey_id)
+    _scale_override[storey_id] = None if value is None else int(value)
+    try:
+        yield
+    finally:
+        if had:
+            _scale_override[storey_id] = previous
+        else:
+            _scale_override.pop(storey_id, None)
 
 
 def paper(storey, mm: float) -> float:

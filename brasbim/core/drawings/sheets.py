@@ -10,7 +10,11 @@ Prancha = ``IfcAnnotation`` "Prancha" na edificação, com o estado em JSON no P
     {"number": "01", "title": "Planta baixa", "format": "A3",
      "orientation": "landscape",
      "views": [{"kind": "plan", "storey": "<GlobalId>", "at": [150.0, 160.0]},
-               {"kind": "view", "view": "<GlobalId>", "at": [300.0, 160.0]}]}
+               {"kind": "view", "view": "<GlobalId>", "at": [300.0, 160.0]},
+               {"kind": "saved", "saved": "<GlobalId>", "at": [150.0, 60.0]}]}
+
+``saved``: vista salva (spec/ui 25), com a escala, as camadas e o recorte dela; a vista
+3D leva também ``width`` (mm de papel).
 
 Coordenadas do papel em milímetros, a partir do canto inferior esquerdo da folha.
 Dados do projeto para o carimbo: Pset ``BrasBim_Projeto`` no ``IfcProject``.
@@ -113,10 +117,29 @@ def fold_marks(state: dict) -> list[Stroke]:
     return out
 
 
-def scale_of(doc: Document, item: dict) -> int:
+def item_key(item: dict) -> str | None:
+    """GlobalId do que o item mostra (pavimento, corte ou vista salva)."""
+    return item.get("storey") or item.get("view") or item.get("saved")
+
+
+def saved_state(doc: Document, item: dict) -> dict | None:
+    """Estado da vista salva do item, ou ``None``."""
+    from brasbim.core.drawings import saved_views
+
+    entity = doc.find(item["saved"]) if item.get("kind") == "saved" else None
+    return saved_views.read_state(entity) if entity is not None else None
+
+
+def scale_of(doc: Document, item: dict) -> int | None:
+    """Escala do item; ``None`` na vista 3D (perspectiva)."""
+    if item["kind"] == "saved":
+        state = saved_state(doc, item)
+        if state is None:
+            return storeys.DEFAULT_SCALE
+        return None if state["kind"] == "3d" else state["scale"]
     if item["kind"] == "plan":
         storey = doc.find(item["storey"])
-        return storeys.scale(storey) if storey is not None else storeys.DEFAULT_SCALE
+        return storeys.stored_scale(storey) if storey is not None else storeys.DEFAULT_SCALE
     from brasbim.core.drawings import views
 
     view = doc.find(item["view"])
@@ -134,7 +157,7 @@ def title_items(doc: Document, sheet, date: str) -> tuple[list[Stroke], list[Tex
     sheets = all_sheets(doc)
     total = len(sheets)
     index = sheets.index(sheet) + 1 if sheet in sheets else 1
-    scales = sorted({scale_of(doc, item) for item in state["views"]})
+    scales = sorted({scale_of(doc, item) for item in state["views"]} - {None})
     responsible = " · ".join(v for v in (info["responsible"], info["registration"]) if v)
     rows = [(info["name"] or "", 5.0), (info["address"] or "", 2.5),
             (f"Proprietário: {info['owner']}" if info["owner"] else "", 2.5),
@@ -159,15 +182,28 @@ def title_items(doc: Document, sheet, date: str) -> tuple[list[Stroke], list[Tex
 
 def item_display(doc: Document, item: dict):
     """Contexto de desenho da vista da prancha: com ``combination`` (spec/ui 18 §6.2), os
-    estados daquela combinação, sem mudar a janela; sem ela, a exibição atual."""
+    estados daquela combinação, sem mudar a janela; sem ela, a exibição atual. A vista
+    salva leva as camadas e a escala dela (spec/ui 25 §5); a planta do pavimento, a escala
+    gravada no pavimento (não a da janela)."""
     import contextlib
 
     from brasbim.core import display_layers
 
-    comb = display_layers.combination(doc, item["combination"])         if item.get("combination") else None
-    if comb is None:
-        return contextlib.nullcontext()
-    return display_layers.using(doc, display_layers.display_of(comb["states"]))
+    if item["kind"] == "saved":
+        from brasbim.core.drawings import saved_views
+
+        state = saved_state(doc, item)
+        return saved_views.drawing(doc, state) if state is not None \
+            else contextlib.nullcontext()
+    stack = contextlib.ExitStack()
+    if item["kind"] == "plan":
+        stack.enter_context(storeys.using_scale(item["storey"], None))
+    comb = display_layers.combination(doc, item["combination"]) \
+        if item.get("combination") else None
+    if comb is not None:
+        stack.enter_context(display_layers.using(doc, display_layers.display_of(
+            comb["states"])))
+    return stack
 
 
 def view_bounds(doc: Document, item: dict):
@@ -176,18 +212,7 @@ def view_bounds(doc: Document, item: dict):
         return _view_bounds(doc, item)
 
 
-def _view_bounds(doc: Document, item: dict):
-    if item["kind"] == "plan":
-        from brasbim.core import plan
-
-        storey = doc.find(item["storey"])
-        return plan.storey_plan(doc, storey).bounds() if storey is not None else None
-    from brasbim.core.drawings import section
-
-    view = doc.find(item["view"])
-    if view is None:
-        return None
-    drawing = section.draw(doc, view)
+def _drawing_bounds(drawing):
     box = drawing.bounds()
     if box is None:
         return None
@@ -197,8 +222,40 @@ def _view_bounds(doc: Document, item: dict):
             max([u1, *(p[0] for p in pts)]), max([v1, *(p[1] for p in pts)]))
 
 
+def _view_bounds(doc: Document, item: dict):
+    from brasbim.core.drawings import section
+
+    if item["kind"] == "saved":
+        from brasbim.core.drawings import saved_views
+
+        state = saved_state(doc, item)
+        if state is None or state["kind"] == "3d":
+            return None
+        if state["kind"] == "plan":
+            if state.get("crop"):
+                return tuple(state["crop"])
+            drawn = saved_views.plan_of(doc, state)
+            return drawn.bounds() if drawn is not None else None
+        view = doc.find(state["view"])
+        return _drawing_bounds(section.draw(doc, view, state["scale"])) if view else None
+    if item["kind"] == "plan":
+        from brasbim.core import plan
+
+        storey = doc.find(item["storey"])
+        return plan.storey_plan(doc, storey).bounds() if storey is not None else None
+    view = doc.find(item["view"])
+    return _drawing_bounds(section.draw(doc, view)) if view is not None else None
+
+
 def view_size(doc: Document, item: dict) -> tuple[float, float]:
-    """Largura e altura (mm de papel) da vista na escala dela."""
+    """Largura e altura (mm de papel) da vista na escala dela; a vista 3D, pela largura
+    dada no item."""
+    if item["kind"] == "saved":
+        state = saved_state(doc, item)
+        if state is not None and state["kind"] == "3d":
+            from brasbim.core.drawings import saved_views
+
+            return saved_views.size_3d(state, item.get("width"))
     box = view_bounds(doc, item)
     if box is None:
         return 0.0, 0.0
@@ -260,7 +317,7 @@ def _validate(state: dict) -> None:
     if state["orientation"] not in ORIENTATIONS:
         raise OpError(f"orientação inválida: {state['orientation']!r}")
     for item in state["views"]:
-        if item.get("kind") not in ("plan", "view"):
+        if item.get("kind") not in ("plan", "view", "saved"):
             raise OpError(f"vista de prancha inválida: {item!r}")
 
 
@@ -315,17 +372,24 @@ register_inverse_pair("sheet.create", _create, "sheet.delete", _delete)
 register("sheet.edit", _edit, invert_swap)
 
 
-def refs_removed_ops(doc: Document, gid: str) -> list[Op]:
-    """``sheet.edit`` que tiram das pranchas a planta do pavimento ou a vista ``gid`` que
-    vai ser excluída (§4)."""
+def refs_removed_ops(doc: Document, gid: str, cascade: bool = True) -> list[Op]:
+    """``sheet.edit`` que tiram das pranchas a planta do pavimento, a vista ou a vista
+    salva ``gid`` que vai ser excluída (§4). Com ``cascade``, as vistas salvas que dependem
+    de ``gid`` saem das pranchas e são excluídas também (spec/ui 25 §4)."""
+    from brasbim.core.drawings import saved_views
+
+    dependents = saved_views.dependents(doc, gid) if cascade else []
+    gone = {gid, *(v.GlobalId for v in dependents)}
     ops = []
     for sheet in all_sheets(doc):
         state = read_state(sheet)
-        kept = [it for it in state["views"] if gid not in (it.get("storey"), it.get("view"))]
+        kept = [it for it in state["views"] if item_key(it) not in gone]
         if len(kept) != len(state["views"]):
             ops.append(Op("sheet.edit", sheet.GlobalId,
                           before={"views": copy.deepcopy(state["views"])},
                           after={"views": copy.deepcopy(kept)}))
+    ops += [Op("saved_view.delete", v.GlobalId, data=saved_views.read_state(v))
+            for v in dependents]
     return ops
 
 
@@ -356,15 +420,16 @@ def edit_sheet(doc: Document, sheet, **changes) -> Transaction:
 
 
 def add_to_sheet(doc: Document, sheet, item: dict, at=None) -> Transaction:
-    """Põe a planta de um pavimento (``{"kind": "plan", "storey": gid}``) ou um corte/fachada
-    (``{"kind": "view", "view": gid}``) na prancha, no primeiro lugar livre (§3)."""
+    """Põe a planta de um pavimento (``{"kind": "plan", "storey": gid}``), um corte/fachada
+    (``{"kind": "view", "view": gid}``) ou uma vista salva (``{"kind": "saved", "saved":
+    gid}``) na prancha, com o centro em ``at`` ou no primeiro lugar livre (§3)."""
     sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
     state = read_state(sheet)
     item = {k: v for k, v in item.items() if k != "at"}
-    key = item.get("storey") or item.get("view")
-    if doc.find(key) is None:
+    key = item_key(item)
+    if key is None or doc.find(key) is None:
         raise OpError("a vista não existe mais")
-    if any(key in (it.get("storey"), it.get("view")) for it in state["views"]):
+    if any(item_key(it) == key for it in state["views"]):
         raise OpError("esta vista já está na prancha")
     spot = list(at) if at is not None else free_spot(doc, state, view_size(doc, item))
     tx = edit_sheet(doc, sheet, views=[*state["views"], {**item, "at": [float(spot[0]),
@@ -379,6 +444,18 @@ def move_on_sheet(doc: Document, sheet, index: int, at) -> Transaction:
     views_[index]["at"] = [round(float(at[0]), 3), round(float(at[1]), 3)]
     tx = edit_sheet(doc, sheet, views=views_)
     tx.label = "Mover vista na prancha"
+    return tx
+
+
+def set_item_width(doc: Document, sheet, index: int, width: float) -> Transaction:
+    """Largura no papel (mm) da vista 3D posta na prancha (spec/ui 25 §5)."""
+    if width <= 0:
+        raise OpError("a largura precisa ser positiva")
+    sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
+    views_ = copy.deepcopy(read_state(sheet)["views"])
+    views_[index]["width"] = round(float(width), 3)
+    tx = edit_sheet(doc, sheet, views=views_)
+    tx.label = "Largura da vista na prancha"
     return tx
 
 

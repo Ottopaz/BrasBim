@@ -11,6 +11,7 @@ em pixels do papel e ``unit`` = dpi / 96 nas espessuras.
 from __future__ import annotations
 
 import datetime
+import json
 from types import SimpleNamespace
 
 from PySide6.QtCore import QMarginsF, QPointF, QRectF, QSizeF, Qt, Signal
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from brasbim.core import plan as plan_mod
 from brasbim.core.document import OpError
-from brasbim.core.drawings import section, sheets
+from brasbim.core.drawings import saved_views, section, sheets
 from brasbim.ui import theme
 from brasbim.ui.plan_view import C, PlanView
 from brasbim.ui.section_view import SectionView
@@ -59,7 +60,7 @@ class _PlanPainter:
         self.ctx = SimpleNamespace(plan=plan, session=SimpleNamespace(selection=set()))
         self.scale, self.origin, self.unit = scale, origin, unit
         self.show_tags = self.show_structure_tags = self.show_weights = True
-        self.show_tag_size = self.show_space_numbers = False
+        self.show_tag_size = self.show_space_numbers = self.show_object_tags = False
         self.show_view_symbols = True
 
     def font(self) -> QFont:
@@ -91,15 +92,77 @@ class _SectionPainter:
         self.paint_drawing(painter, ())
 
 
+class _ImagePainter:
+    """Vista 3D salva na prancha: a imagem do 3D no retângulo dela (spec/ui 25 §5)."""
+
+    def __init__(self, image, rect: QRectF):
+        self.image, self.rect = image, rect
+
+    def paint(self, painter: QPainter) -> None:
+        if self.image is None:
+            painter.setPen(QPen(QColor(theme.INK_SOFT), 1, Qt.DashLine))
+            painter.drawRect(self.rect)
+            painter.drawText(self.rect, Qt.AlignCenter, "Vista 3D (sem OpenGL)")
+            return
+        painter.drawImage(self.rect, self.image)
+        painter.setPen(QPen(QColor(theme.INK), 0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(self.rect)
+
+
+MAX_3D_PX = 4096  # lado maior da imagem do 3D na prancha
+DPI_3D = 300  # resolução da imagem do 3D no PDF
+
+
+_images: dict[tuple, object] = {}  # imagens do 3D já feitas (refeitas quando o modelo muda)
+
+
+def invalidate_images() -> None:
+    _images.clear()
+
+
+def _image_3d(doc, state: dict, rect: QRectF, px_per_mm: float):
+    from brasbim.ui import saved_views_ui
+
+    w, h = rect.width(), rect.height()
+    k = min(1.0, DPI_3D / 25.4 / max(px_per_mm, 1e-9), MAX_3D_PX / max(w, h, 1.0))
+    size = (round(w * k), round(h * k))
+    key = (id(doc), json.dumps(state, sort_keys=True), size)
+    if key not in _images:
+        if len(_images) > 16:
+            _images.clear()
+        _images[key] = saved_views_ui.render_3d(doc, state, *size)
+    return _images[key]
+
+
 def _item_painter(doc, item: dict, center: QPointF, px_per_mm: float, unit: float):
     """Pintor da vista centrada em ``center`` (pixels do papel), ou ``None``."""
+    saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
+    if item["kind"] == "saved" and saved is None:
+        return None
+    if saved is not None and saved["kind"] == "3d":
+        w, h = sheets.view_size(doc, item)
+        rect = QRectF(center.x() - w * px_per_mm / 2, center.y() - h * px_per_mm / 2,
+                      w * px_per_mm, h * px_per_mm)
+        return _ImagePainter(_image_3d(doc, saved, rect, px_per_mm), rect)
     scale = px_per_mm * 1000.0 / sheets.scale_of(doc, item)
     box = sheets.view_bounds(doc, item)
     if box is None:
         return None
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
     origin = QPointF(center.x() - cx * scale, center.y() + cy * scale)
-    with sheets.item_display(doc, item):  # combinação de camadas da vista (spec/ui 18 §6.2)
+    with sheets.item_display(doc, item):  # camadas e escala da vista (spec/ui 18 §6.2, 25)
+        if saved is not None and saved["kind"] == "plan":
+            painter = _PlanPainter(None, saved_views.plan_of(doc, saved), scale, origin, unit)
+            for name, value in saved_views.options(saved).items():
+                if name.startswith("show_") and name != "show_above":
+                    setattr(painter, name, value)
+            return painter
+        if saved is not None:
+            drawer = _SectionPainter(section.draw(doc, doc.find(saved["view"]),
+                                                  saved["scale"]), scale, origin, unit)
+            drawer.show_weights = saved_views.options(saved)["show_weights"]
+            return drawer
         if item["kind"] == "plan":
             storey = doc.find(item["storey"])
             return _PlanPainter(None, plan_mod.storey_plan(doc, storey), scale, origin, unit)
@@ -131,7 +194,11 @@ def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPoi
                 drawer = None
             if drawer is not None:
                 painter.save()
-                drawer.paint(painter)
+                saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
+                if saved is not None and saved.get("crop"):
+                    painter.setClipRect(rects[-1])  # recorte da vista salva (spec/ui 25 §2)
+                with sheets.item_display(doc, item):
+                    drawer.paint(painter)
                 painter.restore()
         strokes, texts = sheets.title_items(doc, sheet, date)
         for stroke in strokes:
@@ -200,6 +267,7 @@ class SheetView(QWidget):
         self._fitted = False
         self.setMinimumSize(300, 200)
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)  # vistas salvas arrastadas do painel (spec/ui 25 §5)
 
     @property
     def sheet(self):
@@ -245,6 +313,70 @@ class SheetView(QWidget):
                 painter.drawRect(r)
         painter.end()
 
+    def to_paper(self, pos: QPointF) -> tuple[float, float]:
+        """Pixels da aba → mm do papel (y para cima)."""
+        _, h = sheets.paper(sheets.read_state(self.sheet))
+        return ((pos.x() - self.top_left.x()) / self.zoom,
+                h - (pos.y() - self.top_left.y()) / self.zoom)
+
+    def context_menu(self, pos: QPointF, index: int | None) -> QMenu:
+        """Botão direito: na vista, tirar (e a largura da vista 3D); no papel, pôr uma vista
+        salva no ponto clicado (spec/ui 25 §5)."""
+        from brasbim.core.drawings import saved_views as sv
+
+        doc = self.session.doc
+        menu = QMenu(self)
+        if index is not None:
+            item = sheets.read_state(self.sheet)["views"][index]
+            saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
+            if saved is not None and saved["kind"] == "3d":
+                menu.addAction("Largura no papel…", lambda: self.ask_width(index))
+            menu.addAction("Tirar da prancha", lambda: self.session.run(
+                lambda: sheets.remove_from_sheet(doc, self.sheet_gid, index)))
+            return menu
+        at = self.to_paper(pos)
+        sub = menu.addMenu("Pôr vista salva")
+        entities = sv.all_saved_views(doc)
+        for entity in entities:
+            sub.addAction(sv.read_state(entity)["name"],
+                          lambda g=entity.GlobalId: self.put_saved(g, at))
+        if not entities:
+            sub.addAction("(nenhuma vista salva)").setEnabled(False)
+        return menu
+
+    def put_saved(self, gid: str, at) -> bool:
+        return self.session.run(lambda: sheets.add_to_sheet(
+            self.session.doc, self.sheet_gid, {"kind": "saved", "saved": gid}, at=at))
+
+    def ask_width(self, index: int) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        item = sheets.read_state(self.sheet)["views"][index]
+        width, ok = QInputDialog.getDouble(self, "Largura no papel", "Largura (mm)",
+                                           sheets.view_size(self.session.doc, item)[0], 10,
+                                           2000, 1)
+        if ok:
+            self.session.run(lambda: sheets.set_item_width(self.session.doc, self.sheet_gid,
+                                                           index, width))
+
+    def dragEnterEvent(self, event):
+        from brasbim.ui.saved_views_ui import MIME
+
+        if event.mimeData().hasFormat(MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        self.dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        from brasbim.ui.saved_views_ui import MIME
+
+        data = event.mimeData()
+        if data.hasFormat(MIME):
+            gid = bytes(data.data(MIME)).decode()
+            if self.put_saved(gid, self.to_paper(event.position())):
+                event.acceptProposedAction()
+
     def _index_at(self, pos: QPointF) -> int | None:
         for i in reversed(range(len(self.rects))):
             if self.rects[i].contains(pos):
@@ -257,11 +389,8 @@ class SheetView(QWidget):
             self._pan = pos
             return
         index = self._index_at(pos)
-        if event.button() == Qt.RightButton and index is not None:
-            menu = QMenu(self)
-            menu.addAction("Tirar da prancha", lambda: self.session.run(
-                lambda: sheets.remove_from_sheet(self.session.doc, self.sheet_gid, index)))
-            menu.exec(event.globalPosition().toPoint())
+        if event.button() == Qt.RightButton:
+            self.context_menu(pos, index).exec(event.globalPosition().toPoint())
             return
         if event.button() == Qt.LeftButton and index is not None:
             self._drag = {"index": index, "start": pos, "delta": QPointF(0, 0),

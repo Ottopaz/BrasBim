@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import storeys as storeys_
 from brasbim.core.quantities import tables as tables_
 from brasbim.core.walls import commands as cmd
+from brasbim.ui.saved_views_ui import SavedViewList
 from brasbim.ui.tools import fmt, parse_number
 
 NEW_STOREY_HEIGHT = 2.80  # cota do pavimento novo: a maior + 2,80 m (§7)
@@ -68,6 +70,16 @@ class ProjectPanel(QWidget):
         self.views.itemClicked.connect(
             lambda item: self.session.select([item.data(Qt.UserRole)]))
         self.open_view = None  # posto pela janela principal
+        # Vistas salvas (spec/ui 25 §4): clique duplo abre; arrastar leva à prancha
+        self.saved = SavedViewList()
+        self.saved.setToolTip("Clique duplo abre a vista; arraste para uma prancha; botão "
+                              "direito: ações")
+        self.saved.itemDoubleClicked.connect(
+            lambda item: self.open_saved_view and self.open_saved_view(item.data(Qt.UserRole)))
+        self.saved.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.saved.customContextMenuRequested.connect(self._saved_menu_at)
+        self.open_saved_view = None  # postos pela janela principal
+        self.update_saved_view = None
         # Pranchas (spec/ui 15 §5)
         self.sheets = QListWidget()
         self.sheets.setToolTip("Clique duplo abre a prancha")
@@ -126,8 +138,11 @@ class ProjectPanel(QWidget):
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addWidget(self.table)
         layout.addLayout(buttons)
-        layout.addWidget(QLabel("Vistas"))
-        layout.addWidget(self.views)
+        self.view_tabs = QTabWidget()  # vistas salvas e cortes num lugar só (spec/ui 25 §4)
+        self.view_tabs.setDocumentMode(True)
+        self.view_tabs.addTab(self.saved, "Vistas salvas")
+        self.view_tabs.addTab(self.views, "Cortes e fachadas")
+        layout.addWidget(self.view_tabs)
         layout.addWidget(QLabel("Pranchas"))
         layout.addWidget(self.sheets)
         sheet_buttons = QHBoxLayout()
@@ -147,8 +162,8 @@ class ProjectPanel(QWidget):
         object_buttons.addWidget(self.library_button)
         layout.addLayout(object_buttons)
         # listas baixas no mínimo: o painel não empurra os outros (as listas crescem juntas)
-        for widget in (self.views, self.sheets, self.tables, self.objects):
-            widget.setMinimumHeight(44)
+        for widget in (self.saved, self.views, self.sheets, self.tables, self.objects):
+            widget.setMinimumHeight(40)
         self.table.setMinimumHeight(80)
         # o nome do pavimento cabe inteiro ao lado das outras três colunas
         self.setMinimumWidth(320)
@@ -192,6 +207,15 @@ class ProjectPanel(QWidget):
             item = QListWidgetItem(views_.read_state(view)["name"] or view.GlobalId)
             item.setData(Qt.UserRole, view.GlobalId)
             self.views.addItem(item)
+        from brasbim.core.drawings import saved_views as saved_
+
+        self.saved.clear()
+        for entity in saved_.all_saved_views(self.session.doc):
+            state = saved_.read_state(entity)
+            item = QListWidgetItem(state["name"])
+            item.setData(Qt.UserRole, entity.GlobalId)
+            item.setToolTip(saved_.KIND_LABEL[state["kind"]])
+            self.saved.addItem(item)
         from brasbim.core.drawings import sheets as sheets_
 
         self.sheets.clear()
@@ -415,6 +439,60 @@ class ProjectPanel(QWidget):
         if value != storeys_.scale(storey):
             doc = self.session.doc
             self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    # --- vistas salvas (spec/ui 25 §4) ---------------------------------------------------
+
+    def _saved_menu_at(self, pos) -> None:
+        item = self.saved.itemAt(pos)
+        if item is not None:
+            self.saved_menu(item.data(Qt.UserRole)).exec(self.saved.viewport().mapToGlobal(pos))
+
+    def saved_menu(self, gid: str) -> QMenu:
+        from brasbim.core.drawings import saved_views as saved_
+        from brasbim.core.drawings import sheets as sheets_
+
+        doc = self.session.doc
+        menu = QMenu(self)
+        menu.addAction("Abrir", lambda: self.open_saved_view and self.open_saved_view(gid))
+        menu.addAction("Atualizar com a janela",
+                       lambda: self.update_saved_view and self.update_saved_view(gid))
+        menu.addAction("Renomear…", lambda: self.rename_saved_view(gid))
+        sub = menu.addMenu("Pôr na prancha")
+        for sheet in sheets_.all_sheets(doc):
+            state = sheets_.read_state(sheet)
+            text = f"{state['number']} · {state['title']}" if state["title"]                 else f"Prancha {state['number']}"
+            sub.addAction(text, lambda s=sheet.GlobalId: self.put_on_sheet(gid, s))
+        if sub.isEmpty():
+            sub.addAction("(nenhuma prancha)").setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Excluir", lambda: self.session.run(
+            lambda: saved_.delete_saved_view(doc, gid)))
+        return menu
+
+    def put_on_sheet(self, gid: str, sheet_gid: str) -> bool:
+        from brasbim.core.drawings import sheets as sheets_
+
+        doc = self.session.doc
+        done = self.session.run(lambda: sheets_.add_to_sheet(
+            doc, sheet_gid, {"kind": "saved", "saved": gid}))
+        if done and self.open_sheet:
+            self.open_sheet(sheet_gid)
+        return done
+
+    def rename_saved_view(self, gid: str, name: str | None = None) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        from brasbim.core.drawings import saved_views as saved_
+
+        doc = self.session.doc
+        current = saved_.read_state(doc.get(gid))["name"]
+        if name is None:
+            name, ok = QInputDialog.getText(self, "Renomear vista salva", "Nome",
+                                            text=current)
+            if not ok:
+                return
+        self.session.run(lambda: saved_.edit_saved_view(doc, gid, "Renomear vista salva",
+                                                        name=name))
 
     def add_sheet(self) -> None:
         from brasbim.core.drawings import sheets as sheets_

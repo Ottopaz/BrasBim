@@ -27,6 +27,7 @@ class SectionView(QWidget):
         self.scale = 60.0
         self.origin = QPointF(200, 400)
         self.show_weights = True
+        self.scale_override: int | None = None  # escala da vista salva aberta (spec/ui 25)
         self.unit = 1.0  # unidades do desenho por pixel de tela (spec/ui 15)
         self._drawing: section.Drawing | None = None
         self._pan: QPointF | None = None
@@ -50,7 +51,8 @@ class SectionView(QWidget):
         if self._drawing is None:
             view = self.view
             try:
-                self._drawing = (section.draw(self.session.doc, view) if view is not None
+                self._drawing = (section.draw(self.session.doc, view, self.scale_override)
+                                 if view is not None
                                  else section.Drawing())
             except OpError as e:
                 self.session.message(f"não foi possível desenhar a vista: {e}", "aviso")
