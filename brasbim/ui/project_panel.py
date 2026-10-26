@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import storeys as storeys_
 from brasbim.core.quantities import tables as tables_
 from brasbim.core.walls import commands as cmd
+from brasbim.ui.icons import icon
 from brasbim.ui.saved_views_ui import SavedViewList
 from brasbim.ui.tools import fmt, parse_number
 
@@ -81,6 +83,15 @@ class ProjectPanel(QWidget):
         self.saved.customContextMenuRequested.connect(self._saved_menu_at)
         self.open_saved_view = None  # postos pela janela principal
         self.update_saved_view = None
+        self.save_view = None
+        self.save_view_button = QToolButton()  # spec/ui 25 §3: no canto das abas de vistas
+        self.save_view_button.setIcon(icon("save_view"))
+        self.save_view_button.setText("Salvar vista")
+        self.save_view_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.save_view_button.setToolTip("Salvar vista (Ctrl+Alt+S): guarda a escala, as "
+                                         "camadas e as opções da vista à frente")
+        self.save_view_button.setAutoRaise(True)
+        self.save_view_button.clicked.connect(lambda: self.save_view and self.save_view())
         # Pranchas (spec/ui 15 §5)
         self.sheets = QListWidget()
         self.sheets.setToolTip("Clique duplo abre a prancha")
@@ -155,6 +166,7 @@ class ProjectPanel(QWidget):
         self.view_tabs.setDocumentMode(True)
         self.view_tabs.addTab(self.saved, "Vistas salvas")
         self.view_tabs.addTab(self.views, "Cortes e fachadas")
+        self.view_tabs.setCornerWidget(self.save_view_button, Qt.TopRightCorner)
         layout.addWidget(self.view_tabs)
         self.sheet_tabs = QTabWidget()  # pranchas e folhas mestras (spec/ui 26 §4)
         self.sheet_tabs.setDocumentMode(True)

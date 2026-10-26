@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSplitter,
     QTabWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -54,7 +53,6 @@ from brasbim.ui.command_line import (
     load_aliases,
     save_aliases,
 )
-from brasbim.ui.icons import icon
 from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.master_editor import MasterEditor
@@ -183,13 +181,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.plan, "Planta")
         self.tabs.addTab(self.view3d, "3D")
         self.tabs.currentChanged.connect(self._tab_changed)
-        self.save_view_button = QToolButton()  # spec/ui 25 §3
-        self.save_view_button.setIcon(icon("save_view"))
-        self.save_view_button.setToolTip("Salvar vista (Ctrl+Alt+S): guarda a escala, as "
-                                         "camadas e as opções da vista à frente")
-        self.save_view_button.setAutoRaise(True)
-        self.save_view_button.clicked.connect(lambda: self.save_view())
-        self.tabs.setCornerWidget(self.save_view_button, Qt.TopRightCorner)
         self.setCentralWidget(self.central)
 
     def _dock(self, title: str, name: str, widget, area) -> QDockWidget:
@@ -204,6 +195,7 @@ class MainWindow(QMainWindow):
         self.project.open_view = self.open_view
         self.project.open_saved_view = self.open_saved_view
         self.project.update_saved_view = self.update_saved_view
+        self.project.save_view = self.save_view
         self.project.open_sheet = self.open_sheet
         self.project.open_master = self.open_master
         self.project.open_table = self.open_table
@@ -701,7 +693,8 @@ class MainWindow(QMainWindow):
         return entity is not None and saved_views.read_state(entity)["kind"] == "plan"
 
     def save_view(self, name: str | None = None, crop: bool = False) -> str | None:
-        """Exibir > Salvar vista… e o botão no canto das abas (§3). Com ``name`` dado não
+        """Exibir > Salvar vista… e o botão das abas de vistas do painel Projeto (§3). Com
+        ``name`` dado não
         pergunta nada; devolve o GlobalId da vista nova."""
         found = saved_views_ui.capture(self)
         if found is None:

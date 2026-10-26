@@ -9,7 +9,7 @@ como no CAD feitas; specs/ui 25–28 em revisão).*
 
 > **Onde paramos (2026‑10‑26):** antes do item 2 do roteiro, o revisor pediu quatro
 > ajustes, todos **feitos** (specs em revisão, seções "como ficou" abaixo):
-> (1) **vistas salvas** (`spec/ui/25-vistas-salvas.md`): botão no canto das abas, painel
+> (1) **vistas salvas** (`spec/ui/25-vistas-salvas.md`): botão Salvar vista no canto das abas Vistas salvas | Cortes e fachadas, painel
 > Projeto > Vistas salvas, vista viva na prancha (arrastar ou botão direito no papel),
 > 3D como imagem; (2) **folhas mestras** (`spec/ui/26-folhas-mestras.md`): papel, margens
 > e carimbo desenhado com campos, aba de edição própria, Nova prancha… escolhe a folha

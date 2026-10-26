@@ -31,8 +31,10 @@ As camadas são **copiadas** para a vista: mudar depois uma combinação não mu
 salva (para mudar, abre-se a vista, muda-se e usa-se **Atualizar com a janela**).
 
 ## 3. Salvar
-- Botão **Salvar vista** no canto da barra de abas (à direita das abas Planta/3D/…),
-  valendo para a aba à frente: planta, 3D ou corte. Também em **Exibir > Salvar vista…**
+- Botão **Salvar vista** no canto das abas **Vistas salvas | Cortes e fachadas** do
+  painel Projeto (pedido do revisor em 2026‑10‑26; antes ficava no canto das abas
+  Planta/3D e sumia com as vistas lado a lado), valendo para a vista à frente: planta,
+  3D ou corte. Também em **Exibir > Salvar vista…**
   (Ctrl+Alt+S), na paleta e na linha de comando (apelido `SV`).
 - Abre um quadro curto: **nome** (sugestão: "Térreo 1:50", "Corte A 1:50", "3D 1"), um
   resumo do que será guardado (pavimento, escala, camadas: nome da combinação ou

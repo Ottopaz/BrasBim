@@ -36,7 +36,11 @@ def test_vs06_salvar_e_abrir_planta(window):
     _casa(window)
     terreo = s.storey
     paredes = _layer(s.doc, "Paredes")
-    assert window.save_view_button.isVisible()
+    button = window.project.save_view_button  # no canto das abas de vistas do painel
+    assert button.isVisible() and button.parent() is not None
+    window.set_view("split")  # lado a lado as abas das vistas somem; o botão fica
+    assert button.isVisible()
+    window.set_view("plan")
     # planta: camadas, escala do pavimento e opções da janela
     s.set_display(dl.Display(hidden=frozenset({paredes})))
     window.set_show_above(False)
