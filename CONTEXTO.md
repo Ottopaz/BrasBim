@@ -23,7 +23,14 @@ moldura dos desenhos: spec/ui 29; specs/ui 23–29 em revisão).*
 > amarelo = demolir; DWF de SP ainda pedido no envio por e‑mail (página SMUL de
 > 07/08/2026), Licencia Sampa (15/06/2026) sem formatos achados; a ementa do IFPB cita
 > NBR 6492 de 2021 com o título antigo e as NBR 16861:2020 (linhas e escrita) e 17006:2021.
-> Próximo: mais observações do revisor; depois a spec do item 2.
+> **Pente fino (2026‑10‑26, noite):** a pedido do revisor, todas as funcionalidades
+> foram cruzadas com as 15 notas da pesquisa e com o código:
+> `reports/Pente fino BrasBim x pesquisa.md` (12 ações de maior retorno, tabela por
+> área, ordem proposta). Achados que são correção: ambiente não se refaz quando a
+> parede é movida à mão; `GrossFloorArea` = `NetFloorArea`; salvamento automático na
+> linha da UI; specs 01/03/07 com texto velho do Tab.
+> Próximo: mais observações do revisor e a decisão dele sobre a ordem do pente fino;
+> depois a spec do item 2.
 
 > **Onde paramos (2026‑10‑26):** antes do item 2 do roteiro, o revisor pediu quatro
 > ajustes, todos **feitos** (specs em revisão, seções "como ficou" abaixo):
