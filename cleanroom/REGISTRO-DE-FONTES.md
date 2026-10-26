@@ -836,6 +836,32 @@ Endereços citados (4): https://community.graphisoft.com/t5/Getting-started/Arch
 - Pedido e respostas do revisor (2026‑10‑26).
 - Nenhum material de `_restrito/` nem de `tools/` foi usado. Cursor e cores próprios.
 
+### `spec/ui/29-prancha-selecao-e-moldura.md`
+*Seleção na prancha e na folha mestra; limite e moldura dos desenhos na prancha*; data 2026-10-26; situação em revisão (implementado para teste, fluxo do MVP).
+
+- Pedido do revisor (2026‑10‑26).
+- Seleção: spec/ui 28 e as fontes citadas lá (pesquisa do projeto, `autocad.md` §1).
+- Limite e moldura — como os três resolvem (acesso em 2026‑10‑26, por resultado de busca:
+  **conferir** na página inteira antes de citar como fato; sem copiar nomes de UI):
+  - Archicad: o desenho na folha tem um contorno que só aparece na tela e se liga e
+    desliga nas opções de exibição, separado de uma borda imprimível com pena e tipo de
+    linha; o contorno pode acompanhar o desenho ou ser redimensionado à mão, recortando
+    ([Graphisoft Community, bordas dos desenhos no layout](https://community.graphisoft.com/t5/Documentation/Border-lines-around-drawings-on-layout/m-p/212041/highlight/true);
+    [moldura automática × manual](https://community.graphisoft.com/t5/Documentation/VIEW-EDGE-quot-AUTO-ADJUST-quot-OR-quot-MANUAL-quot-EXPLAIN/td-p/142401)).
+    Queixa registrada lá: o usuário não controla a aparência do contorno de tela — aqui a
+    moldura impressa tem pena e tipo de linha próprios.
+  - Revit: a região de recorte da vista se mostra ou se oculta e se ajusta por alças
+    ([Autodesk Help, Showing or Hiding Crop Regions](https://help.autodesk.com/cloudhelp/2023/ENU/Revit-DocumentPresent/files/GUID-47430A55-A8F0-4894-A636-14E0A29182D3.htm)).
+  - AutoCAD: a borda da janela de papel não tem opção própria de ocultar; a prática é
+    pô‑la numa camada que não imprime
+    ([Autodesk Forums, ocultar a borda da viewport](https://forums.autodesk.com/t5/autocad-forum/viewport-border-showing-on-print/m-p/7979089);
+    [Arkance, camada congelada e recorte](https://ukcommunity.arkance.world/hc/en-us/articles/21550812943762-AutoCAD-Tip-Freezing-Viewport-Layer-removes-clipping-boundary-from-viewport)).
+    Aqui o limite de tela e a moldura impressa são coisas separadas desde o início.
+- Nenhum material de `_restrito/` nem de `tools/` foi usado. Nomes, cursor e cores
+  próprios.
+
+Endereços citados (5): https://community.graphisoft.com/t5/Documentation/Border-lines-around-drawings-on-layout/m-p/212041/highlight/true; https://community.graphisoft.com/t5/Documentation/VIEW-EDGE-quot-AUTO-ADJUST-quot-OR-quot-MANUAL-quot-EXPLAIN/td-p/142401; https://forums.autodesk.com/t5/autocad-forum/viewport-border-showing-on-print/m-p/7979089; https://help.autodesk.com/cloudhelp/2023/ENU/Revit-DocumentPresent/files/GUID-47430A55-A8F0-4894-A636-14E0A29182D3.htm; https://ukcommunity.arkance.world/hc/en-us/articles/21550812943762-AutoCAD-Tip-Freezing-Viewport-Layer-removes-clipping-boundary-from-viewport
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem
