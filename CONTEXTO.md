@@ -4,9 +4,21 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑23 (linha de comando implementada, spec/ui 24 em revisão).*
+*Atualizado em 2026‑10‑26 (vistas salvas e folhas mestras feitas; penas e seleção em
+andamento).*
 
-> **Onde paramos (2026‑10‑23, noite):** **linha de comando** feita a pedido do revisor
+> **Onde paramos (2026‑10‑26):** antes do item 2 do roteiro, o revisor pediu quatro
+> ajustes, nesta ordem: (1) **vistas salvas** — feito, `spec/ui/25-vistas-salvas.md`
+> (em revisão), botão no canto das abas, painel Projeto > Vistas salvas, vista viva na
+> prancha, 3D como imagem; (2) **folhas mestras** — feito, `spec/ui/26-folhas-mestras.md`
+> (em revisão), papel/margens/carimbo desenhado com campos, aba de edição própria;
+> (3) **tabela de penas** (cores e espessuras) — próximo, spec/ui 27; (4) **seleção como
+> no AutoCAD** — spec/ui 28: clique acumula (Shift+clique tira, Esc limpa), laço ao
+> arrastar no vazio (esquerda→direita só inteiros, direita→esquerda os que tocam),
+> janela retangular por clique‑e‑clique no vazio, destaque ao passar o cursor, janela
+> também no 3D (respostas do revisor em 2026‑10‑26). Depois: item 2 do roteiro.
+
+> **Antes (2026‑10‑23, noite):** **linha de comando** feita a pedido do revisor
 > (`spec/ui/24-linha-de-comando.md`, em revisão; seção "Linha de comando — como ficou"
 > abaixo): barra fixa sob as vistas; letras digitadas na planta/3D vão para ela; Enter
 > lê coordenada (`x;y`, `@dx;dy`), número, apelido, opção da ferramenta ou busca da
