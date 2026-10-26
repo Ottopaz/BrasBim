@@ -122,6 +122,11 @@ class Resolved:
     def pen(self, category: str) -> Pen:
         return self._pens.get(category) or Pen(INK, CATEGORIES.get(category, ("", 0.25))[1])
 
+    def number(self, n: int) -> Pen:
+        """A pena de número ``n`` (moldura dos desenhos na prancha, spec/ui 29 §4)."""
+        data = self.table["pens"].get(str(n)) or {"color": INK, "weight": 0.25}
+        return Pen(INK if self.black else data["color"], float(data["weight"]))
+
     def color(self, category: str) -> str:
         return self.pen(category).color
 

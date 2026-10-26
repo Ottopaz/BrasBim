@@ -4,8 +4,26 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑26 (vistas salvas, folhas mestras, tabela de penas e seleção
-como no CAD feitas; specs/ui 25–28 em revisão).*
+*Atualizado em 2026‑10‑26, tarde (seleção na prancha e na folha mestra, limite e
+moldura dos desenhos: spec/ui 29; specs/ui 23–29 em revisão).*
+
+> **Onde paramos (2026‑10‑26, tarde):** o revisor começou a testar as specs 25–28 e
+> pediu: (a) botão **Salvar vista** no canto das abas Vistas salvas | Cortes e fachadas
+> do painel Projeto (feito; antes sumia com as vistas lado a lado); (b) **seleção como
+> na planta** também na montagem das pranchas e na folha mestra; (c) **limite tracejado**
+> de cada desenho na prancha, editável por alças (recorte), e **moldura** impressa com
+> tipo de linha e pena, ou sem moldura. (b) e (c) estão na **spec/ui 29**
+> (`spec/ui/29-prancha-selecao-e-moldura.md`, em revisão; "como ficou" abaixo). O
+> revisor pediu que **todo** pedido seja conferido com a pesquisa clean‑room (como os
+> três programas resolvem) antes de decidir a solução. A leitura prévia do item 2
+> (projeto legal) foi feita: `Status` do IFC 4.3 confirmado no esquema (DEMOLISH,
+> EXISTING, NEW, TEMPORARY, OTHER, NOTKNOWN, UNSET; não existe em `Pset_SpaceCommon` nem
+> em anotações); cores de Londrina divergem entre o código em vigor (trecho) e a minuta
+> de 2023 (vermelho = construir), Santa Maria Madalena/RJ (Lei 76/1976, art. 60) usa
+> amarelo = demolir; DWF de SP ainda pedido no envio por e‑mail (página SMUL de
+> 07/08/2026), Licencia Sampa (15/06/2026) sem formatos achados; a ementa do IFPB cita
+> NBR 6492 de 2021 com o título antigo e as NBR 16861:2020 (linhas e escrita) e 17006:2021.
+> Próximo: mais observações do revisor; depois a spec do item 2.
 
 > **Onde paramos (2026‑10‑26):** antes do item 2 do roteiro, o revisor pediu quatro
 > ajustes, todos **feitos** (specs em revisão, seções "como ficou" abaixo):
@@ -54,7 +72,7 @@ como no CAD feitas; specs/ui 25–28 em revisão).*
 
 > **Como retomar (sessão nova):**
 > 1. Ler este arquivo, `CLAUDE.md`, `cleanroom/PROCESSO.md` e a pasta `feedback/`.
-> 2. Pedir ao revisor a revisão das specs/ui 25–28 (pontos de revisão no fim de cada
+> 2. Pedir ao revisor a revisão das specs/ui 25–29 (pontos de revisão no fim de cada
 >    uma) testando no aplicativo: Salvar vista na planta e no 3D e pô-la numa prancha;
 >    Folhas mestras (desenhar o carimbo, Nova prancha… com ela); Projeto > Tabelas de
 >    penas…; a seleção (clique soma, Shift tira, clique no vazio + clique, arrastar = laço,
@@ -63,7 +81,7 @@ como no CAD feitas; specs/ui 25–28 em revisão).*
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑26: 718 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑26 (tarde): 727 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -631,6 +649,22 @@ como no CAD feitas; specs/ui 25–28 em revisão).*
   Exibir > Tabela de penas ▸; `MainWindow.window_pens` (tabela da vista salva aberta),
   `refresh_pens`, `use_pen_table`, `edit_pens(apply=…)`.
 - Fica para depois: hachuras pela tabela; penas por camada.
+
+## Seleção na prancha e moldura — como ficou (spec/ui 29)
+- `ui/paper_select.py`: `PaperSelection` (gestos da planta em mm do papel: clique soma,
+  Shift tira, janela de 2 cliques, laço, direção, realce, arrasto, Esc; `accumulate`
+  vem de `ctx.accumulate`) e `draw_overlay`. Núcleo: `plan.outlines_in_area`.
+- Prancha: `SheetView` com `press/move/release/escape` em mm, `selected`, alças do limite
+  (`sheets.handle_points`, `limit_from_handle`, `set_item_limit`), Delete e Editar >
+  Excluir tiram da prancha (`remove_many_from_sheet`), arrasto move todos
+  (`move_many_on_sheet`); botão direito: Moldura…, Ajustar o limite ao desenho, Tirar.
+  Item da prancha ganhou `limit` (m do desenho; `view_bounds` usa ele) e `frame`
+  (`show`, `dash`, `pen`); `paper.draw_frame`/`frame_pen`, `pens.Resolved.number`,
+  `FrameDialog`. Exibir > Limites dos desenhos na prancha (`QSettings`
+  `prancha/limites_dos_desenhos`).
+- Folha mestra: `MasterCanvas.selection` (mesma classe; `selected` virou propriedade),
+  `master_editor.outlines`; o arrasto anda em mm inteiros. `MasterCanvas.cursor` é o
+  ponto atraído (o cursor do Qt é `QWidget.cursor(canvas)`).
 
 ## Seleção como no CAD — como ficou (spec/ui 28)
 - `Plan.in_polygon` (laço) e `_in_area` comum com `in_rect`.

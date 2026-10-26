@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 from types import SimpleNamespace
 
 from PySide6.QtCore import QMarginsF, QPointF, QRectF, QSizeF, Qt, Signal
@@ -19,20 +20,33 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetricsF,
+    QIcon,
     QPageLayout,
     QPageSize,
     QPainter,
     QPdfWriter,
     QPen,
+    QPixmap,
     QPolygonF,
 )
-from PySide6.QtWidgets import QMenu, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QMenu,
+    QWidget,
+)
 
 from brasbim.core import pens
 from brasbim.core import plan as plan_mod
+from brasbim.core.annotations.prims import DASH_PATTERNS
 from brasbim.core.document import OpError
 from brasbim.core.drawings import saved_views, section, sheets
 from brasbim.ui import theme
+from brasbim.ui.measure_box import pick_cursor
+from brasbim.ui.paper_select import DRAG_PX, PaperSelection, draw_overlay
 from brasbim.ui.plan_view import C, PlanView
 from brasbim.ui.section_view import SectionView
 
@@ -193,6 +207,28 @@ def draw_paper_text(painter: QPainter, text, p: QPointF, px_per_mm: float) -> No
     painter.drawText(QPointF(p.x() + dx, p.y()), text.text)
 
 
+def frame_pen(doc, frame: dict, px_per_mm: float, unit: float) -> QPen:
+    """Caneta da moldura: cor e espessura da pena e o tipo de linha (spec/ui 29 §4)."""
+    pen_ = pens.resolve(doc, None, paper=True).number(frame["pen"])
+    width = max(unit * 0.5, pen_.weight * px_per_mm)
+    pen = QPen(QColor(pen_.color), width)
+    pen.setCapStyle(Qt.FlatCap)
+    pattern = DASH_PATTERNS.get(frame["dash"])
+    if pattern:  # traços em mm de papel, na unidade da caneta (a espessura)
+        pen.setDashPattern([v * px_per_mm / width for v in pattern])
+    return pen
+
+
+def draw_frame(painter: QPainter, doc, item: dict, rect: QRectF, px_per_mm: float,
+               unit: float) -> None:
+    frame = item.get("frame")
+    if not frame or not frame["show"] or rect.isEmpty():
+        return
+    painter.setPen(frame_pen(doc, frame, px_per_mm, unit))
+    painter.setBrush(Qt.NoBrush)
+    painter.drawRect(rect)
+
+
 def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPointF,
                  unit: float, date: str) -> list[QRectF]:
     """Desenha a prancha; devolve o retângulo (pixels) de cada vista, na ordem dela."""
@@ -219,11 +255,13 @@ def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPoi
             if drawer is not None:
                 painter.save()
                 saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
-                if saved is not None and saved.get("crop"):
-                    painter.setClipRect(rects[-1])  # recorte da vista salva (spec/ui 25 §2)
+                if (saved is not None and saved.get("crop")) or item.get("limit"):
+                    # recorte da vista salva (spec/ui 25 §2) ou pela alça (spec/ui 29 §3)
+                    painter.setClipRect(rects[-1])
                 with sheets.item_display(doc, item):
                     drawer.paint(painter)
                 painter.restore()
+            draw_frame(painter, doc, item, rects[-1], px_per_mm, unit)
         strokes, texts = sheets.title_items(doc, sheet, date)
         for stroke in strokes:
             painter.setPen(QPen(QColor(theme.INK), max(unit * 0.5,
@@ -270,8 +308,8 @@ def export_pdf(path: str, doc, sheet_list, date: str | None = None, dpi: int = 6
 
 
 class SheetView(QWidget):
-    """Aba da prancha (spec/ui 15 §5): o papel na tela, arrastar as vistas, tirar da
-    prancha pelo botão direito."""
+    """Aba da prancha (spec/ui 15 §5): o papel na tela; seleção pelo cursor como na
+    planta, arrastar os desenhos, alças do limite, moldura e botão direito (spec/ui 29)."""
 
     changed = Signal()
 
@@ -282,16 +320,31 @@ class SheetView(QWidget):
         self.zoom = 1.5  # pixels por mm
         self.top_left = QPointF(20, 20)
         self.rects: list[QRectF] = []
-        self._drag: dict | None = None
+        self.accumulate = lambda: True  # Editar > Modo de seleção (posto pela janela)
+        self.show_limits = lambda: True  # Exibir > Limites dos desenhos (idem)
+        self.selection = PaperSelection(self._pick, self._outlines,
+                                        lambda: self.accumulate())
+        self._handle: dict | None = None  # alça do limite sendo levada
         self._pan: QPointF | None = None
         self._fitted = False
         self.setMinimumSize(300, 200)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(pick_cursor())
         self.setAcceptDrops(True)  # vistas salvas arrastadas do painel (spec/ui 25 §5)
 
     @property
     def sheet(self):
         return self.session.doc.find(self.sheet_gid)
+
+    @property
+    def items(self) -> list[dict]:
+        sheet = self.sheet
+        return sheets.read_state(sheet)["views"] if sheet is not None else []
+
+    @property
+    def selected(self) -> set[int]:
+        return self.selection.selected
 
     @property
     def title(self) -> str:
@@ -316,7 +369,54 @@ class SheetView(QWidget):
             self.fit()
 
     def invalidate(self) -> None:
+        self.selection.prune(len(self.items))
         self.update()
+
+    # itens no papel (mm)
+
+    def _rects_mm(self) -> list[tuple[float, float, float, float]]:
+        doc = self.session.doc
+        out = []
+        for item in self.items:
+            try:
+                out.append(sheets.item_rect(doc, item))
+            except (OpError, RuntimeError):
+                out.append((*item["at"], *item["at"]))
+        return out
+
+    def _outlines(self):
+        return [[([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], True)]
+                for x0, y0, x1, y1 in self._rects_mm()]
+
+    def _pick(self, p) -> int | None:
+        reach = 3.0 / self.zoom
+        rects = self._rects_mm()
+        for i in reversed(range(len(rects))):
+            x0, y0, x1, y1 = rects[i]
+            if x0 - reach <= p[0] <= x1 + reach and y0 - reach <= p[1] <= y1 + reach:
+                return i
+        return None
+
+    def _handles(self) -> dict[str, tuple[float, float]]:
+        """Alças do limite do desenho selecionado sozinho (spec/ui 29 §3)."""
+        if len(self.selected) != 1:
+            return {}
+        index = next(iter(self.selected))
+        items = self.items
+        if index >= len(items):
+            return {}
+        try:
+            return sheets.handle_points(self.session.doc, items[index])
+        except (OpError, RuntimeError):
+            return {}
+
+    def _handle_at(self, p) -> str | None:
+        reach = 6.0 / self.zoom
+        found = [(math.dist(p, q), k) for k, q in self._handles().items()
+                 if math.dist(p, q) <= reach]
+        return min(found)[1] if found else None
+
+    # pintura
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -326,12 +426,41 @@ class SheetView(QWidget):
         if sheet is not None:
             self.rects = render_sheet(painter, self.session.doc, sheet, self.zoom,
                                       self.top_left, 1.0, today())
-            if self._drag is not None and self._drag.get("moved"):
-                r = self.rects[self._drag["index"]].translated(self._drag["delta"])
-                painter.setPen(QPen(QColor(theme.ACCENT), 1, Qt.DashLine))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawRect(r)
+            self._paint_marks(painter)
         painter.end()
+
+    def at(self, p) -> QPointF:
+        """mm do papel (y para cima) → pixels da aba."""
+        _, h = sheets.paper_of(self.session.doc, sheets.read_state(self.sheet))
+        return QPointF(self.top_left.x() + p[0] * self.zoom,
+                       self.top_left.y() + (h - p[1]) * self.zoom)
+
+    def _paint_marks(self, painter: QPainter) -> None:
+        """Limites tracejados (só na tela), seleção, alças, arrasto e janela/laço."""
+        offset = self.selection.offset()
+        handle = self._handle
+        for i, (x0, y0, x1, y1) in enumerate(self._rects_mm()):
+            chosen = i in self.selected
+            if handle is not None and handle["index"] == i:
+                x0, y0, x1, y1 = handle["rect"]
+            if not chosen and not self.show_limits():
+                continue
+            color = QColor(theme.ACCENT if chosen else theme.INK_SOFT)
+            painter.setPen(QPen(color, 1.5 if chosen else 1, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(QRectF(self.at((x0, y1)), self.at((x1, y0))))
+            if chosen and offset is not None:
+                dx, dy = offset
+                painter.setPen(QPen(QColor(theme.ACCENT), 1, Qt.DashLine))
+                painter.drawRect(QRectF(self.at((x0 + dx, y1 + dy)),
+                                        self.at((x1 + dx, y0 + dy))))
+        if offset is None and handle is None:
+            for q in self._handles().values():
+                c = self.at(q)
+                painter.setPen(QPen(QColor(theme.ACCENT), 1))
+                painter.setBrush(QColor(theme.FIELD))
+                painter.drawRect(QRectF(c.x() - 4, c.y() - 4, 8, 8))
+        draw_overlay(painter, self.selection, self.at)
 
     def to_paper(self, pos: QPointF) -> tuple[float, float]:
         """Pixels da aba → mm do papel (y para cima)."""
@@ -339,20 +468,29 @@ class SheetView(QWidget):
         return ((pos.x() - self.top_left.x()) / self.zoom,
                 h - (pos.y() - self.top_left.y()) / self.zoom)
 
+    # ações
+
     def context_menu(self, pos: QPointF, index: int | None) -> QMenu:
-        """Botão direito: na vista, tirar (e a largura da vista 3D); no papel, pôr uma vista
-        salva no ponto clicado (spec/ui 25 §5)."""
+        """Botão direito: no desenho, moldura, limite e tirar (vale para a seleção); no
+        papel, pôr uma vista salva no ponto clicado (spec/ui 25 §5, 29 §4)."""
         from brasbim.core.drawings import saved_views as sv
 
         doc = self.session.doc
         menu = QMenu(self)
         if index is not None:
-            item = sheets.read_state(self.sheet)["views"][index]
-            saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
-            if saved is not None and saved["kind"] == "3d":
+            if index not in self.selected:
+                self.selection.selected = {index}
+                self.update()
+            chosen = sorted(self.selected)
+            items = self.items
+            if len(chosen) == 1 and sheets.is_3d(doc, items[index]):
                 menu.addAction("Largura no papel…", lambda: self.ask_width(index))
-            menu.addAction("Tirar da prancha", lambda: self.session.run(
-                lambda: sheets.remove_from_sheet(doc, self.sheet_gid, index)))
+            menu.addAction("Moldura…", lambda: self.ask_frame(chosen))
+            fit = menu.addAction("Ajustar o limite ao desenho",
+                                 lambda: self.reset_limits(chosen))
+            fit.setEnabled(any(items[i].get("limit") for i in chosen))
+            menu.addSeparator()
+            menu.addAction("Tirar da prancha", lambda: self.delete_selected())
             return menu
         at = self.to_paper(pos)
         sub = menu.addMenu("Pôr vista salva")
@@ -368,10 +506,45 @@ class SheetView(QWidget):
         return self.session.run(lambda: sheets.add_to_sheet(
             self.session.doc, self.sheet_gid, {"kind": "saved", "saved": gid}, at=at))
 
+    def delete_selected(self) -> bool:
+        """Delete: tira da prancha os desenhos selecionados (spec/ui 29 §2)."""
+        chosen = sorted(self.selected)
+        if not chosen:
+            return False
+        done = self.session.run(lambda: sheets.remove_many_from_sheet(
+            self.session.doc, self.sheet_gid, chosen))
+        if done:
+            self.selection.selected = set()
+        return done
+
+    def move_selected(self, delta) -> bool:
+        chosen = sorted(self.selected)
+        return bool(chosen) and self.session.run(lambda: sheets.move_many_on_sheet(
+            self.session.doc, self.sheet_gid, chosen, delta))
+
+    def reset_limits(self, indices) -> bool:
+        doc = self.session.doc
+        done = False
+        for i in indices:
+            if self.items[i].get("limit"):
+                done = self.session.run(
+                    lambda i=i: sheets.set_item_limit(doc, self.sheet_gid, i, None)) or done
+        return done
+
+    def set_frame(self, indices, show: bool, dash: str, pen: int) -> bool:
+        return self.session.run(lambda: sheets.set_item_frame(
+            self.session.doc, self.sheet_gid, indices, show, dash, pen))
+
+    def ask_frame(self, indices) -> bool:
+        dialog = FrameDialog(self.session.doc, self.items[indices[0]].get("frame"), self)
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        return self.set_frame(indices, *dialog.values())
+
     def ask_width(self, index: int) -> None:
         from PySide6.QtWidgets import QInputDialog
 
-        item = sheets.read_state(self.sheet)["views"][index]
+        item = self.items[index]
         width, ok = QInputDialog.getDouble(self, "Largura no papel", "Largura (mm)",
                                            sheets.view_size(self.session.doc, item)[0], 10,
                                            2000, 1)
@@ -397,24 +570,69 @@ class SheetView(QWidget):
             if self.put_saved(gid, self.to_paper(event.position())):
                 event.acceptProposedAction()
 
-    def _index_at(self, pos: QPointF) -> int | None:
-        for i in reversed(range(len(self.rects))):
-            if self.rects[i].contains(pos):
-                return i
-        return None
+    # mouse e teclado (p em mm do papel)
+
+    def press(self, p, shift: bool = False, ctrl: bool = False) -> None:
+        handle = None if shift or ctrl or self.selection.drag else self._handle_at(p)
+        if handle is not None:
+            index = next(iter(self.selected))
+            self._handle = {"index": index, "which": handle,
+                            "rect": sheets.item_rect(self.session.doc, self.items[index])}
+            return
+        self.selection.press(p, shift, ctrl)
+        self.update()
+
+    def move(self, p) -> None:
+        h = self._handle
+        if h is not None:
+            item = self.items[h["index"]]
+            limit, at = sheets.limit_from_handle(self.session.doc, item, h["which"], p)
+            w, hh = sheets.view_size(self.session.doc, {**item, "limit": limit})
+            h["rect"] = (at[0] - w / 2, at[1] - hh / 2, at[0] + w / 2, at[1] + hh / 2)
+            h["moved"] = True
+        else:
+            self.selection.move(p, DRAG_PX / self.zoom)
+        self.update()
+
+    def release(self, p, shift: bool = False) -> None:
+        h, self._handle = self._handle, None
+        if h is not None:
+            if h.get("moved"):
+                doc = self.session.doc
+                limit, at = sheets.limit_from_handle(doc, self.items[h["index"]],
+                                                     h["which"], p)
+                self.session.run(lambda: sheets.set_item_limit(doc, self.sheet_gid,
+                                                               h["index"], limit, at))
+            self.update()
+            return
+        delta = self.selection.release(p, shift)
+        if delta is not None and math.hypot(*delta) > 1e-9:
+            self.move_selected(delta)
+        self.update()
+
+    def escape(self) -> bool:
+        if self._handle is not None:
+            self._handle = None
+            self.update()
+            return True
+        done = self.selection.escape()
+        self.update()
+        return done
 
     def mousePressEvent(self, event):
         pos = event.position()
+        self.setFocus()
         if event.button() == Qt.MiddleButton:
             self._pan = pos
             return
-        index = self._index_at(pos)
         if event.button() == Qt.RightButton:
-            self.context_menu(pos, index).exec(event.globalPosition().toPoint())
+            self.context_menu(pos, self._pick(self.to_paper(pos))).exec(
+                event.globalPosition().toPoint())
             return
-        if event.button() == Qt.LeftButton and index is not None:
-            self._drag = {"index": index, "start": pos, "delta": QPointF(0, 0),
-                          "moved": False}
+        if event.button() == Qt.LeftButton:
+            mods = event.modifiers()
+            self.press(self.to_paper(pos), bool(mods & Qt.ShiftModifier),
+                       bool(mods & Qt.ControlModifier))
 
     def mouseMoveEvent(self, event):
         pos = event.position()
@@ -423,24 +641,29 @@ class SheetView(QWidget):
             self._pan = pos
             self.update()
             return
-        if self._drag is not None:
-            self._drag["delta"] = pos - self._drag["start"]
-            self._drag["moved"] = True
-            self.update()
+        self.move(self.to_paper(pos))
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MiddleButton:
             self._pan = None
             return
-        drag, self._drag = self._drag, None
-        if drag is None or not drag["moved"]:
-            return
-        state = sheets.read_state(self.sheet)
-        x, y = state["views"][drag["index"]]["at"]
-        d = drag["delta"]
-        new = (x + d.x() / self.zoom, y - d.y() / self.zoom)
-        self.session.run(lambda: sheets.move_on_sheet(self.session.doc, self.sheet_gid,
-                                                      drag["index"], new))
+        if event.button() == Qt.LeftButton:
+            self.release(self.to_paper(event.position()),
+                         bool(event.modifiers() & Qt.ShiftModifier))
+
+    def leaveEvent(self, event):
+        if self.selection.hover is not None:
+            self.selection.hover = None
+            self.update()
+        super().leaveEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.escape()
+        elif event.key() == Qt.Key_Delete:
+            self.delete_selected()
+        else:
+            super().keyPressEvent(event)
 
     def wheelEvent(self, event):
         factor = 1.15 ** (event.angleDelta().y() / 120)
@@ -450,3 +673,47 @@ class SheetView(QWidget):
         self.top_left = at - mm * self.zoom
         self.update()
 
+
+class FrameDialog(QDialog):
+    """Moldura do desenho na prancha (spec/ui 29 §4): mostrar, tipo de linha e pena."""
+
+    DASH_NAMES = (("Contínua", "solid"), ("Tracejada", "dashed"), ("Traço-ponto", "dashdot"))
+
+    def __init__(self, doc, frame: dict | None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Moldura do desenho")
+        frame = frame or {"show": True, "dash": "solid", "pen": 3}
+        form = QFormLayout(self)
+        self.show_frame = QCheckBox("Mostrar moldura")
+        self.show_frame.setChecked(bool(frame["show"]))
+        form.addRow(self.show_frame)
+        self.dash = QComboBox()
+        for text, key in self.DASH_NAMES:
+            self.dash.addItem(text, key)
+        self.dash.setCurrentIndex(max(0, self.dash.findData(frame["dash"])))
+        form.addRow("Tipo de linha", self.dash)
+        self.pen = QComboBox()
+        table = pens.resolve(doc).table
+        for number in sorted(table["pens"], key=int):
+            data = table["pens"][number]
+            swatch = QPixmap(14, 14)
+            swatch.fill(QColor(data["color"]))
+            border = QPainter(swatch)  # borda clara: a pena escura aparece no tema escuro
+            border.setPen(QColor(theme.INK_SOFT))
+            border.drawRect(0, 0, 13, 13)
+            border.end()
+            weight = f"{data['weight']:g}".replace(".", ",")
+            note = f" — {data['note']}" if data.get("note") else ""
+            self.pen.addItem(QIcon(swatch), f"Pena {number}: {weight} mm{note}", int(number))
+        self.pen.setCurrentIndex(max(0, self.pen.findData(frame["pen"])))
+        form.addRow("Pena", self.pen)
+        for widget in (self.dash, self.pen):
+            widget.setEnabled(self.show_frame.isChecked())
+            self.show_frame.toggled.connect(widget.setEnabled)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def values(self) -> tuple[bool, str, int]:
+        return self.show_frame.isChecked(), self.dash.currentData(), self.pen.currentData()

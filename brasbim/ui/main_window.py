@@ -84,6 +84,7 @@ _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 
 
 SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
+SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
 
 
 def _settings() -> QSettings:
@@ -326,6 +327,11 @@ class MainWindow(QMainWindow):
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
                                               "Ctrl+Shift+3")
+        self.sheet_limits_action = self._action(  # spec/ui 29 §3
+            view_menu, "Limites dos desenhos na prancha",
+            lambda checked: self.set_sheet_limits(checked))
+        self.sheet_limits_action.setCheckable(True)
+        self.sheet_limits_action.setChecked(True)
         view_menu.addSeparator()
         self._action(view_menu, "Pavimento acima", lambda: self.step_storey(1), "PgUp")
         self._action(view_menu, "Pavimento abaixo", lambda: self.step_storey(-1), "PgDown")
@@ -511,6 +517,9 @@ class MainWindow(QMainWindow):
         mode = settings.value(SELECT_MODE_KEY)
         if mode is not None:
             self.set_select_mode(str(mode).lower() == "true", save=False)
+        limits = settings.value(SHEET_LIMITS_KEY)
+        if limits is not None:
+            self.set_sheet_limits(str(limits).lower() == "true", save=False)
         detail = settings.value("detalhe_planta")
         if detail in self.detail_actions:
             self.set_plan_detail(detail)
@@ -637,6 +646,14 @@ class MainWindow(QMainWindow):
             _settings().setValue(SELECT_MODE_KEY, bool(accumulate))
         self._set_hint(self.toolbox.active.hint())
         self.plan.update()
+
+    def set_sheet_limits(self, show: bool, save: bool = True) -> None:
+        """Exibir > Limites dos desenhos na prancha (spec/ui 29 §3): o traço só da tela."""
+        self.sheet_limits_action.setChecked(bool(show))
+        if save:
+            _settings().setValue(SHEET_LIMITS_KEY, bool(show))
+        for view in self.sheet_views.values():
+            view.update()
 
     # --- tabelas de penas (spec/ui 27) ---------------------------------------------------
 
@@ -839,6 +856,8 @@ class MainWindow(QMainWindow):
         view = self.sheet_views.get(gid)
         if view is None:
             view = SheetView(self.session, gid)
+            view.accumulate = lambda: self.ctx.accumulate  # spec/ui 29 §2
+            view.show_limits = self.sheet_limits_action.isChecked
             self.sheet_views[gid] = view
             self.tabs.addTab(view, view.title)
         if self.split:
@@ -853,6 +872,7 @@ class MainWindow(QMainWindow):
         view = self.master_views.get(gid)
         if view is None:
             view = MasterEditor(self.session, gid)
+            view.accumulate = lambda: self.ctx.accumulate  # spec/ui 29 §2
             self.master_views[gid] = view
             self.tabs.addTab(view, view.title)
         if self.split:
@@ -1286,6 +1306,13 @@ class MainWindow(QMainWindow):
         self.session.redo()
 
     def delete_selection(self) -> None:
+        view = self.tabs.currentWidget() if not self.split else None
+        if isinstance(view, SheetView):  # Delete na prancha tira os desenhos (ui/29 §2)
+            view.delete_selected()
+            return
+        if isinstance(view, MasterEditor):
+            view.delete_selected()
+            return
         if not self.session.selection:
             return
         try:

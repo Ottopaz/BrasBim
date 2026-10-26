@@ -36,6 +36,8 @@ from brasbim.core.annotations.prims import Text
 from brasbim.core.drawings import masters
 from brasbim.ui import theme
 from brasbim.ui.icons import icon
+from brasbim.ui.measure_box import pick_cursor
+from brasbim.ui.paper_select import DRAG_PX, PaperSelection, draw_overlay
 
 GRID_MM = 1.0
 SNAP_MM = 2.0  # atração nas pontas (mm de papel)
@@ -92,6 +94,19 @@ def pick(p, items, reach: float = PICK_MM) -> int | None:
         if any(_segment_distance(p, a, b) <= reach for a, b in itertools.pairwise(pts)):
             return i
     return None
+
+
+def outlines(items) -> list[list[tuple[list, bool]]]:
+    """Contornos de cada item para a janela e o laço (spec/ui 29 §2): a linha como é, o
+    texto pela caixa dele."""
+    out = []
+    for item in items:
+        if item["kind"] == "text":
+            x0, y0, x1, y1 = text_box(item)
+            out.append([([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], True)])
+        else:
+            out.append([([tuple(q) for q in item["points"]], bool(item["closed"]))])
+    return out
 
 
 def moved(item: dict, dx: float, dy: float) -> dict:
@@ -281,15 +296,26 @@ class MasterCanvas(QWidget):
         self.editor = editor
         self.zoom = 1.5
         self.top_left = QPointF(20, 20)
-        self.selected: set[int] = set()
+        # seleção pelo cursor como na planta (spec/ui 29 §2)
+        self.selection = PaperSelection(lambda p: pick(p, self.state["items"]),
+                                        lambda: outlines(self.state["items"]),
+                                        lambda: self.editor.accumulate())
         self.points: list[tuple[float, float]] = []  # linha ou retângulo em andamento
         self.cursor: tuple[float, float] | None = None
-        self._drag: dict | None = None
         self._pan: QPointF | None = None
         self._fitted = False
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
+        self.setCursor(pick_cursor())
+
+    @property
+    def selected(self) -> set[int]:
+        return self.selection.selected
+
+    @selected.setter
+    def selected(self, value) -> None:
+        self.selection.selected = set(value)
 
     @property
     def state(self) -> dict:
@@ -336,9 +362,12 @@ class MasterCanvas(QWidget):
             painter.drawRect(QRectF(self.at((x0, y1)), self.at((x1, y0))))
         from brasbim.ui.paper import draw_paper_text
 
+        offset = self.selection.offset()
         for i, item in enumerate(state["items"]):
             chosen = i in self.selected
             color = QColor(theme.ACCENT if chosen else theme.INK)
+            if chosen and offset is not None:  # o que está sendo arrastado
+                item = moved(item, *offset)
             if item["kind"] == "line":
                 painter.setPen(QPen(color, max(1.0, item["weight"] * self.zoom)))
                 painter.setBrush(Qt.NoBrush)
@@ -350,6 +379,8 @@ class MasterCanvas(QWidget):
                             item["align"], "bottom", bool(item.get("bold")))
                 draw_paper_text(painter, text, self.at(item["at"]), self.zoom)
         tool = self.editor.tool
+        if tool == "select":
+            draw_overlay(painter, self.selection, self.at)
         if self.points and self.cursor is not None:
             painter.setPen(QPen(QColor(theme.ACCENT), 1, Qt.DashLine))
             if tool == "rect":
@@ -371,7 +402,7 @@ class MasterCanvas(QWidget):
     def snapped(self, pos: QPointF) -> tuple[float, float]:
         return snap_point(self.to_paper(pos), self.state["items"])
 
-    def press(self, p, shift: bool = False, button: str = "left") -> None:
+    def press(self, p, shift: bool = False, button: str = "left", ctrl: bool = False) -> None:
         """Clique em mm do papel (já atraído para as ferramentas de desenho)."""
         tool = self.editor.tool
         if button == "right":
@@ -379,17 +410,7 @@ class MasterCanvas(QWidget):
                 self.finish_line()
             return
         if tool == "select":
-            index = pick(p, self.state["items"])
-            if index is None:
-                if not shift:
-                    self.selected.clear()
-                self.update()
-                return
-            if shift:
-                self.selected ^= {index}
-            elif index not in self.selected:
-                self.selected = {index}
-            self._drag = {"start": p, "moved": False}
+            self.selection.press(p, shift, ctrl)
             self.update()
             return
         if tool == "text":
@@ -420,23 +441,29 @@ class MasterCanvas(QWidget):
                                   "points": [[x, y] for x, y in points]})
         self.update()
 
-    def release(self, p) -> None:
-        drag, self._drag = self._drag, None
-        if drag is None or not drag["moved"] or not self.selected:
-            return
-        dx = round(p[0] - drag["start"][0])
-        dy = round(p[1] - drag["start"][1])
-        if dx or dy:
-            self.editor.move_selected(dx, dy)
+    def move(self, p) -> None:
+        if self.editor.tool == "select":
+            self.selection.move(p, DRAG_PX / self.zoom)
+
+    def release(self, p, shift: bool = False) -> None:
+        """Fim do gesto de seleção; o arrasto anda em milímetros inteiros (grade)."""
+        delta = self.selection.release(p, shift)
+        if delta is not None and self.selected:
+            dx, dy = round(delta[0]), round(delta[1])
+            if dx or dy:
+                self.editor.move_selected(dx, dy)
+        self.update()
 
     def mousePressEvent(self, event):
         pos = event.position()
+        self.setFocus()
         if event.button() == Qt.MiddleButton:
             self._pan = pos
             return
         button = "right" if event.button() == Qt.RightButton else "left"
         p = self.to_paper(pos) if self.editor.tool == "select" else self.snapped(pos)
-        self.press(p, bool(event.modifiers() & Qt.ShiftModifier), button)
+        mods = event.modifiers()
+        self.press(p, bool(mods & Qt.ShiftModifier), button, bool(mods & Qt.ControlModifier))
 
     def mouseMoveEvent(self, event):
         pos = event.position()
@@ -446,8 +473,7 @@ class MasterCanvas(QWidget):
             self.update()
             return
         self.cursor = self.snapped(pos)
-        if self._drag is not None:
-            self._drag["moved"] = True
+        self.move(self.to_paper(pos))
         self.cursor_moved.emit(*self.cursor)
         self.update()
 
@@ -455,8 +481,15 @@ class MasterCanvas(QWidget):
         if event.button() == Qt.MiddleButton:
             self._pan = None
             return
-        if self._drag is not None:
-            self.release(self.to_paper(event.position()))
+        if event.button() == Qt.LeftButton and self.editor.tool == "select":
+            self.release(self.to_paper(event.position()),
+                         bool(event.modifiers() & Qt.ShiftModifier))
+
+    def leaveEvent(self, event):
+        if self.selection.hover is not None:
+            self.selection.hover = None
+            self.update()
+        super().leaveEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if self.editor.tool == "line":
@@ -480,8 +513,10 @@ class MasterCanvas(QWidget):
         if key in (Qt.Key_Return, Qt.Key_Enter) and self.editor.tool == "line":
             self.finish_line()
         elif key == Qt.Key_Escape:
-            self.points = []
-            self.selected.clear()
+            if self.points:  # desenho em andamento: só cancela ele
+                self.points = []
+            else:
+                self.selection.escape()
             self.update()
         elif key == Qt.Key_Delete:
             self.editor.delete_selected()
@@ -498,6 +533,7 @@ class MasterEditor(QWidget):
         self.master_gid = master_gid
         self.tool = "select"
         self.weight = 0.25
+        self.accumulate = lambda: True  # Editar > Modo de seleção (posto pela janela)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -553,14 +589,15 @@ class MasterEditor(QWidget):
             else "Folha mestra"
 
     def invalidate(self) -> None:
-        count = len(self.state["items"])
-        self.canvas.selected = {i for i in self.canvas.selected if i < count}
+        self.canvas.selection.prune(len(self.state["items"]))
         self.canvas.update()
 
     def set_tool(self, tool: str) -> None:
         self.tool = tool
         self.tool_actions[tool].setChecked(True)
         self.canvas.points = []
+        self.canvas.selection.drag = None
+        self.canvas.selection.hover = None
         self.canvas.update()
 
     # edição (cada mudança é uma transação "Editar folha mestra")

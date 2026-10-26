@@ -16,6 +16,10 @@ Prancha = ``IfcAnnotation`` "Prancha" na edificação, com o estado em JSON no P
 ``saved``: vista salva (spec/ui 25), com a escala, as camadas e o recorte dela; a vista
 3D leva também ``width`` (mm de papel).
 
+Limite e moldura de cada desenho (spec/ui 29 §3–4): ``limit`` = [x0, y0, x1, y1] em m do
+desenho (ausente = acompanha o desenho; não vale na vista 3D) e ``frame`` = {"show",
+"dash", "pen"} (moldura impressa; ausente = sem moldura).
+
 Coordenadas do papel em milímetros, a partir do canto inferior esquerdo da folha.
 ``master``: folha mestra (spec/ui 26) com o papel, as margens e o carimbo; sem ela, o
 formato e a orientação com o carimbo padrão.
@@ -32,11 +36,12 @@ import ifcopenshell.api.spatial
 import ifcopenshell.util.element
 
 from brasbim.core import guid, props, storeys
-from brasbim.core.annotations.prims import Stroke, Text
+from brasbim.core.annotations.prims import DASHES, Stroke, Text
 from brasbim.core.document import Document, OpError, local_placement
 from brasbim.core.drawings import masters
 from brasbim.core.ops import Transaction
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
+from brasbim.core.pens import MAX_PENS as MAX_PEN
 
 PSET = "BrasBim_Prancha"
 PROJECT_PSET = "BrasBim_Projeto"
@@ -239,9 +244,16 @@ def _drawing_bounds(drawing):
             max([u1, *(p[0] for p in pts)]), max([v1, *(p[1] for p in pts)]))
 
 
+def is_3d(doc: Document, item: dict) -> bool:
+    saved = saved_state(doc, item) if item["kind"] == "saved" else None
+    return saved is not None and saved["kind"] == "3d"
+
+
 def _view_bounds(doc: Document, item: dict):
     from brasbim.core.drawings import section
 
+    if item.get("limit") and not is_3d(doc, item):
+        return tuple(item["limit"])  # limite recortado pela alça (spec/ui 29 §3)
     if item["kind"] == "saved":
         from brasbim.core.drawings import saved_views
 
@@ -278,6 +290,49 @@ def view_size(doc: Document, item: dict) -> tuple[float, float]:
         return 0.0, 0.0
     k = 1000.0 / scale_of(doc, item)
     return (box[2] - box[0]) * k, (box[3] - box[1]) * k
+
+
+def item_rect(doc: Document, item: dict) -> tuple[float, float, float, float]:
+    """Limite do desenho no papel (mm): (x0, y0, x1, y1) em volta do centro ``at``."""
+    w, h = view_size(doc, item)
+    x, y = item["at"]
+    return x - w / 2, y - h / 2, x + w / 2, y + h / 2
+
+
+MIN_LIMIT_MM = 5.0  # menor lado do limite recortado
+HANDLES = {"sw": (0, 0), "s": (0.5, 0), "se": (1, 0), "e": (1, 0.5), "ne": (1, 1),
+           "n": (0.5, 1), "nw": (0, 1), "w": (0, 0.5)}  # alça → posição relativa
+
+
+def handle_points(doc: Document, item: dict) -> dict[str, tuple[float, float]]:
+    """Alças do limite (mm do papel); a vista 3D não tem recorte (§3)."""
+    if is_3d(doc, item) or view_bounds(doc, item) is None:
+        return {}
+    x0, y0, x1, y1 = item_rect(doc, item)
+    return {k: (x0 + u * (x1 - x0), y0 + v * (y1 - y0)) for k, (u, v) in HANDLES.items()}
+
+
+def limit_from_handle(doc: Document, item: dict, handle: str, p) -> tuple[list, list]:
+    """Novo ``limit`` (m do desenho) e novo centro ``at`` (mm) ao levar a alça ``handle``
+    ao ponto ``p`` do papel; o lado oposto fica parado (§3)."""
+    box = view_bounds(doc, item)
+    if box is None or is_3d(doc, item):
+        raise OpError("este desenho não tem limite para recortar")
+    k = 1000.0 / scale_of(doc, item)  # mm de papel por m
+    x0, y0, x1, y1 = item_rect(doc, item)
+    u, v = HANDLES[handle]
+    if u == 0:
+        x0 = min(p[0], x1 - MIN_LIMIT_MM)
+    elif u == 1:
+        x1 = max(p[0], x0 + MIN_LIMIT_MM)
+    if v == 0:
+        y0 = min(p[1], y1 - MIN_LIMIT_MM)
+    elif v == 1:
+        y1 = max(p[1], y0 + MIN_LIMIT_MM)
+    rx0, ry0, _, _ = item_rect(doc, item)
+    limit = [round(box[0] + (x0 - rx0) / k, 4), round(box[1] + (y0 - ry0) / k, 4),
+             round(box[0] + (x1 - rx0) / k, 4), round(box[1] + (y1 - ry0) / k, 4)]
+    return limit, [round((x0 + x1) / 2, 3), round((y0 + y1) / 2, 3)]
 
 
 def free_spot(doc: Document, state: dict, size: tuple[float, float]) -> list[float]:
@@ -341,6 +396,16 @@ def _validate(state: dict) -> None:
     for item in state["views"]:
         if item.get("kind") not in ("plan", "view", "saved"):
             raise OpError(f"vista de prancha inválida: {item!r}")
+        limit = item.get("limit")
+        if limit is not None and (len(limit) != 4 or not (limit[0] < limit[2]
+                                                         and limit[1] < limit[3])):
+            raise OpError(f"limite de desenho inválido: {limit!r}")
+        frame_ = item.get("frame")
+        if frame_ is not None:
+            if set(frame_) != {"show", "dash", "pen"} or frame_["dash"] not in DASHES:
+                raise OpError(f"moldura inválida: {frame_!r}")
+            if not isinstance(frame_["pen"], int) or not 1 <= frame_["pen"] <= MAX_PEN:
+                raise OpError(f"pena da moldura inválida: {frame_['pen']!r}")
 
 
 def _write(doc: Document, sheet, state: dict) -> None:
@@ -487,11 +552,66 @@ def set_item_width(doc: Document, sheet, index: int, width: float) -> Transactio
 
 
 def remove_from_sheet(doc: Document, sheet, index: int) -> Transaction:
+    return remove_many_from_sheet(doc, sheet, [index])
+
+
+def remove_many_from_sheet(doc: Document, sheet, indices) -> Transaction:
+    """Tira da prancha os desenhos ``indices`` numa transação (spec/ui 29 §2)."""
     sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
-    views_ = copy.deepcopy(read_state(sheet)["views"])
-    del views_[index]
+    chosen = set(indices)
+    views_ = [it for i, it in enumerate(copy.deepcopy(read_state(sheet)["views"]))
+              if i not in chosen]
     tx = edit_sheet(doc, sheet, views=views_)
     tx.label = "Tirar da prancha"
+    return tx
+
+
+def move_many_on_sheet(doc: Document, sheet, indices, delta) -> Transaction:
+    """Leva os desenhos ``indices`` por ``delta`` (mm) numa transação (spec/ui 29 §2)."""
+    sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
+    views_ = copy.deepcopy(read_state(sheet)["views"])
+    for i in set(indices):
+        x, y = views_[i]["at"]
+        views_[i]["at"] = [round(x + delta[0], 3), round(y + delta[1], 3)]
+    tx = edit_sheet(doc, sheet, views=views_)
+    tx.label = "Mover na prancha"
+    return tx
+
+
+def set_item_limit(doc: Document, sheet, index: int, limit, at=None) -> Transaction:
+    """Limite recortado do desenho (m do desenho) e, se dado, o centro novo; ``limit``
+    ``None`` volta a acompanhar o desenho (spec/ui 29 §3)."""
+    sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
+    views_ = copy.deepcopy(read_state(sheet)["views"])
+    item = views_[index]
+    if limit is None:
+        cut = item.pop("limit", None)
+        full = view_bounds(doc, item)
+        if at is not None:
+            item["at"] = [float(at[0]), float(at[1])]
+        elif cut and full is not None:  # o desenho inteiro volta alinhado com o recorte
+            k = 1000.0 / scale_of(doc, item)
+            dx = ((full[0] + full[2]) - (cut[0] + cut[2])) / 2 * k
+            dy = ((full[1] + full[3]) - (cut[1] + cut[3])) / 2 * k
+            item["at"] = [round(item["at"][0] + dx, 3), round(item["at"][1] + dy, 3)]
+    else:
+        item["limit"] = [float(v) for v in limit]
+        if at is not None:
+            item["at"] = [float(at[0]), float(at[1])]
+    tx = edit_sheet(doc, sheet, views=views_)
+    tx.label = "Limite do desenho" if limit is not None else "Ajustar o limite ao desenho"
+    return tx
+
+
+def set_item_frame(doc: Document, sheet, indices, show: bool, dash: str = "solid",
+                   pen: int = 3) -> Transaction:
+    """Moldura impressa dos desenhos ``indices`` (spec/ui 29 §4)."""
+    sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")
+    views_ = copy.deepcopy(read_state(sheet)["views"])
+    for i in set(indices):
+        views_[i]["frame"] = {"show": bool(show), "dash": dash, "pen": int(pen)}
+    tx = edit_sheet(doc, sheet, views=views_)
+    tx.label = "Moldura do desenho"
     return tx
 
 

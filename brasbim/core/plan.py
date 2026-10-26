@@ -219,6 +219,31 @@ def _cross(p, q, r, s) -> bool:
     return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)
 
 
+def outlines_in_area(outlines, area, crossing: bool = False) -> list[int]:
+    """Índices dos contornos ``[(points, closed), ...]`` (um ou mais por item) dentro da
+    janela ou do laço ``area``, ou que tocam nele (``crossing``): a mesma regra da planta
+    (spec/ui 28 §2), para a prancha e a folha mestra (spec/ui 29 §2)."""
+    polygon = [tuple(p) for p in area]
+    if len(polygon) < 3:
+        return []
+
+    def inside(q):
+        return _inside(polygon, q)
+
+    out = []
+    for i, parts in enumerate(outlines):
+        shapes = [Shape("", "", tuple(tuple(q) for q in pts), closed)
+                  for pts, closed in parts if pts]
+        if not shapes:
+            continue
+        if crossing:
+            if any(_touches(s, polygon, inside) for s in shapes):
+                out.append(i)
+        elif all(inside(q) for s in shapes for q in s.points):
+            out.append(i)
+    return out
+
+
 def _touches(shape: Shape, rect, inside) -> bool:
     if any(inside(q) for q in shape.points):
         return True
