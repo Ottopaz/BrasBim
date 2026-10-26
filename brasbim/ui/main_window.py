@@ -57,6 +57,7 @@ from brasbim.ui.command_line import (
 from brasbim.ui.icons import icon
 from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
+from brasbim.ui.master_editor import MasterEditor
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.plan_view import PlanView
@@ -121,6 +122,7 @@ class MainWindow(QMainWindow):
         self.section_views: dict[str, SectionView] = {}  # abas de corte e fachada
         self.sheet_views: dict[str, SheetView] = {}  # abas de prancha (spec/ui 15)
         self.table_views: dict[str, TableView] = {}  # abas de tabela (spec/ui 17)
+        self.master_views: dict[str, MasterEditor] = {}  # folhas mestras (spec/ui 26)
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
         self.scene.load(session.doc.ifc, session.doc)
@@ -198,6 +200,7 @@ class MainWindow(QMainWindow):
         self.project.open_saved_view = self.open_saved_view
         self.project.update_saved_view = self.update_saved_view
         self.project.open_sheet = self.open_sheet
+        self.project.open_master = self.open_master
         self.project.open_table = self.open_table
         self.project.open_library = self.show_library
         self.project.use_object_type = self.use_object_type
@@ -767,6 +770,20 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(view)
         return view
 
+    def open_master(self, gid: str) -> MasterEditor | None:
+        """Abre a folha mestra numa aba de edição (spec/ui 26 §4)."""
+        if self.session.doc.find(gid) is None:
+            return None
+        view = self.master_views.get(gid)
+        if view is None:
+            view = MasterEditor(self.session, gid)
+            self.master_views[gid] = view
+            self.tabs.addTab(view, view.title)
+        if self.split:
+            self.set_view("plan")
+        self.tabs.setCurrentWidget(view)
+        return view
+
     def open_table(self, gid: str) -> TableView | None:
         """Abre a tabela numa aba (spec/ui 17 §5)."""
         if self.session.doc.find(gid) is None:
@@ -848,6 +865,14 @@ class MainWindow(QMainWindow):
             self.session.run(lambda: sheets_.edit_project(doc, **values))
 
     def _refresh_section_views(self, reset: bool = False) -> None:
+        for gid, view in list(self.master_views.items()):
+            if reset or self.session.doc.find(gid) is None:
+                self.tabs.removeTab(self.tabs.indexOf(view))
+                view.deleteLater()
+                del self.master_views[gid]
+                continue
+            view.invalidate()
+            self.tabs.setTabText(self.tabs.indexOf(view), view.title)
         for gid, view in list(self.table_views.items()):
             if reset or self.session.doc.find(gid) is None:
                 self.tabs.removeTab(self.tabs.indexOf(view))

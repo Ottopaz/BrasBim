@@ -789,6 +789,28 @@ Endereços citados (7): https://docs.mcneel.com/rhino/8/help/en-us/user_interfac
 
 Endereços citados (2): https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987; https://help.autodesk.com/cloudhelp/2024/ENU/Revit-Customize/files/GUID-66D789A8-AB92-4AF0-B884-DF3A3302E117.htm
 
+### `spec/ui/26-folhas-mestras.md`
+*Folhas mestras (tamanho, margens e carimbo desenhado pelo usuário)*; data 2026-10-26; situação em revisão (implementado para teste, fluxo do MVP).
+
+- Pesquisa do projeto, `archicad_documentacao_colaboracao.md` §1: no Archicad, o *master
+  layout* define o tamanho da folha; o que se desenha nele aparece em todos os layouts
+  que o usam; o carimbo é desenhado com as ferramentas 2D e textos automáticos; cada
+  layout escolhe o seu *master* — [Graphisoft Community, "Archicad Basic Concepts - The
+  Navigator"](https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987)
+  (trecho de busca; **conferir**).
+- `normas_e_projeto_legal_brasil.md`: itens mínimos do carimbo segundo a NBR 6492
+  (empresa, cliente, título, número, escala, local e data, autoria, responsável técnico,
+  revisão) — [Gran Cursos – questões NBR 6492](https://questoes.grancursosonline.com.br/questoes-de-concursos/arquitetura-nbr-6492-representacao-de-projetos-de-arquitetura-429878)
+  (trecho de busca; **conferir**). Carimbos por prefeitura: [PBH, Cartilha de
+  Representação (2025)](https://prefeitura.pbh.gov.br/sites/default/files/estrutura-de-governo/politica-urbana/2025/cartilharepresentacaopbh_smpu_r5.pdf);
+  [Curitiba – Manual do Autor](https://mid.curitiba.pr.gov.br/2020/00304554.pdf).
+- `revit_documentacao_colaboracao.md`: carimbo como família própria com campos e
+  sobrescrita do texto de escala em folhas com várias escalas.
+- Pedido do revisor (2026‑10‑26). Formatos e margens da série A: spec/ui 15 §2 (CG).
+- Nenhum material de `_restrito/` nem de `tools/` foi usado. Nomes dos campos próprios.
+
+Endereços citados (4): https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987; https://mid.curitiba.pr.gov.br/2020/00304554.pdf; https://prefeitura.pbh.gov.br/sites/default/files/estrutura-de-governo/politica-urbana/2025/cartilharepresentacaopbh_smpu_r5.pdf; https://questoes.grancursosonline.com.br/questoes-de-concursos/arquitetura-nbr-6492-representacao-de-projetos-de-arquitetura-429878
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem

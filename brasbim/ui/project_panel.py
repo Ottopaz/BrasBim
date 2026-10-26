@@ -12,6 +12,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -88,8 +89,20 @@ class ProjectPanel(QWidget):
         self.sheets.itemClicked.connect(
             lambda item: self.session.select([item.data(Qt.UserRole)]))
         self.open_sheet = None
-        self.new_sheet_button = QPushButton("Nova prancha")
-        self.new_sheet_button.clicked.connect(self.add_sheet)
+        # Folhas mestras (spec/ui 26 §4)
+        self.masters = QListWidget()
+        self.masters.setToolTip("Clique duplo abre a folha mestra para editar o carimbo")
+        self.masters.itemDoubleClicked.connect(
+            lambda item: self.open_master and self.open_master(item.data(Qt.UserRole)))
+        self.open_master = None
+        self.new_master_button = QPushButton("Nova…")
+        self.new_master_button.setMenu(self._new_master_menu())
+        self.duplicate_master_button = QPushButton("Duplicar")
+        self.duplicate_master_button.clicked.connect(self.duplicate_master)
+        self.delete_master_button = QPushButton("Excluir")
+        self.delete_master_button.clicked.connect(self.delete_master)
+        self.new_sheet_button = QPushButton("Nova prancha…")
+        self.new_sheet_button.clicked.connect(lambda: self.add_sheet())
         self.delete_sheet_button = QPushButton("Excluir prancha")
         self.delete_sheet_button.clicked.connect(self.delete_sheet)
         # Tabelas (spec/ui 17 §5)
@@ -143,12 +156,24 @@ class ProjectPanel(QWidget):
         self.view_tabs.addTab(self.saved, "Vistas salvas")
         self.view_tabs.addTab(self.views, "Cortes e fachadas")
         layout.addWidget(self.view_tabs)
-        layout.addWidget(QLabel("Pranchas"))
-        layout.addWidget(self.sheets)
-        sheet_buttons = QHBoxLayout()
-        sheet_buttons.addWidget(self.new_sheet_button)
-        sheet_buttons.addWidget(self.delete_sheet_button)
-        layout.addLayout(sheet_buttons)
+        self.sheet_tabs = QTabWidget()  # pranchas e folhas mestras (spec/ui 26 §4)
+        self.sheet_tabs.setDocumentMode(True)
+        for title, listing, buttons in (
+                ("Pranchas", self.sheets, (self.new_sheet_button, self.delete_sheet_button)),
+                ("Folhas mestras", self.masters,
+                 (self.new_master_button, self.duplicate_master_button,
+                  self.delete_master_button))):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 2, 0, 0)
+            page_layout.setSpacing(2)
+            page_layout.addWidget(listing)
+            row = QHBoxLayout()
+            for button in buttons:
+                row.addWidget(button)
+            page_layout.addLayout(row)
+            self.sheet_tabs.addTab(page, title)
+        layout.addWidget(self.sheet_tabs)
         layout.addWidget(QLabel("Tabelas"))
         layout.addWidget(self.tables)
         table_buttons = QHBoxLayout()
@@ -162,7 +187,8 @@ class ProjectPanel(QWidget):
         object_buttons.addWidget(self.library_button)
         layout.addLayout(object_buttons)
         # listas baixas no mínimo: o painel não empurra os outros (as listas crescem juntas)
-        for widget in (self.saved, self.views, self.sheets, self.tables, self.objects):
+        for widget in (self.saved, self.views, self.sheets, self.masters, self.tables,
+                       self.objects):
             widget.setMinimumHeight(40)
         self.table.setMinimumHeight(80)
         # o nome do pavimento cabe inteiro ao lado das outras três colunas
@@ -227,6 +253,16 @@ class ProjectPanel(QWidget):
             item.setData(Qt.UserRole, sheet.GlobalId)
             self.sheets.addItem(item)
         self.delete_sheet_button.setEnabled(self.sheets.count() > 0)
+        from brasbim.core.drawings import masters as masters_
+
+        self.masters.clear()
+        for entity in masters_.all_masters(self.session.doc):
+            state = masters_.read_state(entity)
+            item = QListWidgetItem(f"{state['name']} · {masters_.describe(state)}")
+            item.setData(Qt.UserRole, entity.GlobalId)
+            self.masters.addItem(item)
+        for button in (self.duplicate_master_button, self.delete_master_button):
+            button.setEnabled(self.masters.count() > 0)
         self.tables.clear()
         for table in tables_.all_tables(self.session.doc):
             item = QListWidgetItem(tables_.read_state(table)["name"] or table.GlobalId)
@@ -494,13 +530,84 @@ class ProjectPanel(QWidget):
         self.session.run(lambda: saved_.edit_saved_view(doc, gid, "Renomear vista salva",
                                                         name=name))
 
-    def add_sheet(self) -> None:
+    def add_sheet(self, choice: dict | None = None) -> str | None:
+        """Nova prancha… (spec/ui 26 §4): título e folha mestra; com ``choice`` (argumentos
+        de ``create_sheet``) não pergunta."""
         from brasbim.core.drawings import sheets as sheets_
+        from brasbim.ui.master_editor import NewSheetDialog
 
         doc = self.session.doc
-        tx = sheets_.create_sheet(doc)
-        if self.session.run(tx) and self.open_sheet:
+        if choice is None:
+            dialog = NewSheetDialog(doc, self)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            choice = dialog.choice()
+        tx = None
+
+        def build():
+            nonlocal tx
+            tx = sheets_.create_sheet(doc, **choice)
+            return tx
+
+        if not self.session.run(build):
+            return None
+        if self.open_sheet:
             self.open_sheet(tx.ops[0].id)
+        return tx.ops[0].id
+
+    # --- folhas mestras (spec/ui 26 §4) -----------------------------------------------------
+
+    def _new_master_menu(self) -> QMenu:
+        from brasbim.core.drawings import masters as masters_
+
+        menu = QMenu(self)
+        for paper in masters_.FORMATS:
+            for text, orientation in (("horizontal", "landscape"), ("vertical", "portrait")):
+                menu.addAction(f"{paper} {text}",
+                               lambda f=paper, o=orientation: self.add_master(f, o))
+        menu.addSeparator()
+        menu.addAction("Personalizado (500 × 700 mm)",
+                       lambda: self.add_master(masters_.CUSTOM, "landscape", [500, 700]))
+        return menu
+
+    def add_master(self, fmt: str = "A3", orientation: str = "landscape",
+                   size=None) -> str | None:
+        from brasbim.core.drawings import masters as masters_
+
+        doc = self.session.doc
+        tx = None
+
+        def build():
+            nonlocal tx
+            tx = masters_.create_master(doc, "", fmt, orientation, size)
+            return tx
+
+        if not self.session.run(build):
+            return None
+        self.sheet_tabs.setCurrentIndex(1)
+        if self.open_master:
+            self.open_master(tx.ops[0].id)
+        return tx.ops[0].id
+
+    def _current_master(self) -> str | None:
+        item = self.masters.currentItem()
+        return item.data(Qt.UserRole) if item is not None else None
+
+    def duplicate_master(self) -> None:
+        from brasbim.core.drawings import masters as masters_
+
+        gid = self._current_master()
+        if gid is not None:
+            doc = self.session.doc
+            self.session.run(lambda: masters_.duplicate_master(doc, gid))
+
+    def delete_master(self) -> None:
+        from brasbim.core.drawings import masters as masters_
+
+        gid = self._current_master()
+        if gid is not None:
+            doc = self.session.doc
+            self.session.run(lambda: masters_.delete_master(doc, gid))
 
     def delete_sheet(self) -> None:
         from brasbim.core.drawings import sheets as sheets_

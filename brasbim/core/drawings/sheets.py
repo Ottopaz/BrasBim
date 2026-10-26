@@ -8,7 +8,7 @@ Prancha = ``IfcAnnotation`` "Prancha" na edificação, com o estado em JSON no P
 ``BrasBim_Prancha``::
 
     {"number": "01", "title": "Planta baixa", "format": "A3",
-     "orientation": "landscape",
+     "orientation": "landscape", "master": None,
      "views": [{"kind": "plan", "storey": "<GlobalId>", "at": [150.0, 160.0]},
                {"kind": "view", "view": "<GlobalId>", "at": [300.0, 160.0]},
                {"kind": "saved", "saved": "<GlobalId>", "at": [150.0, 60.0]}]}
@@ -17,6 +17,8 @@ Prancha = ``IfcAnnotation`` "Prancha" na edificação, com o estado em JSON no P
 3D leva também ``width`` (mm de papel).
 
 Coordenadas do papel em milímetros, a partir do canto inferior esquerdo da folha.
+``master``: folha mestra (spec/ui 26) com o papel, as margens e o carimbo; sem ela, o
+formato e a orientação com o carimbo padrão.
 Dados do projeto para o carimbo: Pset ``BrasBim_Projeto`` no ``IfcProject``.
 """
 
@@ -32,6 +34,7 @@ import ifcopenshell.util.element
 from brasbim.core import guid, props, storeys
 from brasbim.core.annotations.prims import Stroke, Text
 from brasbim.core.document import Document, OpError, local_placement
+from brasbim.core.drawings import masters
 from brasbim.core.ops import Transaction
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
@@ -39,21 +42,18 @@ PSET = "BrasBim_Prancha"
 PROJECT_PSET = "BrasBim_Projeto"
 OBJECT_TYPE = "Prancha"
 # Formato → (largura, altura) na horizontal e margens (esquerda, demais), em mm (§2, CG).
-FORMATS = {"A0": ((1189, 841), (25, 10)), "A1": ((841, 594), (25, 10)),
-           "A2": ((594, 420), (25, 7)), "A3": ((420, 297), (25, 7)),
-           "A4": ((297, 210), (25, 7))}
+FORMATS = masters.FORMATS  # formato → (tamanho na horizontal, margens), §2 (CG)
 ORIENTATIONS = ("landscape", "portrait")
-STATE_KEYS = ("number", "title", "format", "orientation", "views")
+STATE_KEYS = ("number", "title", "format", "orientation", "views", "master")
 PROJECT_KEYS = {"name": None, "address": "Endereco", "owner": "Proprietario",
                 "responsible": "Responsavel", "registration": "Registro"}
-TITLE_WIDTH = 178.0  # mm: carimbo à vista na folha dobrada em A4 (§2)
-_ROWS = (14.0, 7.0, 7.0, 7.0, 9.0, 7.0)  # alturas das linhas do carimbo (mm)
+TITLE_WIDTH = masters.TITLE_WIDTH
 GAP = 10.0  # mm entre vistas postas sozinhas
 
 
 def default_state() -> dict:
     return {"number": None, "title": "", "format": "A3", "orientation": "landscape",
-            "views": []}
+            "views": [], "master": None}
 
 
 def is_sheet(entity) -> bool:
@@ -85,26 +85,33 @@ def next_number(doc: Document) -> str:
 
 
 def paper(state: dict) -> tuple[float, float]:
-    (w, h), _ = FORMATS[state["format"]]
-    return (float(h), float(w)) if state["orientation"] == "portrait" else (float(w), float(h))
+    """Papel do formato padrão (sem folha mestra)."""
+    return masters.paper_size({**state, "format": state["format"], "size": None})
 
 
 def frame(state: dict) -> tuple[float, float, float, float]:
-    """Quadro (x0, y0, x1, y1) dentro das margens."""
-    w, h = paper(state)
-    _, (left, other) = FORMATS[state["format"]]
-    return left, other, w - other, h - other
+    """Quadro (x0, y0, x1, y1) dentro das margens padrão do formato."""
+    return masters.frame_of(paper(state), masters.standard_margins(state["format"]))
 
 
-def title_block(state: dict) -> tuple[float, float, float, float]:
-    x0, y0, x1, _ = frame(state)
-    return max(x0, x1 - TITLE_WIDTH), y0, x1, y0 + sum(_ROWS)
+def layout(doc: Document, state: dict) -> masters.Layout:
+    """Papel, quadro e desenho fixo da prancha: os da folha mestra, ou o formato com o
+    carimbo padrão (spec/ui 26 §3)."""
+    master = doc.find(state["master"]) if state.get("master") else None
+    if master is not None and masters.is_master(master):
+        return masters.layout_of(masters.read_state(master))
+    return masters.standard_layout(state["format"], state["orientation"])
 
 
-def fold_marks(state: dict) -> list[Stroke]:
+def paper_of(doc: Document, state: dict) -> tuple[float, float]:
+    return layout(doc, state).size
+
+
+def fold_marks(state_or_size) -> list[Stroke]:
     """Traços na borda do papel para dobrar em A4 (190 mm a partir da direita; a primeira
-    dobra horizontal a 297 mm de baixo), §2 (CG)."""
-    w, h = paper(state)
+    dobra horizontal a 297 mm de baixo), §2 (CG). Aceita o estado da prancha (formato
+    padrão) ou o tamanho do papel."""
+    w, h = paper(state_or_size) if isinstance(state_or_size, dict) else state_or_size
     out, length = [], 5.0
     x = w - 190.0
     while x > 25.0:
@@ -146,35 +153,45 @@ def scale_of(doc: Document, item: dict) -> int | None:
     return views.read_state(view)["scale"] if view is not None else storeys.DEFAULT_SCALE
 
 
-def title_items(doc: Document, sheet, date: str) -> tuple[list[Stroke], list[Text]]:
-    """Quadro e carimbo (§2): linhas e textos em mm do papel."""
+def field_values(doc: Document, sheet, date: str) -> dict:
+    """Valores dos campos do carimbo (spec/ui 26 §2) para a prancha."""
     state = read_state(sheet)
     info = read_project(doc)
-    x0, y0, x1, y1 = frame(state)
-    tx0, ty0, tx1, ty1 = title_block(state)
-    strokes = [Stroke(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), True, 0.5),
-               Stroke(((tx0, ty0), (tx1, ty0), (tx1, ty1), (tx0, ty1)), True, 0.5)]
     sheets = all_sheets(doc)
-    total = len(sheets)
     index = sheets.index(sheet) + 1 if sheet in sheets else 1
     scales = sorted({scale_of(doc, item) for item in state["views"]} - {None})
-    responsible = " · ".join(v for v in (info["responsible"], info["registration"]) if v)
-    rows = [(info["name"] or "", 5.0), (info["address"] or "", 2.5),
-            (f"Proprietário: {info['owner']}" if info["owner"] else "", 2.5),
-            (f"Responsável técnico: {responsible}" if responsible else "", 2.5),
-            (state["title"] or "", 3.5),
-            ((f"Escala {' / '.join(f'1:{s}' for s in scales) or '—'}    {date}    "
-              f"Folha {index:02d}/{total:02d}"), 2.5)]
-    texts = []
-    y = ty1
-    for (text, size), height in zip(rows, _ROWS, strict=True):
-        y -= height
-        if y > ty0 + 1e-6:
-            strokes.append(Stroke(((tx0, y), (tx1, y)), False, 0.25))
+    return {"projeto": info["name"] or "", "endereco": info["address"] or "",
+            "proprietario": info["owner"] or "", "responsavel": info["responsible"] or "",
+            "registro": info["registration"] or "",
+            "responsavel_tecnico": " · ".join(v for v in (info["responsible"],
+                                                          info["registration"]) if v),
+            "numero": state["number"] or "", "titulo": state["title"] or "",
+            "escala": " / ".join(f"1:{s}" for s in scales) or "—", "data": date,
+            "folha": f"{index:02d}", "total": f"{len(sheets):02d}"}
+
+
+def title_items(doc: Document, sheet, date: str) -> tuple[list[Stroke], list[Text]]:
+    """Quadro, desenho da folha mestra (ou carimbo padrão) com os campos preenchidos e
+    marcas de dobra: linhas e textos em mm do papel."""
+    paper_layout = layout(doc, read_state(sheet))
+    values = field_values(doc, sheet, date)
+    strokes, texts = [], []
+    if paper_layout.frame_on:
+        x0, y0, x1, y1 = paper_layout.frame
+        strokes.append(Stroke(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), True,
+                              masters.FRAME_WEIGHT))
+    for item in paper_layout.items:
+        if item["kind"] == "line":
+            strokes.append(Stroke(tuple(tuple(p) for p in item["points"]), item["closed"],
+                                  item["weight"]))
+            continue
+        text = masters.fill(item["text"], values)
         if text:
-            texts.append(Text((tx0 + 3.0, y + (height - size) / 2), text, size, 0.0, "left",
-                              "bottom"))
-    return strokes + fold_marks(state), texts
+            texts.append(Text(tuple(item["at"]), text, item["height"], 0.0, item["align"],
+                              "bottom", bool(item.get("bold"))))
+    if paper_layout.fold_on:
+        strokes += fold_marks(paper_layout.size)
+    return strokes, texts
 
 
 # --- vistas na prancha --------------------------------------------------------------------
@@ -264,9 +281,14 @@ def view_size(doc: Document, item: dict) -> tuple[float, float]:
 
 
 def free_spot(doc: Document, state: dict, size: tuple[float, float]) -> list[float]:
-    """Centro da vista nova: à direita das que já estão, acima do carimbo."""
-    x0, y0, x1, y1 = frame(state)
-    _, _, _, top = title_block(state)
+    """Centro da vista nova: à direita das que já estão, acima do desenho do carimbo que
+    fica na metade de baixo do quadro."""
+    paper_layout = layout(doc, state)
+    x0, y0, x1, y1 = paper_layout.frame
+    low = [it for it in paper_layout.items
+           if (box := masters.items_bounds([it])) is not None and box[1] < (y0 + y1) / 2]
+    box = masters.items_bounds(low)
+    top = box[3] if box is not None else y0
     right = x0 + GAP
     for item in state["views"]:
         w, _ = view_size(doc, item)
@@ -323,6 +345,8 @@ def _validate(state: dict) -> None:
 
 def _write(doc: Document, sheet, state: dict) -> None:
     _validate(state)
+    if state.get("master") and not masters.is_master(doc.find(state["master"])):
+        raise OpError("a folha mestra não existe")
     building = doc.building
     sheet.ObjectType = OBJECT_TYPE
     sheet.Name = f"Prancha {state['number']}"
@@ -397,9 +421,12 @@ def refs_removed_ops(doc: Document, gid: str, cascade: bool = True) -> list[Op]:
 
 
 def create_sheet(doc: Document, title: str = "", fmt: str = "A3",
-                 orientation: str = "landscape") -> Transaction:
+                 orientation: str = "landscape", master: str | None = None) -> Transaction:
+    """Prancha nova com a folha mestra ``master`` (spec/ui 26) ou o formato padrão."""
+    if master is not None and not masters.is_master(doc.find(master)):
+        raise OpError("a folha mestra não existe")
     data = {**default_state(), "number": next_number(doc), "title": title, "format": fmt,
-            "orientation": orientation}
+            "orientation": orientation, "master": master}
     _validate(data)
     return Transaction("Criar prancha", [Op("sheet.create", guid.new(), data=data)])
 

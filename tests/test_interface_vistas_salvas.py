@@ -93,7 +93,7 @@ def test_vs06_salvar_3d_e_corte(window):
     tab = window.section_views[view.GlobalId]
     assert window.tabs.currentWidget() is tab and tab.scale_override == 25
     # aba que não é vista: avisa e não salva
-    window.project.add_sheet()
+    window.project.add_sheet({})
     assert window.save_view(name="x") is None
 
 
@@ -103,7 +103,7 @@ def test_vs07_por_na_prancha(window):
     gid = window.save_view(name="Térreo")
     window.set_view("3d")
     gid3 = window.save_view(name="3D")
-    window.project.add_sheet()
+    window.project.add_sheet({})
     (sheet,) = sheets.all_sheets(s.doc)
     tab = window.sheet_views[sheet.GlobalId]
     tab.resize(900, 650)

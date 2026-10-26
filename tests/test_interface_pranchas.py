@@ -28,7 +28,7 @@ def _casa(window):
 def test_prancha_pelo_painel_e_aba(window):
     s = window.session
     _casa(window)
-    window.project.add_sheet()
+    window.project.add_sheet({})
     (sheet,) = sheets.all_sheets(s.doc)
     tab = window.sheet_views[sheet.GlobalId]
     assert window.tabs.currentWidget() is tab
@@ -51,7 +51,7 @@ def test_prancha_pelo_painel_e_aba(window):
 def test_pr06_arrastar_vista(window):
     s = window.session
     _casa(window)
-    window.project.add_sheet()
+    window.project.add_sheet({})
     (sheet,) = sheets.all_sheets(s.doc)
     s.run(lambda: sheets.add_to_sheet(s.doc, sheet, {"kind": "plan",
                                                      "storey": s.storey.GlobalId}))
@@ -72,8 +72,8 @@ def test_pr06_arrastar_vista(window):
 def test_pr05_pdf(window, tmp_path):
     s = window.session
     _casa(window)
-    window.project.add_sheet()
-    window.project.add_sheet()
+    window.project.add_sheet({})
+    window.project.add_sheet({})
     first = sheets.all_sheets(s.doc)[0]
     s.run(lambda: sheets.add_to_sheet(s.doc, first, {"kind": "plan",
                                                      "storey": s.storey.GlobalId}))

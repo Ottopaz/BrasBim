@@ -18,6 +18,7 @@ from PySide6.QtCore import QMarginsF, QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetricsF,
     QPageLayout,
     QPageSize,
     QPainter,
@@ -169,11 +170,22 @@ def _item_painter(doc, item: dict, center: QPointF, px_per_mm: float, unit: floa
         return _SectionPainter(section.draw(doc, doc.find(item["view"])), scale, origin, unit)
 
 
+def draw_paper_text(painter: QPainter, text, p: QPointF, px_per_mm: float) -> None:
+    """Texto do carimbo: âncora na base, à esquerda, no meio ou à direita (spec/ui 26)."""
+    font = theme.font()
+    font.setPixelSize(max(1, round(text.height * px_per_mm)))
+    font.setBold(bool(getattr(text, "bold", False)))
+    painter.setFont(font)
+    width = QFontMetricsF(font).horizontalAdvance(text.text)
+    dx = {"center": -width / 2, "right": -width}.get(text.halign, 0.0)
+    painter.drawText(QPointF(p.x() + dx, p.y()), text.text)
+
+
 def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPointF,
                  unit: float, date: str) -> list[QRectF]:
     """Desenha a prancha; devolve o retângulo (pixels) de cada vista, na ordem dela."""
     state = sheets.read_state(sheet)
-    w, h = sheets.paper(state)
+    w, h = sheets.paper_of(doc, state)
 
     def at(p) -> QPointF:  # mm do papel (y para cima) → pixels
         return QPointF(top_left.x() + p[0] * px_per_mm, top_left.y() + (h - p[1]) * px_per_mm)
@@ -212,11 +224,7 @@ def render_sheet(painter: QPainter, doc, sheet, px_per_mm: float, top_left: QPoi
                 painter.drawPolyline(poly)
         painter.setPen(QPen(QColor(theme.INK)))
         for text in texts:
-            font = theme.font()
-            font.setPixelSize(max(1, round(text.height * px_per_mm)))
-            painter.setFont(font)
-            p = at(text.at)
-            painter.drawText(p, text.text)
+            draw_paper_text(painter, text, at(text.at), px_per_mm)
     finally:
         C["background"] = old_background
     return rects
@@ -232,7 +240,7 @@ def export_pdf(path: str, doc, sheet_list, date: str | None = None, dpi: int = 6
     pages = 0
     try:
         for sheet in sheet_list:
-            w, h = sheets.paper(sheets.read_state(sheet))
+            w, h = sheets.paper_of(doc, sheets.read_state(sheet))
             layout = QPageLayout(QPageSize(QSizeF(w, h), QPageSize.Millimeter),
                                  QPageLayout.Portrait, QMarginsF(0, 0, 0, 0))
             writer.setPageLayout(layout)
@@ -283,7 +291,7 @@ class SheetView(QWidget):
         sheet = self.sheet
         if sheet is None:
             return
-        w, h = sheets.paper(sheets.read_state(sheet))
+        w, h = sheets.paper_of(self.session.doc, sheets.read_state(sheet))
         self.zoom = max(0.2, min((self.width() - 40) / w, (self.height() - 40) / h))
         self.top_left = QPointF((self.width() - w * self.zoom) / 2,
                                 (self.height() - h * self.zoom) / 2)
@@ -315,7 +323,7 @@ class SheetView(QWidget):
 
     def to_paper(self, pos: QPointF) -> tuple[float, float]:
         """Pixels da aba → mm do papel (y para cima)."""
-        _, h = sheets.paper(sheets.read_state(self.sheet))
+        _, h = sheets.paper_of(self.session.doc, sheets.read_state(self.sheet))
         return ((pos.x() - self.top_left.x()) / self.zoom,
                 h - (pos.y() - self.top_left.y()) / self.zoom)
 

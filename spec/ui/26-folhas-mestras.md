@@ -94,18 +94,18 @@ Estado::
                 "align": "left", "bold": false}]}
 
 ## 6. Critérios de aceite (testes)
-- [ ] **FM01** Criar, editar (papel, margens, itens) e excluir folha mestra; desfazer volta
+- [x] **FM01** Criar, editar (papel, margens, itens) e excluir folha mestra; desfazer volta
       ao IFC anterior; salvo e reaberto, igual.
-- [ ] **FM02** Folha mestra nova traz o carimbo padrão; numa prancha, os campos se
+- [x] **FM02** Folha mestra nova traz o carimbo padrão; numa prancha, os campos se
       preenchem (projeto, título, escala, folha/total, data) e o texto com campos vazios
       some; a prancha sem folha mestra mostra o mesmo carimbo de antes (PR04 continua).
-- [ ] **FM03** Papel personalizado e margens: a prancha tem o tamanho e o quadro da folha
+- [x] **FM03** Papel personalizado e margens: a prancha tem o tamanho e o quadro da folha
       mestra; a vista nova entra acima do desenho do carimbo.
-- [ ] **FM04** Excluir folha mestra em uso: as pranchas ficam sem folha mestra na mesma
+- [x] **FM04** Excluir folha mestra em uso: as pranchas ficam sem folha mestra na mesma
       transação; desfazer devolve.
-- [ ] **FM05** Interface: Nova prancha com escolha da folha mestra; trocar a folha mestra
+- [x] **FM05** Interface: Nova prancha com escolha da folha mestra; trocar a folha mestra
       no painel; PDF com o tamanho do papel da folha mestra.
-- [ ] **FM06** Interface: na aba da folha mestra, desenhar linha e retângulo (atração na
+- [x] **FM06** Interface: na aba da folha mestra, desenhar linha e retângulo (atração na
       grade e nas pontas), texto com campo, mover, apagar e editar texto.
 
 ## 7. Fontes

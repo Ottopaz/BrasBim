@@ -40,6 +40,7 @@ class Text:
     angle: float = 0.0  # graus, anti-horário
     halign: str = "center"
     valign: str = "bottom"  # bottom ou middle
+    bold: bool = False
 
 
 @dataclass(frozen=True)

@@ -46,7 +46,7 @@ from brasbim.core.annotations import dimensions as annotation_dims
 from brasbim.core.annotations import drafting, drawing2d
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.document import OpError
-from brasbim.core.drawings import sheets, views
+from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.objects import elements as objects
@@ -1181,10 +1181,17 @@ class PropertiesPanel(QScrollArea):
         self._title(f"Prancha {state['number']}")
         self._text("Número", state["number"], lambda v: v and edit(number=v))
         self._text("Título", state["title"], lambda v: edit(title=v or ""))
-        self._combo("Formato", [(f, f) for f in sheets.FORMATS], state["format"],
-                    lambda v: edit(format=v))
-        self._combo("Orientação", [("Horizontal", "landscape"), ("Vertical", "portrait")],
-                    state["orientation"], lambda v: edit(orientation=v))
+        master_choices = [("Nenhuma (formato padrão)", "")] + [
+            (masters.read_state(m)["name"], m.GlobalId) for m in masters.all_masters(doc)]
+        current_master = state.get("master") or ""
+        self._combo("Folha mestra", master_choices, current_master,
+                    lambda v: edit(master=v or None))
+        if not current_master:  # o papel vem da folha mestra quando há uma (spec/ui 26)
+            self._combo("Formato", [(f, f) for f in sheets.FORMATS], state["format"],
+                        lambda v: edit(format=v))
+            self._combo("Orientação", [("Horizontal", "landscape"),
+                                       ("Vertical", "portrait")],
+                        state["orientation"], lambda v: edit(orientation=v))
         self._section("Vistas na prancha")
         config = display_layers.read_config(doc)
         combinations = [("Como na janela", None)] + [
@@ -1198,21 +1205,31 @@ class PropertiesPanel(QScrollArea):
             edit(views=items)
 
         for i, item in enumerate(state["views"]):
-            target = doc.find(item.get("storey") or item.get("view"))
-            name = ((f"Planta: {target.Name}" if item["kind"] == "plan"
-                     else views.read_state(target)["name"]) if target is not None else "—")
-            self._read(name, f"1:{sheets.scale_of(doc, item)}")
-            if config is not None:  # combinação de camadas da vista (spec/ui 18 §6.2)
+            target = doc.find(sheets.item_key(item) or "")
+            if target is None:
+                name = "—"
+            elif item["kind"] == "saved":  # vista salva: escala e camadas dela (spec/ui 25)
+                name = f"Vista: {saved_views.read_state(target)['name']}"
+            elif item["kind"] == "plan":
+                name = f"Planta: {target.Name}"
+            else:
+                name = views.read_state(target)["name"]
+            scale = sheets.scale_of(doc, item)
+            self._read(name, f"1:{scale}" if scale else "3D")
+            if config is not None and item["kind"] != "saved":  # combinação (spec/ui 18 §6.2)
                 current = item.get("combination")
                 if display_layers.combination(doc, current or "") is None:
                     current = None
                 self._combo("  Camadas", combinations, current,
                             lambda v, i=i: set_combination(i, v))
-        present = {it.get("storey") or it.get("view") for it in state["views"]}
+        present = {sheets.item_key(it) for it in state["views"]}
         options = [(f"Planta: {s.Name}", {"kind": "plan", "storey": s.GlobalId})
                    for s in doc.storeys() if s.GlobalId not in present]
         options += [(views.read_state(v)["name"], {"kind": "view", "view": v.GlobalId})
                     for v in views.all_views(doc) if v.GlobalId not in present]
+        options += [(f"Vista: {saved_views.read_state(v)['name']}",
+                     {"kind": "saved", "saved": v.GlobalId})
+                    for v in saved_views.all_saved_views(doc) if v.GlobalId not in present]
         if options:
             combo = QComboBox()
             for text, item in options:
