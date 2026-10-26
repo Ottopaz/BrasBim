@@ -9,14 +9,24 @@ das regiões cortadas são os da planta.
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QFont, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
+from brasbim.core import pens
 from brasbim.core.document import OpError
 from brasbim.core.drawings import section, views
 from brasbim.ui.plan_view import C, PlanView
 
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
+
+
+def section_category(item) -> str:
+    """Categoria da tabela de penas de uma peça do corte (spec/ui 27 §3)."""
+    if item.kind == "cut":
+        return "cut"
+    if item.kind == "line":
+        return "drawing"
+    return "opening" if item.weight == section.OPENING_WEIGHT else "view"
 
 
 class SectionView(QWidget):
@@ -27,6 +37,7 @@ class SectionView(QWidget):
         self.scale = 60.0
         self.origin = QPointF(200, 400)
         self.show_weights = True
+        self.pens = pens.DEFAULT  # tabela de penas (spec/ui 27)
         self.scale_override: int | None = None  # escala da vista salva aberta (spec/ui 25)
         self.unit = 1.0  # unidades do desenho por pixel de tela (spec/ui 15)
         self._drawing: section.Drawing | None = None
@@ -128,15 +139,18 @@ class SectionView(QWidget):
 
     def paint(self, painter: QPainter, selection=()) -> None:
         """O desenho (também usado na prancha e no PDF, spec/ui 15 §3)."""
+        pens_ = getattr(self, "pens", pens.DEFAULT)
         for item in self.drawing.items:
             selected = item.owner in selection
-            ink = C["select"] if selected else C["wall_line"]
+            category = section_category(item)
+            ink = C["select"] if selected else QColor(pens_.color(category))
+            weight = pens_.weight(category, item.weight or 0.0)
             if item.kind == "face":
                 painter.setPen(QPen(C["background"], 0.6 * self.unit))
                 painter.setBrush(QBrush(C["background"]))
                 painter.drawPath(self._path(item.points, True))
             elif item.kind == "edge" or item.kind == "line":
-                painter.setPen(QPen(ink, self._line_px(item.weight)))
+                painter.setPen(QPen(ink, self._line_px(weight)))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawPath(self._path(item.points, False))
             elif item.kind == "cut":
@@ -146,10 +160,10 @@ class SectionView(QWidget):
                 elif not item.weight:
                     painter.fillPath(path, C["background"])
                 if item.weight:
-                    painter.setPen(QPen(ink, self._line_px(item.weight)))
+                    painter.setPen(QPen(ink, self._line_px(weight)))
                     painter.setBrush(Qt.NoBrush)
                     painter.drawPath(path)
-        painter.setPen(QPen(C["label"]))
+        painter.setPen(QPen(QColor(pens_.color("text"))))
         for text in self.drawing.texts:
             px = text.height * self.scale
             if px < 3:

@@ -28,6 +28,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QMenu, QWidget
 
+from brasbim.core import pens
 from brasbim.core import plan as plan_mod
 from brasbim.core.document import OpError
 from brasbim.core.drawings import saved_views, section, sheets
@@ -63,6 +64,7 @@ class _PlanPainter:
         self.show_tags = self.show_structure_tags = self.show_weights = True
         self.show_tag_size = self.show_space_numbers = self.show_object_tags = False
         self.show_view_symbols = True
+        self.pens = pens.DEFAULT
 
     def font(self) -> QFont:
         return theme.font()
@@ -85,6 +87,7 @@ class _SectionPainter:
     def __init__(self, drawing, scale: float, origin: QPointF, unit: float):
         self.drawing, self.scale, self.origin, self.unit = drawing, scale, origin, unit
         self.show_weights = True
+        self.pens = pens.DEFAULT
 
     def font(self) -> QFont:
         return theme.font()
@@ -137,7 +140,16 @@ def _image_3d(doc, state: dict, rect: QRectF, px_per_mm: float):
 
 
 def _item_painter(doc, item: dict, center: QPointF, px_per_mm: float, unit: float):
-    """Pintor da vista centrada em ``center`` (pixels do papel), ou ``None``."""
+    """Pintor da vista centrada em ``center`` (pixels do papel), ou ``None``; com a tabela
+    de penas da vista salva ou a da janela (spec/ui 27 §4)."""
+    drawer = _item_drawer(doc, item, center, px_per_mm, unit)
+    if drawer is not None and hasattr(drawer, "pens"):
+        saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
+        drawer.pens = pens.resolve(doc, saved.get("pens") if saved else None, paper=True)
+    return drawer
+
+
+def _item_drawer(doc, item: dict, center: QPointF, px_per_mm: float, unit: float):
     saved = sheets.saved_state(doc, item) if item["kind"] == "saved" else None
     if item["kind"] == "saved" and saved is None:
         return None

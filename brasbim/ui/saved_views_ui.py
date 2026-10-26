@@ -62,6 +62,7 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
     session = window.session
     doc = session.doc
     layers = display_layers.states_of(doc, session.display)
+    pen_table = window.window_pen_table()  # tabela de penas da janela (spec/ui 27 §4)
     if kind == "plan":
         storey = session.storey
         if storey is None:
@@ -69,7 +70,7 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
         options = {"detail": window.ctx.detail, "show_above": window.ctx.show_above}
         options.update({name: bool(getattr(window.plan, name)) for name in OPTION_ACTIONS})
         fields = {"storey": storey.GlobalId, "scale": storeys.scale(storey),
-                  "layers": layers, "options": options}
+                  "layers": layers, "options": options, "pens": pen_table}
         if crop:
             a = window.plan.to_world(QPointF(0, widget.height()))
             b = window.plan.to_world(QPointF(widget.width(), 0))
@@ -89,7 +90,7 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
         return None
     state = views.read_state(view)
     scale = widget.scale_override or state["scale"]
-    fields = {"view": view.GlobalId, "scale": scale, "layers": layers,
+    fields = {"view": view.GlobalId, "scale": scale, "layers": layers, "pens": pen_table,
               "options": {"show_weights": bool(widget.show_weights)}}
     return kind, fields, saved_views.suggest_name(doc, "section", state["name"] or "", scale)
 

@@ -79,14 +79,14 @@ Operação `pens.edit` (antes/depois da configuração inteira; desfazer volta).
 vale a tabela padrão (não é gravada até ser mudada).
 
 ## 6. Critérios de aceite (testes)
-- [ ] **PN01** Sem configuração, a tabela padrão; editar penas e categorias grava o Pset;
+- [x] **PN01** Sem configuração, a tabela padrão; editar penas e categorias grava o Pset;
       desfazer volta; salvo e reaberto, igual; validação (cor, espessura > 0, pena
       existente).
-- [ ] **PN02** Planta: a cor e a espessura (proporcional) das paredes cortadas, das cotas e
+- [x] **PN02** Planta: a cor e a espessura (proporcional) das paredes cortadas, das cotas e
       do desenho 2D seguem a pena da categoria; a tabela padrão dá o mesmo desenho de antes.
-- [ ] **PN03** Vista salva com outra tabela: a prancha usa a tabela da vista; "Imprimir em
+- [x] **PN03** Vista salva com outra tabela: a prancha usa a tabela da vista; "Imprimir em
       preto" deixa as linhas pretas na prancha.
-- [ ] **PN04** Interface: o quadro edita cor e espessura de uma pena e a pena de uma
+- [x] **PN04** Interface: o quadro edita cor e espessura de uma pena e a pena de uma
       categoria; Exibir > Tabela de penas troca a tabela da janela.
 
 ## 7. Fontes

@@ -811,6 +811,20 @@ Endereços citados (2): https://community.graphisoft.com/t5/Getting-started/Arch
 
 Endereços citados (4): https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987; https://mid.curitiba.pr.gov.br/2020/00304554.pdf; https://prefeitura.pbh.gov.br/sites/default/files/estrutura-de-governo/politica-urbana/2025/cartilharepresentacaopbh_smpu_r5.pdf; https://questoes.grancursosonline.com.br/questoes-de-concursos/arquitetura-nbr-6492-representacao-de-projetos-de-arquitetura-429878
 
+### `spec/ui/27-tabela-de-penas.md`
+*Tabela de penas (cores e espessuras do desenho)*; data 2026-10-26; situação em revisão (implementado para teste, fluxo do MVP).
+
+- Pesquisa do projeto: `autocad.md` (estilos de plotagem CTB por cor e STB por nome;
+  espessura por camada); `normas_e_projeto_legal_brasil.md` (espessuras de pena no plot,
+  CTB/STB e conjuntos de penas no contexto ABNT: **sem fonte** nesta rodada);
+  `archicad_documentacao_colaboracao.md` (conjuntos de penas existem, sem página oficial
+  lida: **conferir**); `revit_documentacao_colaboracao.md` (estilos de objeto e
+  espessuras: sem fonte primária).
+- Série de espessuras da NBR 8403 já usada no BrasBim (spec/ui 13 §8); conferência com o
+  texto da norma continua pendente.
+- Pedido do revisor (2026‑10‑26).
+- Nenhum material de `_restrito/` nem de `tools/` foi usado. Nomes das categorias próprios.
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem

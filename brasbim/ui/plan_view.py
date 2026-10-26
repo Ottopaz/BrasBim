@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from brasbim.core import pens
 from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
 from brasbim.core.snap import KIND_LABEL
 from brasbim.ui import theme
@@ -27,6 +28,7 @@ from brasbim.ui.tools import Mods, PlanContext, ToolBox
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
 HANDLE_PX = 4  # metade do lado da alça na tela (0.2 §4)
+BELOW_WEIGHT = 0.00013  # m de papel: pavimento de baixo (spec/ui 27)
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 _FRAME_MAX_SCALE = 200.0  # enquadrar a seleção não aproxima mais que isto (spec/ui 07 §4)
 _FRAME_MARGIN = 0.2
@@ -108,6 +110,7 @@ class PlanView(QWidget, ToolInput):
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
+        self.pens = pens.DEFAULT  # tabela de penas da janela (spec/ui 27)
         # Unidades do desenho por pixel de tela: 1 na tela; dpi/96 no papel (spec/ui 15).
         self.unit = 1.0
         self._space = False
@@ -272,15 +275,19 @@ class PlanView(QWidget, ToolInput):
                 rest.append(shape)
                 continue
             selected = shape.owner in selection
+            pens_ = self.pens
             if role == "below":
-                pen = QPen(C["below"], self.unit, Qt.DashLine)
+                pen = QPen(QColor(pens_.color("below")),
+                           max(self.unit, self._px(pens_.weight("below", BELOW_WEIGHT))),
+                           Qt.DashLine)
             elif role in ("wall_above", "slab_above"):
-                pen = QPen(C["select"] if selected else C["wall_line"],
-                           max(self.unit, self._px(ABOVE_WEIGHT)), Qt.DashLine)
+                pen = QPen(C["select"] if selected else QColor(pens_.color("above")),
+                           max(self.unit, self._px(pens_.weight("above", ABOVE_WEIGHT))),
+                           Qt.DashLine)
             else:
-                pen = QPen(C["select"] if selected else C["wall_line"],
-                           2 * self.unit if selected else max(self.unit,
-                                                              self._px(VIEW_WEIGHT)))
+                pen = QPen(C["select"] if selected else QColor(pens_.color("view")),
+                           2 * self.unit if selected else max(
+                               self.unit, self._px(pens_.weight("view", VIEW_WEIGHT))))
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(self._path(shape.points, shape.closed))
@@ -288,7 +295,10 @@ class PlanView(QWidget, ToolInput):
             self._draw_region(painter, self._rings_path(region.rings), region.fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:
-            painter.setPen(QPen(QColor(edge.color), max(self.unit, self._px(edge.weight))))
+            color = edge.color if edge.color.upper() not in pens.NEUTRAL \
+                else self.pens.color(edge.pen)
+            painter.setPen(QPen(QColor(color), max(self.unit, self._px(
+                self.pens.weight(edge.pen, edge.weight)))))
             painter.drawPath(self._rings_path(edge.rings))
         for shape in rest:
             selected = shape.owner in selection
@@ -318,17 +328,20 @@ class PlanView(QWidget, ToolInput):
                 painter.setBrush(QBrush(fill))
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")
-                painter.setPen(QPen(C["select"] if selected else C["wall_line"],
-                                    2 * self.unit if selected else max(self.unit, self._px(
-                                        ABOVE_WEIGHT if above else VIEW_WEIGHT)),
-                                    Qt.DashLine if above else Qt.SolidLine))
+                category = "above" if above else "view"
+                painter.setPen(QPen(
+                    C["select"] if selected else QColor(self.pens.color(category)),
+                    2 * self.unit if selected else max(self.unit, self._px(self.pens.weight(
+                        category, ABOVE_WEIGHT if above else VIEW_WEIGHT))),
+                    Qt.DashLine if above else Qt.SolidLine))
                 painter.setBrush(Qt.NoBrush)
             else:
                 thin = role in ("door_swing", "window_sash", "window_glass")
-                color = C["select"] if selected else (C["swing"] if role == "door_swing"
-                                                      else C["door"])
+                category = "swing" if role == "door_swing" else "opening"
+                color = C["select"] if selected else QColor(self.pens.color(category))
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
-                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit, style))
+                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit
+                                    * self.pens.scale(category), style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
 
@@ -336,8 +349,9 @@ class PlanView(QWidget, ToolInput):
         """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno
         com fundo cobre o que fica por baixo; acima do plano de corte, tracejado."""
         path = self._path(shape.points, shape.closed)
-        color = C["select"] if selected else C["object"]
-        width = 1.6 * self.unit if selected else max(self.unit, self._px(ABOVE_WEIGHT))
+        color = C["select"] if selected else QColor(self.pens.color("object"))
+        width = 1.6 * self.unit if selected else max(
+            self.unit, self._px(self.pens.weight("object", ABOVE_WEIGHT)))
         style = Qt.DashLine if shape.role == "object_above" else Qt.SolidLine
         if shape.role in ("object_fill", "plant_fill") and shape.closed:
             painter.fillPath(path, C["background"])
@@ -412,7 +426,8 @@ class PlanView(QWidget, ToolInput):
             else:
                 lines = [label.code] + ([label.size] if self.show_tag_size else [])
             q = self.to_screen(label.at)
-            painter.setPen(QPen(C["select"] if label.owner in selection else C["label"]))
+            painter.setPen(QPen(C["select"] if label.owner in selection
+                                else QColor(self.pens.color("text"))))
             painter.save()
             painter.translate(q)
             painter.rotate(-label.angle)  # y da tela para baixo
@@ -444,13 +459,16 @@ class PlanView(QWidget, ToolInput):
         for owner, prims in self.ctx.plan.annotations:
             if owner in self.ctx.plan.views and not self.show_view_symbols:
                 continue
-            color = C["select"] if owner in selection else C["wall_line"]
+            category = self.ctx.plan.pens.get(owner, "drawing")  # spec/ui 27
+            ink = QColor(self.pens.color(category))
+            color = C["select"] if owner in selection else ink
             painter.setBrush(Qt.NoBrush)
             for stroke in prims.strokes:
-                painter.setPen(QPen(color, self._line_px(stroke.weight),
+                painter.setPen(QPen(color, self._line_px(self.pens.weight(category,
+                                                                          stroke.weight)),
                                     dashes.get(stroke.dash, Qt.SolidLine)))
                 painter.drawPath(self._path(stroke.points, stroke.closed))
-            painter.setPen(QPen(C["select"] if owner in selection else C["label"]))
+            painter.setPen(QPen(C["select"] if owner in selection else ink))
             for text in prims.texts:
                 font = self._font(text.height)
                 if font is None:

@@ -99,11 +99,13 @@ class Region:
 
 @dataclass(frozen=True)
 class Edge:
-    """Contorno de uma região: espessura em metros de papel (NBR 8403) e cor."""
+    """Contorno de uma região: espessura em metros de papel (NBR 8403), cor e categoria
+    da tabela de penas (spec/ui 27)."""
 
     rings: Rings = field(hash=False)
     weight: float
     color: str
+    pen: str = "cut"
 
 
 @dataclass
@@ -117,6 +119,8 @@ class Plan:
     views: set = field(default_factory=set)  # donos dos símbolos de corte e fachada
     # Elementos de camada bloqueada (spec/ui 18 §4): desenhados, mas fora da escolha.
     locked: set = field(default_factory=set)
+    # Categoria da tabela de penas das anotações, por dono (spec/ui 27 §3).
+    pens: dict = field(default_factory=dict)
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -401,7 +405,7 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
                                       key=lambda kv: kv[0] or ""):
             cut = materials.style(doc, material)["cut"]
             plan.regions.append(Region(material or "", rings, {**cut, "source": "material"}))
-            plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR))
+            plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR, "layer"))
     for key, rings in by_type.items():
         if key not in layered:
             plan.regions.append(Region(key, rings, _fill_of_type(styles[key])))
@@ -873,7 +877,7 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
         return
     plan.regions[first_region:] = [Region(r.key, clip.difference(r.rings, holes), r.fill)
                                    for r in plan.regions[first_region:]]
-    plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color)
+    plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color, e.pen)
                                for e in plan.edges[first_edge:]]
 
 
@@ -949,6 +953,10 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     _objects(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
+    from brasbim.core import pens
+
+    plan.pens = {gid: pens.annotation_category(doc, doc.find(gid))
+                 for gid in {owner for owner, _ in plan.annotations}}
     return plan
 
 

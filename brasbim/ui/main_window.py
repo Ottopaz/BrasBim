@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, select_similar, snap
+from brasbim.core import display_layers, pens, select_similar, snap
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -60,6 +60,7 @@ from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, se
 from brasbim.ui.master_editor import MasterEditor
 from brasbim.ui.materials_dialog import MaterialsDialog
 from brasbim.ui.paper import SheetView, export_pdf
+from brasbim.ui.pens_dialog import PensDialog
 from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
@@ -132,6 +133,7 @@ class MainWindow(QMainWindow):
         self.split = False
         self.recent_commands: list[str] = []  # paleta e linha de comando (spec/ui 23, 24)
         self.active_saved_view: str | None = None  # vista salva aberta (spec/ui 25 §4)
+        self.window_pens: str | None = None  # tabela de penas da vista aberta (spec/ui 27)
         saved_views_ui.scene_provider = lambda: self.scene
         self._build_central()
         self._build_docks()
@@ -367,6 +369,8 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(value)
         view_menu.addSeparator()
+        self.pens_menu = view_menu.addMenu("Tabela de penas")  # spec/ui 27 §4
+        self.pens_menu.aboutToShow.connect(self._fill_pens_menu)
         self._snap_menu(view_menu.addMenu("Atração"))
         detail_menu = view_menu.addMenu("Detalhe da planta")
         group = QActionGroup(self)
@@ -391,6 +395,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de viga…", lambda: self.edit_type("IfcBeamType"))
         self._action(project_menu, "Tipos de laje…", lambda: self.edit_type("IfcSlabType"))
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
+        self._action(project_menu, "Tabelas de penas…", lambda: self.edit_pens())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto…", lambda: self.new_object())
@@ -565,6 +570,7 @@ class MainWindow(QMainWindow):
                 f"Cópia de segurança às {datetime.now():%H:%M}", 5000)
 
     def _refresh_all(self) -> None:
+        self.refresh_pens()
         self.project.refresh()
         self.options_bar.refresh()
         self.properties.refresh()
@@ -612,6 +618,53 @@ class MainWindow(QMainWindow):
             self._refresh_all()
             return
         self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    # --- tabelas de penas (spec/ui 27) ---------------------------------------------------
+
+    def window_pen_table(self) -> str:
+        """Código da tabela de penas da janela: a da vista salva aberta ou a do projeto."""
+        cfg = pens.config(self.session.doc)
+        return pens.table(cfg, self.window_pens)["id"]
+
+    def refresh_pens(self) -> None:
+        resolved = pens.resolve(self.session.doc, self.window_pens)
+        self.plan.pens = resolved
+        for view in self.section_views.values():
+            if view.pens is not resolved:
+                view.pens = resolved
+                view.update()
+
+    def _fill_pens_menu(self) -> None:
+        self.pens_menu.clear()
+        current = self.window_pen_table()
+        for table in pens.config(self.session.doc)["tables"]:
+            action = self.pens_menu.addAction(table["name"])
+            action.setCheckable(True)
+            action.setChecked(table["id"] == current)
+            action.triggered.connect(lambda _=False, t=table["id"]: self.use_pen_table(t))
+        self.pens_menu.addSeparator()
+        self.pens_menu.addAction("Editar tabelas…", lambda: self.edit_pens())
+
+    def use_pen_table(self, table_id: str) -> bool:
+        """Exibir > Tabela de penas: a tabela passa a ser a do projeto (e da janela)."""
+        self.window_pens = None
+        doc = self.session.doc
+        done = self.session.run(lambda: pens.use_table(doc, table_id))
+        self._refresh_all()
+        return done or self.window_pen_table() == table_id
+
+    def edit_pens(self, apply=None) -> bool:
+        """Projeto > Tabelas de penas… (§4); ``apply`` recebe o quadro antes de gravar
+        (testes)."""
+        dialog = PensDialog(self.session.doc, self)
+        if apply is not None:
+            apply(dialog)
+        elif dialog.exec() != QDialog.Accepted:
+            return False
+        doc, new = self.session.doc, dialog.config
+        done = self.session.run(lambda: pens.edit_config(doc, new))
+        self._refresh_all()
+        return done
 
     # --- vistas salvas (spec/ui 25) -------------------------------------------------------
 
@@ -677,6 +730,7 @@ class MainWindow(QMainWindow):
             return False
         state = saved_views.read_state(entity)
         self.close_saved_view()
+        self.window_pens = state.get("pens")
         if state["layers"] is not None:
             self.session.set_display(display_layers.display_of(state["layers"]))
         if state["kind"] == "plan":
@@ -726,8 +780,10 @@ class MainWindow(QMainWindow):
         return True
 
     def close_saved_view(self) -> None:
-        """A janela volta à escala gravada nos pavimentos e nos cortes."""
+        """A janela volta à escala gravada nos pavimentos e nos cortes e à tabela de penas
+        do projeto."""
         self.active_saved_view = None
+        self.window_pens = None
         storeys_.clear_scale_overrides()
         for view in self.section_views.values():
             if view.scale_override is not None:
