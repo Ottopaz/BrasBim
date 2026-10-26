@@ -588,6 +588,42 @@ class Camera:
         self.distance = max(float(np.linalg.norm(high - low)) * 1.6, 2.0)
 
 
+def project_points(camera: Camera, points: np.ndarray, width: int, height: int
+                   ) -> np.ndarray:
+    """Pixels (n × 2) dos pontos 3D na frente da câmera (os de trás saem)."""
+    if not len(points):
+        return np.zeros((0, 2))
+    matrix = camera.projection(width / max(height, 1)) @ camera.view()
+    homogeneous = np.c_[np.asarray(points, dtype=np.float64), np.ones(len(points))]
+    clip = homogeneous @ matrix.T
+    front = clip[:, 3] > 1e-9
+    ndc = clip[front, :2] / clip[front, 3:4]
+    return np.c_[(ndc[:, 0] + 1) / 2 * width, (1 - ndc[:, 1]) / 2 * height]
+
+
+def in_screen_rect(scene: Scene, camera: Camera, width: int, height: int, a, b,
+                   crossing: bool) -> list[str]:
+    """Malhas na janela de cantos ``a`` e ``b`` (pixels), spec/ui 28 §3: inteiras dentro,
+    ou cujo contorno na tela (envoltória convexa) toca a janela (``crossing``)."""
+    import shapely
+
+    x0, x1 = sorted((a[0], b[0]))
+    y0, y1 = sorted((a[1], b[1]))
+    box = shapely.box(x0, y0, x1, y1)
+    out = []
+    for gid, mesh in sorted(scene.meshes.items()):
+        pts = project_points(camera, mesh.all_vertices, width, height)
+        if not len(pts):
+            continue
+        if not crossing:
+            if (pts[:, 0].min() >= x0 and pts[:, 0].max() <= x1
+                    and pts[:, 1].min() >= y0 and pts[:, 1].max() <= y1):
+                out.append(gid)
+        elif shapely.MultiPoint(pts).convex_hull.intersects(box):
+            out.append(gid)
+    return out
+
+
 def perspective(fovy: float, aspect: float, near: float, far: float) -> np.ndarray:
     f = 1 / math.tan(math.radians(fovy) / 2)
     m = np.zeros((4, 4))

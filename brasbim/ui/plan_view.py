@@ -485,6 +485,25 @@ class PlanView(QWidget, ToolInput):
                                  text.text)
                 painter.restore()
 
+    def _draw_hover(self, painter: QPainter) -> None:
+        """Destaque do elemento sob o cursor, antes do clique (spec/ui 28 §2)."""
+        owner = self.ctx.hover
+        if owner is None or owner in self.ctx.session.selection                 or self.toolbox.active.name != "select":
+            return
+        color = QColor(C["select"])
+        color.setAlpha(140)
+        painter.setPen(QPen(color, 2.5 * self.unit))
+        painter.setBrush(Qt.NoBrush)
+        for shape in self.ctx.plan.shapes:
+            if shape.owner == owner and shape.role != "below":
+                painter.drawPath(self._path(shape.points, shape.closed))
+
+    def leaveEvent(self, event):
+        if self.ctx.hover is not None:
+            self.ctx.hover = None
+            self.update()
+        super().leaveEvent(event)
+
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
         for mark in tool.preview():
@@ -553,6 +572,7 @@ class PlanView(QWidget, ToolInput):
         self._draw_plan(painter)
         self._draw_annotations(painter)
         self._draw_tags(painter)
+        self._draw_hover(painter)
         self._draw_tool(painter)
         painter.end()
         if self.selection_bar is not None:
@@ -661,4 +681,5 @@ class PlanView(QWidget, ToolInput):
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space = False
             self.unsetCursor()
+            self.apply_cursor()
         super().keyReleaseEvent(event)

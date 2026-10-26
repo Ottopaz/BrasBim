@@ -825,6 +825,17 @@ Endereços citados (4): https://community.graphisoft.com/t5/Getting-started/Arch
 - Pedido do revisor (2026‑10‑26).
 - Nenhum material de `_restrito/` nem de `tools/` foi usado. Nomes das categorias próprios.
 
+### `spec/ui/28-selecao.md`
+*Seleção pelo cursor, como nos programas de CAD*; data 2026-10-26; situação em revisão (implementado para teste, fluxo do MVP).
+
+- Pesquisa do projeto, `autocad.md` §1: seleção por janela (esquerda→direita, só o que
+  está inteiro dentro) e por cruzamento (direita→esquerda, o que toca), além de cerca,
+  laço e seleção rápida por propriedade (fonte citada lá). `interface_e_interacao.md`
+  §2: comportamento janela/cruzamento em cada programa "sem fonte nesta rodada" —
+  **conferir** na ajuda pública do AutoCAD (seleção por laço e PICKADD).
+- Pedido e respostas do revisor (2026‑10‑26).
+- Nenhum material de `_restrito/` nem de `tools/` foi usado. Cursor e cores próprios.
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem

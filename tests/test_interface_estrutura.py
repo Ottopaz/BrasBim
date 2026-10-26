@@ -187,6 +187,7 @@ def _first_wall(window):
 
 
 def test_ui101_clique_e_janela(window):
+    window.ctx.accumulate = False  # modo "trocar a seleção" (spec/ui 28 §4)
     s = window.session
     _rect_walls(window)
     slab = _slab(window)

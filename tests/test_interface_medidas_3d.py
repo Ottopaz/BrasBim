@@ -231,7 +231,12 @@ def test_ui69_selecao_no_3d(window):
     QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, start + QPoint(10, 0))
     assert view.camera.yaw != yaw  # arrastar orbita
     assert s.selection == {south.GlobalId, east.GlobalId}  # e não seleciona
-    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(3, 3))  # céu: limpa
+    # céu: abre a janela (spec/ui 28 §3); Esc cancela a janela e o segundo Esc limpa
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(3, 3))
+    assert view.window_start is not None
+    view.press_escape()
+    assert view.window_start is None and s.selection == {south.GlobalId, east.GlobalId}
+    view.press_escape()
     assert s.selection == set()
 
 

@@ -291,6 +291,29 @@ class MeasureBox(QFrame):
         return super().eventFilter(obj, event)
 
 
+_PICK_CURSOR = None
+
+
+def pick_cursor() -> QCursor:
+    """Cursor próprio: cruz de 25 px com o quadradinho de captura de 7 px no meio."""
+    global _PICK_CURSOR
+    if _PICK_CURSOR is None:
+        size, half, box = 25, 12, 3
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        for color, width in ((QColor(theme.PAPER), 3), (QColor(theme.INK), 1)):
+            painter.setPen(QPen(color, width))
+            painter.drawLine(0, half, half - box - 1, half)
+            painter.drawLine(half + box + 1, half, size - 1, half)
+            painter.drawLine(half, 0, half, half - box - 1)
+            painter.drawLine(half, half + box + 1, half, size - 1)
+            painter.drawRect(half - box, half - box, 2 * box, 2 * box)
+        painter.end()
+        _PICK_CURSOR = QCursor(pixmap, half, half)
+    return _PICK_CURSOR
+
+
 class ToolInput:
     """Mouse e teclado comuns às vistas (planta e 3D): Tab, Enter, Esc e números vão para
     a ferramenta ativa e para o quadro de medidas (spec/ui 07 §2.2, §3.1).
@@ -330,7 +353,17 @@ class ToolInput:
             self.tool_finished.emit()
         self.hint_changed.emit(self.toolbox.active.hint())
         self.measure.refresh()
+        self.apply_cursor()
         self.update()
+
+    def apply_cursor(self) -> None:
+        """Cruz com o quadradinho de captura na ferramenta Selecionar (spec/ui 28 §2)."""
+        if getattr(self, "_space", False):
+            return
+        if self.toolbox.active.name == "select":
+            self.setCursor(pick_cursor())
+        else:
+            self.unsetCursor()
 
     def tool_event(self, event) -> bool:
         """Tab é da ferramenta (spec/ui 01 §5.5, 07 §2.2), não troca o foco."""

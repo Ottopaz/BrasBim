@@ -162,6 +162,9 @@ class PlanContext:
         self.last_tool: tuple[str, str] | None = None  # (nome, rótulo): Enter repete (§3.2)
         self.last_point: Point | None = None  # último ponto clicado ou digitado (ui/24 §4)
         self.last_origin: Point | None = None  # ponto anterior do último ``snap``
+        # Seleção (spec/ui 28): somar cliques (como no CAD) ou trocar a cada clique.
+        self.accumulate = True
+        self.hover: str | None = None  # elemento realçado sob o cursor
         self._index = None
 
     def invalidate(self) -> None:
@@ -678,13 +681,20 @@ class SelectTool(Tool):
         if d and d["kind"] == "handle":
             return ("Leve a alça e clique ou solte; Ctrl ao soltar leva as vizinhas da "
                     "ponta; digite um número para a medida; Esc cancela")
-        if d and d["kind"] == "window":
-            return ("Janela: para a direita, só elementos inteiros; para a esquerda, também "
-                    "os que tocam; Ctrl soma à seleção")
+        if d and d["kind"] in ("window", "lasso"):
+            name = "Laço" if d["kind"] == "lasso" else "Janela"
+            close = "solte" if d["kind"] == "lasso" or not d.get("clicks") else "clique"
+            return (f"{name}: para a direita, só elementos inteiros; para a esquerda, "
+                    f"também os que tocam; {close} para fechar; Shift tira da seleção; "
+                    "Esc cancela")
         if d and d["kind"] == "move" and d["active"]:
             return "Solte para mover a seleção (Esc cancela)"
-        text = ("Clique para selecionar; Ctrl+clique soma; arraste no vazio para selecionar "
-                "por janela; arraste as alças ou a seleção para editar")
+        if self.ctx.accumulate:
+            text = ("Clique soma à seleção; Shift+clique tira; clique no vazio abre a "
+                    "janela, arrastar no vazio faz o laço; Esc limpa")
+        else:
+            text = ("Clique para selecionar; Ctrl+clique soma; arraste no vazio para "
+                    "selecionar por janela; arraste as alças ou a seleção para editar")
         if self.ctx.last_tool and not self.session.selection:
             text += f"; Enter: repetir {self.ctx.last_tool[1]}"
         return text
@@ -1009,11 +1019,17 @@ class SelectTool(Tool):
         if button != "left":
             return
         d = self.drag
+        if d and d["kind"] == "window" and d.get("clicks"):  # 2º clique fecha a janela
+            d["end"] = p
+            self.drag = None
+            self._finish_area(self.ctx.plan.in_rect(d["start"], p, crossing=p[0] <
+                                                    d["start"][0]), mods)
+            return
         if d and d["kind"] == "handle":  # alça presa ao cursor (clique, mover, clique)
             self._handle_update(p, mods)
             self._handle_commit()
             return
-        handle = None if mods.ctrl else self._handle_at(p)
+        handle = None if mods.ctrl or mods.shift else self._handle_at(p)
         if handle:
             self.drag = {"kind": "handle", **handle, "start": p, "active": False,
                          "sticky": False, "tx": None, "error": None, "marks": [],
@@ -1028,7 +1044,7 @@ class SelectTool(Tool):
         from brasbim.core.structure import skylights
 
         is_door = entity is not None and (entity.is_a("IfcDoor") or entity.is_a("IfcWindow"))             and not skylights.is_skylight(entity)
-        if gid and not mods.ctrl and gid in selection:
+        if gid and not mods.ctrl and not mods.shift and gid in selection:
             if is_door and len(selection) == 1:
                 self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
                              "target": None}
@@ -1038,28 +1054,40 @@ class SelectTool(Tool):
                              "active": False, "vector": None,
                              "shapes": moving_shapes(self.ctx, selection)}
             return
-        if gid and not mods.ctrl and is_door:
-            self.session.select([gid])
+        if gid and not mods.ctrl and not mods.shift and is_door:
+            self.session.select([gid], add=self.ctx.accumulate)
             self.drag = {"kind": "door", "door": gid, "start": p, "active": False,
                          "target": None}
             return
-        self.drag = {"kind": "pending", "gid": gid, "start": p, "ctrl": mods.ctrl}
+        self.drag = {"kind": "pending", "gid": gid, "start": p, "ctrl": mods.ctrl,
+                     "shift": mods.shift}
 
     def move(self, p, mods):
         super().move(p, mods)
         d = self.drag
         if not d:
             self.snapped = None
+            hover = self.ctx.plan.pick(p, self.ctx.tol) if self.ctx.accumulate else None
+            self.ctx.hover = hover  # destaque sob o cursor (spec/ui 28 §2)
             return
+        self.ctx.hover = None
         moved = math.dist(p, d["start"]) >= self.ctx.tol * DRAG_START
         kind = d["kind"]
         if kind == "pending":
-            if moved:
-                self.drag = {"kind": "window", "start": d["start"], "end": p,
+            if moved and d["gid"] is None and self.ctx.accumulate:  # laço (spec/ui 28)
+                self.drag = {"kind": "lasso", "start": d["start"], "points": [d["start"], p],
+                             "crossing": p[0] < d["start"][0], "shift": d["shift"],
                              "ctrl": d["ctrl"]}
+            elif moved and (d["gid"] is None or not self.ctx.accumulate):
+                self.drag = {"kind": "window", "start": d["start"], "end": p,
+                             "ctrl": d["ctrl"], "shift": d["shift"]}
             return
         if kind == "window":
             d["end"] = p
+            return
+        if kind == "lasso":
+            if math.dist(p, d["points"][-1]) >= self.ctx.tol * 0.5:
+                d["points"].append(p)
             return
         if kind == "handle":
             d["active"] = d["active"] or moved
@@ -1094,19 +1122,31 @@ class SelectTool(Tool):
         self.snapped = None
         selection = self.session.selection
         if kind == "pending":
-            if d["gid"] or not d["ctrl"]:
-                self.session.select([d["gid"]] if d["gid"] else [], add=d["ctrl"])
+            if not self.ctx.accumulate:
+                if d["gid"] or not d["ctrl"]:
+                    self.session.select([d["gid"]] if d["gid"] else [], add=d["ctrl"])
+                return
+            if d["gid"] is None:  # clique no vazio: a janela segue o cursor (2 cliques)
+                self.drag = {"kind": "window", "start": d["start"], "end": p,
+                             "clicks": True, "ctrl": d["ctrl"], "shift": d["shift"]}
+                return
+            if d["shift"]:
+                self.session.select(selection - {d["gid"]})
+            else:
+                self.session.select([d["gid"]], add=True)
             return
         if kind == "window":
             a, b = d["start"], d["end"]
-            gids = self.ctx.plan.in_rect(a, b, crossing=b[0] < a[0])
-            if d["ctrl"]:
-                self.session.select(set(gids) - selection, add=True)
-            else:
-                self.session.select(gids)
+            self._finish_area(self.ctx.plan.in_rect(a, b, crossing=b[0] < a[0]),
+                              Mods(shift=d.get("shift", False) or mods.shift,
+                                   ctrl=d["ctrl"]))
+            return
+        if kind == "lasso":
+            self._finish_area(self.ctx.plan.in_polygon(d["points"], crossing=d["crossing"]),
+                              Mods(shift=d["shift"] or mods.shift, ctrl=d["ctrl"]))
             return
         if not d["active"]:
-            if kind == "move":
+            if kind == "move" and not self.ctx.accumulate:
                 self.session.select([d["gid"]])
             return
         if kind == "door":
@@ -1123,6 +1163,17 @@ class SelectTool(Tool):
         elif kind == "move" and d["vector"] and math.hypot(*d["vector"]) > 1e-9:
             doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
             self.session.run(lambda: transform.move_elements(doc, gids, vector))
+
+    def _finish_area(self, gids, mods) -> None:
+        """Fim da janela ou do laço (spec/ui 28 §2): soma, tira (Shift) ou, no modo
+        antigo, troca a seleção (Ctrl soma)."""
+        selection = self.session.selection
+        if mods.shift:
+            self.session.select(selection - set(gids))
+        elif self.ctx.accumulate or mods.ctrl:
+            self.session.select(set(gids) - selection, add=True)
+        else:
+            self.session.select(gids)
 
     def cancel(self):
         if self.drag or self.drag3d is not None:
@@ -1143,6 +1194,9 @@ class SelectTool(Tool):
             (x0, y0), (x1, y1) = d["start"], d["end"]
             return [Mark(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), True,
                          "crossing" if x1 < x0 else "window")]
+        if d["kind"] == "lasso":
+            return [Mark(tuple(d["points"]), True,
+                         "crossing" if d["crossing"] else "window")]
         if d["kind"] == "move" and d["active"] and d["vector"]:
             return _shape_marks(d["shapes"], geom2d.translation(d["vector"]))
         return []

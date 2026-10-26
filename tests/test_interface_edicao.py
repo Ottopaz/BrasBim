@@ -58,6 +58,7 @@ def _drag(window, a, b, modifier=Qt.NoModifier, release=None):
 
 
 def test_ui14_janela_e_cruzamento(window):
+    window.ctx.accumulate = False  # modo "trocar a seleção" (spec/ui 28 §4)
     s = window.session
     walls = _rectangle(window)  # (0, 0)–(6, 4)
     window.session.run(lambda: cmd.create_wall(s.doc, walls[0].IsTypedBy[0].RelatingType,

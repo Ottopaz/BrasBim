@@ -15,7 +15,7 @@ import math
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from brasbim.core import snap, transform
@@ -47,7 +47,14 @@ SNAP_PX = 10
 TRANSFORM_TOOLS = ("move", "copy", "rotate", "mirror")
 
 
-def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()) -> None:
+def display_layers_locked(doc) -> set[str]:
+    from brasbim.core import display_layers
+
+    return display_layers.locked_ids(doc)
+
+
+def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset(),
+               hover: str | None = None) -> None:
     """Pinta as malhas (com os vidros por último) e as arestas no contexto OpenGL atual:
     a vista na tela e a imagem da vista 3D salva na prancha (spec/ui 25 §5)."""
     GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
@@ -61,6 +68,8 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
         colors = mesh.colors
         if gid in selected:
             colors = (colors * 0.4 + _SELECT * 0.6).astype(np.float32)
+        elif gid == hover:  # destaque sob o cursor (spec/ui 28 §3)
+            colors = (colors * 0.75 + _SELECT * 0.25).astype(np.float32)
         GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
         GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
@@ -133,6 +142,8 @@ class View3D(QOpenGLWidget, ToolInput):
         self._zooming = QTimer(self, singleShot=True, interval=ZOOM_PAUSE_MS)
         self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.failed = GL is None
+        self.window_start: QPointF | None = None  # janela por dois cliques (spec/ui 28 §3)
+        self.mouse_pos: QPointF | None = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
@@ -243,11 +254,15 @@ class View3D(QOpenGLWidget, ToolInput):
         if self.failed:
             return
         selected = self.selection
-        draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected)
+        hover = self.ctx.hover if self.ctx.hover not in selected else None
+        draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected,
+                   hover)
         GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
         self._paint_tool()
         self._paint_handles()
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        if self.window_start is not None and self.mouse_pos is not None:
+            self._paint_window()
         if self.selection_bar is not None:
             # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
             # a mini-barra é posta depois que a pintura termina.
@@ -441,6 +456,12 @@ class View3D(QOpenGLWidget, ToolInput):
         """Movimento sem arrastar: a ferramenta (que não Selecionar) recebe o ponto."""
         tool = self.toolbox.active
         if tool.name == "select":
+            hover = self.pick(pos) if self.ctx.accumulate else None  # destaque (ui/28 §3)
+            if hover in display_layers_locked(self.ctx.session.doc):
+                hover = None
+            if hover != self.ctx.hover or self.window_start is not None:
+                self.ctx.hover = hover
+                self.update()
             return
         p = self.world_point(pos)
         if p is None:
@@ -532,11 +553,21 @@ class View3D(QOpenGLWidget, ToolInput):
         tool = self.toolbox.active
         session = self.ctx.session
         if tool.name == "select":
+            if button == "left" and self.window_start is not None:
+                self.finish_window(pos, mods)
+                return
             gid = self.pick(pos)
             if button == "right":
                 if gid and gid not in session.selection:
-                    session.select([gid], add=mods.ctrl)
+                    session.select([gid], add=mods.ctrl or self.ctx.accumulate)
                 self.context_requested.emit(gid, global_pos)
+            elif self.ctx.accumulate:  # soma; Shift tira; vazio abre a janela (ui/28 §3)
+                if gid is None:
+                    self.window_start = QPointF(pos)
+                elif mods.shift:
+                    session.select(session.selection - {gid})
+                else:
+                    session.select([gid], add=True)
             elif gid or not mods.ctrl:
                 session.select([gid] if gid else [], add=mods.ctrl)
             self.after_tool_input()
@@ -549,6 +580,53 @@ class View3D(QOpenGLWidget, ToolInput):
         tool.press(p, mods, button)
         tool.release(p, mods)
         self.after_tool_input()
+
+    def finish_window(self, pos: QPointF, mods: Mods) -> list[str]:
+        """Segundo clique da janela no 3D: direita = inteiros, esquerda = os que tocam;
+        Shift tira da seleção."""
+        from brasbim.ui.scene3d import in_screen_rect
+
+        start, self.window_start = self.window_start, None
+        gids = in_screen_rect(self.scene, self.camera, self.width(), self.height(),
+                              (start.x(), start.y()), (pos.x(), pos.y()),
+                              crossing=pos.x() < start.x())
+        session = self.ctx.session
+        locked = display_layers_locked(session.doc)
+        gids = [g for g in gids if g not in locked]
+        if mods.shift:
+            session.select(session.selection - set(gids))
+        else:
+            session.select(set(gids) - session.selection, add=True)
+        self.after_tool_input()
+        return gids
+
+    def press_escape(self) -> None:
+        """Esc cancela a janela em andamento antes de tudo (spec/ui 28 §3)."""
+        if self.cancel_window():
+            self.after_tool_input()
+            return
+        super().press_escape()
+
+    def cancel_window(self) -> bool:
+        if self.window_start is None:
+            return False
+        self.window_start = None
+        self.update()
+        return True
+
+    def _paint_window(self) -> None:
+        from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+
+        a, b = self.window_start, self.mouse_pos
+        crossing = b.x() < a.x()
+        color = QColor(theme.OK if crossing else theme.ACCENT)
+        fill = QColor(color)
+        fill.setAlpha(25)
+        painter = QPainter(self)
+        painter.setPen(QPen(color, 1, Qt.DashLine if crossing else Qt.SolidLine))
+        painter.setBrush(QBrush(fill))
+        painter.drawRect(QRectF(a, b).normalized())
+        painter.end()
 
     def mouseDoubleClickEvent(self, event):
         tool = self.toolbox.active

@@ -51,15 +51,15 @@ seleção a cada clique** (o comportamento anterior: clique troca, Ctrl+clique s
 arrastar no vazio faz a janela). Gravado nas preferências do usuário.
 
 ## 5. Critérios de aceite (testes)
-- [ ] **SE01** Núcleo: elementos dentro de um polígono (laço) e que tocam o polígono;
+- [x] **SE01** Núcleo: elementos dentro de um polígono (laço) e que tocam o polígono;
       laje só inteira.
-- [ ] **SE02** Planta: clique soma, Shift+clique tira, Esc limpa; clique no vazio abre a
+- [x] **SE02** Planta: clique soma, Shift+clique tira, Esc limpa; clique no vazio abre a
       janela e o segundo clique fecha; direita = inteiros, esquerda = os que tocam;
       Shift tira.
-- [ ] **SE03** Planta: laço por arrasto, direção pelo primeiro movimento; destaque sob o
+- [x] **SE03** Planta: laço por arrasto, direção pelo primeiro movimento; destaque sob o
       cursor; camada bloqueada fora.
-- [ ] **SE04** 3D: clique soma; janela por dois cliques (direita/esquerda); destaque.
-- [ ] **SE05** Modo "Trocar a seleção" devolve o comportamento anterior.
+- [x] **SE04** 3D: clique soma; janela por dois cliques (direita/esquerda); destaque.
+- [x] **SE05** Modo "Trocar a seleção" devolve o comportamento anterior.
 
 ## 6. Fontes
 - Pesquisa do projeto, `autocad.md` §1: seleção por janela (esquerda→direita, só o que

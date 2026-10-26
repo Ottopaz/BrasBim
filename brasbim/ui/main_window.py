@@ -85,6 +85,9 @@ STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mu
 _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 
 
+SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
+
+
 def _settings() -> QSettings:
     """Preferências da janela; o formato padrão permite aos testes usar outro lugar."""
     return QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim")
@@ -306,6 +309,17 @@ class MainWindow(QMainWindow):
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
+        group = QActionGroup(self)
+        self.select_mode_actions = {}
+        for value, text in ((True, "Somar cliques (como no CAD)"),
+                            (False, "Trocar a seleção a cada clique")):
+            action = self._action(mode_menu, text,
+                                  lambda _=False, v=value: self.set_select_mode(v))
+            action.setCheckable(True)
+            group.addAction(action)
+            self.select_mode_actions[value] = action
+        self.select_mode_actions[True].setChecked(True)
         edit_menu.addSeparator()
         self._action(edit_menu, "Paleta de comandos…", self.open_palette, "Ctrl+K")
         self._action(edit_menu, "Apelidos da linha de comando…", self.edit_aliases)
@@ -502,6 +516,9 @@ class MainWindow(QMainWindow):
             minutes = BACKUP_DEFAULT
         if minutes in self.backup_actions:
             self.set_backup_minutes(minutes)
+        mode = settings.value(SELECT_MODE_KEY)
+        if mode is not None:
+            self.set_select_mode(str(mode).lower() == "true", save=False)
         detail = settings.value("detalhe_planta")
         if detail in self.detail_actions:
             self.set_plan_detail(detail)
@@ -618,6 +635,16 @@ class MainWindow(QMainWindow):
             self._refresh_all()
             return
         self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    def set_select_mode(self, accumulate: bool, save: bool = True) -> None:
+        """Editar > Modo de seleção (spec/ui 28 §4): somar cliques ou trocar a seleção."""
+        self.ctx.accumulate = bool(accumulate)
+        self.ctx.hover = None
+        self.select_mode_actions[bool(accumulate)].setChecked(True)
+        if save:
+            _settings().setValue(SELECT_MODE_KEY, bool(accumulate))
+        self._set_hint(self.toolbox.active.hint())
+        self.plan.update()
 
     # --- tabelas de penas (spec/ui 27) ---------------------------------------------------
 

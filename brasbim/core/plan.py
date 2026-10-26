@@ -167,10 +167,18 @@ class Plan:
         x0, x1 = sorted((a[0], b[0]))
         y0, y1 = sorted((a[1], b[1]))
         rect = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        return self._in_area(rect, lambda q: x0 <= q[0] <= x1 and y0 <= q[1] <= y1,
+                             crossing)
 
-        def inside(q):
-            return x0 <= q[0] <= x1 and y0 <= q[1] <= y1
+    def in_polygon(self, points, crossing: bool = False) -> list[str]:
+        """Elementos dentro do laço ``points`` (contorno fechado, spec/ui 28 §2), ou que
+        tocam o laço (``crossing``)."""
+        polygon = [tuple(p) for p in points]
+        if len(polygon) < 3:
+            return []
+        return self._in_area(polygon, lambda q: _inside(polygon, q), crossing)
 
+    def _in_area(self, rect, inside, crossing: bool) -> list[str]:
         out = []
         groups = {**self.owners("wall"),
                   **self.owners(("door", "window", "column", "beam", "slab", "space",
