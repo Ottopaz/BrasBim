@@ -25,7 +25,7 @@ NOT_A_ROOM = "o ponto não está num cômodo fechado por paredes"
 _ON = 1e-5  # m: ponto sobre a face de uma parede
 
 
-def _walls(doc: Document, storey) -> list[tuple[list, float]]:
+def walls_of(doc: Document, storey) -> list[tuple[list, float]]:
     """(planta, espessura) de cada parede do pavimento."""
     out = []
     for wall in ifcopenshell.util.element.get_decomposition(storey):
@@ -65,9 +65,10 @@ def _on_ring(p, ring) -> bool:
     return any(_dist_to_segment(p, ring[i - 1], ring[i]) <= _ON for i in range(len(ring)))
 
 
-def room_ring(doc: Document, storey, point) -> tuple[list, list]:
-    """(furo anti-horário que contém o ponto, paredes do pavimento). Recusa se não há."""
-    walls = _walls(doc, storey)
+def room_ring(doc: Document, storey, point, walls=None) -> tuple[list, list]:
+    """(furo anti-horário que contém o ponto, paredes do pavimento). Recusa se não há.
+    ``walls``: o ``walls_of`` do pavimento, se já calculado."""
+    walls = walls_of(doc, storey) if walls is None else walls
     if not walls:
         raise OpError(NOT_A_ROOM)
     union = clip.union([list(r) for r, _ in walls])
@@ -121,11 +122,12 @@ def _meet(p, d, q, e):
     return (p[0] + t * d[0], p[1] + t * d[1])
 
 
-def room_outline(doc: Document, storey, point, boundary: str = "outer") -> list:
+def room_outline(doc: Document, storey, point, boundary: str = "outer",
+                 walls=None) -> list:
     """Contorno do cômodo até a face interna, o eixo ou a face externa das paredes."""
     if boundary not in BOUNDARIES:
         raise OpError(f"contorno inválido: {boundary!r}")
-    ring, walls = room_ring(doc, storey, point)
+    ring, walls = room_ring(doc, storey, point, walls)
     if boundary == "inner":
         return [list(p) for p in ring]
     k = 0.5 if boundary == "axis" else 1.0
@@ -150,7 +152,7 @@ def room_outline(doc: Document, storey, point, boundary: str = "outer") -> list:
 def building_rings(doc: Document, storey) -> list:
     """Contornos externos (face externa das paredes) de todas as edificações do
     pavimento, sem os furos dos cômodos; vazio sem paredes."""
-    walls = _walls(doc, storey)
+    walls = walls_of(doc, storey)
     if not walls:
         return []
     union = clip.union([list(r) for r, _ in walls])

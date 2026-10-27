@@ -51,9 +51,12 @@ coordenada, chamadas com linha de chamada (`LEADER`), símbolos de biblioteca, c
   [IFC-SPACE, *Name/LongName*].
 - Representações: `FootPrint` (`IfcPolyline` fechada, contexto `Plan`) e `Body`
   `SweptSolid` (o contorno extrudado na vertical, com o pé-direito) [IFC-SPACE].
-- `Qto_SpaceBaseQuantities`: `NetFloorArea` e `GrossFloorArea` (área do contorno; sem
-  descontos nesta etapa), `GrossPerimeter`, `Height` (pé-direito) [IFC-SPACE].
-- Pset `BrasBim_Ambiente`: `PeDireitoFixo` (vazio = calculado) e a posição da etiqueta.
+- `Qto_SpaceBaseQuantities`: `GrossFloorArea` (área do contorno, com o que estiver dentro
+  dele), `NetFloorArea` (descontados os pilares e as paredes do pavimento dentro do
+  contorno; *pente fino, 2026‑10‑27* — antes era igual à bruta), `GrossPerimeter`,
+  `Height` (pé-direito) [IFC-SPACE, IFC-QTO-SPACE].
+- Pset `BrasBim_Ambiente`: `PeDireitoFixo` (vazio = calculado), a posição da etiqueta e
+  `SementeX`/`SementeY` (ponto clicado do ambiente pelo cômodo, §3.3).
 
 ### 3.2 Parâmetros e operações
 | Parâmetro | Padrão | Regras |
@@ -82,6 +85,13 @@ de um pavimento refaz o ambiente.
   Identificação.
 - Mover, Copiar, Girar, Espelhar, Excluir e alças (vértices, meio dos lados, e a da
   etiqueta) como a laje.
+- **Acompanha as paredes** *(pente fino, 2026‑10‑27)*: o ambiente criado Pelo cômodo
+  guarda o ponto clicado e o contorno é refeito sempre que uma parede (ou tipo de parede)
+  do pavimento muda — inclusive movida à mão. Se o ponto cai numa parede, tenta o centro
+  do contorno; sem cômodo fechado, o contorno fica como estava. Editar o contorno pelas
+  alças desliga o acompanhamento (o ponto é apagado; desfazer o religa). Mover/girar/
+  espelhar levam o ponto se as paredes vão junto ou se ele cai num cômodo; senão o
+  ambiente passa a ter contorno à mão. O modo Polígono não acompanha.
 
 ### 3.4 Planta
 - Etiqueta *(CG)*: **nome** em cima e a **área** embaixo ("12,50 m²"); com Exibir >
@@ -213,6 +223,13 @@ Térreo (0,00) e Superior (2,80); retângulo de paredes de 14 cm por dentro de
 - [x] **AM04** Etiqueta "Sala" / "17,56 m²" no centro; arrastar a alça move só a
       etiqueta.
 - [x] **AM05** Mover e girar o ambiente; desfazer e o diário reproduzem o IFC.
+- [x] **AM06** Ambiente pelo cômodo e parede de x = 5 deslocada 1 m: o contorno é refeito
+      pelas paredes (área ± 3,72 m²); desfazer e o diário reproduzem o IFC. *(Pente fino,
+      2026‑10‑27.)*
+- [x] **AM07** Contorno editado à mão: o ambiente deixa de seguir as paredes (`seed`
+      apagado); desfazer devolve o `seed`.
+- [x] **AM08** Pilar 20 × 40 dentro do ambiente: `GrossFloorArea` = área do contorno,
+      `NetFloorArea` = área − 0,08; sem o pilar, iguais.
 
 **Cotas**
 - [x] **CT01** Cota horizontal de (0, 0) a (5, 0), afastamento −0,6: `IfcAnnotation`
@@ -252,6 +269,7 @@ IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado
 |---|---|
 | IFC-ANNOT | `docs/schemas/core/IfcProductExtension/Entities/IfcAnnotation.md` (contenção no pavimento; `IfcGeometricCurveSet`, `IfcAnnotationFillArea`, `IfcTextLiteral`) |
 | IFC-SPACE | `docs/schemas/core/IfcProductExtension/Entities/IfcSpace.md` (agregação ao pavimento; `Name` = número, `LongName` = nome; `FootPrint` e `Body`; `Qto_SpaceBaseQuantities`) |
+| IFC-QTO-SPACE | `Qto_SpaceBaseQuantities` no modelo de propriedades do IFC 4.3 distribuído com o IfcOpenShell (`ifcopenshell.util.pset.get_template("IFC4X3")`): bruta inclui o que está dentro do espaço (pilares, paredes internas); líquida exclui |
 
 Outras:
 - **NBR 8403** (espessuras de linha) e **NBR 6492** (representação de projetos de

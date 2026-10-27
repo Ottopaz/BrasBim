@@ -60,8 +60,9 @@ ou um valor **fixado** (preto, com um cadeado).
 6. Campo apagado e Tab: o valor volta a acompanhar o cursor.
 7. Depois de cada ponto confirmado, os valores fixados são soltos.
 
-**Tab na ferramenta Porta** continua alternando as dobradiças (spec 01 §5.5): a porta não
-tem campos.
+**Tab na ferramenta Porta** abre o balão Distância, como nas outras ferramentas; as
+dobradiças ficam nos botões Esquerda / Direita da barra Opções *(mudado pela spec 09 §2.2;
+antes o Tab alternava as dobradiças)*.
 
 ### 2.3 Valor fixado e cursor
 | Fixado | Ponto resultante |

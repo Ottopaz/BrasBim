@@ -55,23 +55,26 @@ def noun_of(element) -> str:
 
 
 def create_space(doc: Document, storey, outline, number: str | None = None,
-                 name: str = spaces.DEFAULT_NAME, height: float | None = None) -> Transaction:
+                 name: str = spaces.DEFAULT_NAME, height: float | None = None,
+                 seed=None) -> Transaction:
     from brasbim.core.structure import slabs
 
     storey = doc.get(_gid(storey), "IfcBuildingStorey")
     data = {"storey": storey.GlobalId, "outline": slabs.clean(outline),
             "number": number or spaces.next_number(doc, storey), "name": name,
-            "height": None if height is None else float(height), "label_at": None}
+            "height": None if height is None else float(height), "label_at": None,
+            "seed": None if seed is None else [float(seed[0]), float(seed[1])]}
     return Transaction("Criar ambiente", [Op("space.create", guid.new(), data=data)])
 
 
 def create_space_in_room(doc: Document, storey, point, **options) -> Transaction:
-    """Ambiente pelo cômodo: contorno na face interna das paredes (spec/ui 13 §3.3)."""
+    """Ambiente pelo cômodo: contorno na face interna das paredes (spec/ui 13 §3.3), que
+    acompanha as paredes depois (``seed``)."""
     from brasbim.core.structure import rooms
 
     storey = doc.get(_gid(storey), "IfcBuildingStorey")
     return create_space(doc, storey, rooms.room_outline(doc, storey, point, "inner"),
-                        **options)
+                        seed=point, **options)
 
 
 # --- anotações -------------------------------------------------------------------------
@@ -140,6 +143,9 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
         from brasbim.core.structure import slabs
 
         changes["outline"] = slabs.clean(changes["outline"])
+        changes.setdefault("seed", None)  # contorno à mão deixa de seguir as paredes
+    if prefix == "space" and changes.get("seed") is not None:
+        changes["seed"] = [float(changes["seed"][0]), float(changes["seed"][1])]
     _clean(prefix, changes)
     if prefix not in ("space", "view"):
         base.KINDS[prefix].validate({**state, **changes})
@@ -200,11 +206,30 @@ def mapped(doc: Document, element, fn, turn, mirrored: bool, moving: set[str]) -
             out["side"] = "right" if state["side"] == "left" else "left"
         return out
     if element.is_a("IfcSpace"):
-        out = {"outline": [list(fn(tuple(p))) for p in state["outline"]]}
+        out = {}
         if state["label_at"] is not None:
             out["label_at"] = list(fn(tuple(state["label_at"])))
+        if state["seed"] is not None:
+            # O contorno do ambiente pelo cômodo é refeito pelas paredes na derivação: a
+            # operação leva só o ponto, se as paredes vão junto ou se ele cai num cômodo.
+            # Senão o ambiente passa a ter contorno à mão (o ponto é apagado).
+            seed = list(fn(tuple(state["seed"])))
+            if any(doc.find(g) is not None and doc.find(g).is_a("IfcWall") for g in moving)                     or _in_room(doc, state["storey"], seed):
+                return {**out, "seed": seed}
+            out["seed"] = None
+        out["outline"] = [list(fn(tuple(p))) for p in state["outline"]]
         return out
     return base.kind_of(element).mapped(state, fn, turn, mirrored, moving)
+
+
+def _in_room(doc: Document, storey, point) -> bool:
+    from brasbim.core.structure import rooms
+
+    try:
+        rooms.room_ring(doc, doc.get(storey, "IfcBuildingStorey"), tuple(point))
+    except OpError:
+        return False
+    return True
 
 
 # --- cota automática da parede (spec/ui 13 §4.5) ------------------------------------------

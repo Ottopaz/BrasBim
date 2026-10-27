@@ -90,7 +90,7 @@ O ícone Parede lembra a última forma usada. Os valores valem até serem mudado
 |---|---|
 | Tipo | Lista dos tipos de porta e **Editar tipo** |
 | Vão | Largura, altura e base (vazios = padrão do tipo, mostrado em cinza) |
-| Dobradiças | Esquerda, Direita — ícones exclusivos (Tab continua alternando) |
+| Dobradiças | Esquerda, Direita — ícones exclusivos (o Tab não alterna mais: spec 09 §2.2) |
 | Posição no marco | Alinhamento (lista) e deslocamento |
 
 ### 4.3 Painel de propriedades

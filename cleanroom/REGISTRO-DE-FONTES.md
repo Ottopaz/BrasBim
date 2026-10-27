@@ -584,6 +584,7 @@ IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado
 |---|---|
 | IFC-ANNOT | `docs/schemas/core/IfcProductExtension/Entities/IfcAnnotation.md` (contenção no pavimento; `IfcGeometricCurveSet`, `IfcAnnotationFillArea`, `IfcTextLiteral`) |
 | IFC-SPACE | `docs/schemas/core/IfcProductExtension/Entities/IfcSpace.md` (agregação ao pavimento; `Name` = número, `LongName` = nome; `FootPrint` e `Body`; `Qto_SpaceBaseQuantities`) |
+| IFC-QTO-SPACE | `Qto_SpaceBaseQuantities` no modelo de propriedades do IFC 4.3 distribuído com o IfcOpenShell (`ifcopenshell.util.pset.get_template("IFC4X3")`) |
 
 Outras:
 - **NBR 8403** (espessuras de linha) e **NBR 6492** (representação de projetos de

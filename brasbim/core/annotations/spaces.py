@@ -7,13 +7,17 @@ Operações: ``space.create`` / ``space.delete`` (data: estado completo) e ``spa
 Estado::
 
     {"storey": "<GlobalId>", "outline": [[x, y], ...], "number": "01", "name": "Sala",
-     "height": None, "label_at": None}
+     "height": None, "label_at": None, "seed": None}
 
 ``number`` vai em ``Name`` e ``name`` em ``LongName`` [IFC-SPACE]. ``height`` ``None`` =
 pé-direito calculado (da cota do pavimento ao fundo da laje que cobre o centro; sem laje,
 até o pavimento de cima; sem pavimento de cima, 2,80). ``label_at`` ``None`` = centro.
-Pset ``BrasBim_Ambiente``: ``PeDireitoFixo``, ``EtiquetaX``/``EtiquetaY``. O contorno é
-lido do ``FootPrint``; ``Body`` e quantidades são derivados (``rebuild``).
+``seed`` é o ponto clicado no ambiente pelo cômodo: enquanto existir, o contorno é refeito
+pelas paredes na derivação (``refit``); editar o contorno à mão o apaga.
+Pset ``BrasBim_Ambiente``: ``PeDireitoFixo``, ``EtiquetaX``/``EtiquetaY``,
+``SementeX``/``SementeY``. O contorno é lido do ``FootPrint``; ``Body`` e quantidades são
+derivados (``rebuild``). ``GrossFloorArea`` é a área do contorno; ``NetFloorArea`` desconta
+pilares e paredes dentro dele [IFC-QTO-SPACE].
 """
 
 from __future__ import annotations
@@ -32,11 +36,12 @@ DEFAULT_HEIGHT = 2.80
 DEFAULT_NAME = "Ambiente"
 NAMES = ("Sala", "Cozinha", "Quarto", "Banheiro", "Área de serviço", "Varanda", "Circulação",
          "Garagem")  # sugestões (spec/ui 13 §3.3)
-STATE_KEYS = ("storey", "outline", "number", "name", "height", "label_at")
+STATE_KEYS = ("storey", "outline", "number", "name", "height", "label_at", "seed")
 
 
 def default_state() -> dict:
-    return {"number": None, "name": DEFAULT_NAME, "height": None, "label_at": None}
+    return {"number": None, "name": DEFAULT_NAME, "height": None, "label_at": None,
+            "seed": None}
 
 
 def storey_of(space):
@@ -57,10 +62,12 @@ def read_state(space) -> dict:
     values = ifcopenshell.util.element.get_pset(space, PSET, should_inherit=False) or {}
     fixed = values.get("PeDireitoFixo")
     lx, ly = values.get("EtiquetaX"), values.get("EtiquetaY")
+    sx, sy = values.get("SementeX"), values.get("SementeY")
     return {"storey": storey.GlobalId if storey else None, "outline": outline,
             "number": space.Name, "name": space.LongName,
             "height": None if fixed is None else float(fixed),
-            "label_at": None if lx is None else [float(lx), float(ly)]}
+            "label_at": None if lx is None else [float(lx), float(ly)],
+            "seed": None if sx is None else [float(sx), float(sy)]}
 
 
 def area(outline) -> float:
@@ -167,10 +174,55 @@ def _write(doc: Document, space, state: dict) -> None:
     if state["label_at"] is not None:
         values["EtiquetaX"] = doc.ifc.createIfcLengthMeasure(float(state["label_at"][0]))
         values["EtiquetaY"] = doc.ifc.createIfcLengthMeasure(float(state["label_at"][1]))
+    if state.get("seed") is not None:
+        values["SementeX"] = doc.ifc.createIfcLengthMeasure(float(state["seed"][0]))
+        values["SementeY"] = doc.ifc.createIfcLengthMeasure(float(state["seed"][1]))
     if values:
         props.write_pset(doc, space, PSET, values)
     else:
         props.remove_pset(doc, space, PSET)
+
+
+def refit(doc: Document, space, walls=None) -> bool:
+    """Refaz o contorno pelas paredes a partir do ``seed`` (ou, se ele caiu numa parede,
+    do centro do contorno atual). Devolve se mudou; sem cômodo fechado, deixa como está."""
+    from brasbim.core.structure import rooms, slabs
+
+    state = read_state(space)
+    if state["seed"] is None or state["outline"] is None:
+        return False
+    storey = doc.get(state["storey"], "IfcBuildingStorey")
+    for point in (state["seed"], center(state["outline"])):
+        try:
+            outline = slabs.clean(rooms.room_outline(doc, storey, tuple(point), "inner",
+                                                     walls=walls))
+        except OpError:
+            continue
+        old = slabs.clean(state["outline"])
+        if len(old) == len(outline) and all(
+                abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6
+                for a, b in zip(old, outline, strict=True)):
+            return False
+        _write(doc, space, {**state, "outline": outline})
+        return True
+    return False
+
+
+def net_area(doc: Document, state: dict) -> float:
+    """Área do contorno menos a dos pilares e paredes do pavimento dentro dele."""
+    from brasbim.core import clip
+    from brasbim.core.structure import cuts, rooms
+
+    ring = [tuple(p) for p in state["outline"]]
+    storey = doc.get(state["storey"], "IfcBuildingStorey")
+    covered = [r for r, _ in rooms.walls_of(doc, storey)]
+    for column in ifcopenshell.util.element.get_decomposition(storey):
+        if column.is_a("IfcColumn") and (pc := cuts.piece(doc, column)) is not None:
+            covered.append(pc.ring)
+    gross = area(state["outline"])
+    if not covered:
+        return gross
+    return max(0.0, gross - clip.area(clip.intersection([ring], clip.union(covered))))
 
 
 def rebuild(doc: Document, space) -> None:
@@ -193,7 +245,8 @@ def rebuild(doc: Document, space) -> None:
     props.replace_representation(doc, space, "Body", ifc.createIfcShapeRepresentation(
         doc.body_context, "Body", "SweptSolid", [solid]))
     a = area(state["outline"])
-    props.write_qto(doc, space, QTO, {"NetFloorArea": a, "GrossFloorArea": a,
+    props.write_qto(doc, space, QTO, {"NetFloorArea": net_area(doc, state),
+                                      "GrossFloorArea": a,
                                       "GrossPerimeter": perimeter(state["outline"]),
                                       "Height": h})
 

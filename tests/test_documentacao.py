@@ -113,6 +113,70 @@ def test_am05_transformar_e_diario(model):
     check_history(model, action)
 
 
+
+def _right_wall(model):
+    """Parede do retângulo em x = 5."""
+    from brasbim.core.walls.wall import read_state as read_wall
+
+    for w in model.doc.ifc.by_type("IfcWall"):
+        path = read_wall(model.doc, w)["path"]
+        xs = {round(p[0], 6) for p in (path["start"], path["end"])}
+        if xs == {5.0}:
+            return w
+    raise AssertionError("parede x = 5 não achada")
+
+
+def _q(space):
+    return ue.get_pset(space, "Qto_SpaceBaseQuantities")
+
+
+def test_am06_ambiente_segue_as_paredes(model):
+    """Pente fino, achado 1: a parede movida à mão leva o ambiente pelo cômodo."""
+    def action():
+        _rect(model)
+        space = _space(model)
+        assert spaces.read_state(space)["seed"] == [2.0, 2.0]
+        wall = _right_wall(model)
+        before = _q(space)["GrossFloorArea"]
+        model.commit(cmd.offset_wall(model.doc, wall, 1.0))
+        after = _q(space)["GrossFloorArea"]
+        assert abs(after - before) == pytest.approx(3.72, abs=1e-3)  # 1 m × 3,72
+        xs = [p[0] for p in spaces.read_state(space)["outline"]]
+        assert max(xs) - min(xs) == pytest.approx(4.72 + (1 if after > before else -1),
+                                                  abs=1e-6)
+
+    check_history(model, action)
+
+
+def test_am07_contorno_a_mao_deixa_de_seguir(model):
+    _rect(model)
+    space = _space(model)
+    outline = [[0.5, 0.5], [3, 0.5], [3, 3], [0.5, 3]]
+    model.commit(ac.edit_element(model.doc, space, outline=outline))
+    assert spaces.read_state(space)["seed"] is None
+    model.commit(cmd.offset_wall(model.doc, _right_wall(model), 1.0))
+    assert _q(space)["GrossFloorArea"] == pytest.approx(2.5 * 2.5)
+    model.history.undo()
+    model.history.undo()
+    assert spaces.read_state(space)["seed"] == [2.0, 2.0]
+
+
+def test_am08_area_liquida_desconta_pilar(model, tmp_path):
+    """Pente fino, achado 2: ``NetFloorArea`` desconta o pilar dentro do ambiente;
+    ``GrossFloorArea`` continua a área do contorno [IFC-QTO-SPACE]."""
+    _rect(model)
+    space = _space(model, p=(1, 1))
+    gross = 4.72 * 3.72
+    assert _q(space)["NetFloorArea"] == pytest.approx(gross)
+    column = created(model, sc.create_column(model.doc, column_type(model), model.terreo,
+                                             (2.5, 2)))
+    assert _q(space)["GrossFloorArea"] == pytest.approx(gross)
+    assert _q(space)["NetFloorArea"] == pytest.approx(gross - 0.20 * 0.40)
+    model.commit(sc.delete_element(model.doc, column))
+    assert _q(space)["NetFloorArea"] == pytest.approx(gross)
+    assert valid(model.reopen(tmp_path))
+
+
 # --- cotas ---------------------------------------------------------------------------
 
 

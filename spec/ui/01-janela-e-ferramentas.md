@@ -155,7 +155,8 @@ Dois cliques em cantos opostos (`create_rectangle`). Mesmas opções da 5.2.
    ponto mais próximo do caminho, com o arco de giro do lado em que está o cursor.
 2. A distância das bordas do vão até as extremidades da parede aparece junto ao cursor.
    *Snap* ao meio da parede.
-3. **Tab** alterna o lado das dobradiças antes do clique (porta §4, "tecla de alternar").
+3. As dobradiças ficam nos botões Esquerda / Direita da barra Opções antes do clique.
+   *(Mudado pela spec 09 §2.2: o Tab passou a ser do balão de medidas.)*
 4. Clique cria a porta (`create_door`, com `opens_to` e `hinges`). Posição que não cabe
    aparece em vermelho; o clique mostra o motivo em Mensagens, sem criar nada.
 5. Parede em arco: a pré‑visualização não aparece e a barra de estado diz que porta em
@@ -174,7 +175,7 @@ Só convenções gerais de desktop e escolhas próprias; atalhos configuráveis 
 | Delete | Excluir seleção |
 | Esc | Cancelar / voltar a Selecionar |
 | Enter | Encerrar cadeia; confirmar entrada numérica |
-| Tab | Alternar dobradiças (ferramenta Porta) |
+| Tab | Abrir o balão de medidas (spec 07; na Porta, a distância — spec 09 §2.2) |
 | Shift (segurado) | Ortogonal / 45° |
 | Alt (segurado) | Desligar *snap* |
 | Home | Enquadrar tudo |
@@ -278,8 +279,8 @@ núcleo (`plan`, `snap`, avisos do histórico) têm testes próprios, sem Qt.
       aquele ponto e cria a junção; com Alt, não.
 - [ ] **UI05** Entrada numérica: digitar `3,5` + Enter cria segmento de 3,50 m.
 - [ ] **UI06** Porta: clique com o cursor do lado esquerdo da parede → `opens_to = left`;
-      Tab antes do clique → variante com dobradiças à direita; parede em arco → nada criado
-      e mensagem.
+      Direita na barra Opções antes do clique → variante com dobradiças à direita; parede
+      em arco → nada criado e mensagem. *(Tab substituído pela barra Opções: spec 09 §2.2.)*
 - [ ] **UI07** Painel: alterar a largura da porta gera `opening.edit`; botão Inverter
       dobradiças gera a troca de variante (PO08).
 - [ ] **UI08** Arrastar porta ao longo da parede e para outra parede gera um único
@@ -310,7 +311,8 @@ comando ou layout de diálogo de outro software foi copiado.
 ## 14. Pontos de revisão
 (a) Planta, 3D, painel de Projeto à esquerda e Propriedades à direita (§2).
 (b) Sem ícones e sem atalhos de uma letra na versão 0.1 (§1, §6).
-(c) Tab para alternar dobradiças na ferramenta Porta (§5.5).
+(c) ~~Tab para alternar dobradiças na ferramenta Porta (§5.5).~~ Substituído pela spec 09
+    §2.2 (botões Esquerda / Direita da barra Opções).
 (d) Biblioteca mínima do projeto novo (§2.2).
 (e) Observações em `feedback/` versionadas; diários em `feedback/diarios/` fora do git (§9).
 (f) Escopo da versão 0.1 e ordem das seguintes (§11).

@@ -738,14 +738,14 @@ def _side(info: dict, p) -> str:
 
 def _faces_spaces(ctx: Context, storey, info: dict, shift) -> list:
     """Operações que levam junto os vértices dos ambientes que estão nas faces da
-    parede (ambientes não seguem as paredes sozinhos)."""
+    parede. Os ambientes pelo cômodo (com ``seed``) já seguem as paredes sozinhos."""
     t = info["band"][1] - info["band"][0]
     mid = sum(info["band"]) / 2
     path, frame = info["path"], info["frame"]
     ops = []
     for space in [e for e in ctx.doc.ifc.by_type("IfcSpace") if spaces.storey_of(e) == storey]:
         state = spaces.read_state(space)
-        if not state["outline"]:
+        if not state["outline"] or state["seed"] is not None:
             continue
         moved, changed = [], False
         for p in state["outline"]:
@@ -874,6 +874,7 @@ def edit_space(ctx: Context, args: dict) -> dict:
         storey = spaces.storey_of(space)
         point = args.get("at") or spaces.center(state["outline"])
         changes["outline"] = rooms.room_outline(doc, storey, tuple(point), "inner")
+        changes["seed"] = list(point)  # passa a seguir as paredes
     if not changes:
         raise OpError("nada a mudar: informe name, number ou refit")
     tx = ac.edit_element(doc, space, **changes)

@@ -4,8 +4,21 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑26, tarde (seleção na prancha e na folha mestra, limite e
-moldura dos desenhos: spec/ui 29; specs/ui 23–29 em revisão).*
+*Atualizado em 2026‑10‑27 (correções do pente fino; specs/ui 23–29 em revisão).*
+
+> **Onde paramos (2026‑10‑27):** feitas as quatro correções do pente fino:
+> (1) **ambiente acompanha as paredes**: o ambiente Pelo cômodo guarda o ponto clicado
+> (`seed`, Pset `SementeX/Y`) e `annotations/rebuild.derive` refaz o contorno
+> (`spaces.refit`) quando muda parede, tipo de parede ou pilar; contorno editado à mão
+> apaga o `seed`; mover/girar levam só o `seed` se as paredes vão junto ou se ele cai
+> num cômodo (`commands.mapped`, `_in_room`), senão o ambiente vira contorno à mão; a IA
+> não move mais os vértices desses ambientes (`_faces_spaces`) e `edit_space refit` liga
+> o `seed`; (2) **`NetFloorArea`** desconta pilares e paredes dentro do contorno
+> (`spaces.net_area`), `GrossFloorArea` = contorno; (3) **salvamento automático
+> medido**: 0,2 s com 576 paredes (2,1 MB), quase tudo serialização; não mudou (spec/ui
+> 21 §2); (4) specs 01/03/07 sem o texto velho do Tab. Spec/ui 13 §2, §3.3 e testes
+> AM06–AM08. 730 testes, ruff limpo. Próximo: decisão do revisor sobre a ordem do
+> pente fino e a spec do item 2 (projeto legal).
 
 > **Onde paramos (2026‑10‑26, tarde):** o revisor começou a testar as specs 25–28 e
 > pediu: (a) botão **Salvar vista** no canto das abas Vistas salvas | Cortes e fachadas
@@ -88,7 +101,7 @@ moldura dos desenhos: spec/ui 29; specs/ui 23–29 em revisão).*
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑26 (tarde): 727 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑27: 730 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -97,7 +110,7 @@ moldura dos desenhos: spec/ui 29; specs/ui 23–29 em revisão).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (718 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (730 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -840,10 +853,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   águas que deixa de ser retângulo é recusada.
 - Assistente: a conversa não sobrevive a fechar o BrasBim; sem aviso de privacidade; só
   o conector Claude Code; a IA não cria pavimentos nem estrutura (cobertura já cria); edição
-  manual durante o pedido impede o agrupamento no desfazer; ambientes só acompanham a
-  parede movida pela IA (`move_wall`), não a movida à mão.
-- Specs 01 §5.5/§6, 03 §4.2 e 07 §2.2 ainda dizem "Tab troca as dobradiças"; a spec 09
-  §2.2 mudou isso (atualizar o texto delas).
+  manual durante o pedido impede o agrupamento no desfazer; ambientes em Polígono (e os
+  da IA por `layout_rooms`) só acompanham a parede movida pela IA (`move_wall`).
 - Peitoril fixado pelo balão não atualiza na hora o campo da barra Opções.
 - Excluir o estilo de um material deixa o `IfcSurfaceStyle` ainda usado pelas peças das
   esquadrias (fica solto do material).

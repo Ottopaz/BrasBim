@@ -24,6 +24,11 @@ segurança mais recente.
   BrasBim está aberto.
 - A gravação é atômica (arquivo temporário e troca de nome): uma falha no meio da
   gravação não estraga a cópia anterior.
+- A gravação roda na linha da interface. **Medição (pente fino, 2026‑10‑27):** 100
+  paredes (0,4 MB) em 0,04 s; 576 paredes (2,1 MB) em 0,2 s, quase tudo na serialização
+  do IFC (gravar no disco: 4 ms). A serialização precisa ler o modelo parado, então uma
+  linha à parte só tiraria a escrita no disco; fica como está até um projeto real
+  passar de ~1 s (ou disco de rede lento).
 - A barra de estado mostra "Cópia de segurança às 14:05" por alguns segundos; nada vai
   para o painel Mensagens.
 - **Arquivo > Salvamento automático**: Desligado, a cada 2, 5 (padrão) ou 10 minutos;
