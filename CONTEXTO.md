@@ -19,7 +19,12 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > **cópia em série**: campo Cópias em Copiar (quadro com 3 linhas, `ROWS = 3`) ou `x5` na
 > distância, `transform.copy_series` (uma transação, via `combine`). Testes AJ05–AJ08;
 > 738 testes passando, ruff limpo.
-> **Próximo:** pacote do projeto legal (item 2 do roteiro).
+> **Projeto legal:** spec **`spec/ui/31-projeto-legal.md`** escrita (em revisão; pontos
+> (a)–(f) no §11), a partir das recomendações 1, 2, 3 e 8 do relatório e da nota
+> `normas_e_projeto_legal_brasil.md`. **Próximo:** implementar a etapa 1 do §8
+> (situação de cada elemento: Pset `BrasBim_Intervencao` + `Status` do Pset comum,
+> painel, mini-barra, opção de criação, copiar, selecionar semelhantes, filtro de vista
+> com as cores do perfil Genérico), testes PL01–PL03; depois as etapas 2–5.
 
 > **Antes (2026‑10‑27, tarde):** o revisor aprovou a ordem: primeiro o bloco de
 > ajustes curtos do pente fino, depois o pacote do projeto legal. Spec
@@ -170,6 +175,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
+| `spec/ui/31-projeto-legal` | **em revisão**, a implementar por etapas (§8); testes PL01–PL08; pontos §11 |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
