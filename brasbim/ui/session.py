@@ -17,7 +17,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from brasbim.core import display_layers
+from brasbim.core import display_layers, intervention
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import History, Transaction
@@ -141,6 +141,8 @@ class Session:
     def _attach(self, doc: Document, path: str | None, modified: bool = False) -> None:
         self.discard_backup()  # o projeto anterior foi salvo ou descartado (spec/ui 21 §3)
         self.doc = doc
+        # Filtro de situação da janela (spec/ui 31 §3): continua ao trocar de projeto.
+        doc.situation_view = getattr(self, "_situation_view", intervention.DEFAULT_VIEW)
         self.history = History(doc)
         self.history.listeners.append(self._on_history)
         self.path = path
@@ -281,13 +283,43 @@ class Session:
             tx = build() if callable(build) else build
             if not tx.ops:
                 return False
+            # Situação dos novos elementos (opção da ferramenta, spec/ui 31 §2).
+            tx = intervention.stamp_created(self.doc, tx, self.new_situation)
             self._check_layers(tx)
             self.history.commit(tx)
         except OpError as e:
             self.message(str(e), "recusa")
             return False
         self._show_created(tx)
+        self._warn_filtered(tx)
         return True
+
+    # --- situação (spec/ui 31) -----------------------------------------------------------
+
+    new_situation = intervention.DEFAULT  # opção "Situação dos novos elementos" (§2)
+
+    @property
+    def situation_view(self) -> str:
+        return self.doc.situation_view
+
+    def set_situation_view(self, view: str) -> None:
+        """Filtro de situação da janela (§3): não é operação. O que some sai da seleção."""
+        if view not in intervention.VIEW_LABEL:
+            raise ValueError(f"filtro de situação desconhecido: {view!r}")
+        self._situation_view = self.doc.situation_view = view
+        self.selection -= display_layers.hidden_ids(self.doc)
+        self._emit("layers")
+        self._emit("selection")
+
+    def _warn_filtered(self, tx) -> None:
+        """Elemento criado que o filtro de situação esconde: aviso (não muda o filtro)."""
+        if intervention.SHOWN.get(self.doc.situation_view) is None:
+            return
+        hidden = intervention.hidden_ids(self.doc)
+        if any(gid in hidden for _, gid, _ in display_layers.created(tx, self.doc)):
+            self.message("o elemento novo não aparece com o filtro de situação "
+                         f"{intervention.VIEW_LABEL[self.doc.situation_view]} "
+                         "(Exibir > Situação na vista)", "aviso")
 
     # --- camadas (spec/ui 18) ----------------------------------------------------------
 
@@ -359,7 +391,7 @@ class Session:
 
     def select(self, gids, add: bool = False) -> None:
         gids = {g for g in gids if g}
-        if self.doc.display.hidden or self.doc.display.locked:  # spec/ui 18 §4
+        if display_layers.filtering(self.doc):  # spec/ui 18 §4, spec/ui 31 §3
             gids -= display_layers.hidden_ids(self.doc) | display_layers.locked_ids(self.doc)
         if add:
             self.selection ^= gids

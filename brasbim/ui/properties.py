@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, geom2d
+from brasbim.core import display_layers, geom2d, intervention
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -74,21 +74,20 @@ ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "ri
 _INVALID = f"QLineEdit {{ background: {theme.ERROR_SOFT}; border-color: {theme.ERROR}; }}"
 MIXED = "vários"
 
-# Propriedades comuns no painel (spec/ui 05 §6): (propriedade IFC, nome, edição).
-STATUS = [("Nova", "NEW"), ("Existente", "EXISTING"), ("A demolir", "DEMOLISH"),
-          ("Temporária", "TEMPORARY")]
-WALL_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+# Propriedades comuns no painel (spec/ui 05 §6): (propriedade IFC, nome, edição). O
+# ``Status`` saiu daqui: é escrito pela Situação, que vale para tudo (spec/ui 31 §2).
+WALL_COMMON = [("Reference", "Código", "text"),
                ("IsExternal", "Externa", "bool"), ("LoadBearing", "Estrutural", "bool"),
                ("FireRating", "Resistência ao fogo", "text"),
                ("AcousticRating", "Desempenho acústico", "text"),
                ("ThermalTransmittance", "Transmitância térmica (W/m²K)", "number")]
-DOOR_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "status"),
+DOOR_COMMON = [("Reference", "Código", "read"),
                ("IsExternal", "Externa", "bool"),
                ("FireRating", "Resistência ao fogo", "text"),
                ("AcousticRating", "Desempenho acústico", "text"),
                ("HandicapAccessible", "Acessível", "bool"),
                ("FireExit", "Saída de emergência", "bool")]
-WINDOW_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "status"),
+WINDOW_COMMON = [("Reference", "Código", "read"),
                  ("IsExternal", "Externa", "bool"),
                  ("HasSillExternal", "Peitoril externo (pingadeira)", "bool"),
                  ("HasSillInternal", "Peitoril interno", "bool"),
@@ -96,11 +95,11 @@ WINDOW_COMMON = [("Reference", "Código", "read"), ("Status", "Situação", "sta
                  ("AcousticRating", "Desempenho acústico", "text"),
                  ("ThermalTransmittance", "Transmitância térmica (W/m²K)", "number")]
 HANDS = [("Esquerda", "left"), ("Direita", "right")]
-STRUCTURE_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+STRUCTURE_COMMON = [("Reference", "Código", "text"),
                     ("LoadBearing", "Estrutural", "bool"), ("IsExternal", "Externa", "bool"),
                     ("FireRating", "Resistência ao fogo", "text")]
 SLAB_COMMON = [*STRUCTURE_COMMON, ("AcousticRating", "Desempenho acústico", "text")]
-ROOF_COMMON = [("Reference", "Código", "text"), ("Status", "Situação", "status"),
+ROOF_COMMON = [("Reference", "Código", "text"),
                ("IsExternal", "Externa", "bool"), ("FireRating", "Resistência ao fogo", "text"),
                ("AcousticRating", "Desempenho acústico", "text")]
 ROOF_SHAPES = [("Plana", "flat"), ("Uma água", "shed"), ("Duas águas", "gable"),
@@ -118,6 +117,7 @@ STRUCTURE_NOUNS = {"IfcColumn": ("Pilar", "Pilares"), "IfcBeam": ("Viga", "Vigas
 # Caixilhos sem giro: o "abre para" é o lado interno (janela §2.4).
 _NO_SWING = ("FIXEDCASEMENT", "SLIDINGHORIZONTAL", "SLIDINGVERTICAL")
 YES_NO = [("Sim", True), ("Não", False)]
+SITUATIONS = [(label, code) for code, label, _ in intervention.SITUATIONS]
 
 
 def _filling_info(doc, element) -> tuple[bool, dict | None]:
@@ -1155,19 +1155,25 @@ class PropertiesPanel(QScrollArea):
         self._read("GlobalId", element.GlobalId)
 
     def _layer_field(self, selection) -> None:
-        """Camada de um ou vários elementos (spec/ui 18 §5): "várias" quando discordam."""
+        """Camada (spec/ui 18 §5) e situação (spec/ui 31 §2) de um ou vários elementos:
+        "várias" quando discordam."""
         doc = self.session.doc
-        if display_layers.read_config(doc) is None:
-            return
         elements = [display_layers.owner(e) for e in selection]
-        elements = [e for e in elements if display_layers.layerable(e)]
+        elements = list({e.GlobalId: e for e in elements
+                         if display_layers.layerable(e)}.values())
         if not elements:
             return
-        current = {display_layers.layer_of(doc, e) or display_layers.NONE for e in elements}
         self._section("Organização")
-        self._combo("Camada", display_layers.choices(doc),
-                    current.pop() if len(current) == 1 else None,
-                    lambda v: self._run(lambda: display_layers.assign(
+        if display_layers.read_config(doc) is not None:
+            current = {display_layers.layer_of(doc, e) or display_layers.NONE
+                       for e in elements}
+            self._combo("Camada", display_layers.choices(doc),
+                        current.pop() if len(current) == 1 else None,
+                        lambda v: self._run(lambda: display_layers.assign(
+                            doc, [e.GlobalId for e in elements], v)))
+        current = {intervention.situation_of(doc, e) for e in elements}
+        self._combo("Situação", SITUATIONS, current.pop() if len(current) == 1 else None,
+                    lambda v: self._run(lambda: intervention.set_situation(
                         doc, [e.GlobalId for e in elements], v)))
 
     def _sheet(self, sheet) -> None:
@@ -1496,9 +1502,6 @@ class PropertiesPanel(QScrollArea):
             if kind == "bool":
                 current = _common(bool(v.get(key)) for v in values)
                 self._combo(name, YES_NO, current, lambda v, k=key: commit(k, v))
-            elif kind == "status":
-                current = _common(v.get("Status") or "NEW" for v in values)
-                self._combo(name, STATUS, current, lambda v, k=key: commit(k, v))
             elif kind == "number":
                 self._number(name, _common(v.get(key) for v in values),
                              lambda v, k=key: commit(k, v), placeholder=MIXED

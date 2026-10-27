@@ -140,10 +140,12 @@ class SectionView(QWidget):
     def paint(self, painter: QPainter, selection=()) -> None:
         """O desenho (também usado na prancha e no PDF, spec/ui 15 §3)."""
         pens_ = getattr(self, "pens", pens.DEFAULT)
+        tints = {} if pens_.black else self.drawing.colors  # situação (spec/ui 31 §3)
         for item in self.drawing.items:
             selected = item.owner in selection
             category = section_category(item)
-            ink = C["select"] if selected else QColor(pens_.color(category))
+            tint = tints.get(item.owner)
+            ink = C["select"] if selected else QColor(tint or pens_.color(category))
             weight = pens_.weight(category, item.weight or 0.0)
             if item.kind == "face":
                 painter.setPen(QPen(C["background"], 0.6 * self.unit))
@@ -156,7 +158,10 @@ class SectionView(QWidget):
             elif item.kind == "cut":
                 path = self._rings_path(item.rings)
                 if item.fill and item.fill.get("pattern") != "none":
-                    PlanView._draw_region(self, painter, path, item.fill)
+                    fill = item.fill if not tint else {
+                        **item.fill, "line_color": tint,
+                        "background": tint if item.fill.get("background") else None}
+                    PlanView._draw_region(self, painter, path, fill)
                 elif not item.weight:
                     painter.fillPath(path, C["background"])
                 if item.weight:

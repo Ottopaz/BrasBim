@@ -11,7 +11,7 @@ estado em JSON no Pset ``BrasBim_VistaSalva``::
 
     {"name": "Térreo 1:50", "kind": "plan", "storey": "<GlobalId>", "view": None,
      "scale": 50, "layers": {"<camada>": [visível, bloqueada], ...},
-     "options": {"detail": "simple", "show_above": True, ...},
+     "options": {"detail": "simple", "show_above": True, "situation": "project", ...},
      "crop": [x0, y0, x1, y1] | None, "camera": None, "pens": None}
 
 ``kind``: ``plan`` (``storey``), ``section`` (``view``: corte ou fachada) ou ``3d``
@@ -29,7 +29,7 @@ import ifcopenshell.api.root
 import ifcopenshell.api.spatial
 import ifcopenshell.util.element
 
-from brasbim.core import display_layers, guid, props, storeys
+from brasbim.core import display_layers, guid, intervention, props, storeys
 from brasbim.core.document import Document, OpError, local_placement
 from brasbim.core.ops import Transaction
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
@@ -44,7 +44,8 @@ STATE_KEYS = ("name", "kind", "storey", "view", "scale", "layers", "options", "c
 PLAN_OPTIONS = {"detail": "simple", "show_above": True, "show_tags": True,
                 "show_tag_size": False, "show_structure_tags": True,
                 "show_object_tags": False, "show_space_numbers": False,
-                "show_weights": True, "show_view_symbols": True}
+                "show_weights": True, "show_view_symbols": True,
+                "situation": "project"}  # filtro de situação (spec/ui 31 §3)
 CAMERA_KEYS = ("target", "distance", "yaw", "pitch", "aspect")
 WIDTH_3D = 160.0  # mm: largura padrão da vista 3D no papel (§5)
 
@@ -103,8 +104,10 @@ def suggest_name(doc: Document, kind: str, source_name: str = "",
 
 @contextlib.contextmanager
 def drawing(doc: Document, state: dict):
-    """Camadas e escala da vista valendo enquanto se desenha (prancha, §5)."""
+    """Camadas, filtro de situação e escala da vista valendo enquanto se desenha
+    (prancha, §5; spec/ui 31 §3)."""
     with contextlib.ExitStack() as stack:
+        stack.enter_context(intervention.using(doc, options(state)["situation"]))
         if state.get("layers") is not None:
             stack.enter_context(display_layers.using(
                 doc, display_layers.display_of(state["layers"])))
@@ -157,6 +160,8 @@ def _validate(doc: Document, state: dict) -> None:
     unknown = set(state.get("options") or {}) - set(PLAN_OPTIONS)
     if unknown:
         raise OpError(f"opções desconhecidas: {sorted(unknown)}")
+    if options(state)["situation"] not in intervention.VIEW_LABEL:
+        raise OpError(f"filtro de situação desconhecido: {options(state)['situation']!r}")
 
 
 def _write(doc: Document, entity, state: dict) -> None:

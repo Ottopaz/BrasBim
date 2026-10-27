@@ -659,6 +659,11 @@ def _effective(doc: Document, layer_id: str | None, known: set[str] | None = Non
 
 
 def is_hidden(doc: Document, element) -> bool:
+    """Oculto pela camada ou pelo filtro de situação da vista (spec/ui 31 §3)."""
+    from brasbim.core import intervention
+
+    if intervention.SHOWN.get(doc.situation_view) is not None and             owner(element) is not None and layerable(owner(element)) and             intervention.situation_of(doc, element) not in             intervention.SHOWN[doc.situation_view]:
+        return True
     if not doc.display.hidden or read_config(doc) is None:
         return False
     return _effective(doc, layer_of(doc, element)) in doc.display.hidden
@@ -671,8 +676,19 @@ def is_locked(doc: Document, element) -> bool:
 
 
 def hidden_ids(doc: Document) -> set[str]:
-    """GlobalIds dos elementos ocultos (as águas da cobertura junto com a cobertura)."""
-    return _ids(doc, doc.display.hidden)
+    """GlobalIds dos elementos ocultos (as águas da cobertura junto com a cobertura): pela
+    camada ou pelo filtro de situação da vista (spec/ui 31 §3)."""
+    from brasbim.core import intervention
+
+    return _ids(doc, doc.display.hidden) | intervention.hidden_ids(doc)
+
+
+def filtering(doc: Document) -> bool:
+    """Há algo oculto ou bloqueado (camadas ou filtro de situação)."""
+    from brasbim.core import intervention
+
+    return bool(doc.display.hidden or doc.display.locked
+                or intervention.SHOWN.get(doc.situation_view) is not None)
 
 
 def locked_ids(doc: Document) -> set[str]:
@@ -928,45 +944,51 @@ def created(tx, doc: Document | None = None) -> list[tuple[str, str, str | None]
     return out
 
 
-def inherit(doc: Document, tx, sources):
-    """Acrescenta a ``tx`` (cópia, espelho com cópia, dividir) os ``layer.assign`` que põem
-    cada elemento novo na camada do seu original (§5). Origem e cópia são ligadas pela
-    ferramenta e pela ordem; se a conta não fecha, vale a camada comum das origens."""
-    from brasbim.core.ops import Transaction
-
-    if read_config(doc) is None:
-        return tx
-    by_kind: dict[str, list[str | None]] = {}
+def copies(doc: Document, tx, sources, value) -> list[tuple[str, str, object]]:
+    """(ferramenta, GlobalId novo, valor do original) para cada elemento que ``tx`` cria a
+    partir de ``sources`` (cópia, espelho com cópia, dividir); ``value(elemento)`` lê o
+    valor. Origem e cópia são ligadas pela ferramenta e pela ordem; se a conta não fecha,
+    vale o valor comum das origens (sem ele, o elemento fica de fora)."""
+    by_kind: dict[str, list] = {}
     for gid in sources:
         element = owner(doc.find(gid if isinstance(gid, str) else gid.GlobalId))
         if element is None:
             continue
-        by_kind.setdefault(kind_of(element), []).append(layer_of(doc, element))
+        by_kind.setdefault(kind_of(element), []).append(value(element))
         if element.is_a("IfcWall"):  # as esquadrias vêm junto com a parede copiada
             for opening in element.HasOpenings or ():
                 for rel in opening.RelatedOpeningElement.HasFillings or ():
                     filling = rel.RelatedBuildingElement
-                    by_kind.setdefault(kind_of(filling), []).append(layer_of(doc, filling))
-    config = read_config(doc)
+                    by_kind.setdefault(kind_of(filling), []).append(value(filling))
     made = created(tx, doc)
     counts: dict[str, int] = {}
     for kind, _, _ in made:
         counts[kind] = counts.get(kind, 0) + 1
-    ops, seen = [], {}
+    out, seen = [], {}
     for kind, gid, origin in made:
         if origin is not None:
-            target = layer_of(doc, doc.find(origin))
-        else:
-            layers = by_kind.get(kind, [])
-            i = seen[kind] = seen.get(kind, -1) + 1
-            if len(layers) == counts[kind]:
-                target = layers[i]
-            elif layers and len(set(layers)) == 1:
-                target = layers[0]
-            else:
-                continue
-        if target != default_layer(config, kind):
-            ops.append(Op("layer.assign", gid, before={"layer": None}, after={"layer": target}))
+            out.append((kind, gid, value(doc.find(origin))))
+            continue
+        values = by_kind.get(kind, [])
+        i = seen[kind] = seen.get(kind, -1) + 1
+        if len(values) == counts[kind]:
+            out.append((kind, gid, values[i]))
+        elif values and all(v == values[0] for v in values):
+            out.append((kind, gid, values[0]))
+    return out
+
+
+def inherit(doc: Document, tx, sources):
+    """Acrescenta a ``tx`` (cópia, espelho com cópia, dividir) os ``layer.assign`` que põem
+    cada elemento novo na camada do seu original (§5), pareados por ``copies``."""
+    from brasbim.core.ops import Transaction
+
+    config = read_config(doc)
+    if config is None:
+        return tx
+    ops = [Op("layer.assign", gid, before={"layer": None}, after={"layer": target})
+           for kind, gid, target in copies(doc, tx, sources, lambda e: layer_of(doc, e))
+           if target != default_layer(config, kind)]
     return Transaction(tx.label, tx.ops + ops) if ops else tx
 
 

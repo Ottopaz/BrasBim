@@ -32,6 +32,10 @@ class Document:
 
         self.element_layers: dict | None = None
         self.display = Display()
+        # Projeto legal (spec/ui 31 §2–§3): situação conhecida de cada elemento (como as
+        # camadas) e o filtro de situação da vista, que não é operação.
+        self.element_situations: dict | None = None
+        self.situation_view = "project"
 
     # --- criação e arquivo ---------------------------------------------------
 

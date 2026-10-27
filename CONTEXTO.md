@@ -4,9 +4,27 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑27, fim da tarde (ajustes curtos do pente fino: spec/ui 30 completa).*
+*Atualizado em 2026‑10‑27, noite (projeto legal, etapa 1: situação de cada elemento).*
 
-> **Onde paramos (2026‑10‑27, fim da tarde):** **spec/ui 30 completa** (§2–§9, em
+> **Onde paramos (2026‑10‑27, noite):** **etapa 1 do projeto legal feita** (spec/ui 31
+> §2–§3; "como ficou" no §12 da spec e abaixo; pontos novos (g)–(j) no §11). Situação de
+> cada elemento e anotação no Pset `BrasBim_Intervencao` + `Status` do Pset comum
+> (`core/intervention.py`, operação `situation.set`), campo Situação no painel (o antigo,
+> que só mexia no `Status`, saiu), mini‑barra e Editar > Situação, botão "Situação dos
+> novos elementos" na barra Opções, copiar/espelhar/dividir herdam, Selecionar
+> semelhantes > Mesma situação, Exibir > Situação na vista (Projeto, Antes da obra,
+> Depois da obra, Sem cores; guardado na vista salva) com as cores do perfil Genérico.
+> Testes PL01–PL03 (+ PL01b, PL01c, PL02b); 747 testes passando, ruff limpo.
+> **Achado nos testes:** cada teste de interface deixa a janela viva (as conexões de
+> sinal do Qt seguram os métodos; 149 janelas no meio da suíte). Com 3 menus a mais por
+> janela, o `test_zoom_esconde_a_mini_barra[view3d]` (espera fixa de 400 ms para um
+> temporizador de 300 ms) passou a falhar só na suíte inteira; agora ele espera a
+> condição (até 2 s). Apagar a janela no `conftest` expôs chamadas atrasadas a painéis já
+> apagados: corrigir o vazamento fica como pendência.
+> **Próximo:** etapa 2 do §8 (perfil municipal: arquivo, cópia no IFC, diálogo, perfis
+> prontos, cores, hachuras e escalas aplicadas), depois as etapas 3–5.
+
+> **Antes (2026‑10‑27, fim da tarde):** **spec/ui 30 completa** (§2–§9, em
 > revisão; pontos (a)–(h) no §12). Feitos agora os §6–§9: **Pegar linhas com Shift**
 > pega todas as linhas da camada (`PickCurvesTool.group`; camada = anotação do DWG ou
 > camada de exibição das linhas 2D); ferramenta **Medir** (`MeasureTool`, grupo Edição,
@@ -21,10 +39,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > 738 testes passando, ruff limpo.
 > **Projeto legal:** spec **`spec/ui/31-projeto-legal.md`** escrita (em revisão; pontos
 > (a)–(f) no §11), a partir das recomendações 1, 2, 3 e 8 do relatório e da nota
-> `normas_e_projeto_legal_brasil.md`. **Próximo:** implementar a etapa 1 do §8
-> (situação de cada elemento: Pset `BrasBim_Intervencao` + `Status` do Pset comum,
-> painel, mini-barra, opção de criação, copiar, selecionar semelhantes, filtro de vista
-> com as cores do perfil Genérico), testes PL01–PL03; depois as etapas 2–5.
+> `normas_e_projeto_legal_brasil.md`.
 
 > **Antes (2026‑10‑27, tarde):** o revisor aprovou a ordem: primeiro o bloco de
 > ajustes curtos do pente fino, depois o pacote do projeto legal. Spec
@@ -133,7 +148,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑27 (fim da tarde): 738 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑27 (noite): 747 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -142,7 +157,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (738 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (747 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -175,7 +190,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
-| `spec/ui/31-projeto-legal` | **em revisão**, a implementar por etapas (§8); testes PL01–PL08; pontos §11 |
+| `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapa 1 feita** (situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`), etapas 2–5 a fazer (PL04–PL08); pontos §11 (a)–(j) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
@@ -733,6 +748,28 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 - Editar > Modo de seleção (`QSettings` `selecao/somar_cliques`); os testes antigos de
   janela por arrasto usam `window.ctx.accumulate = False`.
 
+## Projeto legal, etapa 1 — como ficou (spec/ui 31 §2–§3)
+- `core/intervention.py` (sem Qt): `SITUATIONS`, `situation_of` (Pset próprio → `Status`
+  comum → *A construir*), `STATUS_PSETS` (classes cujo Pset comum tem `Status`; tabela
+  fixa conferida com o esquema pelo PL01c — carregar os modelos de Pset do IfcOpenShell
+  em tempo de uso pesava), operação `situation.set`, `set_situation`, memória
+  `Document.element_situations` + derivação `sync` (desfazer exclusão, Pset comum
+  regravado sem `Status`), `inherit` (copiar/espelhar/dividir), `stamp_created` (opção
+  de criação), `hidden_ids` (filtro), `colors` (perfil Genérico, só quando há alguma
+  situação além de *A construir*), `present` (para a legenda da etapa 4), `using`.
+- `display_layers`: `copies` (pareamento origem → cópia, saiu de `inherit`),
+  `hidden_ids`/`is_hidden` somam o filtro de situação, `filtering`.
+  `Document.situation_view` (filtro da janela; `Session.set_situation_view`, mantido ao
+  trocar de projeto).
+- Planta: `Plan.colors`, `Region.tint`, `Edge.tint` (paredes cortadas agrupadas por tipo
+  e situação; pintadas não vão "por camadas"); `PlanView.tint` (nada em Imprimir em
+  preto). Corte: `Drawing.colors`. Vista salva: `options.situation`.
+- Interface: painel (`properties._layer_field`, seção Organização), mini‑barra
+  `situation`, Editar > Situação, Exibir > Situação na vista (`situacao/vista`),
+  `OptionsBar.situation_action` (uma ação com menu, reposta a cada ferramenta),
+  `Session.new_situation`, aviso quando o filtro esconde o elemento criado.
+- Fica para a etapa 2: perfis, hachura por situação em Imprimir em preto. 3D só filtra.
+
 ## Roteiro a partir da pesquisa (2026‑10‑21)
 Base: `reports/Pesquisa Archicad Revit AutoCAD.md`, seção "Recomendações priorizadas"
 (23 itens, valor × esforço). Tese: o BrasBim ganha na **última milha brasileira**
@@ -911,6 +948,10 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   representação do tipo, não as camadas; tipo de parede em uso continua sem pedir
   substituto (o de pilar/viga/laje pede).
 - Ponto de referência fora de Mover/Copiar/Girar/Espelhar (spec 09, ponto (g)).
+- Testes de interface: a fixture `window` fecha mas não apaga a janela, e as conexões de
+  sinal seguram as janelas (149 vivas no meio da suíte). `deleteLater` no `conftest`
+  expõe chamadas atrasadas (`QTimer.singleShot`) a painéis já apagados; corrigir as duas
+  coisas juntas. Testes com espera fixa ficam sensíveis a isso.
 - Janela em parede em arco, 4+ caixilhos e `TRIPLE_PANEL_*` laterais: V1.
 - Dividir parede com topo inclinado é recusado (falta repartir o perfil e juntá-lo de
   volta no `wall.merge`).

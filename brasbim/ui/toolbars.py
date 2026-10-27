@@ -11,9 +11,17 @@ import math
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QToolBar,
+    QToolButton,
+    QWidget,
+)
 
-from brasbim.core import display_layers
+from brasbim.core import display_layers, intervention
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
@@ -337,12 +345,43 @@ class OptionsBar(QToolBar):
         # (spec/ui 24 §5): (nome, [rótulos], índice atual(), escolher(índice)).
         self.choices: list[tuple[str, list[str], int, object]] = []
         self._last_label = ""
+        self.situation_action = self._situation_action()
+
+    def _situation_action(self) -> QAction:
+        """Situação dos novos elementos (spec/ui 31 §2): uma ação só, com menu, reposta a
+        cada ferramenta (não é refeita, para não acumular widgets a cada troca)."""
+        action = QAction(icons.icon("situation"), "", self)
+        menu = QMenu(self)
+        group = QActionGroup(menu)
+        for code, label, _ in intervention.SITUATIONS:
+            item = menu.addAction(label)
+            item.setCheckable(True)
+            item.setData(code)
+            group.addAction(item)
+            item.triggered.connect(lambda _=False, c=code: self.set_new_situation(c))
+        action.setMenu(menu)
+        return action
+
+    def set_new_situation(self, code: str) -> None:
+        self.window_.session.new_situation = code
+        self._show_situation()
+
+    def _show_situation(self) -> None:
+        code = self.window_.session.new_situation
+        label = intervention.LABEL[code]
+        action = self.situation_action
+        action.setText(f"Situação dos novos elementos: {label}")
+        action.setToolTip(f"Situação dos novos elementos: {label} (projeto legal)")
+        for item in action.menu().actions():
+            item.setChecked(item.data() == code)
 
     def _clear(self) -> None:
         self.choices = []
         self._last_label = ""
         for action in list(self.actions()):
             self.removeAction(action)
+            if action is self.situation_action:  # fica para a próxima ferramenta
+                continue
             widget = getattr(action, "defaultWidget", lambda: None)()
             if widget is not None:
                 widget.deleteLater()
@@ -498,6 +537,7 @@ class OptionsBar(QToolBar):
             self.hide()
             return
         self._layer(tool)
+        self._situation(tool)
         if not self.actions():
             self.hide()
             return
@@ -518,6 +558,21 @@ class OptionsBar(QToolBar):
         self._combo(display_layers.choices(doc), current,
                     lambda v: session.run(lambda: display_layers.set_default(doc, kind, v)),
                     "Camada em que esta ferramenta desenha")
+
+    def _situation(self, tool) -> None:
+        """Situação dos novos elementos (spec/ui 31 §2): vale para todas as ferramentas
+        de criação, até mudar de novo; não vai para o IFC."""
+        if tool_kind(tool) is None:
+            return
+        self._show_situation()
+        self.addAction(self.situation_action)
+        button = self.widgetForAction(self.situation_action)
+        if isinstance(button, QToolButton):
+            button.setPopupMode(QToolButton.InstantPopup)
+        session = self.window_.session
+        self.choices.append(("Situação", [label for _, label, _ in intervention.SITUATIONS],
+                             lambda: intervention.CODES.index(session.new_situation),
+                             lambda i: self.set_new_situation(intervention.CODES[i])))
 
     def refresh(self) -> None:
         if self.tool is not None and self.isVisible():

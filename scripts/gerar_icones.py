@@ -145,6 +145,11 @@ ICONS = {
     # trocar o tipo: duas setas opostas
     "swap_type": '<path d="M4 8.75 H18.5 M15 5.25 L18.5 8.75 L15 12.25"/>'
                  '<path d="M20 15.25 H5.5 M9 11.75 L5.5 15.25 L9 18.75"/>',
+    # situação do elemento (spec/ui 31 §2): parede cheia (a construir) ao lado da
+    # tracejada com um X (a demolir)
+    "situation": '<rect x="2.75" y="8.75" width="8" height="6.5" fill="currentColor"/>'
+                 '<rect x="13.25" y="8.75" width="8" height="6.5" stroke-dasharray="2 1.5"/>'
+                 '<path d="M14.5 10 L20 14 M20 10 L14.5 14" stroke-width="1"/>',
     # selecionar os do mesmo tipo: três quadrados, dois cheios
     "select_same": '<rect x="2.75" y="8.75" width="5.5" height="5.5" fill="currentColor"/>'
                    '<rect x="9.25" y="8.75" width="5.5" height="5.5" fill="currentColor"/>'

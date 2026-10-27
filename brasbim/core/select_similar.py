@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import ifcopenshell.util.element
 
-from brasbim.core import display_layers
+from brasbim.core import display_layers, intervention
 from brasbim.core.document import Document
 
 # (chave, rótulo do menu)
@@ -15,6 +15,7 @@ CRITERIA = (
     ("predefined", "Mesma classe e tipo predefinido"),
     ("material", "Mesmo material"),
     ("layer", "Mesma camada"),
+    ("situation", "Mesma situação"),  # spec/ui 31 §2
 )
 
 
@@ -47,6 +48,8 @@ def value(doc: Document, element, criterion: str):
         return _material(element)
     if criterion == "layer":
         return display_layers.layer_of(doc, element)
+    if criterion == "situation":
+        return intervention.situation_of(doc, element)             if intervention.situable(display_layers.owner(element)) else None
     raise ValueError(f"critério desconhecido: {criterion!r}")
 
 

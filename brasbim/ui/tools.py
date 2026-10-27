@@ -5153,7 +5153,7 @@ def selection_actions(doc, gids) -> list[str]:
             out.append("edit_object_type")
         if len(found_objects) == 1 and not free:
             out.append("detach")
-    out += ["select_similar", "delete"]  # spec/ui 23 §7
+    out += ["select_similar", "situation", "delete"]  # spec/ui 23 §7, spec/ui 31 §2
     return out
 
 

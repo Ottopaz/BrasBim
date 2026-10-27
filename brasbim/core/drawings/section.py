@@ -21,7 +21,7 @@ import ifcopenshell.geom
 import ifcopenshell.util.element
 import numpy as np
 
-from brasbim.core import clip, display_layers, materials, props
+from brasbim.core import clip, display_layers, intervention, materials, props
 from brasbim.core.annotations.drafting import signed
 from brasbim.core.annotations.prims import Text
 from brasbim.core.document import Document, OpError
@@ -56,6 +56,8 @@ class Item:
 class Drawing:
     items: list[Item] = field(default_factory=list)
     texts: list[Text] = field(default_factory=list)
+    # Cor da situação de cada dono na vista Projeto (spec/ui 31 §3); vazio = sem cores.
+    colors: dict = field(default_factory=dict)
 
     def bounds(self):
         pts = [p for it in self.items for p in (it.points or [q for r in it.rings for q in r])]
@@ -385,6 +387,8 @@ def draw(doc: Document, view, scale: int | None = None) -> Drawing:
                                              owner=gid, weight=VIEW_WEIGHT)))
     painted.sort(key=lambda t: (-t[0], t[1]))
     out = Drawing([it for _, _, it in painted] + cut_items)
+    tints = intervention.colors(doc)
+    out.colors = {it.owner: tints[it.owner] for it in out.items if it.owner in tints}
     _annotate(doc, state, out)
     return out
 

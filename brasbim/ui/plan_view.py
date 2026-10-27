@@ -241,6 +241,13 @@ class PlanView(QWidget, ToolInput):
         """Espessura de linha em metros de papel (NBR 8403) para pixels (spec/ui 03 §6.1)."""
         return weight * 1000 * 96 / 25.4 * self.unit
 
+    def tint(self, owner) -> QColor | None:
+        """Cor da situação do dono (spec/ui 31 §3); nunca em Imprimir em preto."""
+        if self.pens.black:
+            return None
+        found = self.ctx.plan.colors.get(owner)
+        return QColor(found) if found else None
+
     def _rings_path(self, rings) -> QPainterPath:
         path = QPainterPath()
         path.setFillRule(Qt.OddEvenFill)
@@ -278,27 +285,35 @@ class PlanView(QWidget, ToolInput):
                 continue
             selected = shape.owner in selection
             pens_ = self.pens
+            tint = self.tint(shape.owner)
             if role == "below":
                 pen = QPen(QColor(pens_.color("below")),
                            max(self.unit, self._px(pens_.weight("below", BELOW_WEIGHT))),
                            Qt.DashLine)
             elif role in ("wall_above", "slab_above"):
-                pen = QPen(C["select"] if selected else QColor(pens_.color("above")),
+                pen = QPen(C["select"] if selected else tint or QColor(pens_.color("above")),
                            max(self.unit, self._px(pens_.weight("above", ABOVE_WEIGHT))),
                            Qt.DashLine)
             else:
-                pen = QPen(C["select"] if selected else QColor(pens_.color("view")),
+                pen = QPen(C["select"] if selected else tint or QColor(pens_.color("view")),
                            2 * self.unit if selected else max(
                                self.unit, self._px(pens_.weight("view", VIEW_WEIGHT))))
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(self._path(shape.points, shape.closed))
+        black = self.pens.black
         for region in plan.regions:
-            self._draw_region(painter, self._rings_path(region.rings), region.fill)
+            fill = region.fill
+            if region.tint and not black:  # situação (spec/ui 31 §3)
+                fill = {**fill, "line_color": region.tint,
+                        "background": region.tint if fill.get("background") else None}
+            self._draw_region(painter, self._rings_path(region.rings), fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:
             color = edge.color if edge.color.upper() not in pens.NEUTRAL \
                 else self.pens.color(edge.pen)
+            if edge.tint and not black:
+                color = edge.tint
             painter.setPen(QPen(QColor(color), max(self.unit, self._px(
                 self.pens.weight(edge.pen, edge.weight)))))
             painter.drawPath(self._rings_path(edge.rings))
@@ -332,7 +347,8 @@ class PlanView(QWidget, ToolInput):
                 above = role.endswith("above")
                 category = "above" if above else "view"
                 painter.setPen(QPen(
-                    C["select"] if selected else QColor(self.pens.color(category)),
+                    C["select"] if selected else self.tint(shape.owner)
+                    or QColor(self.pens.color(category)),
                     2 * self.unit if selected else max(self.unit, self._px(self.pens.weight(
                         category, ABOVE_WEIGHT if above else VIEW_WEIGHT))),
                     Qt.DashLine if above else Qt.SolidLine))
@@ -340,7 +356,8 @@ class PlanView(QWidget, ToolInput):
             else:
                 thin = role in ("door_swing", "window_sash", "window_glass")
                 category = "swing" if role == "door_swing" else "opening"
-                color = C["select"] if selected else QColor(self.pens.color(category))
+                color = C["select"] if selected else self.tint(shape.owner) \
+                    or QColor(self.pens.color(category))
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
                 painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit
                                     * self.pens.scale(category), style))
@@ -351,7 +368,8 @@ class PlanView(QWidget, ToolInput):
         """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno
         com fundo cobre o que fica por baixo; acima do plano de corte, tracejado."""
         path = self._path(shape.points, shape.closed)
-        color = C["select"] if selected else QColor(self.pens.color("object"))
+        color = C["select"] if selected else self.tint(shape.owner) \
+            or QColor(self.pens.color("object"))
         width = 1.6 * self.unit if selected else max(
             self.unit, self._px(self.pens.weight("object", ABOVE_WEIGHT)))
         style = Qt.DashLine if shape.role == "object_above" else Qt.SolidLine
@@ -462,7 +480,7 @@ class PlanView(QWidget, ToolInput):
             if owner in self.ctx.plan.views and not self.show_view_symbols:
                 continue
             category = self.ctx.plan.pens.get(owner, "drawing")  # spec/ui 27
-            ink = QColor(self.pens.color(category))
+            ink = self.tint(owner) or QColor(self.pens.color(category))
             color = C["select"] if owner in selection else ink
             painter.setBrush(Qt.NoBrush)
             for stroke in prims.strokes:

@@ -67,7 +67,8 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
         storey = session.storey
         if storey is None:
             return None
-        options = {"detail": window.ctx.detail, "show_above": window.ctx.show_above}
+        options = {"detail": window.ctx.detail, "show_above": window.ctx.show_above,
+                   "situation": doc.situation_view}  # spec/ui 31 §3
         options.update({name: bool(getattr(window.plan, name)) for name in OPTION_ACTIONS})
         fields = {"storey": storey.GlobalId, "scale": storeys.scale(storey),
                   "layers": layers, "options": options, "pens": pen_table}
@@ -91,7 +92,8 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
     state = views.read_state(view)
     scale = widget.scale_override or state["scale"]
     fields = {"view": view.GlobalId, "scale": scale, "layers": layers, "pens": pen_table,
-              "options": {"show_weights": bool(widget.show_weights)}}
+              "options": {"show_weights": bool(widget.show_weights),
+                          "situation": doc.situation_view}}
     return kind, fields, saved_views.suggest_name(doc, "section", state["name"] or "", scale)
 
 

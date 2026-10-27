@@ -3,7 +3,7 @@ documento: Projeto legal (projeto para licenciamentos)
 requisito: roteiro do CONTEXTO, item 2; recomendações 1, 2, 3 e 8 de reports/Pesquisa Archicad Revit AutoCAD.md
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-27
-status: em revisão (fluxo do MVP: implementar por etapas, §8)
+status: em revisão (fluxo do MVP: implementar por etapas, §8; etapa 1 feita em 2026-10-27, §12)
 revisor: OTTO
 ---
 
@@ -128,6 +128,7 @@ segundo é o nome da etapa na NBR 16636‑2 [USP-16636]; o primeiro, o do mercad
 ## 8. Etapas de implementação (fluxo do MVP)
 1. **Situação** (§2) com o Pset, o `Status`, painel, mini‑barra, opção de criação,
    copiar, selecionar semelhantes e o filtro de vista com cores do perfil Genérico (§3).
+   **Feita** (§12).
 2. **Perfil municipal** (§4): arquivo, cópia no IFC, diálogo, perfis prontos; cores e
    escalas aplicadas.
 3. **Quadro de áreas** (§5) com memória de cálculo e índices.
@@ -176,3 +177,51 @@ a solução aqui (situação + perfil) é própria.
 (d) Classificação de área por ambiente, com regras padrão do perfil (§5).
 (e) Ordem das etapas (§8): situação primeiro.
 (f) Memorial só em `.md` e PDF nesta etapa (§7).
+(g) Obra nova (tudo *A construir*) sem cores na vista Projeto (§12).
+(h) Parede cortada pintada inteira (traço e preenchimento) na cor da situação; existente
+    sai preta cheia no perfil Genérico (§12).
+(i) Situação dos novos elementos como botão com menu na barra Opções, igual para todas
+    as ferramentas, não guardado no projeto (§12).
+(j) Imprimir em preto sem hachura por situação até a etapa 2; 3D sem cores (§12).
+
+## 12. Etapa 1 — como ficou (2026‑10‑27)
+- **Núcleo** (`brasbim/core/intervention.py`, sem Qt): `SITUATIONS` (código, rótulo,
+  `Status`), Pset `BrasBim_Intervencao.Situacao`; sem o Pset, a situação vem do `Status`
+  comum (IFC de outra origem) ou é *A construir* — por isso uma obra nova não ganha Pset
+  nenhum. O `Status` é escrito no `Pset_<Classe>Common` das classes que o têm no esquema
+  (`STATUS_PSETS`: parede, porta, janela, laje, pilar, viga, cobertura e as águas,
+  escada, guarda‑corpo, revestimento, proxy; conferido pelo teste PL01c). Objetos da
+  biblioteca ficam só com o Pset próprio: o Pset comum deles é o do tipo.
+- **Operação** `situation.set` (before/after `{"situation"}`; o `before` de quem já existia
+  guarda também o `Status`, para o desfazer voltar exato). `set_situation` (uma
+  transação para a seleção; o dono responde pelas peças: água → cobertura, peça → escada
+  ou objeto).
+- **Memória** `Document.element_situations` (como as camadas): desfazer uma exclusão
+  devolve a situação; a derivação `sync` também repõe o `Status` quando um elemento
+  regrava o Pset comum sem ele (escada, guarda‑corpo).
+- **Copiar herda** (copiar, cópia em série, espelhar com cópia, dividir parede):
+  `intervention.inherit`, com o mesmo pareamento das camadas, que virou
+  `display_layers.copies`.
+- **Interface**: campo **Situação** na seção Organização do painel (vale para a seleção
+  toda, "vários" quando discordam); o antigo campo "Situação" das propriedades comuns,
+  que só mexia no `Status`, saiu. Mini‑barra **Situação** (ícone `situation`) e Editar >
+  Situação. Barra Opções de toda ferramenta de criação: botão **Situação dos novos
+  elementos** (menu; vale até mudar, não vai para o IFC; `Session.new_situation`,
+  `intervention.stamp_created` em `Session.run`). Selecionar semelhantes > Mesma situação.
+- **Filtro de vista**: Exibir > Situação na vista (Projeto, Antes da obra, Depois da
+  obra, Sem cores), guardado nas preferências (`situacao/vista`) e em
+  `Document.situation_view`. O que o filtro tira entra nas ocultas
+  (`display_layers.hidden_ids`): some da planta, do corte, do 3D e da seleção. Criar um
+  elemento que o filtro esconde dá aviso em Mensagens. Vista salva guarda o filtro em
+  `options.situation` (planta e corte) e o aplica ao desenhar (`saved_views.drawing`).
+- **Cores** (perfil Genérico, `GENERIC_COLORS`; os outros perfis chegam na etapa 2): na
+  vista Projeto, linhas de cada elemento e anotação pela cor da situação
+  (`Plan.colors`, `Drawing.colors`); paredes cortadas agrupadas por tipo **e** situação,
+  com a cor no traço e no preenchimento (`Region.tint`, `Edge.tint`); por camadas, a
+  parede pintada não se divide em materiais. Temporário fica sem cor.
+- **Decisões tomadas aqui** (revisar em (g)–(j)): projeto em que tudo é *A construir*
+  (obra nova) não é pintado, para a obra nova não sair toda vermelha; Imprimir em preto
+  tira as cores, mas a hachura por situação fica para a etapa 2 (vem do perfil); o
+  filtro "Antes da obra" não mostra o temporário; o 3D só filtra, não pinta.
+- Testes: PL01–PL03 (e PL01b, PL01c, PL02b) em `tests/test_projeto_legal.py`; PL01–PL03 da
+  interface em `tests/test_interface_projeto_legal.py`.

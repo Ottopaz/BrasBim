@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, pens, select_similar, snap
+from brasbim.core import display_layers, intervention, pens, select_similar, snap
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -85,6 +85,7 @@ _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 
 SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
 SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
+SITUATION_VIEW_KEY = "situacao/vista"  # spec/ui 31 §3
 
 
 def _settings() -> QSettings:
@@ -332,6 +333,10 @@ class MainWindow(QMainWindow):
         similar_menu = edit_menu.addMenu("Selecionar semelhantes")
         for key, text in select_similar.CRITERIA:
             self._action(similar_menu, text, lambda _=False, k=key: self.select_similar(k))
+        situation_menu = edit_menu.addMenu("Situação")  # spec/ui 31 §2
+        for code, text, _ in intervention.SITUATIONS:
+            self._action(situation_menu, text,
+                         lambda _=False, c=code: self.set_selection_situation(c))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar"), ("measure", "Medir")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
@@ -436,6 +441,16 @@ class MainWindow(QMainWindow):
                                          self.set_show_above)
         self.above_action.setCheckable(True)
         self.above_action.setChecked(True)
+        situation_menu = view_menu.addMenu("Situação na vista")  # spec/ui 31 §3
+        group = QActionGroup(self)
+        self.situation_actions = {}
+        for key, text in intervention.VIEWS:
+            action = self._action(situation_menu, text,
+                                  lambda _=False, k=key: self.set_situation_view(k))
+            action.setCheckable(True)
+            group.addAction(action)
+            self.situation_actions[key] = action
+        self.situation_actions[intervention.DEFAULT_VIEW].setChecked(True)
         project_menu = bar.addMenu("&Projeto")
         self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
         self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
@@ -558,6 +573,9 @@ class MainWindow(QMainWindow):
         limits = settings.value(SHEET_LIMITS_KEY)
         if limits is not None:
             self.set_sheet_limits(str(limits).lower() == "true", save=False)
+        situation = settings.value(SITUATION_VIEW_KEY)
+        if situation in self.situation_actions:
+            self.set_situation_view(situation, save=False)
         detail = settings.value("detalhe_planta")
         if detail in self.detail_actions:
             self.set_plan_detail(detail)
@@ -684,6 +702,23 @@ class MainWindow(QMainWindow):
             _settings().setValue(SELECT_MODE_KEY, bool(accumulate))
         self._set_hint(self.toolbox.active.hint())
         self.plan.update()
+
+    def set_situation_view(self, view: str, save: bool = True) -> None:
+        """Exibir > Situação na vista (spec/ui 31 §3): preferência, não vai para o IFC."""
+        self.situation_actions[view].setChecked(True)
+        if save:
+            _settings().setValue(SITUATION_VIEW_KEY, view)
+        self.session.set_situation_view(view)
+
+    def set_selection_situation(self, code: str) -> None:
+        """Editar > Situação e mini-barra Situação (spec/ui 31 §2)."""
+        session = self.session
+        if not session.selection:
+            session.message("selecione os elementos antes", "recusa")
+            return
+        if session.run(lambda: intervention.set_situation(
+                session.doc, sorted(session.selection), code)):
+            self.properties.refresh()
 
     def set_sheet_limits(self, show: bool, save: bool = True) -> None:
         """Exibir > Limites dos desenhos na prancha (spec/ui 29 §3): o traço só da tela."""
@@ -829,6 +864,7 @@ class MainWindow(QMainWindow):
                     self._set_plan_option(name, options[name])
             self.set_plan_detail(options["detail"])
             self.set_show_above(options["show_above"])
+            self.set_situation_view(options["situation"], save=False)
             stored = storeys_.stored_scale(storey)
             storeys_.set_scale_override(storey.GlobalId,
                                         None if state["scale"] == stored else state["scale"])
@@ -849,6 +885,7 @@ class MainWindow(QMainWindow):
                 return False
             view.scale_override = state["scale"]
             view.show_weights = saved_views.options(state)["show_weights"]
+            self.set_situation_view(saved_views.options(state)["situation"], save=False)
             view.invalidate()
         self.active_saved_view = gid
         self._refresh_all()
@@ -1468,6 +1505,18 @@ class MainWindow(QMainWindow):
             menu = QMenu(self)
             for criterion, text in select_similar.CRITERIA:
                 menu.addAction(text, lambda c=criterion: self.select_similar(c))
+            from PySide6.QtGui import QCursor
+
+            menu.exec(QCursor.pos())
+            return
+        if key == "situation":  # spec/ui 31 §2
+            menu = QMenu(self)
+            current = {intervention.situation_of(doc, doc.find(g))
+                       for g in session.selection if doc.find(g) is not None}
+            for code, text, _ in intervention.SITUATIONS:
+                action = menu.addAction(text, lambda c=code: self.set_selection_situation(c))
+                action.setCheckable(True)
+                action.setChecked(current == {code})
             from PySide6.QtGui import QCursor
 
             menu.exec(QCursor.pos())

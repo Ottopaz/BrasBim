@@ -15,7 +15,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import display_layers, geom2d, guid
+from brasbim.core import display_layers, geom2d, guid, intervention
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import doors
@@ -722,7 +722,8 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         lambda ids: _skylight_ops(doc, ids, fn, copying=True),
         lambda items: _misc_ops(doc, items, fn, copying=True))
     tx = _hosted_copies(doc, tx, gids, vector)
-    return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
+    # a cópia fica na camada e na situação do original (spec/ui 18 §5, spec/ui 31 §2)
+    return intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
 
 
 MAX_COPIES = 1000
@@ -759,7 +760,8 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda found: _grid_ops(doc, found, fn, mirror_axis=axis, copying=keep),
         lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep),
         lambda items: _misc_ops(doc, items, fn, mirror_axis=axis, copying=keep))
-    return display_layers.inherit(doc, tx, gids) if keep else tx
+    return (intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids) if keep
+            else tx)
 
 
 def _hosted_copies(doc: Document, tx: Transaction, gids, vector) -> Transaction:

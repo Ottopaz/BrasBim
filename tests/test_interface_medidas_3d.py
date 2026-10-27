@@ -389,6 +389,10 @@ def test_zoom_esconde_a_mini_barra(window, which):
     bar.place()
     assert view.navigating and not bar.isVisible()
     QTest.qWait(400)  # a roda parou
+    for _ in range(40):  # o temporizador de 300 ms pode chegar atrasado com a suíte toda
+        if not view.navigating:
+            break
+        QTest.qWait(50)
     bar.place()
     assert not view.navigating and bar.isVisible()
     if which == "plan":

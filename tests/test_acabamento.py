@@ -215,9 +215,9 @@ def test_ui46_propriedades_comuns(window):
 
     s.select([w.GlobalId for w in walls[:3]])
     status = _field(window, "Situação", QComboBox)
-    status.setCurrentIndex(status.findData("EXISTING"))
+    status.setCurrentIndex(status.findData("EXISTENTE"))  # situação (spec/ui 31 §2)
     tx = s.history.undo_stack[-1]
-    assert [op.op for op in tx.ops] == ["wall.edit"] * 3
+    assert [op.op for op in tx.ops] == ["situation.set"] * 3
     assert {cmd.read_state(s.doc, w)["common"]["Status"] for w in walls[:3]} == {"EXISTING"}
 
     tx = fc.create_door(s.doc, s.doc.ifc.by_type("IfcDoorType")[0], walls[0], 1.0)

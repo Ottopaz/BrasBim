@@ -37,6 +37,8 @@ ACTIONS = {
                          "valores do tipo; valem para todas as ocorrências dele"),
     "select_similar": ("select_same", "Selecionar semelhantes",
                        "escolha o critério: classe IFC, tipo, material, camada…"),
+    "situation": ("situation", "Situação",
+                  "a construir, existente, a demolir, a regularizar… (projeto legal)"),
     "detach": ("detach", "Soltar da parede", "o objeto fica livre, no mesmo lugar, sem o vão"),
     "pick_curves": ("pick_curves", "Pegar linhas",
                     ("clique ou tecle Enter sobre as linhas do desenho para pô-las no terreno; "

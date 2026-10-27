@@ -66,6 +66,7 @@ class _PlanPainter:
     _rings_path = PlanView._rings_path
     _px = PlanView._px
     _draw_plan = PlanView._draw_plan
+    tint = PlanView.tint
     _draw_region = PlanView._draw_region
     _draw_annotations = PlanView._draw_annotations
     _draw_tags = PlanView._draw_tags

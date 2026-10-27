@@ -91,6 +91,7 @@ HANDLER_MODULES = (
     "brasbim.core.objects.types",
     "brasbim.core.objects.elements",
     "brasbim.core.objects.rebuild",
+    "brasbim.core.intervention",
     "brasbim.core.display_layers",
 )
 _loaded = False
