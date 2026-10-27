@@ -4,7 +4,19 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑27 (correções do pente fino; specs/ui 23–29 em revisão).*
+*Atualizado em 2026‑10‑27, tarde (ajustes curtos do pente fino: spec/ui 30, metade feita).*
+
+> **Onde paramos (2026‑10‑27, tarde):** o revisor aprovou a ordem: primeiro o bloco de
+> ajustes curtos do pente fino, depois o pacote do projeto legal. Spec
+> **`spec/ui/30-ajustes-curtos.md`** (em revisão) com os oito ajustes. **Feitos (§2–§5):**
+> código curto das portas (`door_types.code`; `doors.retag` também corrige a janela: mudar
+> o código do tipo atualiza as esquadrias), clique duplo na faixa de título maximiza a
+> vista no lado a lado (`main_window._Pane`, `toggle_maximized`), Exibir > Vista 3D padrão
+> (`scene3d.STANDARD_VIEWS`, `View3D.standard_view`), arrastar objeto da biblioteca para a
+> planta (`library_panel._Tree`, `MIME`, `PlanView.dropEvent`, `MainWindow.drop_object`).
+> Testes PO21, AJ02–AJ04 (`tests/test_interface_ajustes.py`); 734 testes, ruff limpo.
+> **Próximo (§6–§9):** pegar todas as curvas de uma camada no terreno; ferramenta Medir;
+> contas e `x5 y3` no quadro de medidas; cópia em série. Depois, o projeto legal.
 
 > **Onde paramos (2026‑10‑27):** feitas as quatro correções do pente fino:
 > (1) **ambiente acompanha as paredes**: o ambiente Pelo cômodo guarda o ponto clicado
@@ -101,7 +113,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑27: 730 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑27 (tarde): 734 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -110,7 +122,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (730 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (734 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -143,6 +155,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
+| `spec/ui/30-ajustes-curtos` | **em revisão**; §2–§5 implementados (PO21 em `tests/test_porta.py`, AJ02–AJ04 em `test_interface_ajustes.py`), §6–§9 a fazer; pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |
@@ -843,8 +856,8 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
   camada comum ou a padrão); vista de prancha cuja combinação foi excluída volta a
   "Como na janela" sem aviso; `hidden_ids` percorre todos os elementos a cada planta
   (medir em projeto grande).
-- Tabelas: as portas da biblioteca não têm código curto (o `Reference` é o nome do tipo,
-  "P1 – giro 80", como na etiqueta da planta); as janelas têm ("J1"). Sem tabela na
+- Tabelas: portas e janelas da biblioteca têm código curto ("P1", "J1"; portas desde a
+  spec/ui 30). Sem tabela na
   prancha, fórmulas e filtro por propriedade (V1); o pátio interno fechado por paredes
   conta na área construída.
 - Cobertura: sem ajuste das paredes ao telhado (oitão: usar o topo em empena da parede);

@@ -189,6 +189,30 @@ def test_po13_psets(model):
     assert (t["LarguraPadrao"], t["AlturaPadrao"], t["BasePadrao"]) == pytest.approx((W, H, 0))
 
 
+
+def test_po21_codigo_curto(model, tmp_path):
+    """Pente fino (2026-10-27): o tipo de porta tem código curto ("P1"), gravado no
+    ``Reference`` do tipo e das portas, e passado à variante de mão."""
+    from brasbim.core.fillings import door_types
+
+    door_type = _door_type(model, "P1 – giro 80", code="P1")
+    door = _door(model, model.wall(), door_type=door_type)
+    assert ue.get_pset(door_type, "Pset_DoorCommon")["Reference"] == "P1"
+    assert ue.get_pset(door, "Pset_DoorCommon")["Reference"] == "P1"
+    assert door_types.read(door_type)["code"] == "P1"
+    model.commit(fc.edit_door_type(model.doc, door_type, code="PA"))
+    assert ue.get_pset(door, "Pset_DoorCommon")["Reference"] == "PA"
+    model.history.undo()
+    assert ue.get_pset(door, "Pset_DoorCommon")["Reference"] == "P1"
+    model.commit(fc.edit_door(model.doc, door, hinges="right"))
+    variant = ue.get_type(door)
+    assert variant != door_type and door_types.read(variant)["code"] == "P1"
+    assert ue.get_pset(door, "Pset_DoorCommon")["Reference"] == "P1"
+    reopened = model.reopen(tmp_path)
+    assert {t.Name: door_types.code(door_types.read(t))
+            for t in reopened.by_type("IfcDoorType")}["P1 – giro 80"] == "P1"
+
+
 def test_editar_porta(model):
     wall = model.wall()
     door = _door(model, wall)

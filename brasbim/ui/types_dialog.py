@@ -542,6 +542,8 @@ class DoorTypesDialog(TypesDialog):
         self.state = state
         lining, defaults = state["lining"], state["defaults"]
         self.name = self._line("Nome", state["name"] or "")
+        self.code = self._line("Código", state["code"] or "")
+        self.code.setPlaceholderText(params.base_name(state["name"] or ""))
         self.operation = self._combo("Operação", DOOR_OPERATIONS, state["operation_type"])
         self.form.addRow(QLabel("<span style='color:#666'>Dimensões padrão</span>"))
         self.width = self._line("Largura", exact(defaults["width"]))
@@ -572,6 +574,7 @@ class DoorTypesDialog(TypesDialog):
             panels = params.default_panels(operation, depth)
         new = {
             "name": name,
+            "code": self.code.text().strip() or None,
             "operation_type": operation,
             "panels": panels,
             "defaults": {"width": parse_number(self.width.text()),

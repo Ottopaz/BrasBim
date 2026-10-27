@@ -62,7 +62,7 @@ from brasbim.ui.pens_dialog import PensDialog
 from brasbim.ui.plan_view import PlanView
 from brasbim.ui.project_panel import ProjectPanel
 from brasbim.ui.properties import PropertiesPanel
-from brasbim.ui.scene3d import Scene
+from brasbim.ui.scene3d import STANDARD_VIEWS, Scene
 from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
@@ -115,6 +115,26 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
     tx, cascade = delete_elements(session.doc, session.selection)
     return tx, cascade_text(cascade["IfcDoor"], cascade["IfcWindow"],
                             cascade.get("objects", 0))
+
+
+class _Pane(QWidget):
+    """Vista no lado a lado com uma faixa de título; clique duplo na faixa maximiza a
+    vista ou volta às duas metades (pente fino, 2026-10-27)."""
+
+    def __init__(self, title: str, toggle) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.header = QLabel(title)
+        self.header.setToolTip("Clique duplo: maximizar / restaurar")
+        self.header.setStyleSheet(f"background:{theme.FRAME}; color:{theme.INK_SOFT};"
+                                  f"padding:2px 8px; border-bottom:1px solid {theme.RULE};")
+        self.header.mouseDoubleClickEvent = lambda _event: toggle(self)
+        layout.addWidget(self.header)
+
+    def hold(self, view) -> None:
+        self.layout().addWidget(view, 1)
 
 
 class MainWindow(QMainWindow):
@@ -178,6 +198,11 @@ class MainWindow(QMainWindow):
         self.command_line = CommandLine(self)  # spec/ui 24
         self.command_line.aliases = load_aliases(_settings())
         layout.addWidget(self.command_line)
+        self.panes = [_Pane("Planta", self.toggle_maximized),
+                      _Pane("3D", self.toggle_maximized)]
+        for pane in self.panes:
+            self.splitter.addWidget(pane)
+        self.splitter.setChildrenCollapsible(True)
         self.splitter.hide()
         self.tabs.addTab(self.plan, "Planta")
         self.tabs.addTab(self.view3d, "3D")
@@ -239,6 +264,7 @@ class MainWindow(QMainWindow):
         # Biblioteca de objetos (objeto-parametrico.md §4.2): solta, fechada até ser pedida
         self.library = LibraryPanel(self.session)
         self.library.use_type.connect(self.use_object_type)
+        self.plan.object_dropped.connect(self.drop_object)
         self.project.library_index = self.library.index
         self.library_dock = self._dock("Biblioteca de objetos", "biblioteca", self.library,
                                        Qt.RightDockWidgetArea)
@@ -322,6 +348,11 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        standard = view_menu.addMenu("Vista 3D padrão")
+        for key, (label, _, _) in STANDARD_VIEWS.items():
+            if key == "iso_sw":
+                standard.addSeparator()
+            self._action(standard, label, lambda _=False, k=key: self.standard_view(k))
         self._action(view_menu, "Salvar vista…", lambda: self.save_view(), "Ctrl+Alt+S")
         self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
@@ -1026,6 +1057,15 @@ class MainWindow(QMainWindow):
         tool.set_type(gid)
         self.activate_tool("object")
 
+    def drop_object(self, key: str, x: float, y: float) -> None:
+        """Objeto arrastado da biblioteca e solto na planta: carrega o tipo e insere no
+        ponto (com a atração de sempre); a ferramenta Objeto fica ativa com ele."""
+        gid = self.library.load_key(key)
+        if gid is None:
+            return
+        self.use_object_type(gid)
+        self.toolbox.tools["object"].press((x, y), Mods())
+
     def _object_action(self, key: str) -> None:
         """Ações da mini-barra sobre objetos paramétricos (§5.1)."""
         from PySide6.QtGui import QCursor
@@ -1343,8 +1383,8 @@ class MainWindow(QMainWindow):
     def set_view(self, mode: str) -> None:
         if mode == "split":
             if not self.split:
-                self.splitter.addWidget(self.plan)
-                self.splitter.addWidget(self.view3d)
+                self.panes[0].hold(self.plan)
+                self.panes[1].hold(self.view3d)
                 self.tabs.hide()
                 self.splitter.show()
                 self.plan.show()  # a aba que não estava à frente sai das abas oculta
@@ -1360,6 +1400,20 @@ class MainWindow(QMainWindow):
             self.tabs.show()
             self.split = False
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
+
+    def standard_view(self, name: str) -> None:
+        """Vista 3D padrão; com a planta à frente, passa para o 3D."""
+        if not self.split:
+            self.set_view("3d")
+        self.view3d.standard_view(name)
+
+    def toggle_maximized(self, pane) -> None:
+        """Lado a lado: a vista ocupa tudo; de novo, as duas metades."""
+        total = max(sum(self.splitter.sizes()), 2)
+        if min(self.splitter.sizes()) == 0:
+            self.splitter.setSizes([total // 2, total - total // 2])
+        else:
+            self.splitter.setSizes([total, 0] if pane is self.panes[0] else [0, total])
 
     def edit_type(self, ifc_class: str, gid: str | None = None) -> None:
         """Janela de tipos (parede, porta, janela, pilar, viga, laje), aberta no ``gid``."""
@@ -1439,6 +1493,10 @@ class MainWindow(QMainWindow):
     def context_actions(self, view, gid) -> list[tuple[str, object]]:
         """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
         if not gid:
+            if view is self.view3d:
+                return [("Enquadrar tudo", view.fit),
+                        ("Vista de topo", lambda: view.standard_view("top")),
+                        ("Isométrica", lambda: view.standard_view("iso_sw"))]
             return [("Enquadrar tudo", view.fit)]
         if view is self.view3d:
             actions = [("Mostrar na planta", lambda: self.show_in_plan(gid)),

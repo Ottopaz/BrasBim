@@ -523,6 +523,22 @@ def ray_plane(origin, direction, z: float) -> np.ndarray | None:
     return np.asarray(origin, dtype=np.float64) + t * np.asarray(direction, dtype=np.float64)
 
 
+_ISO = math.degrees(math.atan(1 / math.sqrt(2)))  # 35,26°: as três direções iguais
+# Vistas 3D padrão (pente fino, 2026-10-27): nome → (yaw, pitch) em graus. O yaw é a
+# direção de onde a câmera olha (0 = do leste); o topo fica a um fio da vertical.
+STANDARD_VIEWS = {
+    "top": ("Topo", -90.0, 89.95),
+    "front": ("Frente (sul)", -90.0, 0.0),
+    "back": ("Fundos (norte)", 90.0, 0.0),
+    "left": ("Lateral esquerda (oeste)", 180.0, 0.0),
+    "right": ("Lateral direita (leste)", 0.0, 0.0),
+    "iso_sw": ("Isométrica sudoeste", -135.0, _ISO),
+    "iso_se": ("Isométrica sudeste", -45.0, _ISO),
+    "iso_ne": ("Isométrica nordeste", 45.0, _ISO),
+    "iso_nw": ("Isométrica noroeste", 135.0, _ISO),
+}
+
+
 class Camera:
     """Órbita em torno de ``target`` (spec/ui 01 §4): ``yaw`` e ``pitch`` em radianos."""
 
@@ -580,6 +596,11 @@ class Camera:
         forward, _, _ = self.axes()
         depth = max(float((np.asarray(point) - self.eye()) @ forward), 1e-6)
         return 2 * depth * math.tan(math.radians(self.FOVY) / 2) / max(height, 1)
+
+    def look_from(self, name: str) -> None:
+        """Direção de uma vista padrão (``STANDARD_VIEWS``)."""
+        _, yaw, pitch = STANDARD_VIEWS[name]
+        self.yaw, self.pitch = math.radians(yaw), math.radians(pitch)
 
     def frame(self, low, high) -> None:
         """Centra a órbita na caixa e ajusta a distância, mantendo a direção (§4)."""

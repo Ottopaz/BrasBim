@@ -37,7 +37,7 @@ import ifcopenshell.util.element
 
 from brasbim.core import fragment, guid, props
 from brasbim.core.document import Document, OpError
-from brasbim.core.fillings import params, window_types
+from brasbim.core.fillings import door_types, params, window_types
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
 COMMON_PSET = "Pset_DoorCommon"
@@ -70,11 +70,10 @@ def is_parametric(door) -> bool:
     return bool(ifcopenshell.util.element.get_pset(door, params.PSET, should_inherit=False))
 
 
-def common_defaults(type_name: str) -> dict:
-    """Padrão de ``Pset_DoorCommon``. ``Reference`` é o código do tipo, igual nas duas
-    variantes de mão (porta §3.3)."""
-    return {"Reference": params.base_name(type_name), "Status": "NEW",
-            "IsExternal": False}
+def common_defaults(code: str) -> dict:
+    """Padrão de ``Pset_DoorCommon``. ``Reference`` é o código do tipo
+    (``door_types.code``), igual nas duas variantes de mão (porta §3.3)."""
+    return {"Reference": code, "Status": "NEW", "IsExternal": False}
 
 
 def type_common_defaults(element_type) -> dict:
@@ -83,8 +82,26 @@ def type_common_defaults(element_type) -> dict:
     if element_type.is_a("IfcWindowType"):
         return {"Reference": window_types.code(window_types.read(element_type)),
                 "Status": "NEW", "IsExternal": True}
-    return common_defaults(element_type.Name)
+    return common_defaults(door_types.code(door_types.read(element_type)))
 
+
+
+def retag(doc, element_type, old: str, new: str) -> set[str]:
+    """Código do tipo mudou: as esquadrias que usavam o código antigo (o padrão) passam
+    a ter o novo no ``Reference``; as que tinham código próprio ficam. Devolve as que
+    mudaram."""
+    if old == new:
+        return set()
+    changed = set()
+    for door in ifcopenshell.util.element.get_types(element_type):
+        pset = kind_of(door)[2]
+        values = ifcopenshell.util.element.get_pset(door, pset, should_inherit=False) or {}
+        if values.get("Reference") == old:
+            props.write_pset(doc, door, pset, {
+                **{k: v for k, v in values.items() if k not in ("id", "Reference")},
+                "Reference": new})
+            changed.add(door.GlobalId)
+    return changed
 
 def _read_common(door, door_type) -> dict:
     """Pset comum sem o que é padrão do tipo (sem tipo: o Pset inteiro)."""

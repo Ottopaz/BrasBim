@@ -161,6 +161,11 @@ class View3D(QOpenGLWidget, ToolInput):
             self.camera.frame(*bounds)
         self.update()
 
+    def standard_view(self, name: str) -> None:
+        """Vista 3D padrão (topo, frente, laterais, isométricas) com tudo enquadrado."""
+        self.camera.look_from(name)
+        self.fit()
+
     def frame_selection(self) -> bool:
         """Enquadra a seleção mantendo a direção da câmera (spec/ui 07 §4)."""
         bounds = self.scene.selection_bounds(self.selection)

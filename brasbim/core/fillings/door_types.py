@@ -6,7 +6,8 @@ Operações: ``door_type.create`` / ``door_type.delete`` (data: estado completo)
 
 Estado de um tipo::
 
-    {"name": "P1", "predefined_type": "DOOR", "operation_type": "SINGLE_SWING_LEFT",
+    {"name": "P1 – giro 80", "code": "P1", "predefined_type": "DOOR",
+     "operation_type": "SINGLE_SWING_LEFT",
      "lining": {"thickness": 0.03, "depth": None, "casing_thickness": 0.05,
                 "casing_depth": 0.01, "threshold_thickness": None},
      "panels": [{"operation": "SWINGING", "position": "MIDDLE", "width": 1.0,
@@ -17,7 +18,9 @@ Estado de um tipo::
 
 Marco e folhas ficam em ``IfcDoorLiningProperties`` e ``IfcDoorPanelProperties``
 (descontinuadas no IFC 4.3.2, mas as únicas que descrevem N folhas num tipo; porta §2.5).
-``variant`` é o GlobalId do tipo com a outra mão (porta §2.2).
+``variant`` é o GlobalId do tipo com a outra mão (porta §2.2). ``code`` é o ``Reference``
+do ``Pset_DoorCommon`` do tipo (o código curto da etiqueta e das tabelas, "P1"); sem ele,
+o código é o nome sem o sufixo de mão, como antes (pente fino, 2026‑10‑27).
 """
 
 from __future__ import annotations
@@ -32,7 +35,9 @@ from brasbim.core.fillings import params
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 from brasbim.core.walls.types import material_named
 
-STATE_KEYS = ("name", "operation_type", "lining", "panels", "materials", "defaults", "variant")
+STATE_KEYS = ("name", "code", "operation_type", "lining", "panels", "materials", "defaults",
+              "variant")
+COMMON_PSET = "Pset_DoorCommon"
 # Constituintes do material (porta §2.4) e chaves do estado.
 _CONSTITUENTS = {"lining": "Lining", "framing": "Framing", "glazing": "Glazing"}
 _PREDEFINED = ("IfcDoorLiningProperties", "IfcDoorPanelProperties")
@@ -40,6 +45,7 @@ _PREDEFINED = ("IfcDoorLiningProperties", "IfcDoorPanelProperties")
 
 def default_state(operation_type: str = "SINGLE_SWING_LEFT") -> dict:
     return {
+        "code": None,
         "predefined_type": "DOOR",
         "operation_type": operation_type,
         "lining": dict(params.DEFAULT_LINING),
@@ -59,8 +65,12 @@ def mirrored(state: dict, variant: str | None) -> dict:
     if hand is None:
         raise OpError(f"a operação {state['operation_type']} não tem mão (dobradiças)")
     return {**state, "name": params.base_name(state["name"]) + params.HAND_SUFFIX[hand],
-            "operation_type": operation, "panels": params.mirror_panels(state["panels"]),
-            "variant": variant}
+            "code": code(state), "operation_type": operation,
+            "panels": params.mirror_panels(state["panels"]), "variant": variant}
+
+
+def code(state: dict) -> str:
+    return state.get("code") or params.base_name(state["name"] or "")
 
 
 # --- leitura -----------------------------------------------------------------
@@ -105,6 +115,8 @@ def read(door_type) -> dict:
                              "height": float(values["AlturaPadrao"]),
                              "base": float(values["BasePadrao"])}
         state["variant"] = values.get("Variante")
+    common = ifcopenshell.util.element.get_pset(door_type, COMMON_PSET) or {}
+    state["code"] = common.get("Reference")
     return state
 
 
@@ -209,6 +221,11 @@ def write(doc: Document, door_type, state: dict) -> None:
         "BasePadrao": ifc.createIfcLengthMeasure(float(d["base"])),
         **({"Variante": ifc.createIfcIdentifier(state["variant"])} if state["variant"] else {}),
     })
+    if state.get("code"):
+        props.write_pset(doc, door_type, COMMON_PSET,
+                         {"Reference": ifc.createIfcIdentifier(state["code"])})
+    else:
+        props.remove_pset(doc, door_type, COMMON_PSET)
 
 
 # --- operações ---------------------------------------------------------------
@@ -248,9 +265,12 @@ def _edit(doc: Document, op: Op) -> set[str]:
     unknown = set(op.after or {}) - set(STATE_KEYS)
     if unknown:
         raise OpError(f"door_type.edit: campos desconhecidos {sorted(unknown)}")
+    old = code(state)
     state.update(op.after or {})
     write(doc, door_type, state)
-    return {op.id}
+    from brasbim.core.fillings import doors  # evita import circular
+
+    return {op.id} | doors.retag(doc, door_type, old, code(state))
 
 
 register_inverse_pair("door_type.create", _create, "door_type.delete", _delete)

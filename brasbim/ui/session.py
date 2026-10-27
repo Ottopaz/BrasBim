@@ -170,7 +170,7 @@ class Session:
             history.commit(cmd.create_wall_type(doc, name, layers, predefined_type=predefined,
                                                 plan_style=_WALL_STYLES[name]))
         for name, operation, width in _DOOR_TYPES:
-            history.commit(fc.create_door_type(doc, name, operation,
+            history.commit(fc.create_door_type(doc, name, operation, code=name.split(" ")[0],
                                                defaults={"width": width}))
         for name, code, partitioning, operations, (w, h, base) in _WINDOW_TYPES:
             history.commit(fc.create_window_type(

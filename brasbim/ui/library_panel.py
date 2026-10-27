@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt, Signal
+from PySide6.QtCore import QMimeData, QSettings, QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -125,6 +125,29 @@ class FoldersDialog(QDialog):
         return [self.list.item(i).text() for i in range(self.list.count())]
 
 
+MIME = "application/x-brasbim-objeto"  # arrastar da biblioteca para a planta
+
+
+def entry_key(entry: library.Entry) -> str:
+    return f"{entry.object_id}|{entry.name}"
+
+
+def find_entry(index: library.Index, key: str) -> library.Entry | None:
+    return next((e for e in index.entries() if entry_key(e) == key), None)
+
+
+class _Tree(QTreeWidget):
+    """Árvore que arrasta o tipo escolhido (pente fino, 2026-10-27)."""
+
+    def mimeData(self, items):
+        entries = [i.data(0, Qt.UserRole) for i in items if i.data(0, Qt.UserRole) is not None]
+        if not entries:
+            return None
+        data = QMimeData()
+        data.setData(MIME, entry_key(entries[0]).encode("utf-8"))
+        return data
+
+
 class LibraryPanel(QWidget):
     """Painel solto, como o das camadas (§4.2)."""
 
@@ -161,7 +184,9 @@ class LibraryPanel(QWidget):
         folders.clicked.connect(self.edit_folders)
         top.addWidget(folders)
         layout.addLayout(top)
-        self.tree = QTreeWidget()
+        self.tree = _Tree()
+        self.tree.setDragEnabled(True)
+        self.tree.setDragDropMode(QAbstractItemView.DragOnly)
         self.tree.setHeaderHidden(True)
         self.tree.setIconSize(QSize(THUMB, THUMB))
         self.tree.setIndentation(14)
@@ -353,6 +378,12 @@ class LibraryPanel(QWidget):
         found = self.load([entry], ask=False)
         if found:
             self.use_type.emit(found[0])
+
+    def load_key(self, key: str) -> str | None:
+        """Tipo arrastado (``entry_key``) carregado no projeto; devolve o GlobalId."""
+        entry = find_entry(self.index, key)
+        found = self.load([entry], ask=False) if entry is not None else []
+        return found[0] if found else None
 
     def edit_folders(self) -> None:
         dialog = FoldersDialog(self)

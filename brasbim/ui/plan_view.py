@@ -92,11 +92,13 @@ class PlanView(QWidget, ToolInput):
     tool_options_changed = Signal()
     tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
+    object_dropped = Signal(str, float, float)  # objeto arrastado da biblioteca, ponto
 
     def __init__(self, toolbox: ToolBox, parent=None):
         super().__init__(parent)
         self.toolbox = toolbox
         self.ctx: PlanContext = toolbox.ctx
+        self.setAcceptDrops(True)  # objeto da biblioteca
         self.scale = 60.0  # pixels por metro
         self.origin = QPointF(200, 400)  # posição na tela do ponto (0, 0) do pavimento
         self._pan: QPointF | None = None
@@ -641,6 +643,27 @@ class PlanView(QWidget, ToolInput):
         if event.button() == Qt.LeftButton:
             self.toolbox.active.release(self.to_world(event.position()), self._mods(event))
             self._refresh_hint()
+
+    # --- arrastar da biblioteca (pente fino, 2026-10-27) -----------------------------
+
+    def dragEnterEvent(self, event):
+        from brasbim.ui.library_panel import MIME
+
+        if event.mimeData().hasFormat(MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        self.dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        from brasbim.ui.library_panel import MIME
+
+        if not event.mimeData().hasFormat(MIME):
+            return
+        event.acceptProposedAction()
+        x, y = self.to_world(event.position())
+        key = bytes(event.mimeData().data(MIME)).decode("utf-8")
+        self.object_dropped.emit(key, x, y)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:

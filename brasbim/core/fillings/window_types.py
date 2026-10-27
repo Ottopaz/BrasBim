@@ -304,9 +304,12 @@ def _edit(doc: Document, op: Op) -> set[str]:
     unknown = set(op.after or {}) - set(STATE_KEYS)
     if unknown:
         raise OpError(f"window_type.edit: campos desconhecidos {sorted(unknown)}")
+    old = code(state)
     state.update(op.after or {})
     write(doc, window_type, state)
-    return {op.id}
+    from brasbim.core.fillings import doors  # evita import circular
+
+    return {op.id} | doors.retag(doc, window_type, old, code(state))
 
 
 register_inverse_pair("window_type.create", _create, "window_type.delete", _delete)

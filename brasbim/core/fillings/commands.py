@@ -57,7 +57,7 @@ class _Kind:
 
 
 DOOR = _Kind("IfcDoor", "IfcDoorType", "door", door_types, "porta", "portas",
-             ("lining", "materials", "defaults"))
+             ("lining", "materials", "defaults", "code"))
 WINDOW = _Kind("IfcWindow", "IfcWindowType", "window", window_types, "janela", "janelas",
                ("materials", "defaults", "code"))
 # Campos do tipo que, mudando, mudam também (espelhados) na variante.
@@ -358,7 +358,7 @@ def edit_door(doc: Document, door, hinges: str | None = None, **changes) -> Tran
             new_type = {**k.types.default_state(), **type_states[changes["type"]]}
             defaults = ({"Reference": window_types.code(new_type), "Status": "NEW",
                          "IsExternal": True} if k is WINDOW
-                        else doors.common_defaults(new_type["name"]))
+                        else doors.common_defaults(door_types.code(new_type)))
         else:
             defaults = doors.type_common_defaults(doc.get(changes["type"]))
         changes.setdefault("common", {key: v for key, v in state["common"].items()
