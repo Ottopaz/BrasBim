@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
 from dataclasses import dataclass, field
 
 from brasbim.core import edits, geom2d, plan, snap, storeys, transform
@@ -25,7 +26,7 @@ from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.geom2d import Point
 from brasbim.core.objects import commands as object_cmd
 from brasbim.core.objects import elements as objects
-from brasbim.core.objects import hosting
+from brasbim.core.objects import formula, hosting
 from brasbim.core.objects import plan as object_plan
 from brasbim.core.objects import types as object_types
 from brasbim.core.structure import beams, columns, profiles, roofs, rooms, slab_openings, slabs
@@ -68,6 +69,50 @@ def parse_number(text: str) -> float:
     return float(text)
 
 
+_COORDS = re.compile(r"^x\s*([+-]?[\d.,]+)\s*;?\s*y\s*([+-]?[\d.,]+)$", re.IGNORECASE)
+_COPIES = re.compile(r"^x\s*(\d+)$", re.IGNORECASE)
+
+
+def _calc(text: str) -> float:
+    """Conta com o analisador das fórmulas dos objetos (nunca ``eval``)."""
+    try:
+        node = formula.parse(text)
+        if formula.infer(node, {}) != formula.NUMBER:
+            raise ValueError(f"não é um número: {text!r}")
+        return float(formula.evaluate(node, {}))
+    except formula.FormulaError as e:
+        raise ValueError(f"conta inválida: {text!r} ({e})") from None
+
+
+def parse_entry(text: str, measured: float | None = None, signed: bool = False):
+    """Texto de um campo do quadro de medidas (spec/ui 30 §8, §9): ``("value", número)``,
+    ``("point", (x, y))`` para ``x5 y3`` ou ``("copies", n)`` para ``x5``.
+
+    Contas valem (``1,20+0,15``); operador no início ou no fim faz a conta com o valor
+    medido (``+0,15``, ``/3``, ``2*``). ``-`` no início só é conta em campo sem sinal
+    (``signed`` falso): num ângulo ou numa cota, ``-30`` é o número. ``ValueError`` com o
+    motivo."""
+    text = text.strip()
+    if not text:
+        raise ValueError("vazio")
+    m = _COORDS.match(text)
+    if m:
+        return "point", (parse_number(m.group(1)), parse_number(m.group(2)))
+    m = _COPIES.match(text)
+    if m:
+        return "copies", int(m.group(1))
+    head, tail = text[0], text[-1]
+    before = head in "+*/" or (head == "-" and not signed and len(text) > 1)
+    after = not before and tail in "+-*/" and len(text) > 1
+    if not before and not after:
+        return "value", _calc(text)
+    if measured is None:
+        raise ValueError("ainda não há medida para a conta")
+    if before:
+        return "value", _calc(f"({measured:.10f}){head}({text[1:]})")
+    return "value", _calc(f"({text[:-1]}){tail}({measured:.10f})")
+
+
 @dataclass(frozen=True)
 class Mods:
     shift: bool = False
@@ -85,11 +130,18 @@ class Field:
     unit: str  # "m" ou "°"
     value: float | None
     fixed: float | None = None
+    negative: bool = False  # aceita valor negativo: "-0,15" é o número, não uma conta
+
+    @property
+    def signed(self) -> bool:
+        return self.negative or self.unit == "°"
 
     def text(self, value: float | None = None) -> str:
         value = self.value if value is None else value
         if value is None:
             return ""
+        if not self.unit:  # contagem
+            return str(round(value))
         if self.unit == "°":
             return f"{value:.1f}".replace(".", ",")
         return fmt(value)
@@ -1617,8 +1669,8 @@ class ColumnTool(Tool):
             return []
         if self.reference is not None and self.point is not None:
             rx, ry = self.reference
-            return [Field("dx", "X", "m", self.point[0] - rx, self.fixed.get("dx")),
-                    Field("dy", "Y", "m", self.point[1] - ry, self.fixed.get("dy"))]
+            return [Field("dx", "X", "m", self.point[0] - rx, self.fixed.get("dx"), True),
+                    Field("dy", "Y", "m", self.point[1] - ry, self.fixed.get("dy"), True)]
         return [Field("angle", "Ângulo", "°", self.angle)]
 
     def fix(self, key, value):
@@ -3128,7 +3180,7 @@ class TerrainTool(LineTool):
     def point_fields(self):
         if self.options.mode == "outline":
             return super().point_fields()  # comprimento e ângulo do lado
-        return [Field("z", "Cota", "m", self.options.z, self.fixed.get("z"))]
+        return [Field("z", "Cota", "m", self.options.z, self.fixed.get("z"), True)]
 
     def _resolve(self, q):
         return super()._resolve(q) if self.options.mode == "outline" else q
@@ -3208,21 +3260,28 @@ class _TerrainCurveTool(Tool):
 
 class PickCurvesTool(_TerrainCurveTool):
     """Pegar linhas: a linha do desenho (importado ou 2D) sob o cursor vira curva de nível
-    do terreno com um clique ou Enter; a cota que ela trazia vem junto (§4.4)."""
+    do terreno com um clique ou Enter; a cota que ela trazia vem junto (§4.4). Com Shift,
+    vêm todas as linhas da mesma camada (spec/ui 30 §6)."""
 
     name, label = "terrain_pick", "Pegar linhas"
 
     def __init__(self, ctx):
         super().__init__(ctx)
         self.hover: dict | None = None  # {"points", "closed", "z"}
+        self.group: list[dict] = []  # com Shift: as linhas da camada da linha sob o cursor
         self._cache = (None, [])
 
     def hint(self):
         return ("Passe o cursor sobre uma linha do desenho e clique ou tecle Enter para pô-la "
-                "no terreno como curva de nível; Esc encerra")
+                "no terreno como curva de nível; com Shift, todas as linhas da camada; Esc "
+                "encerra")
 
-    def _candidates(self) -> list[tuple[str, dict]]:
-        """(GlobalId, {"lines": [...]}) das linhas da planta que podem virar curva."""
+    def _candidates(self) -> list[tuple[str, dict, str]]:
+        """(GlobalId, {"lines": [...]}, camada) das linhas da planta que podem virar
+        curva. A camada do desenho importado é a anotação (uma por camada do arquivo); a
+        das linhas desenhadas, a camada de exibição."""
+        from brasbim.core import display_layers
+
         current = self.ctx.plan
         if self._cache[0] is current:
             return self._cache[1]
@@ -3233,11 +3292,12 @@ class PickCurvesTool(_TerrainCurveTool):
             if kind is None:
                 continue
             if kind.prefix == "reference2d":
-                out.append((gid, annotation_base.read_state(element)))
+                out.append((gid, annotation_base.read_state(element), gid))
             elif kind.prefix in ("line2d", "spline2d", "arc2d", "circle2d"):
                 out.append((gid, {"lines": [
                     {"points": [list(q) for q in s.points], "closed": s.closed, "z": None}
-                    for s in prims.strokes]}))
+                    for s in prims.strokes]},
+                    f"camada:{display_layers.layer_of(doc, element)}"))
         self._cache = (current, out)
         return out
 
@@ -3245,8 +3305,14 @@ class PickCurvesTool(_TerrainCurveTool):
         from brasbim.core.annotations import reference
 
         super().move(p, mods)
-        found = reference.lines_near(self._candidates(), p, self._tol())
+        candidates = self._candidates()
+        found = reference.lines_near([c[:2] for c in candidates], p, self._tol())
         self.hover = found[0][3] if found else None
+        self.group = []
+        if found and mods.shift:
+            layer = next(c[2] for c in candidates if c[0] == found[0][1])
+            self.group = [line for gid, state, other in candidates if other == layer
+                          for line in state["lines"]]
 
     def _pick(self) -> None:
         from brasbim.core import terrain as terrain_data
@@ -3257,9 +3323,10 @@ class PickCurvesTool(_TerrainCurveTool):
         if self._state() is None:
             self.session.message("selecione um terreno antes", "recusa")
             return
-        line, doc = self.hover, self.session.doc
-        if not self.session.run(lambda: terrain_data.add_curves(doc, self.terrain, [line])):
-            self.session.message("essa linha já está no terreno")
+        lines, doc = self.group or [self.hover], self.session.doc
+        if not self.session.run(lambda: terrain_data.add_curves(doc, self.terrain, lines)):
+            self.session.message("essa linha já está no terreno" if len(lines) == 1
+                                 else "essas linhas já estão no terreno")
 
     def press(self, p, mods, button="left"):
         if button == "left":
@@ -3273,13 +3340,14 @@ class PickCurvesTool(_TerrainCurveTool):
         return False
 
     def preview(self):
-        if self.hover is None:
-            return []
-        return [Mark(tuple(tuple(q) for q in self.hover["points"]), self.hover["closed"])]
+        return [Mark(tuple(tuple(q) for q in line["points"]), line["closed"])
+                for line in self.group or ([self.hover] if self.hover else [])]
 
     def labels(self):
         if self.hover is None or self.cursor is None:
             return []
+        if self.group:
+            return [(self.cursor, f"{len(self.group)} linhas da camada")]
         z = self.hover["z"]
         return [(self.cursor, "sem cota" if z is None else f"cota {fmt(z)}")]
 
@@ -3320,7 +3388,7 @@ class CurveLevelTool(_TerrainCurveTool):
     def fields(self):
         if self.chosen is None:
             return []
-        return [Field("z", "Cota", "m", self.suggestion(), self.fixed.get("z"))]
+        return [Field("z", "Cota", "m", self.suggestion(), self.fixed.get("z"), True)]
 
     def _apply(self, z: float) -> None:
         from brasbim.core import terrain as terrain_data
@@ -3491,7 +3559,7 @@ class DimensionTool(_PointTool):
         if len(self.items) < 2 or self.cursor is None:
             return []
         return [Field("offset", "Afastamento", "m", self._offset(self.cursor),
-                      self.fixed.get("offset"))]
+                      self.fixed.get("offset"), True)]
 
     def _commit(self, offset: float) -> None:
         storey, doc = self._storey(), self.session.doc
@@ -4196,8 +4264,73 @@ class MoveTool(_SelectionTool):
 
 
 class CopyTool(MoveTool):
+    """Copiar; com o campo Cópias (ou ``x5`` no de distância), N cópias com o mesmo
+    passo (spec/ui 30 §9)."""
+
     name, label = "copy", "Copiar"
     copies = True
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.count = 1
+
+    def hint(self):
+        text = super().hint()
+        if self.points and self.session.selection:
+            text += "; Cópias (ou x5 na distância) faz a cópia em série"
+        return text
+
+    def fields(self):
+        out = super().fields()
+        if out:
+            out.append(Field("copies", "Cópias", "", float(self.count),
+                             float(self.count) if self.count > 1 else None))
+        return out
+
+    def check(self, key, value):
+        if key == "copies":
+            if abs(value - round(value)) > 1e-9 or not 1 <= value <= transform.MAX_COPIES:
+                return f"o número de cópias é inteiro, de 1 a {transform.MAX_COPIES}"
+            return None
+        return super().check(key, value)
+
+    def fix(self, key, value):
+        if key == "copies":  # vale para os próximos cliques, até Esc
+            error = None if value is None else self.check(key, value)
+            if error:
+                return error
+            self.count = 1 if value is None else round(value)
+            if self.cursor is not None:
+                self.move(self.cursor, self.mods)
+            return None
+        return super().fix(key, value)
+
+    def release_fixed(self):
+        self.count = 1
+        super().release_fixed()
+
+    def cancel(self):
+        busy = super().cancel()
+        self.count = 1
+        return busy
+
+    def _apply(self, vector):
+        if self.count == 1:
+            super()._apply(vector)
+            return
+        doc, gids, count = self.session.doc, self._gids(), self.count
+        self.session.run(lambda: transform.copy_series(doc, gids, vector, count))
+
+    def preview(self):
+        marks = super().preview()
+        fn = self.transform_fn()
+        if fn is None or self.count == 1:
+            return marks
+        dx, dy = self._vector(self.snapped.point)
+        shapes = self._shapes()
+        for k in range(2, min(self.count, 50) + 1):  # fantasma das demais cópias
+            marks += _shape_marks(shapes, geom2d.translation((k * dx, k * dy)))
+        return marks
 
 
 class RotateTool(_SelectionTool):
@@ -4798,13 +4931,176 @@ class FilletTool(Tool):
                 if s.owner == self.first[0]]
 
 
+# --- Medir (spec/ui 30 §7) -------------------------------------------------------------
+
+
+def _area_text(points) -> str:
+    perimeter = sum(math.dist(a, b) for a, b in zip(points, [*points[1:], points[0]]))
+    return (f"área {fmt(geom2d.polygon_area(list(points)))} m², "
+            f"perímetro {fmt(perimeter)} m")
+
+
+class MeasureTool(Tool):
+    """Medir: cadeia de pontos com o total; fechar no primeiro ponto dá área e
+    perímetro; Shift+clique num elemento mede o contorno dele. Não cria nada: o resultado
+    vai para a barra de estado e para o painel Mensagens."""
+
+    name, label = "measure", "Medir"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.points: list[Point] = []
+        self.result = ""  # última medida (barra de estado)
+
+    creates = True
+
+    def hint(self):
+        if not self.points:
+            text = ("Clique o primeiro ponto; Shift+clique num elemento mede o contorno "
+                    "dele")
+        else:
+            text = ("Clique o próximo ponto; no primeiro, fecha e dá a área; Enter ou "
+                    "clique duplo encerra; Esc descarta")
+        return f"{self.result}. {text}" if self.result else text
+
+    def _point(self, p, mods) -> Point:
+        origin = self.points[-1] if self.points else None
+        self.snapped = self.ctx.snap(p, mods, origin, extra=self.points)
+        if self.points and self.fixed:
+            self.snapped = snap.Snap(polar_point(origin, self.snapped.point,
+                                                 self.fixed.get("length"),
+                                                 self.fixed.get("angle")), "free")
+        return self.snapped.point
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self._point(p, mods)
+
+    def fields(self):
+        if not self.points:
+            return []
+        last, q = self.points[-1], self.snapped.point if self.snapped else None
+        length = math.dist(last, q) if q else None
+        angle = _degrees(q[0] - last[0], q[1] - last[1]) if q and length > 1e-9 else None
+        return [Field("length", "Distância", "m", length, self.fixed.get("length")),
+                Field("angle", "Ângulo", "°", angle, self.fixed.get("angle"))]
+
+    def check(self, key, value):
+        if key == "length" and value <= 0:
+            return "a distância deve ser maior que zero"
+        return None
+
+    def _report(self, text: str) -> None:
+        self.result = text
+        self.session.message(text)
+
+    def _closes(self, q: Point) -> bool:
+        return len(self.points) >= 3 and math.dist(q, self.points[0]) <= max(self.ctx.tol,
+                                                                             1e-6)
+
+    def press(self, p, mods, button="left"):
+        if button == "right":
+            self.finish()
+            return
+        if mods.shift and not self.points:
+            self.measure_element(p)
+            return
+        q = self._point(p, mods)
+        self.fixed.clear()
+        if self._closes(q):
+            points, self.points = self.points, []
+            self._report(f"Medida: {_area_text(points)}")
+        elif not self.points or math.dist(q, self.points[-1]) > 1e-9:
+            self.points.append(q)
+
+    def double(self, p, mods):
+        self.finish()
+
+    def key(self, key):
+        if key == "enter":
+            self.finish()
+            return True
+        return False
+
+    def finish(self) -> None:
+        points, self.points = self.points, []
+        if len(points) < 2:
+            return
+        parts = [math.dist(a, b) for a, b in itertools.pairwise(points)]
+        text = f"Medida: {fmt(sum(parts))} m"
+        if len(parts) > 1:
+            text += f" ({' + '.join(fmt(d) for d in parts)})"
+        self._report(text)
+
+    def measure_element(self, p: Point) -> None:
+        """Área e perímetro do contorno de um elemento (o maior, se houver vários), ou o
+        comprimento das linhas de uma anotação."""
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        if gid is None:
+            self.session.message("não há elemento sob o cursor", "recusa")
+            return
+        element = self.session.doc.find(gid)
+        name = (getattr(element, "Name", None) or element.is_a()) if element else gid
+        closed = [s.points for s in self.ctx.plan.shapes
+                  if s.owner == gid and s.closed and len(s.points) >= 3]
+        if closed:
+            points = max(closed, key=lambda pts: geom2d.polygon_area(list(pts)))
+            self._report(f"Medida de {name}: {_area_text(points)}")
+            return
+        strokes = [st for owner, prims in self.ctx.plan.annotations if owner == gid
+                   for st in prims.strokes]
+        strokes += [s for s in self.ctx.plan.shapes if s.owner == gid]
+        length = 0.0
+        for st in strokes:
+            pts = list(st.points)
+            if st.closed and len(pts) > 2:
+                pts.append(pts[0])
+            length += sum(math.dist(a, b) for a, b in itertools.pairwise(pts))
+        if length <= 0:
+            self.session.message(f"{name}: sem contorno para medir", "recusa")
+            return
+        self._report(f"Medida de {name}: comprimento {fmt(length)} m")
+
+    def cancel(self):
+        self.fixed.clear()
+        if self.points:
+            self.points = []
+            return True
+        return False
+
+    def preview(self):
+        pts = list(self.points)
+        if pts and self.snapped:
+            pts.append(self.snapped.point)
+        marks = [Mark(tuple(pts), False)] if len(pts) >= 2 else []
+        if len(pts) >= 3:
+            marks.append(Mark((pts[-1], pts[0]), False, "gap"))
+        if self.points and "angle" in self.fixed:
+            marks.append(_guide(self.points[-1], self.fixed["angle"], self.ctx.tol))
+        return marks
+
+    def labels(self):
+        pts = list(self.points)
+        if not pts or not self.snapped:
+            return []
+        pts.append(self.snapped.point)
+        out = [(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), fmt(math.dist(a, b)))
+               for a, b in itertools.pairwise(pts) if math.dist(a, b) > 1e-9]
+        total = sum(math.dist(a, b) for a, b in itertools.pairwise(pts))
+        text = f"total {fmt(total)} m"
+        if len(pts) >= 3:
+            text += f"; {_area_text(pts)}"
+        out.append((pts[-1], text))
+        return out
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
          GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
-         MirrorTool, OffsetTool, TrimTool, FilletTool)
+         MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",

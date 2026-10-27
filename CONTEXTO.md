@@ -4,9 +4,24 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑27, tarde (ajustes curtos do pente fino: spec/ui 30, metade feita).*
+*Atualizado em 2026‑10‑27, fim da tarde (ajustes curtos do pente fino: spec/ui 30 completa).*
 
-> **Onde paramos (2026‑10‑27, tarde):** o revisor aprovou a ordem: primeiro o bloco de
+> **Onde paramos (2026‑10‑27, fim da tarde):** **spec/ui 30 completa** (§2–§9, em
+> revisão; pontos (a)–(h) no §12). Feitos agora os §6–§9: **Pegar linhas com Shift**
+> pega todas as linhas da camada (`PickCurvesTool.group`; camada = anotação do DWG ou
+> camada de exibição das linhas 2D); ferramenta **Medir** (`MeasureTool`, grupo Edição,
+> Editar > Medir, apelido MD): cadeia com total, fechar no 1º ponto dá área e perímetro,
+> Shift+clique mede o contorno de um elemento, resultado na barra de estado e em
+> Mensagens, que ganhou **Copiar** (`MainWindow.copy_messages`); **contas no quadro de
+> medidas** (`tools.parse_entry`, com o analisador `core/objects/formula.py`): `2*`,
+> `+0,15`, `/3`, `1,20+0,15`, `-` é número nos campos com sinal (`Field.negative`),
+> `x5 y3` é ponto absoluto (`ToolInput.enter_point`, também usado pela linha de comando);
+> **cópia em série**: campo Cópias em Copiar (quadro com 3 linhas, `ROWS = 3`) ou `x5` na
+> distância, `transform.copy_series` (uma transação, via `combine`). Testes AJ05–AJ08;
+> 738 testes passando, ruff limpo.
+> **Próximo:** pacote do projeto legal (item 2 do roteiro).
+
+> **Antes (2026‑10‑27, tarde):** o revisor aprovou a ordem: primeiro o bloco de
 > ajustes curtos do pente fino, depois o pacote do projeto legal. Spec
 > **`spec/ui/30-ajustes-curtos.md`** (em revisão) com os oito ajustes. **Feitos (§2–§5):**
 > código curto das portas (`door_types.code`; `doors.retag` também corrige a janela: mudar
@@ -113,7 +128,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑27 (tarde): 734 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑27 (fim da tarde): 738 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -122,7 +137,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (734 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (738 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -155,7 +170,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
-| `spec/ui/30-ajustes-curtos` | **em revisão**; §2–§5 implementados (PO21 em `tests/test_porta.py`, AJ02–AJ04 em `test_interface_ajustes.py`), §6–§9 a fazer; pontos §12 |
+| `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
 | `spec/ui/17-tabelas` | aprovada e implementada (pacote 11; TB01–TB09 e TB11 em `tests/test_tabelas.py`, TB10 em `test_interface_tabelas.py`) |

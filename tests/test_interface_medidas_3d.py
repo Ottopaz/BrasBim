@@ -323,9 +323,9 @@ def test_ui61b_quadro_mostra_a_medida_ao_vivo(window):
     _click(window, (0, 0))
     _move(window, (3, 0))
     assert box.isVisible()
-    assert [e.text() for e in box.edits] == ["3,00", "0,0"]
+    assert [e.text() for e in box.edits[:2]] == ["3,00", "0,0"]
     _move(window, (0, 2))
-    assert [e.text() for e in box.edits] == ["2,00", "90,0"]
+    assert [e.text() for e in box.edits[:2]] == ["2,00", "90,0"]
     QTest.keyClick(window.plan, Qt.Key_Tab)
     assert box.editing == 0 and box.edits[0].selectedText() == "2,00"
     _move(window, (4, 0))

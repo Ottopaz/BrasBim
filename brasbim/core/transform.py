@@ -725,6 +725,22 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
     return display_layers.inherit(doc, tx, gids)  # a cópia fica na camada do original
 
 
+MAX_COPIES = 1000
+
+
+def copy_series(doc: Document, gids, vector, count: int) -> Transaction:
+    """Cópia em série (spec/ui 30 §9): ``count`` cópias com o mesmo passo; a k‑ésima
+    fica deslocada k × ``vector``. Uma transação só (um desfazer)."""
+    if not 1 <= count <= MAX_COPIES:
+        raise OpError(f"o número de cópias vai de 1 a {MAX_COPIES}")
+    if count == 1:
+        return copy_elements(doc, gids, vector)
+    dx, dy = vector
+    tx = combine(doc, "", [lambda k=k: copy_elements(doc, gids, (k * dx, k * dy))
+                           for k in range(1, count + 1)])
+    return Transaction(f"Copiar em série ({count} cópias)", tx.ops)
+
+
 def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transaction:
     """Imagem espelhada pelo eixo ``a``–``b``; com ``keep``, espelha uma cópia."""
     if math.dist(a, b) < geom2d.MIN_LENGTH:

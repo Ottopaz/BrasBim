@@ -91,7 +91,8 @@ def test_lc03_apelidos_padrao():
              "tool:arc2d": "Arco", "tool:hatch": "Hachura", "tool:north": "Norte",
              "tool:revision": "Alteração", "tool:section": "Corte",
              "tool:elevation": "Fachada", "tool:offset": "Deslocar paralela",
-             "tool:trim": "Aparar/estender", "tool:fillet": "Concordar"}
+             "tool:trim": "Aparar/estender", "tool:fillet": "Concordar",
+             "tool:measure": "Medir"}
     for key, alias in DEFAULT_ALIASES.items():
         assert 2 <= len(alias) <= 3 and alias.isalpha() and alias.isupper()
         name = normalize(names.get(key) or key.split("/")[-1])

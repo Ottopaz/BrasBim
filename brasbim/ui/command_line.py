@@ -43,7 +43,7 @@ from brasbim.ui.command_input import (
     parse_number,
     validate_aliases,
 )
-from brasbim.ui.tools import Mods, fmt
+from brasbim.ui.tools import fmt
 
 SHORT_GROUP = 6  # grupos de opções com até tantas escolhas viram links lado a lado (§5)
 PLACEHOLDER = "comando, apelido ou x;y"
@@ -320,15 +320,7 @@ class CommandLine(QFrame):
 
     def point(self, p) -> None:
         """Ponto digitado: um clique exato, sem atração nem trava (§4)."""
-        ctx = self.window_.ctx
-        tool = self.window_.toolbox.active
-        ctx.axis_lock = None
-        tool.fixed.clear()
-        mods = Mods(alt=True)
-        tool.move(p, mods)
-        tool.press(p, mods)
-        ctx.last_point = tuple(p)
-        self._view().after_tool_input()
+        self._view().enter_point(p)
 
     def escape(self) -> None:
         had = bool(self.field.text()) or self.popup.isVisible()

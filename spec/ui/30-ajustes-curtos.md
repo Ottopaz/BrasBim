@@ -3,7 +3,7 @@ documento: Ajustes curtos do pente fino (bloco 1)
 requisito: reports/Pente fino BrasBim x pesquisa.md §5 ("Ajustes curtos, a qualquer momento")
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-27
-status: em revisão (§2–§5 implementados para teste; §6–§9 a implementar, fluxo do MVP)
+status: em revisão (§2–§9 implementados para teste)
 revisor: OTTO
 ---
 
@@ -45,26 +45,50 @@ pública (`reports/Pesquisa Archicad Revit AutoCAD.md` e notas em `research_note
   sempre; a ferramenta Objeto fica ativa com esse tipo, para inserir outros.
 - Sem fantasma durante o arrasto (ponto (d)). O clique duplo continua como antes.
 
-## 6. Pegar todas as curvas de uma camada (terreno) — a implementar
-Na mini-barra do terreno, Pegar linhas aceita também "todas as linhas desta camada" do
-desenho importado (clique numa linha + Shift), cada uma com a cota que veio do DWG.
+## 6. Pegar todas as curvas de uma camada (terreno)
+- Na mini-barra do terreno, Pegar linhas com **Shift** pega todas as linhas da camada da
+  linha sob o cursor, cada uma com a cota que veio do DWG; a prévia destaca todas e o
+  rótulo diz "N linhas da camada". Uma transação só (um desfazer).
+- Camada = a anotação do desenho importado (uma por camada do arquivo, spec/ui 22); para
+  linhas desenhadas no BrasBim, a camada de exibição (spec/ui 18).
+- Linhas que já estão no terreno ficam de fora (como antes).
 
-## 7. Ferramenta Medir — a implementar
-Distância (cadeia de pontos, com total), área e perímetro de um contorno clicado ou de
-um elemento escolhido; resultado na barra de estado e no painel Mensagens, copiável. Não
-cria nada no modelo. É "medir" dos auxílios de tela do Archicad [AC-TRACKER].
+## 7. Ferramenta Medir
+- Grupo **Edição** da barra, Editar > **Medir**, apelido `MD`.
+- Cliques fazem uma cadeia de pontos, com atração; a prévia mostra cada trecho e, junto
+  ao cursor, o total e, a partir de três pontos, a área e o perímetro do polígono. Tab
+  digita distância e ângulo do próximo ponto.
+- **Enter**, clique duplo ou botão direito encerra: "Medida: 7,00 m (4,00 + 3,00)".
+  Clicar no **primeiro ponto** fecha: "Medida: área 12,00 m², perímetro 14,00 m".
+- **Shift+clique** num elemento (sem cadeia em andamento) mede o contorno dele: o maior
+  contorno fechado na planta (área e perímetro) ou, numa anotação aberta, o comprimento.
+- O resultado vai para a barra de estado (junto da dica) e para o painel Mensagens. O
+  painel ganhou **Copiar** (Ctrl+C e botão direito): copia as mensagens escolhidas, ou a
+  última, sem a hora. Não cria nada no modelo.
+- É o "medir" dos auxílios de tela do Archicad [AC-TRACKER]; nomes e textos próprios.
 
-## 8. Contas e coordenadas no quadro de medidas — a implementar
-Nos campos do quadro de medidas: `2*` (dobra o valor medido), `+0,15`, `-0,15`, `/3`,
-`*2`, e expressões como `1,20+0,15`, com o analisador de fórmulas dos objetos (sem
-`eval`). Coordenadas `x5 y3` (absolutas) no campo de comprimento. Padrão do Tracker do
-Archicad (operadores + − * / e atalhos X/Y) [AC-TRACKER].
+## 8. Contas e coordenadas no quadro de medidas
+- Os campos aceitam contas, analisadas pelo analisador das fórmulas dos objetos
+  (`core/objects/formula.py`, sem `eval`): `1,20+0,15`, `(3-0,15)/2`.
+- **Operador no início** faz a conta com o valor medido (o do cursor, ou o fixado):
+  `+0,15`, `-0,15`, `*2`, `/3`. **Operador no fim** também: `2*` dobra o medido.
+- `-` no início é número, não conta, nos campos que aceitam valor negativo: ângulos,
+  X/Y do pilar, cotas e afastamento da cota (`Field.negative`).
+- **`x5 y3`** (também `x5;y3`) em qualquer campo é um ponto absoluto do pavimento: vale
+  como clique exato, sem atração (o mesmo da linha de comando `5;3`, spec/ui 24).
+- O campo único das alças (sem Tab) aceita contas e `x5 y3` também.
+- Padrão do Tracker do Archicad (operadores + − * / e atalhos X/Y) [AC-TRACKER].
 
-## 9. Cópia em série — a implementar
-Em Copiar, o campo **Cópias** no quadro de medidas (`x5` no campo de distância também
-vale): N cópias com o mesmo passo. Matriz polar e ao longo de caminho ficam para depois.
-Matriz é recurso clássico do AutoCAD; a pesquisa não trouxe a página da Ajuda, então
-fica como conhecimento geral (CG).
+## 9. Cópia em série
+- Em Copiar, depois do ponto de base, o quadro de medidas tem três campos: Distância,
+  Ângulo e **Cópias**. Com Cópias = N, o clique (ou Enter) faz N cópias com o mesmo passo:
+  a k‑ésima deslocada k × o vetor (`transform.copy_series`, uma transação só). A prévia
+  mostra as N (até 50).
+- `x5` no campo de distância fixa 5 cópias sem confirmar o ponto; o próximo clique faz
+  as cópias. O número vale para os próximos cliques até Esc. Máximo 1000.
+- Matriz polar e ao longo de caminho ficam para depois. Matriz é recurso clássico do
+  AutoCAD; a pesquisa não trouxe a página da Ajuda, então fica como conhecimento geral
+  (CG).
 
 ## 10. Critérios de aceite (testes)
 - [x] **PO21** Tipo de porta com código P1: `Reference` P1 no tipo e na porta; mudar para
@@ -75,6 +99,17 @@ fica como conhecimento geral (CG).
       do sul; Isométrica nordeste: as três direções iguais; menu do vazio no 3D.
 - [x] **AJ04** Soltar a "Cama de casal" na planta em (3, 2): objeto criado no ponto,
       ferramenta Objeto ativa.
+- [x] **AJ05** Terreno: Shift sobre uma curva do DWG destaca as 3 da camada CURVAS; o
+      clique põe as 3 com as cotas 100, 101 e 102; um desfazer tira as 3.
+- [x] **AJ06** Medir: cadeia (0,0)–(4,0)–(4,3) + Enter dá "7,00 m (4,00 + 3,00)";
+      fechar o retângulo 4 × 3 dá área 12,00 m² e perímetro 14,00 m; Shift+clique numa
+      parede mede o contorno; nada entra no histórico; Copiar devolve o texto sem a hora.
+- [x] **AJ07** `parse_entry`: `1,20+0,15`, `2*`, `+0,15`, `-0,15`, `-30` em campo com
+      sinal, `/3`, `*2`, `x5 y3`, `x5`; recusa `2+` sem medida, texto, divisão por zero e
+      comparação. Na parede: `2*` com 2 m medidos dá 4 m; `1,20+0,15`; `x5 y3` termina
+      em (5, 3).
+- [x] **AJ08** Copiar com Distância 2, Ângulo 90 e Cópias 3: paredes em y = 0, 2, 4, 6;
+      um desfazer volta a uma; `x4` só fixa e o clique a 1,5 m faz 4 cópias.
 
 ## 11. Fontes
 | Código | Documento |
@@ -90,3 +125,9 @@ material de `_restrito/` nem de `tools/` foi usado; nomes, textos e layout são 
 (b) Maximizar pela faixa de título, não por clique duplo dentro da vista (§3).
 (c) Vistas padrão em perspectiva; projeção paralela depois (§4).
 (d) Arrastar sem fantasma; o objeto entra no ponto solto (§5).
+(e) Camada das linhas desenhadas no BrasBim = camada de exibição (§6).
+(f) Medir mede o maior contorno fechado do elemento (numa parede, o contorno do trecho
+    cortado na planta), não as quantidades do IFC (§7).
+(g) `-` no início é conta nos campos sem sinal e número nos com sinal (§8); `x5` sozinho
+    só vale em Copiar (fora dele, a recusa sugere `x5 y3`).
+(h) O número de cópias continua valendo nos próximos cliques até Esc (§9).

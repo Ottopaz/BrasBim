@@ -52,6 +52,7 @@ DEFAULT_ALIASES = {
     "tool:offset": "DP",
     "tool:trim": "AE",
     "tool:fillet": "CD",
+    "tool:measure": "MD",
     "menu:Editar/Mover": "MV",
     "menu:Editar/Copiar": "CPR",
     "menu:Editar/Girar": "GR",

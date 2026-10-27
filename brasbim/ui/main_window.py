@@ -246,6 +246,13 @@ class MainWindow(QMainWindow):
                                           Qt.RightDockWidgetArea)
         self.messages = QListWidget()
         self.messages.setWordWrap(True)
+        self.messages.setSelectionMode(QListWidget.ExtendedSelection)
+        copy_messages = QAction("Copiar", self.messages)  # medidas copiáveis (spec/ui 30 §7)
+        copy_messages.setShortcut(QKeySequence.Copy)
+        copy_messages.setShortcutContext(Qt.WidgetShortcut)
+        copy_messages.triggered.connect(self.copy_messages)
+        self.messages.addAction(copy_messages)
+        self.messages.setContextMenuPolicy(Qt.ActionsContextMenu)
         self.messages_dock = self._dock("Mensagens", "mensagens", self.messages,
                                         Qt.BottomDockWidgetArea)
         self.messages_dock.setMaximumHeight(160)
@@ -326,7 +333,7 @@ class MainWindow(QMainWindow):
         for key, text in select_similar.CRITERIA:
             self._action(similar_menu, text, lambda _=False, k=key: self.select_similar(k))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
-                          ("fillet", "Concordar")):
+                          ("fillet", "Concordar"), ("measure", "Medir")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
         group = QActionGroup(self)
@@ -1202,11 +1209,21 @@ class MainWindow(QMainWindow):
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
         self.setWindowTitle(f"{name}{'*' if self.session.modified else ''} — BrasBim")
 
+    def copy_messages(self) -> str:
+        """Copia as mensagens escolhidas (ou a última) para a área de transferência, sem a
+        hora: uma medida vai direto para outro programa (spec/ui 30 §7)."""
+        items = self.messages.selectedItems() or [self.messages.item(self.messages.count() - 1)]
+        text = "\n".join(i.data(Qt.UserRole) for i in items if i is not None)
+        if text:
+            QApplication.clipboard().setText(text)
+        return text
+
     def _show_messages(self) -> None:
         self.messages.clear()
         for m in self.session.messages[-60:]:
             item = QListWidgetItem(f"{m['time']}  {m['text']}")
             item.setToolTip(m["level"])
+            item.setData(Qt.UserRole, m["text"])
             item.setForeground(QColor(_LEVEL_COLOR.get(m["level"], theme.INK)))
             self.messages.addItem(item)
         self.messages.scrollToBottom()

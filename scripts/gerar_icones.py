@@ -213,6 +213,10 @@ ICONS = {
             '<path d="M15 12 H21.5" stroke-dasharray="1.5 1.5" stroke-width="1"/>',
     "fillet": '<path d="M4 20.5 V11 A7 7 0 0 1 11 4 H20.5"/>'
               '<path d="M4 4 H8 M4 4 V8" stroke-dasharray="1.5 1.5" stroke-width="1"/>',
+    # Medir (spec/ui 30 §7): régua inclinada com as marcas
+    "measure": '<path d="M3 16.5 L16.5 3 L21 7.5 L7.5 21 Z"/>'
+               '<path d="M7 12.5 L9 14.5 M9.5 10 L12.5 13 M12 7.5 L14 9.5 M14.5 5 L17.5 8" '
+               'stroke-width="1"/>',
     "palette": '<rect x="2.75" y="4.75" width="18.5" height="14.5"/>'
                '<path d="M6 9.5 L9 12 L6 14.5 M11 14.5 H17"/>',
     # vista salva (spec/ui 25): moldura da vista com um marcador de página

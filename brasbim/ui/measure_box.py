@@ -7,6 +7,8 @@ atualizado a cada movimento, ou o valor fixado (negrito, com cadeado). O campo a
 Tab continua acompanhando o cursor até a primeira tecla. Tab passa a digitar no primeiro campo; Tab
 fixa e vai ao próximo; Enter fixa e confirma o ponto; Esc solta os valores fixados.
 Ferramenta sem campos que aceita número (alças da seleção) usa um campo único, sem Tab.
+Os campos aceitam contas e ``x5 y3`` (ponto absoluto); em Copiar, ``x5`` é o número de
+cópias (spec/ui 30 §8, §9; ``tools.parse_entry``).
 """
 
 from __future__ import annotations
@@ -16,9 +18,9 @@ from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPe
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
 
 from brasbim.ui import theme
-from brasbim.ui.tools import SELECTION_TOOLS, parse_number
+from brasbim.ui.tools import SELECTION_TOOLS, Mods, parse_entry
 
-ROWS = 2
+ROWS = 3
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
 _ARROWS = {Qt.Key_Left: "x", Qt.Key_Right: "x", Qt.Key_Up: "y", Qt.Key_Down: "y"}
 DWELL_MS = 400  # cursor parado sobre um vértice: ponto de referência (spec/ui 09 §2.1)
@@ -91,6 +93,7 @@ class MeasureBox(QFrame):
         self.editing: int | None = None
         self.typed = False  # o campo em edição já recebeu tecla (deixa de seguir o cursor)
         self.generic = False  # campo único para ferramenta sem campos (alças)
+        self.consumed = False  # o texto já fez a ação (ponto x5 y3, cópias): Enter não confirma
         self.hide()
 
     @property
@@ -216,17 +219,31 @@ class MeasureBox(QFrame):
             return True
         if not self.typed:  # nada digitado: o campo continua seguindo o cursor
             return True
-        key, text = fields[self.editing].key, edit.text()
+        f, text = fields[self.editing], edit.text()
+        key = f.key
         error = None
         if not text.strip():
             self.tool.fix(key, None)
             return True
         try:
-            value = parse_number(text)
-        except ValueError:
-            error = f"número inválido: {text!r}"
+            kind, value = parse_entry(text, f.fixed if f.fixed is not None else f.value,
+                                      f.signed)
+        except ValueError as e:
+            error = str(e)
         else:
-            error = self.tool.fix(key, value)
+            if kind == "point":
+                self.consumed = True
+                self.editing = None
+                self.view.enter_point(value)
+                return True
+            if kind == "copies":
+                if "copies" not in (g.key for g in fields):
+                    error = "x5 sozinho só vale em Copiar (cópias); ponto: x5 y3"
+                else:
+                    error = self.tool.fix("copies", value)
+                    self.consumed = not error
+            else:
+                error = self.tool.fix(key, value)
         if error:
             edit.setStyleSheet(_STYLE["invalid"])
             if not quiet:
@@ -240,11 +257,14 @@ class MeasureBox(QFrame):
             text = self.edits[0].text()
             self.stop()
             try:
-                value = parse_number(text)
-            except ValueError:
-                self.view.ctx.session.message(f"número inválido: {text!r}", "recusa")
+                kind, value = parse_entry(text)
+            except ValueError as e:
+                self.view.ctx.session.message(str(e), "recusa")
                 return
-            if not self.tool.numeric(value):
+            if kind == "point":
+                self.view.enter_point(value)
+                return
+            if kind != "value" or not self.tool.numeric(value):
                 self.view.ctx.session.message("a ferramenta não espera um número agora",
                                               "recusa")
             self.view.after_tool_input()
@@ -252,6 +272,11 @@ class MeasureBox(QFrame):
         if not self.commit():
             return
         self.editing = None
+        if self.consumed:  # o ponto digitado já foi o clique; as cópias só se fixam
+            self.consumed = False
+            self.stop()
+            self.view.after_tool_input()
+            return
         self.tool.confirm()
         self.stop()
         self.view.after_tool_input()
@@ -283,6 +308,12 @@ class MeasureBox(QFrame):
                 return True
             if key in (Qt.Key_Tab, Qt.Key_Backtab) and not self.generic:
                 if self.commit():
+                    if self.consumed and self.editing is None:  # ponto digitado
+                        self.consumed = False
+                        self.stop()
+                        self.view.after_tool_input()
+                        return True
+                    self.consumed = False
                     step = -1 if key == Qt.Key_Backtab or \
                         event.modifiers() & Qt.ShiftModifier else 1
                     self.start(self.editing + step)
@@ -340,6 +371,18 @@ class ToolInput:
 
     def anchor_screen(self, p):
         """Ponto do pavimento na tela (QPointF), ou None (a vista que sabe projeta)."""
+
+    def enter_point(self, p) -> None:
+        """Ponto digitado (linha de comando ``x;y`` ou ``x5 y3`` no quadro): um clique
+        exato, sem atração nem trava (spec/ui 24 §4, 30 §8)."""
+        tool = self.toolbox.active
+        self.ctx.axis_lock = None
+        tool.fixed.clear()
+        mods = Mods(alt=True)
+        tool.move(tuple(p), mods)
+        tool.press(tuple(p), mods)
+        self.ctx.last_point = tuple(p)
+        self.after_tool_input()
 
     @property
     def numeric(self) -> QLineEdit:
@@ -454,6 +497,7 @@ class ToolInput:
         """Clique na vista com o quadro em edição: o valor digitado vale para o clique."""
         if self.measure.editing is not None and not self.measure.generic:
             self.measure.commit(quiet=True)
+            self.measure.consumed = False
         if self.measure.editing is not None:
             self.measure.editing = None
             self.measure.generic = False

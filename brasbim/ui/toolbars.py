@@ -124,6 +124,9 @@ EDIT_TOOLS = [
      "clique o trecho a aparar ou perto da ponta solta; Shift estende"),
     ("fillet", "fillet", "Concordar",
      "clique as duas linhas ou paredes do lado que fica; raio na barra de opções"),
+    ("measure", "measure", "Medir",
+     ("clique os pontos (total); no primeiro, fecha e dá a área; Shift+clique mede um "
+     "elemento")),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
