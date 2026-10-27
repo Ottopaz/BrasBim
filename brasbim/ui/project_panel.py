@@ -9,7 +9,10 @@ criam e excluem pavimentos.
 
 from __future__ import annotations
 
+from functools import cache
+
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -38,7 +41,24 @@ from brasbim.ui.icons import icon
 from brasbim.ui.saved_views_ui import SavedViewList
 from brasbim.ui.tools import fmt, parse_number
 
+# Grupos da árvore de cortes e fachadas (spec/ui 32 §2): tipo da vista → (título, ícone)
+VIEW_GROUPS = {"section": ("Cortes", "section"), "elevation": ("Fachadas", "elevation")}
+# Ícone da vista salva pelo que ela mostra (spec/ui 32 §2)
+SAVED_ICONS = {"plan": "view_plan", "3d": "view_3d", "section": "section"}
+
 NEW_STOREY_HEIGHT = 2.80  # cota do pavimento novo: a maior + 2,80 m (§7)
+
+
+@cache
+def tree_icon(name: str) -> QIcon:
+    """Ícone de item que abre e fecha na árvore: a árvore desenha o item aberto no estado
+    "ligado", que nos ícones do tema é a cor sobre o destaque (sumiria no fundo)."""
+    base, out = icon(name), QIcon()
+    for size in (16, 24, 32):
+        pixmap = base.pixmap(size, QIcon.Normal, QIcon.Off)
+        out.addPixmap(pixmap, QIcon.Normal, QIcon.Off)
+        out.addPixmap(pixmap, QIcon.Normal, QIcon.On)
+    return out
 
 
 def new_storey_name(doc) -> str:
@@ -66,12 +86,14 @@ class ProjectPanel(QWidget):
                                    | QAbstractItemView.EditKeyPressed)
         self.table.cellClicked.connect(self._activate)
         self.table.itemChanged.connect(self._edited)
-        self.views = QListWidget()  # cortes e fachadas (spec/ui 14 §7)
-        self.views.setToolTip("Clique duplo abre a vista")
-        self.views.itemDoubleClicked.connect(
-            lambda item: self.open_view and self.open_view(item.data(Qt.UserRole)))
-        self.views.itemClicked.connect(
-            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        # Cortes e fachadas (spec/ui 14 §7), em grupos com ícone (spec/ui 32 §2)
+        self.views = QTreeWidget()
+        self.views.setHeaderHidden(True)
+        self.views.setIndentation(12)
+        self.views.setToolTip("Clique duplo (ou Enter) abre a vista")
+        self.views.itemDoubleClicked.connect(lambda item, _c=0: self._open_view_item(item))
+        self.views.itemActivated.connect(lambda item, _c=0: self._open_view_item(item))
+        self.views.itemClicked.connect(self._select_view_item)
         self.open_view = None  # posto pela janela principal
         # Vistas salvas (spec/ui 25 §4): clique duplo abre; arrastar leva à prancha
         self.saved = SavedViewList()
@@ -93,13 +115,17 @@ class ProjectPanel(QWidget):
         self.save_view_button.setAutoRaise(True)
         self.save_view_button.clicked.connect(lambda: self.save_view and self.save_view())
         # Pranchas (spec/ui 15 §5)
-        self.sheets = QListWidget()
-        self.sheets.setToolTip("Clique duplo abre a prancha")
-        self.sheets.itemDoubleClicked.connect(
-            lambda item: self.open_sheet and self.open_sheet(item.data(Qt.UserRole)))
-        self.sheets.itemClicked.connect(
-            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        # Pranchas com os desenhos postos nelas (spec/ui 32 §2): clique duplo na prancha a
+        # abre; num desenho, abre a origem dele (planta, corte ou vista salva)
+        self.sheets = QTreeWidget()
+        self.sheets.setHeaderHidden(True)
+        self.sheets.setIndentation(12)
+        self.sheets.setToolTip("Clique duplo abre a prancha; num desenho, abre a origem dele")
+        self.sheets.itemDoubleClicked.connect(lambda item, _c=0: self._open_sheet_item(item))
+        self.sheets.itemActivated.connect(lambda item, _c=0: self._open_sheet_item(item))
+        self.sheets.itemClicked.connect(self._select_sheet_item)
         self.open_sheet = None
+        self.open_plan = None  # posto pela janela principal: planta do pavimento à frente
         # Folhas mestras (spec/ui 26 §4)
         self.masters = QListWidget()
         self.masters.setToolTip("Clique duplo abre a folha mestra para editar o carimbo")
@@ -240,11 +266,28 @@ class ProjectPanel(QWidget):
         self.table.blockSignals(False)
         from brasbim.core.drawings import views as views_
 
+        closed = {self.views.topLevelItem(i).data(0, Qt.UserRole + 1)
+                  for i in range(self.views.topLevelItemCount())
+                  if not self.views.topLevelItem(i).isExpanded()}
         self.views.clear()
+        groups = {}
+        for kind, (title, name) in VIEW_GROUPS.items():
+            group = QTreeWidgetItem([title])
+            group.setIcon(0, tree_icon(name))
+            group.setData(0, Qt.UserRole + 1, kind)
+            group.setFlags(Qt.ItemIsEnabled)
+            groups[kind] = group
         for view in views_.all_views(self.session.doc):
-            item = QListWidgetItem(views_.read_state(view)["name"] or view.GlobalId)
-            item.setData(Qt.UserRole, view.GlobalId)
-            self.views.addItem(item)
+            state = views_.read_state(view)
+            group = groups[state["kind"] if state["kind"] in groups else "section"]
+            item = QTreeWidgetItem(group, [state["name"] or view.GlobalId])
+            item.setIcon(0, icon(VIEW_GROUPS[group.data(0, Qt.UserRole + 1)][1]))
+            item.setData(0, Qt.UserRole, view.GlobalId)
+        for kind, group in groups.items():
+            if group.childCount():
+                group.setText(0, f"{VIEW_GROUPS[kind][0]} ({group.childCount()})")
+                self.views.addTopLevelItem(group)
+                group.setExpanded(kind not in closed)
         from brasbim.core.drawings import saved_views as saved_
 
         self.saved.clear()
@@ -252,36 +295,110 @@ class ProjectPanel(QWidget):
             state = saved_.read_state(entity)
             item = QListWidgetItem(state["name"])
             item.setData(Qt.UserRole, entity.GlobalId)
+            item.setIcon(icon(SAVED_ICONS.get(state["kind"], "save_view")))
             item.setToolTip(saved_.KIND_LABEL[state["kind"]])
             self.saved.addItem(item)
         from brasbim.core.drawings import sheets as sheets_
 
+        expanded = {self.sheets.topLevelItem(i).data(0, Qt.UserRole)
+                    for i in range(self.sheets.topLevelItemCount())
+                    if self.sheets.topLevelItem(i).isExpanded()}
         self.sheets.clear()
         for sheet in sheets_.all_sheets(self.session.doc):
             state = sheets_.read_state(sheet)
             text = f"{state['number']} · {state['title']}" if state["title"] \
                 else state["number"]
-            item = QListWidgetItem(text)
-            item.setData(Qt.UserRole, sheet.GlobalId)
-            self.sheets.addItem(item)
-        self.delete_sheet_button.setEnabled(self.sheets.count() > 0)
+            item = QTreeWidgetItem(self.sheets, [text])
+            item.setIcon(0, tree_icon("sheet"))
+            item.setData(0, Qt.UserRole, sheet.GlobalId)
+            for placed in state["views"]:
+                source = self._placed(placed)
+                if source is not None:
+                    child = QTreeWidgetItem(item, [source[2]])
+                    child.setIcon(0, icon(source[3]))
+                    child.setData(0, Qt.UserRole + 2, source[:2])
+            item.setExpanded(sheet.GlobalId in expanded)
+        self.delete_sheet_button.setEnabled(self.sheets.topLevelItemCount() > 0)
         from brasbim.core.drawings import masters as masters_
 
         self.masters.clear()
         for entity in masters_.all_masters(self.session.doc):
             state = masters_.read_state(entity)
-            item = QListWidgetItem(f"{state['name']} · {masters_.describe(state)}")
+            item = QListWidgetItem(icon("master"),
+                                   f"{state['name']} · {masters_.describe(state)}")
             item.setData(Qt.UserRole, entity.GlobalId)
             self.masters.addItem(item)
         for button in (self.duplicate_master_button, self.delete_master_button):
             button.setEnabled(self.masters.count() > 0)
         self.tables.clear()
         for table in tables_.all_tables(self.session.doc):
-            item = QListWidgetItem(tables_.read_state(table)["name"] or table.GlobalId)
+            item = QListWidgetItem(icon("table"),
+                                   tables_.read_state(table)["name"] or table.GlobalId)
             item.setData(Qt.UserRole, table.GlobalId)
             self.tables.addItem(item)
         self.delete_table_button.setEnabled(self.tables.count() > 0)
         self._refresh_objects()
+
+    def _placed(self, placed: dict) -> tuple[str, str, str, str] | None:
+        """(tipo, GlobalId da origem, nome, ícone) do desenho posto na prancha; ``None`` se
+        a origem não existe mais."""
+        from brasbim.core.drawings import saved_views as saved_
+        from brasbim.core.drawings import views as views_
+
+        doc = self.session.doc
+        kind = placed.get("kind")
+        gid = placed.get(kind) if kind != "plan" else placed.get("storey")
+        entity = doc.find(gid) if gid else None
+        if entity is None:
+            return None
+        if kind == "plan":
+            return "plan", gid, f"Planta · {entity.Name or ''}", "view_plan"
+        if kind == "view":
+            state = views_.read_state(entity)
+            return "view", gid, state["name"] or gid, VIEW_GROUPS.get(
+                state["kind"], VIEW_GROUPS["section"])[1]
+        if kind == "saved":
+            state = saved_.read_state(entity)
+            return "saved", gid, state["name"], SAVED_ICONS.get(state["kind"], "save_view")
+        return None
+
+    def _open_sheet_item(self, item) -> None:
+        gid = item.data(0, Qt.UserRole)
+        if gid:
+            if self.open_sheet:
+                self.open_sheet(gid)
+            return
+        kind, gid = item.data(0, Qt.UserRole + 2)
+        opener = {"plan": self.open_plan, "view": self.open_view,
+                  "saved": self.open_saved_view}[kind]
+        if opener:
+            opener(gid)
+
+    def _select_sheet_item(self, item, _column=0) -> None:
+        gid = item.data(0, Qt.UserRole)
+        if gid is None:
+            kind, gid = item.data(0, Qt.UserRole + 2)
+            if kind != "view":  # pavimento e vista salva não são selecionáveis na planta
+                return
+        self.session.select([gid])
+
+    def view_ids(self) -> list[str]:
+        """Cortes e fachadas da árvore, na ordem mostrada."""
+        out = []
+        for i in range(self.views.topLevelItemCount()):
+            group = self.views.topLevelItem(i)
+            out += [group.child(j).data(0, Qt.UserRole) for j in range(group.childCount())]
+        return out
+
+    def _open_view_item(self, item) -> None:
+        gid = item.data(0, Qt.UserRole)
+        if gid and self.open_view:
+            self.open_view(gid)
+
+    def _select_view_item(self, item, _column=0) -> None:
+        gid = item.data(0, Qt.UserRole)
+        if gid:
+            self.session.select([gid])
 
     # --- objetos paramétricos ---------------------------------------------------------------
 
@@ -625,8 +742,10 @@ class ProjectPanel(QWidget):
         from brasbim.core.drawings import sheets as sheets_
 
         item = self.sheets.currentItem()
+        while item is not None and item.parent() is not None:
+            item = item.parent()
         if item is not None:
-            doc, gid = self.session.doc, item.data(Qt.UserRole)
+            doc, gid = self.session.doc, item.data(0, Qt.UserRole)
             self.session.run(lambda: sheets_.delete_sheet(doc, gid))
 
     def _templates_menu(self) -> QMenu:

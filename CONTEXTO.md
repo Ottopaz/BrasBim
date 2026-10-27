@@ -6,7 +6,20 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑27, noite (projeto legal, etapa 1: situação de cada elemento).*
 
-> **Onde paramos (2026‑10‑27, noite):** **etapa 1 do projeto legal feita** (spec/ui 31
+> **Onde paramos (2026‑10‑27, fim da noite):** pedido do revisor fora do roteiro, na
+> **spec/ui 32** (`spec/ui/32-navegacao-e-abas.md`, em revisão; pontos (a)–(d) no §6):
+> painel Projeto com **ícones e grupos** (Cortes (n) | Fachadas (n) em árvore; vistas
+> salvas, pranchas, folhas mestras e tabelas com ícone; ícones novos prancha, folha mestra
+> e tabela) e **cada prancha mostra os desenhos postos nela** (clique duplo abre a
+> origem: planta, corte ou vista salva). **Abas fecham**: ×, clique do meio, Ctrl+W /
+> Exibir > Fechar aba, botão direito (fechar, as outras, todas); Planta e 3D não fecham.
+> Antes da spec, a pesquisa em `research_notes/` (navegador do Archicad, do Revit 2026 e
+> 2027, abas do Rhino) foi lida para trazer a ideia "de forma similar e aprimorada", com
+> solução própria. Achado: item aberto de árvore usa o ícone no estado "ligado" (branco
+> no tema); itens que abrem usam `project_panel.tree_icon`. Testes NV01–NV03; 750 testes
+> passando, ruff limpo. **Próximo** continua a etapa 2 do projeto legal.
+
+> **Antes (2026‑10‑27, noite):** **etapa 1 do projeto legal feita** (spec/ui 31
 > §2–§3; "como ficou" no §12 da spec e abaixo; pontos novos (g)–(j) no §11). Situação de
 > cada elemento e anotação no Pset `BrasBim_Intervencao` + `Status` do Pset comum
 > (`core/intervention.py`, operação `situation.set`), campo Situação no painel (o antigo,
@@ -148,7 +161,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑27 (noite): 747 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑27 (fim da noite): 750 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -157,7 +170,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (747 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (750 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -191,6 +204,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
 | `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapa 1 feita** (situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`), etapas 2–5 a fazer (PL04–PL08); pontos §11 (a)–(j) |
+| `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |

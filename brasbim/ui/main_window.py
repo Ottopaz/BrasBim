@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QSplitter,
+    QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -118,6 +119,38 @@ def delete_transaction(session: Session) -> tuple[Transaction, str]:
                             cascade.get("objects", 0))
 
 
+class _TabBar(QTabBar):
+    """Abas da área central (spec/ui 32 §3): clique do meio fecha; botão direito oferece
+    fechar esta, as outras ou todas. Planta e 3D não fecham."""
+
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            index = self.tabAt(event.position().toPoint())
+            if index >= 0:
+                self.window_.close_tab(self.window_.tabs.widget(index))
+                return
+        super().mouseReleaseEvent(event)
+
+    def _menu(self, pos) -> None:
+        index = self.tabAt(pos)
+        if index < 0:
+            return
+        window = self.window_
+        widget = window.tabs.widget(index)
+        menu = QMenu(self)
+        close = menu.addAction("Fechar", lambda: window.close_tab(widget))
+        close.setEnabled(window.closable(widget))
+        menu.addAction("Fechar as outras abas", lambda: window.close_tabs(keep=widget))
+        menu.addAction("Fechar todas as abas", lambda: window.close_tabs())
+        menu.exec(self.mapToGlobal(pos))
+
+
 class _Pane(QWidget):
     """Vista no lado a lado com uma faixa de título; clique duplo na faixa maximiza a
     vista ou volta às duas metades (pente fino, 2026-10-27)."""
@@ -189,6 +222,10 @@ class MainWindow(QMainWindow):
 
     def _build_central(self) -> None:
         self.tabs = QTabWidget()
+        self.tabs.setTabBar(_TabBar(self))
+        self.tabs.setTabsClosable(True)  # spec/ui 32 §3
+        self.tabs.setMovable(True)
+        self.tabs.tabCloseRequested.connect(lambda i: self.close_tab(self.tabs.widget(i)))
         self.splitter = QSplitter(Qt.Horizontal)
         self.central = QWidget()
         layout = QVBoxLayout(self.central)
@@ -205,8 +242,7 @@ class MainWindow(QMainWindow):
             self.splitter.addWidget(pane)
         self.splitter.setChildrenCollapsible(True)
         self.splitter.hide()
-        self.tabs.addTab(self.plan, "Planta")
-        self.tabs.addTab(self.view3d, "3D")
+        self._add_fixed_tabs()
         self.tabs.currentChanged.connect(self._tab_changed)
         self.setCentralWidget(self.central)
 
@@ -221,6 +257,7 @@ class MainWindow(QMainWindow):
         self.project = ProjectPanel(self.session)
         self.project.open_view = self.open_view
         self.project.open_saved_view = self.open_saved_view
+        self.project.open_plan = self.open_plan
         self.project.update_saved_view = self.update_saved_view
         self.project.save_view = self.save_view
         self.project.open_sheet = self.open_sheet
@@ -370,6 +407,9 @@ class MainWindow(QMainWindow):
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
                                               "Ctrl+Shift+3")
+        self._action(view_menu, "Fechar aba", lambda: self.close_tab(),  # spec/ui 32 §3
+                     ["Ctrl+W", "Ctrl+F4"])
+        self._action(view_menu, "Fechar todas as abas", lambda: self.close_tabs())
         self.sheet_limits_action = self._action(  # spec/ui 29 §3
             view_menu, "Limites dos desenhos na prancha",
             lambda checked: self.set_sheet_limits(checked))
@@ -924,6 +964,16 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(view)
         return view
 
+    def open_plan(self, storey_gid: str) -> bool:
+        """Planta do pavimento à frente (desenho de prancha no painel Projeto)."""
+        storey = self.session.doc.find(storey_gid)
+        if storey is None:
+            return False
+        if self.session.storey_id != storey_gid:
+            self.session.set_storey(storey)
+        self.set_view("plan")
+        return True
+
     def open_sheet(self, gid: str) -> SheetView | None:
         """Abre a prancha numa aba (spec/ui 15 §5)."""
         if self.session.doc.find(gid) is None:
@@ -969,6 +1019,48 @@ class MainWindow(QMainWindow):
             self.set_view("plan")
         self.tabs.setCurrentWidget(view)
         return view
+
+    def _add_fixed_tabs(self) -> None:
+        """Planta e 3D, sempre presentes: as únicas abas sem o botão de fechar."""
+        bar = self.tabs.tabBar()
+        for widget, title in ((self.plan, "Planta"), (self.view3d, "3D")):
+            index = self.tabs.insertTab(0 if widget is self.plan else 1, widget, title)
+            for side in (QTabBar.LeftSide, QTabBar.RightSide):
+                bar.setTabButton(index, side, None)
+
+    def _tab_views(self) -> tuple[dict, ...]:
+        return self.section_views, self.sheet_views, self.master_views, self.table_views
+
+    def closable(self, widget) -> bool:
+        return any(widget in views.values() for views in self._tab_views())
+
+    def close_tab(self, widget=None) -> bool:
+        """Fecha a aba (corte, fachada, prancha, folha mestra ou tabela; spec/ui 32 §3).
+        O que foi editado nela já está no projeto: fechar não perde nada."""
+        if widget is None:
+            widget = self.tabs.currentWidget() if not self.split else None
+        for views in self._tab_views():
+            gid = next((g for g, v in views.items() if v is widget), None)
+            if gid is None:
+                continue
+            if views is self.section_views and self.active_saved_view is not None:
+                entity = self.session.doc.find(self.active_saved_view)
+                if entity is not None and saved_views.read_state(entity).get("view") == gid:
+                    self.close_saved_view()
+            del views[gid]
+            self.tabs.removeTab(self.tabs.indexOf(widget))
+            widget.deleteLater()
+            return True
+        if widget is self.plan or widget is self.view3d:
+            self.session.message("a planta e o 3D ficam sempre abertos", "recusa")
+        return False
+
+    def close_tabs(self, keep=None) -> None:
+        """Fecha todas as abas que fecham, menos ``keep``."""
+        for views in self._tab_views():
+            for widget in list(views.values()):
+                if widget is not keep:
+                    self.close_tab(widget)
 
     def _tab_changed(self, _index: int = -1) -> None:
         """Com a aba de uma tabela à frente, o painel de propriedades é o dela (§5)."""
@@ -1448,8 +1540,7 @@ class MainWindow(QMainWindow):
                 self.split = True
             return
         if self.split:
-            self.tabs.addTab(self.plan, "Planta")
-            self.tabs.addTab(self.view3d, "3D")
+            self._add_fixed_tabs()
             self.splitter.hide()
             self.tabs.show()
             self.split = False

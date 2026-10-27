@@ -32,7 +32,7 @@ def test_prancha_pelo_painel_e_aba(window):
     (sheet,) = sheets.all_sheets(s.doc)
     tab = window.sheet_views[sheet.GlobalId]
     assert window.tabs.currentWidget() is tab
-    assert window.project.sheets.count() == 1
+    assert window.project.sheets.topLevelItemCount() == 1
     s.select([sheet.GlobalId])
     window.properties._rebuild()
     assert window.properties.groups[0].title == "Prancha 01"

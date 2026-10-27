@@ -228,6 +228,17 @@ ICONS = {
     "save_view": '<path d="M13.25 4.75 H2.75 V19.25 H21.25 V12.75"/>'
                  '<path d="M15.75 2.75 H21.25 V10.25 L18.5 8 L15.75 10.25 Z"/>'
                  '<path d="M5.5 16 L9 11.5 L11.5 14 L13.5 12" stroke-width="1"/>',
+    # painel Projeto (spec/ui 32 §2): prancha deitada com carimbo; folha mestra com o
+    # carimbo cheio e o miolo tracejado; tabela em grade
+    "sheet": '<rect x="2.75" y="5.75" width="18.5" height="12.5"/>'
+             '<path d="M14.5 14.5 H21.25 M14.5 14.5 V18.25" stroke-width="1"/>'
+             '<path d="M5.5 8.5 H12 V12.5 H5.5 Z" stroke-width="1"/>',
+    "master": '<rect x="2.75" y="5.75" width="18.5" height="12.5"/>'
+              '<rect x="14.5" y="14.5" width="6.75" height="3.75" fill="currentColor"/>'
+              '<path d="M5.5 8.5 H18.5 M5.5 11.5 H12" stroke-dasharray="1.5 1.5" '
+              'stroke-width="1"/>',
+    "table": '<rect x="3.75" y="4.75" width="16.5" height="14.5"/>'
+             '<path d="M3.75 9 H20.25 M3.75 13.5 H20.25 M10 9 V19.25" stroke-width="1"/>',
 }
 
 out = Path("brasbim/ui/icons")

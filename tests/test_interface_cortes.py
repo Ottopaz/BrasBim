@@ -45,7 +45,7 @@ def test_corte_pela_ferramenta_e_aba(window):
     view = _section(window)
     state = views.read_state(view)
     assert (state["letter"], state["side"], state["name"]) == ("A", "left", "Corte A")
-    assert window.project.views.count() == 1
+    assert window.project.view_ids() == [view.GlobalId]
     tab = window.open_view(view.GlobalId)
     assert window.tabs.currentWidget() is tab
     assert window.tabs.tabText(window.tabs.indexOf(tab)) == "Corte A"
