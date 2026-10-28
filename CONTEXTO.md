@@ -4,9 +4,29 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑28 (projeto compartilhado na rede local, spec/ui 33).*
+*Atualizado em 2026‑10‑28 (pasta para pendrive e correção do menu Equipe).*
 
-> **Onde paramos (2026‑10‑28, fim da noite):** o **segundo assunto** do revisor era testar o trabalho
+> **Onde paramos (2026‑10‑28, depois):** para o teste em 2 PCs, o revisor pediu um jeito
+> **nada técnico** de abrir o BrasBim no outro computador. Feito a pasta
+> `E:\Otavio\Nova pasta\BrasBim para pendrive\BrasBim` (fora do git, só o que roda o
+> programa, sem `_restrito/`), com **Abrir o BrasBim.bat** (na 1ª vez instala o Python
+> 3.14.3 do python.org e as bibliotecas, cria um atalho na Área de Trabalho; depois só
+> abre), `requisitos.txt` com as versões testadas e `LEIA-ME.txt`. Os arquivos e o jeito
+> de montar a pasta de novo estão em `scripts/pendrive/` (`COMO-MONTAR.md`): **remontar
+> a pasta sempre que o código mudar**. Achado no teste: o PySide6 passa do limite de 260
+> caracteres do Windows; por isso o ambiente fica em `%LOCALAPPDATA%\BrasBim\ambiente` e
+> só entra o `PySide6_Essentials`. Conferido neste PC: instalou e abriu.
+> No primeiro uso, o revisor achou um **erro**: Equipe > Entrar quebrava ("cannot unpack
+> non-iterable bool object"): o `triggered` do menu passava `checked`, que virava o
+> endereço. O mesmo defeito estava em Arquivo > Exportar PDF… (pulava a escolha do
+> arquivo). Os dois agora chamam por `lambda`; varridos os outros itens e botões da
+> interface, sem mais casos. Teste que dispara os itens do menu
+> (`test_eq_interface_menu_nao_passa_checked`); commit 3dab93c, 781 testes, ruff limpo.
+> A pasta do pendrive já tem a correção. **Próximo:** o revisor testa a Equipe em 2 PCs
+> de verdade (até agora só entrou no próprio PC) e dá retorno sobre a velocidade do
+> DWG; depois, a etapa 3 do projeto legal (quadro de áreas, spec/ui 31 §5).
+
+> **Antes (2026‑10‑28, fim da noite):** o **segundo assunto** do revisor era testar o trabalho
 > em equipe: 2 ou mais PCs editando o mesmo projeto. Escolhas dele: **mesma rede local** e
 > **reserva + envio automático**. Feito na **spec/ui 33** (`spec/ui/33-projeto-compartilhado.md`,
 > em revisão; pontos (a)–(e) no §10). O núcleo está em `brasbim/core/collab/`: o servidor

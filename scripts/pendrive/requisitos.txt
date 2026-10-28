@@ -1,0 +1,9 @@
+# Bibliotecas do BrasBim, nas mesmas versões testadas no PC de desenvolvimento.
+# Da interface (Qt) só a parte básica, que é o que o BrasBim usa.
+ifcopenshell==0.9.0
+pyclipr==0.1.8
+ezdxf==1.4.5
+numpy==2.5.4
+shapely==2.2.0
+PySide6_Essentials==6.12.0
+PyOpenGL==3.1.10

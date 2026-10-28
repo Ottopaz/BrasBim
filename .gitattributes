@@ -1,0 +1,2 @@
+scripts/pendrive/*.bat eol=crlf
+scripts/pendrive/*.txt eol=crlf

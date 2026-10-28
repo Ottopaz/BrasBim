@@ -1,0 +1,37 @@
+BRASBIM - COMO ABRIR
+====================
+
+1. Copie esta pasta "BrasBim" do pendrive para o computador
+   (por exemplo, para Documentos). Não rode direto do pendrive.
+
+2. Dê dois cliques em "Abrir o BrasBim".
+   - Se o Windows mostrar "O Windows protegeu o computador", clique em
+     "Mais informações" e depois em "Executar assim mesmo".
+   - Na primeira vez ele instala o que precisa (precisa de internet,
+     leva de 5 a 10 minutos). Não feche a janela preta.
+   - No fim aparece um atalho "BrasBim" na Área de Trabalho.
+     Das próximas vezes, use esse atalho.
+
+3. Se mudar a pasta de lugar depois, abra uma vez o "Abrir o BrasBim"
+   da pasta nova (o atalho antigo deixa de funcionar).
+
+
+TRABALHAR EM EQUIPE (os dois computadores na mesma rede/Wi-Fi)
+==============================================================
+
+Quem COMPARTILHA:
+  - Abra o projeto e vá em  Equipe > Compartilhar este projeto na rede...
+  - Se o Windows perguntar sobre o firewall: marque "Redes privadas"
+    e clique em Permitir.
+  - Passe para o colega o endereço que aparecer (ex.: 192.168.0.10:47815).
+
+Quem ENTRA:
+  - Vá em  Equipe > Entrar num projeto da rede...
+  - Escolha o projeto na lista. Se ele não aparecer, digite o endereço
+    que o colega passou.
+  - Se o Windows perguntar sobre o firewall, permita em "Redes privadas".
+
+Lembretes:
+  - Só quem compartilhou salva o projeto de verdade.
+  - Para mexer num elemento do colega: botão direito > Pedir liberação.
+  - Se algo der errado: Ajuda > Registrar observação...
