@@ -17,11 +17,12 @@ curvas de nível (spec do terreno, parte B).
 ## 2. Formatos
 - **DXF**: lido diretamente (formato com documentação pública; biblioteca ezdxf, MIT).
 - **DWG**: formato fechado. O BrasBim não o lê nem faz engenharia reversa dele: chama
-  um **conversor externo** instalado pelo usuário, que gera um DXF temporário:
-  1. ODA File Converter (gratuito, opendesign.com), achado na instalação padrão;
-  2. ou o `dwg2dxf` do LibreDWG, se estiver no PATH.
-  Sem conversor, a importação recusa com a orientação de instalar um deles ou salvar o
-  arquivo como DXF no programa de CAD.
+  um **conversor à parte**, que gera um DXF temporário (§8):
+  1. ODA File Converter, só se o usuário já o tiver instalado (achado na instalação
+     padrão);
+  2. senão, o `dwg2dxf` do **GNU LibreDWG que vem com o BrasBim**;
+  3. senão, o `dwg2dxf` do sistema (Linux: pacote `libredwg`).
+  Sem nenhum deles, o BrasBim oferece baixar o LibreDWG (Windows) e tenta de novo.
 
 ## 3. O que entra
 - Linhas, polilinhas (2D e 3D), arcos, círculos, elipses e curvas (spline) viram
@@ -69,13 +70,42 @@ Levantamento com 20 000 polilinhas de 20 vértices: ler 6 s, importar 2 s, plant
 salvar 2 s (17 MB de IFC). Para isso a anotação do desenho importado não é refeita a
 cada transação, e o diário da sessão serializa cada transação uma vez.
 
-## 8. Fontes
+## 8. Conversor que vem com o BrasBim (2026‑10‑28)
+Pedido do revisor: o usuário não deve ter de instalar programa nenhum para abrir DWG.
+- **GNU LibreDWG 0.14** (GPL‑3.0‑or‑later, projeto GNU, escrito a partir de especificação
+  pública): só `dwg2dxf.exe`, `libredwg-0.dll` e `libiconv-2.dll`, sem alteração, com o
+  `LEIA-ME.txt` da licença e do código‑fonte (`core/imports/libredwg.py`). O ODA File
+  Converter não pode ser redistribuído; o CADCraft/acadrust foi visto e descartado
+  (pré‑alfa).
+- Os binários **não vão para o git** (a DLL tem 31 MB): `libredwg.install` baixa o pacote
+  oficial da versão fixada, confere o **SHA‑256** e extrai os três arquivos.
+  `scripts/baixar_libredwg.py` põe em `brasbim/vendor/libredwg` (para o instalador; o
+  wheel inclui a pasta); o aplicativo, quando falta, pergunta e baixa em
+  `%LOCALAPPDATA%/BrasBim/libredwg`. Nada é instalado no sistema.
+- Conversão: `dwg2dxf -y -o saída entrada`, sem janela de console; o LibreDWG pula objetos
+  que não sabe ler e avisa no stderr; vale o DXF gerado (código de saída diferente de zero,
+  com DXF, não recusa). Sem DXF, a recusa mostra a última linha do erro.
+- Interface: o erro da importação também aparece numa janela (antes só em Mensagens);
+  Arquivo > Abrir… aceita DWG e DXF e os importa no projeto aberto.
+- Conferido com os DWG de exemplo do LibreDWG (versões 2000 a 2018): todas as camadas e
+  entidades lidas; um bloco muito longe da origem no exemplo é do próprio arquivo (o DXF
+  de referência tem o mesmo). A **escrita** de DWG do LibreDWG perde camadas, mas o
+  BrasBim não escreve DWG.
+- Testes: ID04 (sem conversor), ID07 (baixar e conferir), ID08 (conversão e erro), ID09
+  (DWG reais, quando `BRASBIM_DWG_AMOSTRAS` aponta uma pasta), ID10 (interface: perguntar,
+  baixar e tentar de novo).
+
+## 9. Fontes
 DXF Reference (Autodesk, documentação pública); ezdxf (MIT); IFC 4.3 `IfcAnnotation`,
 `IfcIndexedPolyCurve`, `IfcCartesianPointList2D` [IFC-ANNOT]. Conversores externos
-usados como programas à parte. Nenhum material de `_restrito/` nem de `tools/` foi usado.
+usados como programas à parte; GNU LibreDWG 0.14 (GPL‑3.0‑or‑later,
+gnu.org/software/libredwg). Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
-## 9. Pontos de revisão
-(a) DWG por conversor externo (o usuário instala o ODA File Converter);
+## 10. Pontos de revisão
+(a) DWG por conversor à parte: o LibreDWG vem com o BrasBim (§8); o ODA só se o
+    usuário já o tiver;
 (b) uma anotação por camada do arquivo;
 (c) o desenho entra com traço fino preto (cor por camada do arquivo fica para depois);
 (d) hachuras e imagens do arquivo não entram; cotas entram explodidas.
+(e) LibreDWG baixado na primeira vez, com pergunta (Windows); ODA, se instalado, tem
+    preferência; Abrir… importa DWG/DXF no projeto aberto (§8).

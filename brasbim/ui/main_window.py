@@ -173,6 +173,9 @@ class _Pane(QWidget):
 
 
 class MainWindow(QMainWindow):
+
+    quiet_dialogs = False  # True nos testes: avisos só em Mensagens
+
     def __init__(self, session: Session):
         super().__init__()
         self.session = session
@@ -1785,10 +1788,15 @@ class MainWindow(QMainWindow):
             self.session.new()
 
     def open_project(self) -> None:
-        if not self._ask_save():
+        """Arquivo > Abrir…: projeto IFC; DWG e DXF vão para Importar desenho no projeto
+        aberto (spec/ui 22 §8)."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Abrir", "", "Projetos e desenhos (*.ifc *.dwg *.dxf);;IFC (*.ifc);;"
+            "Desenhos (*.dwg *.dxf)")
+        if path and Path(path).suffix.lower() in (".dwg", ".dxf"):
+            self.import_drawing(path)
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Abrir projeto", "", "IFC (*.ifc)")
-        if path:
+        if path and self._ask_save():
             try:
                 self.session.open(path)
             except (OSError, RuntimeError, OpError) as e:
@@ -1811,16 +1819,9 @@ class MainWindow(QMainWindow):
                 self, "Importar desenho", "", "Desenhos (*.dxf *.dwg);;DXF (*.dxf);;DWG (*.dwg)")
             if not path:
                 return False
-        self.statusBar().showMessage(f"Lendo {Path(path).name}…")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            drawing = dxf.read(path)
-        except OpError as e:
-            self.session.message(str(e), "recusa")
+        drawing = self._read_drawing(path)
+        if drawing is None:
             return False
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.statusBar().clearMessage()
         if not drawing.layers:
             self.session.message(f"{drawing.source} não tem linhas, textos nem pontos",
                                  "recusa")
@@ -1842,6 +1843,57 @@ class MainWindow(QMainWindow):
                              f"{'' if len(layers) == 1 else 's'}, {n} linhas")
         self.fit_all()
         return True
+
+    def _read_drawing(self, path: str):
+        """Lê o desenho; sem conversor de DWG, oferece baixar o LibreDWG e tenta de novo
+        (spec/ui 22 §8). Erros vão para Mensagens e para um aviso na tela."""
+        from brasbim.core.imports import dxf, libredwg
+
+        for attempt in (1, 2):
+            self.statusBar().showMessage(f"Lendo {Path(path).name}…")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                return dxf.read(path)
+            except dxf.MissingConverter as e:
+                error = e
+            except OpError as e:
+                self._drawing_error(str(e))
+                return None
+            finally:
+                QApplication.restoreOverrideCursor()
+                self.statusBar().clearMessage()
+            if attempt == 2 or not libredwg.supported() or not self.confirm_download():
+                self._drawing_error(str(error))
+                return None
+            self.statusBar().showMessage("Baixando o conversor de DWG (LibreDWG)…")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                libredwg.install()
+            except RuntimeError as e:
+                self._drawing_error(str(e))
+                return None
+            finally:
+                QApplication.restoreOverrideCursor()
+                self.statusBar().clearMessage()
+            self.session.message(f"Conversor de DWG LibreDWG {libredwg.VERSION} baixado em "
+                                 f"{libredwg.user_folder()}")
+        return None
+
+    def confirm_download(self) -> bool:
+        """Pergunta antes de baixar o conversor de DWG (testes trocam este método)."""
+        from brasbim.core.imports import libredwg
+
+        answer = QMessageBox.question(
+            self, "Conversor de DWG",
+            "Para abrir DWG, o BrasBim usa o conversor livre GNU LibreDWG (licença GPL). "
+            f"Ele ainda não está neste computador.\n\nBaixar agora ({libredwg.SIZE_MB} MB, "
+            "uma vez só)? Fica na pasta do BrasBim; nada é instalado no sistema.")
+        return answer == QMessageBox.Yes
+
+    def _drawing_error(self, text: str) -> None:
+        self.session.message(text, "recusa")
+        if self.isVisible() and not self.quiet_dialogs:
+            QMessageBox.warning(self, "Importar desenho", text[:1].upper() + text[1:])
 
     # --- cópia de segurança e recuperação (spec/ui 21) -----------------------------------
 

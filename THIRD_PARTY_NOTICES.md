@@ -44,15 +44,25 @@ bibliotecas.
 | pytest | 9.1.1 | MIT |
 | ruff | 0.17.0 | MIT |
 
-## Programas externos opcionais (não distribuídos)
+## Conversor de DWG que acompanha o BrasBim
 
-Usados só se o usuário os instalar, chamados como programas à parte, para converter DWG
-em DXF (spec/ui 22 §2):
+Chamado como programa à parte para converter DWG em DXF (spec/ui 22 §2 e §8). Não vai
+para o repositório: `scripts/baixar_libredwg.py` (instalador) ou o próprio aplicativo
+baixam o pacote oficial e conferem o SHA‑256.
+
+| Programa | Versão | Licença | Código‑fonte |
+|---|---|---|---|
+| GNU LibreDWG (`dwg2dxf.exe`, `libredwg-0.dll`) | 0.14 | GPL‑3.0‑or‑later | https://github.com/LibreDWG/libredwg/releases/download/0.14/libredwg-0.14.tar.xz |
+| GNU libiconv (`libiconv-2.dll`, do mesmo pacote) | — | LGPL‑2.1‑or‑later | https://www.gnu.org/software/libiconv/ |
+
+Ao distribuir o BrasBim com esses arquivos, vão junto o `LEIA-ME.txt` (licença e endereço
+do código‑fonte correspondente) e o texto da GPL.
+
+## Programa externo opcional (não distribuído)
 
 | Programa | Licença | Observação |
 |---|---|---|
-| ODA File Converter | Gratuito, proprietário (Open Design Alliance) | O usuário aceita a licença dele ao instalar |
-| LibreDWG (`dwg2dxf`) | GPL‑3.0‑or‑later | Programa separado; não ligado ao BrasBim |
+| ODA File Converter | Gratuito, proprietário (Open Design Alliance) | Usado só se o usuário já o tiver instalado; não pode ser redistribuído |
 
 ## Compatibilidade
 

@@ -28,3 +28,6 @@ htmlcov/
 
 # Diários de sessão do aplicativo (spec/ui §9.2)
 /feedback/diarios/
+
+# Conversor de DWG baixado (scripts/baixar_libredwg.py; spec/ui 22 §8)
+/brasbim/vendor/

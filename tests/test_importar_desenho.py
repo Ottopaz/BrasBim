@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Importar desenho DXF/DWG (spec/ui/22-importar-desenho.md §6): ID01 a ID05."""
+"""Importar desenho DXF/DWG (spec/ui/22-importar-desenho.md §6, §8): ID01 a ID10."""
 
+import hashlib
+import io
 import math
+import os
+import subprocess
+import zipfile
+from pathlib import Path
 
 import ezdxf
 import pytest
@@ -11,7 +17,7 @@ from brasbim.core import display_layers, plan, transform
 from brasbim.core.annotations import base, reference
 from brasbim.core.delete import delete_elements
 from brasbim.core.document import OpError
-from brasbim.core.imports import dxf
+from brasbim.core.imports import dxf, libredwg
 
 E0, N0 = 712_000.0, 7_462_000.0  # coordenadas UTM de um levantamento (m)
 
@@ -117,8 +123,9 @@ def test_id04_dwg_por_conversor(model, tmp_path, monkeypatch):
     dwg = tmp_path / "topo.dwg"
     dwg.write_bytes(b"AC1032 falso")
     monkeypatch.setattr(dxf, "_oda_path", lambda: None)
-    monkeypatch.setattr(dxf.shutil, "which", lambda name: None)
-    with pytest.raises(OpError, match="ODA File Converter"):
+    monkeypatch.setattr(dxf, "_system_dwg2dxf", lambda: None)
+    monkeypatch.setattr(libredwg, "find", lambda: None)
+    with pytest.raises(dxf.MissingConverter, match="LibreDWG"):
         dxf.read(str(dwg))
     assert dxf.converter() is None
 
@@ -160,3 +167,101 @@ def test_id06_interface(window, app, tmp_path):
     assert "Importado topo.dxf: 2 camadas, 4 linhas" in s.messages[-1]["text"]
     assert window.import_drawing(str(tmp_path / "nao_existe.dxf"), choose=None) is False
     assert s.messages[-1]["level"] == "recusa"
+
+
+def _package(files=libredwg.FILES) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as z:
+        for name in files:
+            z.writestr(f"libredwg/{name}", f"conteúdo de {name}")
+        z.writestr("libredwg/dwgread.exe", "não vem")
+    return buffer.getvalue()
+
+
+def test_id07_baixar_libredwg(tmp_path, monkeypatch):
+    monkeypatch.setattr(libredwg, "BUNDLED", tmp_path / "vendor")
+    monkeypatch.setattr(libredwg, "user_folder", lambda: tmp_path / "usuario")
+    assert libredwg.find() is None
+    data = _package()
+    with pytest.raises(RuntimeError, match="não confere"):  # SHA-256 fixado
+        libredwg.install(data=data)
+    assert libredwg.find() is None
+    monkeypatch.setattr(libredwg, "SHA256", hashlib.sha256(data).hexdigest())
+    exe = libredwg.install(data=data)
+    assert exe == str(tmp_path / "usuario" / "dwg2dxf.exe") == libredwg.find()
+    assert sorted(p.name for p in (tmp_path / "usuario").iterdir()) == sorted(
+        [*libredwg.FILES, "LEIA-ME.txt"])  # só o necessário, com a licença
+    assert "GPL-3.0-or-later" in (tmp_path / "usuario" / "LEIA-ME.txt").read_text("utf-8")
+    # O pacote do instalador (vendor) vale antes do da pasta do usuário.
+    libredwg.install(tmp_path / "vendor", data=data)
+    assert libredwg.find() == str(tmp_path / "vendor" / "dwg2dxf.exe")
+    bad = _package(libredwg.FILES[:1])
+    monkeypatch.setattr(libredwg, "SHA256", hashlib.sha256(bad).hexdigest())
+    with pytest.raises(RuntimeError, match="libredwg-0.dll"):
+        libredwg.install(tmp_path / "outro", data=bad)
+
+
+def test_id08_conversao_pelo_libredwg(tmp_path, monkeypatch):
+    source = levantamento(tmp_path / "gerado.dxf")
+    dwg = tmp_path / "topo.dwg"
+    dwg.write_bytes(b"AC1032")
+    calls = []
+
+    def run(args, **kwargs):  # dwg2dxf -y -o saída entrada
+        calls.append(args)
+        if "ruim" not in args[-1]:
+            Path(args[3]).write_bytes(source.read_bytes())
+        else:
+            kwargs["stderr"].write(b"Warning: x\nERROR 0x40 versao nao suportada\n")
+        return subprocess.CompletedProcess(args, 1)
+
+    monkeypatch.setattr(dxf, "_oda_path", lambda: None)
+    monkeypatch.setattr(libredwg, "find", lambda: "C:/BrasBim/dwg2dxf.exe")
+    monkeypatch.setattr(libredwg.subprocess, "run", run)
+    assert dxf.converter() == "LibreDWG"
+    d = dxf.read(str(dwg))  # código de saída diferente de 0, mas o DXF saiu: vale
+    assert d.source == "topo.dwg" and "CURVAS" in d.layers
+    assert calls[0][:3] == ["C:/BrasBim/dwg2dxf.exe", "-y", "-o"]
+    bad = tmp_path / "ruim.dwg"
+    bad.write_bytes(b"AC1032")
+    with pytest.raises(OpError, match="ruim.dwg: ERROR 0x40"):
+        dxf.read(str(bad))
+
+
+@pytest.mark.skipif(not os.environ.get("BRASBIM_DWG_AMOSTRAS") or libredwg.find() is None,
+                    reason="sem conversor baixado ou sem pasta BRASBIM_DWG_AMOSTRAS")
+def test_id09_dwg_de_verdade():
+    """DWG reais (pasta em BRASBIM_DWG_AMOSTRAS) pelo conversor baixado."""
+    files = sorted(Path(os.environ["BRASBIM_DWG_AMOSTRAS"]).glob("*.dwg"))
+    assert files
+    for path in files:
+        d = dxf.read(str(path))
+        assert sum(len(layer) for layer in d.layers.values()) > 0, path.name
+
+
+def test_id10_interface_sem_conversor(window, tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    s = window.session
+    dwg = tmp_path / "topo.dwg"
+    dwg.write_bytes(b"AC1032")
+    monkeypatch.setattr(dxf, "_oda_path", lambda: None)
+    monkeypatch.setattr(dxf, "_system_dwg2dxf", lambda: None)
+    monkeypatch.setattr(libredwg, "find", lambda: None)
+    monkeypatch.setattr(libredwg, "supported", lambda: True)
+    asked = []
+    monkeypatch.setattr(window, "confirm_download", lambda: asked.append(1) or False)
+    assert window.import_drawing(str(dwg), choose=None) is False
+    assert asked and "LibreDWG" in s.messages[-1]["text"]
+    # Aceito: baixa e tenta de novo.
+    source = levantamento(tmp_path / "gerado.dxf")
+    installed = []
+
+    def install():
+        installed.append(1)
+        monkeypatch.setattr(libredwg, "find", lambda: "dwg2dxf.exe")
+        monkeypatch.setattr(dxf, "dwg_to_dxf", lambda path, folder: str(source))
+
+    monkeypatch.setattr(window, "confirm_download", lambda: True)
+    monkeypatch.setattr(libredwg, "install", install)
+    assert window.import_drawing(str(dwg), choose=lambda d: ({"DIVISA"}, "m", (E0, N0)))
+    assert installed and any("baixado" in m["text"] for m in s.messages)

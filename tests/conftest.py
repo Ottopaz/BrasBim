@@ -100,6 +100,7 @@ def window(app, tmp_path):
 
     session = Session(journal_dir=tmp_path / "diarios")
     w = mw.MainWindow(session)
+    w.quiet_dialogs = True
     w.resize(1200, 800)
     w.show()
     w.plan.scale, w.plan.origin = 50.0, QPointF(100, 600)

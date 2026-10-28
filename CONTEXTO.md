@@ -6,7 +6,19 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑28 (projeto legal, etapa 2: perfil municipal).*
 
-> **Onde paramos (2026‑10‑28):** **etapa 2 do projeto legal feita** (spec/ui 31 §4;
+> **Onde paramos (2026‑10‑28, tarde):** o revisor relatou que **DWG não abria** (não havia
+> conversor na máquina) e pediu que o BrasBim resolva sozinho, sem instalar programas.
+> Feito (spec/ui 22 §8): o **GNU LibreDWG 0.14** (GPL) vem com o BrasBim
+> (`core/imports/libredwg.py`): só `dwg2dxf.exe` + 2 DLLs, baixados do pacote oficial com
+> SHA‑256 conferido, fora do git (`/brasbim/vendor/` no `.gitignore`;
+> `scripts/baixar_libredwg.py` para o instalador; o aplicativo pergunta e baixa em
+> `%LOCALAPPDATA%/BrasBim/libredwg` quando falta). Erro de importação agora aparece
+> numa janela; Arquivo > Abrir… aceita DWG/DXF. Conferido com DWG 2000–2018. Testes
+> ID07–ID10. ODA só se já instalado; CADCraft visto e descartado (pré‑alfa). A etapa 3
+> do projeto legal ficou como próximo passo; o revisor tem um **segundo assunto** a
+> trazer antes.
+
+> **Antes (2026‑10‑28):** **etapa 2 do projeto legal feita** (spec/ui 31 §4;
 > "como ficou" no §13 da spec; pontos novos (k)–(n) no §11). Perfis em
 > `brasbim/perfis/*.json` (Genérico, Araras, Jacareí, São Paulo, Curitiba; cada um com a
 > fonte; o que a cidade não traz vem do Genérico e o diálogo diz quais cores são
@@ -177,7 +189,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > 4. Estado verificado em 2026‑10‑28: 757 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
->    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
+>    entre os agentes); (b) ~~instalar o ODA File Converter~~ resolvido: LibreDWG vem com o BrasBim (spec/ui 22 §8);
 >    (c) itens 0 e 0b das pendências (pilar `CardinalPoint`, revisão do assistente).
 
 ## Comandos

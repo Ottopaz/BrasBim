@@ -29,6 +29,8 @@ brasbim = "brasbim.ui.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["brasbim"]
+# Conversor de DWG baixado por scripts/baixar_libredwg.py (fora do git; spec/ui 22 §8)
+artifacts = ["brasbim/vendor/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

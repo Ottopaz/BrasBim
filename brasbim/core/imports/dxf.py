@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Importar desenho DXF ou DWG como referência 2D (``spec/ui/22-importar-desenho.md``).
 
-O DXF é lido com o ezdxf (formato com especificação pública). O DWG é um formato
-fechado: o BrasBim **não** o lê; ele é convertido para DXF por um conversor externo
-instalado pelo usuário (ODA File Converter ou o ``dwg2dxf`` do LibreDWG) (§2).
+O DXF é lido com o ezdxf (formato com especificação pública). O DWG é convertido para
+DXF por um programa à parte: o ``dwg2dxf`` do GNU LibreDWG que vem com o BrasBim
+(``libredwg``, baixado na primeira vez) ou, se o usuário já tiver, o ODA File Converter
+(§2, §8).
 
 Fluxo: ``read`` (arquivo → ``Drawing``, nas unidades do arquivo) e ``import_drawing``
 (→ transação com uma anotação ``reference2d`` por camada, em metros).
@@ -16,13 +17,13 @@ import logging
 import math
 import os
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from brasbim.core import guid
 from brasbim.core.document import Document, OpError
+from brasbim.core.imports import libredwg
 from brasbim.core.ops import Op, Transaction
 
 log = logging.getLogger(__name__)
@@ -82,24 +83,35 @@ def _oda_path() -> str | None:
     return shutil.which("ODAFileConverter")
 
 
+def _system_dwg2dxf() -> str | None:
+    return shutil.which("dwg2dxf")
+
+
 def converter() -> str | None:
-    """Nome do conversor de DWG disponível, ou None."""
+    """Nome do conversor de DWG disponível, ou None (§8: o ODA só se já instalado)."""
     if _oda_path():
         return "ODA File Converter"
-    if shutil.which("dwg2dxf"):
+    if libredwg.find() or _system_dwg2dxf():
         return "LibreDWG"
     return None
 
 
-NO_CONVERTER = ("para abrir DWG, instale um conversor gratuito: o ODA File Converter "
-                "(opendesign.com) ou o LibreDWG; ou salve o arquivo como DXF no programa de "
-                "CAD")
+class MissingConverter(OpError):
+    """Não há conversor: a interface oferece baixar o LibreDWG (§8)."""
+
+
+NO_CONVERTER = (f"para abrir DWG, o BrasBim usa o conversor livre LibreDWG, que ainda não "
+                f"foi baixado ({libredwg.SIZE_MB} MB); ou salve o arquivo como DXF no "
+                "programa de CAD")
 
 
 def dwg_to_dxf(path: str, folder: str) -> str:
-    """Converte o DWG para um DXF em ``folder`` com o conversor externo (§2)."""
+    """Converte o DWG para um DXF em ``folder`` com o conversor à parte (§2)."""
     out = str(Path(folder) / (Path(path).stem + ".dxf"))
     oda = _oda_path()
+    exe = None if oda else (libredwg.find() or _system_dwg2dxf())
+    if not oda and not exe:
+        raise MissingConverter(NO_CONVERTER)
     try:
         if oda:
             import ezdxf
@@ -108,16 +120,9 @@ def dwg_to_dxf(path: str, folder: str) -> str:
             ezdxf.options.set("odafc-addon", "win_exec_path", oda)
             ezdxf.options.set("odafc-addon", "unix_exec_path", oda)
             odafc.convert(path, out, version="R2018", replace=True)
-        elif shutil.which("dwg2dxf"):
-            subprocess.run([shutil.which("dwg2dxf"), "-y", "-o", out, path], check=True,
-                           capture_output=True, timeout=600)
         else:
-            raise OpError(NO_CONVERTER)
-    except (OSError, subprocess.SubprocessError) as e:
-        raise OpError(f"o conversor não conseguiu abrir {Path(path).name}: {e}") from e
-    except Exception as e:  # erros do odafc (arquivo inválido, conversor recusou)
-        if isinstance(e, OpError):
-            raise
+            libredwg.convert(exe, path, out)
+    except Exception as e:  # erros do conversor (arquivo inválido, versão não lida)
         raise OpError(f"o conversor não conseguiu abrir {Path(path).name}: {e}") from e
     if not Path(out).is_file():
         raise OpError(f"o conversor não gerou o DXF de {Path(path).name}")
