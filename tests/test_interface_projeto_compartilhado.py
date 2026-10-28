@@ -96,3 +96,17 @@ def test_eq_interface_compartilhar_entrar_e_reservas(app, window, guest):
 def test_eq_interface_endereco():
     assert parse_address("pc-ana") == ("pc-ana", 47815)
     assert parse_address(" 192.168.0.10:47820 ") == ("192.168.0.10", 47820)
+
+
+def test_eq_interface_menu_nao_passa_checked(window, monkeypatch):
+    """O triggered do menu passa ``checked`` (bool); ele não pode virar o nome nem o
+    endereço (erro do revisor em 2026-10-28: "cannot unpack non-iterable bool")."""
+    calls = []
+    monkeypatch.setattr(window, "share_project", lambda *a, **k: calls.append(("share", a)))
+    monkeypatch.setattr(window, "join_project", lambda *a, **k: calls.append(("join", a)))
+    monkeypatch.setattr(window, "export_pdf", lambda *a, **k: calls.append(("pdf", a)))
+    for menu in window.menuBar().actions():
+        for action in menu.menu().actions():
+            if action.text().startswith(("Compartilhar", "Entrar", "Exportar PDF")):
+                action.trigger()
+    assert sorted(calls) == [("join", ()), ("pdf", ()), ("share", ())]

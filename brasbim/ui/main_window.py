@@ -352,7 +352,7 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Salvar como…", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
         self._action(file_menu, "Importar desenho (DXF, DWG)…", lambda: self.import_drawing())
-        self._action(file_menu, "Exportar PDF…", self.export_pdf, "Ctrl+P")
+        self._action(file_menu, "Exportar PDF…", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
         self._action(file_menu, "Dados do projeto…", self.edit_project_info)
         file_menu.addSeparator()
@@ -523,8 +523,10 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Novo objeto…", lambda: self.new_object())
         self._action(project_menu, "Pastas da biblioteca…", self.edit_library_folders)
         team_menu = bar.addMenu("E&quipe")  # projeto compartilhado (spec/ui 33 §4)
-        self._action(team_menu, "Compartilhar este projeto na rede…", self.share_project)
-        self._action(team_menu, "Entrar num projeto da rede…", self.join_project)
+        # lambda: o triggered passa "checked", que tomaria o lugar de name/choose
+        self._action(team_menu, "Compartilhar este projeto na rede…",
+                     lambda: self.share_project())
+        self._action(team_menu, "Entrar num projeto da rede…", lambda: self.join_project())
         team_menu.addSeparator()
         self.team_actions = [
             self._action(team_menu, "Pedir liberação da seleção",
