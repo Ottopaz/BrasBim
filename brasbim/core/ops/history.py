@@ -82,7 +82,9 @@ class History:
     em outro documento com os mesmos pavimentos reproduz o mesmo IFC.
 
     ``listeners`` são chamados depois de cada transação aplicada, com o tipo
-    (``commit``, ``undo``, ``redo``), a transação e os GlobalIds alterados (``run``).
+    (``commit``, ``undo``, ``redo``, ``remote``), a transação e os GlobalIds alterados
+    (``run``). ``guards`` recebem a transação antes de aplicá-la e a recusam com
+    ``OpError`` (reserva do projeto compartilhado, spec/ui 33 §3).
     """
 
     def __init__(self, doc: Document):
@@ -91,12 +93,28 @@ class History:
         self.redo_stack: list[Transaction] = []
         self.journal: list[Transaction] = []
         self.listeners: list[Callable[[str, Transaction, set[str]], None]] = []
+        self.guards: list[Callable[[Transaction], None]] = []
+
+    def _guard(self, tx: Transaction) -> None:
+        for guard in list(self.guards):
+            guard(tx)
+
+    def notify(self, kind: str, tx: Transaction, changed: set[str]) -> None:
+        self._notify(kind, tx, changed)
+
+    def replay(self, tx: Transaction) -> set[str]:
+        """Aplica fora das pilhas (transação de outra pessoa, ou reaplicação de uma
+        pendente): só entra no diário. Não avisa; quem chama usa ``notify``."""
+        changed = run(self.doc, tx)
+        self.journal.append(tx)
+        return changed
 
     def _notify(self, kind: str, tx: Transaction, changed: set[str]) -> None:
         for listener in list(self.listeners):
             listener(kind, tx, changed)
 
     def commit(self, tx: Transaction) -> None:
+        self._guard(tx)
         changed = run(self.doc, tx)
         self.undo_stack.append(tx)
         self.redo_stack.clear()
@@ -117,8 +135,9 @@ class History:
     def undo(self) -> Transaction | None:
         if not self.undo_stack:
             return None
+        inverse = self.undo_stack[-1].inverse()
+        self._guard(inverse)
         tx = self.undo_stack.pop()
-        inverse = tx.inverse()
         changed = run(self.doc, inverse)
         self.redo_stack.append(tx)
         self.journal.append(inverse)
@@ -128,6 +147,7 @@ class History:
     def redo(self) -> Transaction | None:
         if not self.redo_stack:
             return None
+        self._guard(self.redo_stack[-1])
         tx = self.redo_stack.pop()
         changed = run(self.doc, tx)
         self.undo_stack.append(tx)

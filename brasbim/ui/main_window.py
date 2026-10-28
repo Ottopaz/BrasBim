@@ -69,6 +69,7 @@ from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
 from brasbim.ui.table_view import TableView
+from brasbim.ui.team_panel import JoinDialog, TeamPanel
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
 from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
 from brasbim.ui.types_dialog import (
@@ -221,6 +222,12 @@ class MainWindow(QMainWindow):
         self.backup_timer.setInterval(60_000)
         self.backup_timer.timeout.connect(self.backup_tick)
         self.backup_timer.start()
+        # Projeto compartilhado (spec/ui 33 §2): o que chegou da rede é aplicado aqui.
+        self.team_timer = QTimer(self)
+        self.team_timer.setInterval(40)
+        self.team_timer.timeout.connect(self.session.poll)
+        self.team_timer.start()
+        self._refresh_team()
 
     # --- montagem --------------------------------------------------------------------
 
@@ -321,6 +328,10 @@ class MainWindow(QMainWindow):
         self.library_dock.resize(380, 560)
         self.library_dock.hide()
         self.project.library_index = self.library.index
+        # Equipe (spec/ui 33 §4): aparece ao compartilhar ou entrar
+        self.team = TeamPanel(self.session)
+        self.team_dock = self._dock("Equipe", "equipe", self.team, Qt.RightDockWidgetArea)
+        self.team_dock.hide()
 
     def _action(self, menu, text, slot, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -435,6 +446,7 @@ class MainWindow(QMainWindow):
         library_action = self.library_dock.toggleViewAction()
         library_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
         self.panels_menu.addAction(library_action)
+        self.panels_menu.addAction(self.team_dock.toggleViewAction())
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
@@ -510,6 +522,24 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto…", lambda: self.new_object())
         self._action(project_menu, "Pastas da biblioteca…", self.edit_library_folders)
+        team_menu = bar.addMenu("E&quipe")  # projeto compartilhado (spec/ui 33 §4)
+        self._action(team_menu, "Compartilhar este projeto na rede…", self.share_project)
+        self._action(team_menu, "Entrar num projeto da rede…", self.join_project)
+        team_menu.addSeparator()
+        self.team_actions = [
+            self._action(team_menu, "Pedir liberação da seleção",
+                         lambda: self.session.request_release(self.session.selection)),
+            self._action(team_menu, "Liberar a seleção",
+                         lambda: self.session.release(self.session.selection)),
+            self._action(team_menu, "Liberar minhas reservas", lambda: self.session.release()),
+        ]
+        self.reservations_action = self._action(team_menu, "Mostrar reservas",
+                                                self.set_show_reservations)
+        self.reservations_action.setCheckable(True)
+        self.reservations_action.setChecked(True)
+        team_menu.addSeparator()
+        self.leave_action = self._action(team_menu, "Sair do projeto compartilhado",
+                                         self.leave_shared)
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação…", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -572,6 +602,9 @@ class MainWindow(QMainWindow):
         self.hint.setVisible(not self.command_line.isVisibleTo(self))
         self.statusBar().addPermanentWidget(self.coords)
         self.statusBar().addPermanentWidget(QLabel(f"Grade {fmt(self.ctx.grid)} m"))
+        self.team_label = QLabel()  # projeto compartilhado (spec/ui 33 §4)
+        self.team_label.hide()
+        self.statusBar().addPermanentWidget(self.team_label)
         self.saved_view_label = QLabel()  # vista salva aberta (spec/ui 25 §4)
         self.saved_view_label.hide()
         self.statusBar().addPermanentWidget(self.saved_view_label)
@@ -687,6 +720,9 @@ class MainWindow(QMainWindow):
         elif event == "backup":
             self.statusBar().showMessage(
                 f"Cópia de segurança às {datetime.now():%H:%M}", 5000)
+        elif event == "team":
+            self._refresh_team()
+            self.plan.update()
 
     def _refresh_all(self) -> None:
         self.refresh_pens()
@@ -1355,7 +1391,98 @@ class MainWindow(QMainWindow):
 
     def _refresh_title(self) -> None:
         name = Path(self.session.path).name if self.session.path else "Projeto sem nome"
+        if self.session.shared and self.session.server is None:
+            name = f"{self.session.collab.project} (compartilhado)"
         self.setWindowTitle(f"{name}{'*' if self.session.modified else ''} — BrasBim")
+
+    # --- projeto compartilhado (spec/ui 33) ----------------------------------------------
+
+    def _refresh_team(self) -> None:
+        shared = self.session.shared
+        for action in (*self.team_actions, self.leave_action):
+            action.setEnabled(shared)
+        if shared:
+            n = len(self.session.collab.users)
+            self.team_label.setText(f"Compartilhado · {n} pessoa{'s' if n != 1 else ''}")
+        self.team_label.setVisible(shared)
+        self._refresh_title()
+
+    def set_show_reservations(self, value: bool) -> None:
+        self.reservations_action.setChecked(bool(value))
+        self.plan.show_reservations = bool(value)
+        self.plan.update()
+
+    def _team_name(self, title: str) -> str | None:
+        settings = _settings()
+        name, ok = QInputDialog.getText(self, title, "Seu nome (aparece para os colegas):",
+                                        text=str(settings.value("equipe_nome")
+                                                 or self.session.default_name()))
+        if not ok or not name.strip():
+            return None
+        settings.setValue("equipe_nome", name.strip())
+        return name.strip()
+
+    def share_project(self, name: str | None = None, **options) -> bool:
+        """Equipe > Compartilhar este projeto na rede… (§4). ``options``: porta e
+        descoberta (testes)."""
+        from brasbim.core.collab.protocol import local_addresses
+
+        name = name or self._team_name("Compartilhar na rede")
+        if name is None:
+            return False
+        try:
+            server = self.session.share(name, **options)
+        except OSError as e:
+            self.session.message(f"não foi possível compartilhar: {e}", "recusa")
+            return False
+        self.team_dock.show()
+        ips = ", ".join(f"{ip}:{server.port}" for ip in local_addresses()) or "—"
+        self._team_info = (f"O projeto está compartilhado.\n\nNos outros computadores: "
+                           f"Equipe > Entrar num projeto da rede…\nEle aparece na lista; "
+                           f"se não aparecer, digite o endereço:\n\n"
+                           f"    {server.host}:{server.port}\n    {ips}\n\n"
+                           "Se o Windows perguntar, permita o acesso em Redes privadas.")
+        if not self.quiet_dialogs:
+            QMessageBox.information(self, "Projeto compartilhado", self._team_info)
+        return True
+
+    def join_project(self, choose=None) -> bool:
+        """Equipe > Entrar num projeto da rede… (§4). ``choose``: (host, porta, nome) sem
+        diálogo (testes)."""
+        if choose is None:
+            settings = _settings()
+            dialog = JoinDialog(str(settings.value("equipe_nome")
+                                    or self.session.default_name()), self)
+            dialog.show()
+            dialog.search()
+            if dialog.exec() != QDialog.Accepted:
+                return False
+            choose = dialog.result_value()
+            settings.setValue("equipe_nome", choose[2])
+        if not self._ask_save():
+            return False
+        host, port, name = choose
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session.join(host, port, name)
+        except OSError as e:
+            self.session.message(f"não foi possível entrar em {host}:{port}: {e}", "recusa")
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.team_dock.show()
+        return True
+
+    def leave_shared(self) -> None:
+        if self.session.server is not None and len(self.session.collab.users) > 1 \
+                and not self.quiet_dialogs:
+            answer = QMessageBox.question(
+                self, "Sair do projeto compartilhado",
+                "Você compartilha este projeto. Ao sair, os colegas são desconectados e "
+                "ficam com uma cópia. Sair?")
+            if answer != QMessageBox.Yes:
+                return
+        self.session.leave()
 
     def copy_messages(self) -> str:
         """Copia as mensagens escolhidas (ou a última) para a área de transferência, sem a
@@ -1680,7 +1807,18 @@ class MainWindow(QMainWindow):
         else:
             actions = [("Mostrar no 3D", self.show_in_3d),
                        ("Enquadrar a seleção", view.frame_selection)]
-        return actions + self._object_context(gid) + self._layer_actions(gid)
+        return (actions + self._object_context(gid) + self._layer_actions(gid)
+                + self._team_context(gid))
+
+    def _team_context(self, gid) -> list:
+        """Pedir liberação do que é de outra pessoa (spec/ui 33 §3)."""
+        collab = self.session.collab if self.session.shared else None
+        owner = collab.owner(gid) if collab is not None else None
+        if owner is None or owner["id"] == collab.me:
+            return []
+        ids = self.session.selection if gid in self.session.selection else {gid}
+        return [(f"Pedir liberação a {owner['name']}",
+                 lambda: self.session.request_release(ids))]
 
     def _object_context(self, gid) -> list[tuple[str, object]]:
         """Objeto paramétrico sob o cursor: editar o tipo, soltar ou prender à parede."""

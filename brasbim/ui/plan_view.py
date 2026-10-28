@@ -108,6 +108,7 @@ class PlanView(QWidget, ToolInput):
         self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
+        self.show_reservations = True  # contorno do que outra pessoa reservou (spec/ui 33)
         self.show_tag_size = False
         self.show_structure_tags = True  # etiquetas de pilar e viga (spec/ui 12 §5)
         self.show_object_tags = False  # código dos objetos (objeto-parametrico.md §7)
@@ -575,6 +576,36 @@ class PlanView(QWidget, ToolInput):
                     painter.drawPath(path)
                 painter.restore()
 
+    def _draw_reservations(self, painter: QPainter) -> None:
+        """Elementos reservados por outra pessoa: contorno na cor dela (spec/ui 33 §3)."""
+        session = self.ctx.session
+        if not self.show_reservations or not session.shared:
+            return
+        colors = session.collab.reserved_by_others()
+        if not colors:
+            return
+        painter.setBrush(Qt.NoBrush)
+        for shape in self.ctx.plan.shapes:
+            color = colors.get(shape.owner)
+            if color is None or shape.role == "below":
+                continue
+            pen = QColor(color)
+            pen.setAlpha(170)
+            painter.setPen(QPen(pen, 2.0 * self.unit))
+            painter.drawPath(self._path(shape.points, shape.closed))
+        for gid, prims in self.ctx.plan.annotations:  # desenho importado: as linhas
+            color = colors.get(gid)
+            if color is None or not prims.bulk:
+                continue
+            painter.save()
+            painter.setTransform(QTransform(self.scale, 0.0, 0.0, -self.scale,
+                                            self.origin.x(), self.origin.y()), True)
+            painter.setPen(QPen(QColor(color), 1.5 * self.unit / self.scale))
+            painter.setRenderHint(QPainter.Antialiasing, False)
+            for _, _, path in self._stroke_paths(prims):
+                painter.drawPath(path)
+            painter.restore()
+
     def leaveEvent(self, event):
         if self.ctx.hover is not None:
             self.ctx.hover = None
@@ -649,6 +680,7 @@ class PlanView(QWidget, ToolInput):
         self._draw_plan(painter)
         self._draw_annotations(painter)
         self._draw_tags(painter)
+        self._draw_reservations(painter)
         self._draw_hover(painter)
         self._draw_tool(painter)
         painter.end()

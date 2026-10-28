@@ -4,20 +4,25 @@
 Guarda documento, histórico, arquivo, pavimento ativo, seleção e mensagens. É o único
 ponto da interface que aplica transações. Não depende de Qt: a janela se inscreve em
 ``listeners`` e é avisada com o nome do evento (``document``, ``model``, ``selection``,
-``storey``, ``messages``, ``backup``).
+``storey``, ``messages``, ``backup``, ``team``).
 """
 
 from __future__ import annotations
 
+import getpass
 import json
 import logging
 import os
+import socket
 import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+import ifcopenshell
+
 from brasbim.core import display_layers, intervention
+from brasbim.core.collab import Client, Server, protocol
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import History, Transaction
@@ -117,10 +122,15 @@ class Session:
         self.recovery_path: Path | None = None
         self._handler = _MessageHandler(self)
         logging.getLogger("brasbim").addHandler(self._handler)
+        self.collab: Client | None = None  # projeto compartilhado (spec/ui 33)
+        self.server: Server | None = None
+        self.requests: list[dict] = []  # pedidos de liberação recebidos
+        self.team_events: list[str] = []
         self.new()
 
     def close(self) -> None:
         """Fechamento normal: a cópia de segurança não é mais necessária (spec/ui 21 §3)."""
+        self.leave()
         self.discard_backup()
         logging.getLogger("brasbim").removeHandler(self._handler)
 
@@ -164,6 +174,7 @@ class Session:
 
     def new(self) -> None:
         """Projeto com Térreo, Superior e a biblioteca mínima, fora da pilha de desfazer."""
+        self.leave()
         doc = Document.new("Projeto")
         history = History(doc)
         history.commit(cmd.create_storey(doc, "Térreo", 0.0))
@@ -196,6 +207,7 @@ class Session:
 
     def open(self, path: str) -> None:
         doc = Document.open(path)
+        self.leave()
         doc.display = display_layers.read_display(doc)  # spec/ui 18 §5.1
         self._attach(doc, path)
         self.message(f"Aberto: {path}")
@@ -255,6 +267,7 @@ class Session:
         passa a ser a cópia desta sessão (§4)."""
         doc = Document.open(str(entry["path"]))
         doc.display = display_layers.read_display(doc)
+        self.leave()
         self._attach(doc, entry["file"], modified=True)
         if self.recovery_path is not None:
             recovery.adopt(entry, self.recovery_path, datetime.now())
@@ -368,12 +381,20 @@ class Session:
             self.message(f"Camada {names} mostrada para exibir o que foi criado")
 
     def undo(self) -> None:
-        tx = self.history.undo()
+        try:
+            tx = self.history.undo()
+        except OpError as e:  # reserva de outra pessoa (spec/ui 33 §5)
+            self.message(str(e), "recusa")
+            return
         if tx is not None:
             self.message(f"Desfeito: {tx.label}")
 
     def redo(self) -> None:
-        tx = self.history.redo()
+        try:
+            tx = self.history.redo()
+        except OpError as e:
+            self.message(str(e), "recusa")
+            return
         if tx is not None:
             self.message(f"Refeito: {tx.label}")
 
@@ -398,6 +419,155 @@ class Session:
         else:
             self.selection = gids
         self._emit("selection")
+
+    # --- projeto compartilhado (spec/ui 33) -----------------------------------------------
+
+    @staticmethod
+    def default_name() -> str:
+        try:
+            return getpass.getuser()
+        except (OSError, KeyError):
+            return socket.gethostname()
+
+    @property
+    def shared(self) -> bool:
+        return self.collab is not None and self.collab.connected
+
+    def share(self, name: str, port: int = protocol.TCP_PORT,
+              discovery: bool = True) -> Server:
+        """Compartilha o projeto aberto (§4): servidor nesta máquina e este documento
+        ligado a ele. O arquivo continua o mesmo."""
+        self.leave()
+        project = self.doc.project.Name or "Projeto"
+        if self.path:
+            project = Path(self.path).stem
+        server = Server(self.doc.ifc.to_string(), project=project,
+                        host=socket.gethostname(), port=port, discovery=discovery).start()
+        client = Client(name)
+        try:
+            client.connect("127.0.0.1", server.port)
+        except OSError:
+            server.stop()
+            raise
+        self.server = server
+        self._bind(client)
+        self.message(f"Projeto compartilhado na rede: {socket.gethostname()}:{server.port}")
+        return server
+
+    def join(self, host: str, port: int, name: str) -> None:
+        """Entra num projeto compartilhado (§4): o projeto abre sem arquivo."""
+        client = Client(name)
+        welcome = client.connect(host, port)
+        self.leave()
+        doc = self._shared_doc(welcome["ifc"])
+        self._attach(doc, None)
+        self._bind(client)
+        self._team_event(f"Você entrou no projeto {client.project}")
+        self.message(f"Você entrou no projeto {client.project} de {client.host}")
+
+    @staticmethod
+    def _shared_doc(text: str) -> Document:
+        doc = Document(ifcopenshell.file.from_string(text))
+        doc.display = display_layers.read_display(doc)
+        return doc
+
+    def _bind(self, client: Client) -> None:
+        self.collab = client
+        self.requests = []
+        self.team_events = []
+        client.attach(self.history)
+        client.listeners.append(self._on_collab)
+        self._emit("team")
+
+    def leave(self) -> None:
+        """Sai do projeto compartilhado; o documento continua aberto como cópia."""
+        if self.collab is None and self.server is None:
+            return
+        if self.collab is not None:
+            self.collab.close()
+            self.collab = None
+        if self.server is not None:
+            self.server.stop()
+            self.server = None
+        self.requests = []
+        self.message("Você saiu do projeto compartilhado; o projeto continua aberto aqui")
+        self._emit("team")
+
+    def poll(self) -> None:
+        if self.collab is not None:
+            self.collab.poll()
+
+    def _team_event(self, text: str) -> None:
+        self.team_events.append(f"{datetime.now():%H:%M} {text}")
+        del self.team_events[:-50]
+
+    def _on_collab(self, event: str, data: dict) -> None:
+        if event == "message":
+            self.message(data["text"], data.get("level", "info"))
+            self._team_event(data["text"])
+        elif event == "users":
+            if data.get("event"):
+                self._team_event(data["event"])
+                self.message(data["event"])
+        elif event == "request":
+            self.requests.append(data)
+            self._team_event(f"{data['name']} pediu {len(data['ids'])} elemento(s)")
+            self.message(f"{data['name']} pede a liberação de {len(data['ids'])} "
+                         "elemento(s) (painel Equipe)", "aviso")
+        elif event == "resync":
+            client = self.collab
+            client.detach()
+            self._attach(self._shared_doc(data["ifc"]), None, modified=True)
+            client.attach(self.history)
+            self.message("Projeto atualizado do servidor (o desfazer recomeçou)", "aviso")
+        elif event == "closed":
+            reason = data.get("reason") or "a conexão caiu"
+            self.message(f"Projeto compartilhado encerrado: {reason}; o projeto continua "
+                         "aberto aqui como cópia", "aviso")
+            self._team_event(reason)
+            if self.collab is not None:
+                self.collab.close()
+                self.collab = None
+            if self.server is not None:
+                self.server.stop()
+                self.server = None
+            self.modified = True
+        self._emit("team")
+
+    def request_release(self, gids) -> int:
+        """Pede a liberação do que, entre ``gids``, é de outra pessoa (§3)."""
+        if not self.shared:
+            return 0
+        me = self.collab.me
+        theirs = [g for g in gids if self.collab.reservations.get(g) not in (None, me)]
+        if not theirs:
+            self.message("nada selecionado está reservado por outra pessoa", "aviso")
+            return 0
+        self.collab.request(theirs)
+        self.message(f"Pedido de liberação enviado ({len(theirs)} elemento(s))")
+        return len(theirs)
+
+    def release(self, gids=None) -> None:
+        if not self.shared:
+            return
+        mine = set(self.collab.mine())
+        ids = None if gids is None else [g for g in gids if g in mine]
+        if ids == []:
+            self.message("nada selecionado está reservado por você", "aviso")
+            return
+        self.collab.release(ids)
+        self.message("Reservas liberadas" if ids is None
+                     else f"{len(ids)} reserva(s) liberada(s)")
+
+    def answer_request(self, request: dict, grant: bool) -> None:
+        if request in self.requests:
+            self.requests.remove(request)
+        if self.shared:
+            send = self.collab.grant if grant else self.collab.deny
+            send(request["from"], request["ids"])
+            done = "Liberado" if grant else "Recusado"
+            self._team_event(f"{done} para {request['name']}")
+        self._emit("team")
 
     # --- diário (spec/ui §9.2) -------------------------------------------------------
 

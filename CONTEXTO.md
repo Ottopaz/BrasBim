@@ -4,9 +4,24 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑28 (projeto legal, etapa 2: perfil municipal).*
+*Atualizado em 2026‑10‑28 (projeto compartilhado na rede local, spec/ui 33).*
 
-> **Onde paramos (2026‑10‑28, noite):** o DWG real do revisor (174 mil linhas) ainda
+> **Onde paramos (2026‑10‑28, fim da noite):** o **segundo assunto** do revisor era testar o trabalho
+> em equipe: 2 ou mais PCs editando o mesmo projeto. Escolhas dele: **mesma rede local** e
+> **reserva + envio automático**. Feito na **spec/ui 33** (`spec/ui/33-projeto-compartilhado.md`,
+> em revisão; pontos (a)–(e) no §10). O núcleo está em `brasbim/core/collab/`: o servidor
+> roda em threads no BrasBim de quem compartilha (TCP 47815, descoberta UDP 47816) e
+> aplica as transações em ordem. O cliente aplica na hora e, se preciso, reordena as
+> pendentes. Criar não exige reserva; editar reserva sozinho; o que é de outra pessoa é
+> recusado antes de aplicar, e dá para pedir a liberação. O `History` ganhou `guards`,
+> `replay` e `notify`. Na interface: menu **Equipe**, painel Equipe, contorno na cor da
+> dona na planta e "Pedir liberação" no botão direito. Testes EQ01–EQ10 + interface;
+> 780 testes passando. Conferido com dois processos pelo IP da rede local. **Próximo:**
+> o revisor testa em 2 PCs (o Windows pergunta pelo firewall na primeira vez: permitir
+> em Redes privadas) e dá retorno sobre a velocidade do DWG. Depois, a etapa 3 do
+> projeto legal (quadro de áreas, §5).
+
+> **Antes (2026‑10‑28, noite):** o DWG real do revisor (174 mil linhas) ainda
 > travava. A pedido dele, o desenho importado passou a ser **só linhas**, compactadas nos
 > parâmetros da anotação, **sem geometria IFC** (`core/linework.py`, `reference.pack_lines`
 > / `lines_of`; arquivos antigos continuam lidos). Planta, escolha, seleção e atração usam
@@ -203,7 +218,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑28: 768 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑28: 780 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) ~~instalar o ODA File Converter~~ resolvido: LibreDWG vem com o BrasBim (spec/ui 22 §8);
@@ -212,7 +227,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (768 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (780 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
