@@ -18,6 +18,7 @@ from brasbim.core.annotations import base, reference
 from brasbim.core.delete import delete_elements
 from brasbim.core.document import OpError
 from brasbim.core.imports import dxf, libredwg
+from brasbim.core.walls import commands as cmd
 
 E0, N0 = 712_000.0, 7_462_000.0  # coordenadas UTM de um levantamento (m)
 
@@ -265,3 +266,43 @@ def test_id10_interface_sem_conversor(window, tmp_path, monkeypatch):
     monkeypatch.setattr(libredwg, "install", install)
     assert window.import_drawing(str(dwg), choose=lambda d: ({"DIVISA"}, "m", (E0, N0)))
     assert installed and any("baixado" in m["text"] for m in s.messages)
+
+
+def test_id11_acentos_em_codificacao_errada(model, tmp_path):
+    """Bytes que não valem na codificação declarada (acentos de arquivos antigos) não
+    podem derrubar a importação: o IFC recusa os substitutos isolados (2026-10-28)."""
+    doc = ezdxf.new("R2018")
+    msp = doc.modelspace()
+    doc.layers.add("ANOTAQQES")
+    msp.add_line((0, 0), (5, 0), dxfattribs={"layer": "ANOTAQQES"})
+    msp.add_text("SALAQQ", height=0.2, dxfattribs={"layer": "ANOTAQQES", "insert": (1, 1)})
+    path = tmp_path / "latin1.dxf"
+    doc.saveas(path)
+    path.write_bytes(path.read_bytes().replace(b"QQ", b"\xc7\xd5"))  # Windows-1252
+    d = dxf.read(str(path))
+    assert set(d.layers) == {"ANOTAÇÕES"}
+    assert d.layers["ANOTAÇÕES"].texts[0]["text"] == "SALAÇÕ"
+    model.commit(dxf.import_drawing(model.doc, model.terreo, d, "m"))
+    assert dxf._text("x\ud800y\x00") == "x?y"
+
+
+def test_id12_desenho_grande_reaproveitado(window):
+    """O desenho importado não é remontado nem redesenhado do zero a cada edição
+    (spec/ui 22 §7)."""
+    s = window.session
+    layer = dxf.Layer(lines=[{"points": [[i * 0.1, 0.0], [i * 0.1, 1.0]], "closed": False,
+                              "z": None} for i in range(2000)])
+    s.run(lambda: dxf.import_drawing(s.doc, s.storey, dxf.Drawing("x.dxf", "m",
+                                                                  {"A": layer}), "m"))
+    (ref,) = [a for a in s.doc.ifc.by_type("IfcAnnotation") if reference.is_reference(a)]
+    first = base.build(s.doc, ref)
+    assert base.build(s.doc, ref) is first  # guardado
+    window.plan.repaint()
+    paths = window.plan._stroke_paths(first)
+    assert len(paths) == 1  # 2000 linhas num caminho só
+    s.run(lambda: cmd.create_wall(s.doc, s.doc.ifc.by_type("IfcWallType")[0], s.storey,
+                                  (0, 5), (4, 5)))
+    window.plan.repaint()
+    assert window.plan._stroke_paths(first) is paths  # a planta nova reaproveita
+    s.run(lambda: cmd.edit_storey(s.doc, s.storey, scale=100))  # a cruz dos pontos muda
+    assert base.build(s.doc, ref) is not first

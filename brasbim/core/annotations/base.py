@@ -132,13 +132,33 @@ def rebuild(doc: Document, element) -> None:
     doc.changed.add(element.GlobalId)
 
 
+# Tipos cujas primitivas só dependem dos próprios parâmetros e da escala do pavimento:
+# guardadas entre uma montagem da planta e a outra (desenho importado com dezenas de
+# milhares de linhas, spec/ui 22 §7). Cotas, etiquetas e afins leem o resto do modelo.
+CACHED = {"reference2d"}
+
+
 def build(doc: Document, element) -> prims.Prims:
     """Primitivas da anotação, para a planta."""
     kind = kind_of(element)
     if kind is None:
         return prims.Prims()
-    state = read_state(element)
-    return kind.build(doc, doc.get(state["storey"], "IfcBuildingStorey"), state)
+    if kind.prefix not in CACHED:
+        state = read_state(element)
+        return kind.build(doc, doc.get(state["storey"], "IfcBuildingStorey"), state)
+    from brasbim.core import storeys
+
+    values = ifcopenshell.util.element.get_pset(element, PSET, should_inherit=False) or {}
+    storey = ifcopenshell.util.element.get_container(element)
+    key = (values.get("Parametros"), storey.GlobalId if storey else None,
+           storeys.scale(storey) if storey else None)
+    cache = doc.__dict__.setdefault("_prims_cache", {})
+    found = cache.get(element.GlobalId)
+    if found is None or found[0] != key:
+        state = read_state(element)
+        found = cache[element.GlobalId] = (key, kind.build(
+            doc, doc.get(state["storey"], "IfcBuildingStorey"), state))
+    return found[1]
 
 
 def remove(doc: Document, element) -> None:

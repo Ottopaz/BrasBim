@@ -20,8 +20,8 @@ class Transaction:
     def inverse(self) -> Transaction:
         return Transaction(self.label, [invert_op(op) for op in reversed(self.ops)])
 
-    def to_dict(self) -> dict:
-        return {"label": self.label, "ops": [op.to_dict() for op in self.ops]}
+    def to_dict(self, copy_: bool = True) -> dict:
+        return {"label": self.label, "ops": [op.to_dict(copy_) for op in self.ops]}
 
     @classmethod
     def from_dict(cls, d: dict) -> Transaction:

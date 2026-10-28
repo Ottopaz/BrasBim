@@ -15,6 +15,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPolygonF,
+    QTransform,
 )
 from PySide6.QtWidgets import QWidget
 
@@ -325,11 +326,11 @@ class PlanView(QWidget, ToolInput):
                 self.pens.weight(edge.pen, edge.weight)))))
             painter.drawPath(self._rings_path(edge.rings))
         for shape in rest:
-            selected = shape.owner in selection
-            path = self._path(shape.points, shape.closed)
             role = shape.role
             if role in ("annotation", "roof_edge", "object_box"):
                 continue  # desenhada por ``_draw_annotations`` (a caixa não aparece)
+            selected = shape.owner in selection
+            path = self._path(shape.points, shape.closed)
             if role == "opening_box":  # o vão aparece na parede; aqui só o destaque
                 if selected:
                     fill = QColor(C["select"])
@@ -479,10 +480,36 @@ class PlanView(QWidget, ToolInput):
     def _line_px(self, weight_mm: float) -> float:
         return max(self.unit, self._px(weight_mm / 1000.0)) if self.show_weights else self.unit
 
+    def _stroke_paths(self, prims) -> list[tuple[float, str, QPainterPath]]:
+        """Traços de uma anotação em coordenadas do modelo, um caminho por espessura e
+        tipo de linha. Guardados enquanto a planta é a mesma: o zoom e o deslocamento só
+        mudam a transformação (desenho importado com dezenas de milhares de linhas)."""
+        cache = self.__dict__.setdefault("_paths", {})
+        if cache.get("plan") is not self.ctx.plan:  # planta nova: fica o que ela ainda usa
+            alive = {id(p) for _, p in self.ctx.plan.annotations}
+            for key in [k for k in cache if k != "plan" and k not in alive]:
+                del cache[key]
+            cache["plan"] = self.ctx.plan
+        entry = cache.get(id(prims))
+        found = entry[1] if entry is not None and entry[0] is prims else None
+        if found is None:
+            groups: dict[tuple[float, str], QPainterPath] = {}
+            for stroke in prims.strokes:
+                path = groups.setdefault((stroke.weight, stroke.dash or "solid"),
+                                         QPainterPath())
+                path.addPolygon(QPolygonF([QPointF(x, y) for x, y, *_ in stroke.points]))
+                if stroke.closed:
+                    path.closeSubpath()
+            found = [(w, d, path) for (w, d), path in groups.items()]
+            cache[id(prims)] = (prims, found)  # o objeto junto: o id não é reaproveitado
+        return found
+
     def _draw_annotations(self, painter: QPainter) -> None:
         """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
         selection = self.ctx.session.selection
         dashes = {"solid": Qt.SolidLine, "dashed": Qt.DashLine, "dashdot": Qt.DashDotLine}
+        world = QTransform(self.scale, 0.0, 0.0, -self.scale, self.origin.x(),
+                           self.origin.y())
         for owner, prims in self.ctx.plan.annotations:
             if owner in self.ctx.plan.views and not self.show_view_symbols:
                 continue
@@ -490,11 +517,14 @@ class PlanView(QWidget, ToolInput):
             ink = self.tint(owner) or QColor(self.pens.color(category))
             color = C["select"] if owner in selection else ink
             painter.setBrush(Qt.NoBrush)
-            for stroke in prims.strokes:
-                painter.setPen(QPen(color, self._line_px(self.pens.weight(category,
-                                                                          stroke.weight)),
-                                    dashes.get(stroke.dash, Qt.SolidLine)))
-                painter.drawPath(self._path(stroke.points, stroke.closed))
+            painter.save()
+            painter.setTransform(world, True)
+            for weight, dash, path in self._stroke_paths(prims):
+                # Espessura em unidades do modelo: a transformação a leva aos pixels.
+                px = self._line_px(self.pens.weight(category, weight))
+                painter.setPen(QPen(color, px / self.scale, dashes.get(dash, Qt.SolidLine)))
+                painter.drawPath(path)
+            painter.restore()
             painter.setPen(QPen(C["select"] if owner in selection else ink))
             for text in prims.texts:
                 font = self._font(text.height)

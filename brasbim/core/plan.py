@@ -954,13 +954,26 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
 # --- pavimento ----------------------------------------------------------------------
 
 
+# Conteúdo de cada pavimento durante uma montagem da planta (``storey_plan``), que o
+# pede várias vezes; fora dela, ``None`` (sem guardar nada).
+_decomposition: dict | None = None
+
+
+def _decompose(storey) -> list:
+    if _decomposition is None:
+        return ifcopenshell.util.element.get_decomposition(storey)
+    if storey.GlobalId not in _decomposition:
+        _decomposition[storey.GlobalId] = ifcopenshell.util.element.get_decomposition(storey)
+    return _decomposition[storey.GlobalId]
+
+
 def _contained(storey, ifc_class: str, doc: Document) -> list:
     """Elementos da classe no pavimento; as águas da cobertura ficam de fora (quem aparece
     é a cobertura, ``_roofs``), e os das camadas ocultas também (spec/ui 18 §4)."""
     from brasbim.core.structure import roofs
 
     hidden = display_layers.hidden_ids(doc)
-    return sorted((e for e in ifcopenshell.util.element.get_decomposition(storey)
+    return sorted((e for e in _decompose(storey)
                    if e.is_a(ifc_class) and not roofs.is_part(e) and e.GlobalId not in hidden),
                   key=lambda e: e.GlobalId)
 
@@ -969,6 +982,19 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
                 show_above: bool = True) -> Plan:
     """Planta do pavimento. ``detail``: ``simple`` ou ``layers`` (spec/ui 06 §2);
     ``show_above``: paredes e vãos acima do plano em tracejado (§3.2)."""
+    global _decomposition
+    outer = _decomposition is None
+    if outer:
+        _decomposition = {}
+    try:
+        return _storey_plan(doc, storey, show_below, detail, show_above)
+    finally:
+        if outer:
+            _decomposition = None
+
+
+def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
+                 show_above: bool) -> Plan:
     marks = intervention.marks(doc)
     plan = Plan(locked=display_layers.locked_ids(doc),
                 colors={gid: color for gid, (color, _) in marks.items()},
@@ -998,7 +1024,7 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
     crossed = {o for c in cuts for o in c.crossed}
     # A esquadria segue a própria camada (spec/ui 18 §4): o vão de parede oculta também conta.
     hidden = display_layers.hidden_ids(doc)
-    for wall in ifcopenshell.util.element.get_decomposition(storey):
+    for wall in _decompose(storey):
         if wall.GlobalId in hidden and wall.is_a("IfcWall"):
             c = _cut_wall(doc, wall, cut, show_above)
             crossed |= set(c.crossed) if c is not None else set()
@@ -1240,7 +1266,7 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
     plan.labels = [dataclasses.replace(lb, height=height) for lb in plan.labels]
     hatches = []
     hidden = display_layers.hidden_ids(doc)
-    for e in ifcopenshell.util.element.get_decomposition(storey):
+    for e in _decompose(storey):
         if e.GlobalId in hidden:
             continue
         if e.is_a("IfcSpace"):

@@ -70,6 +70,31 @@ Levantamento com 20 000 polilinhas de 20 vértices: ler 6 s, importar 2 s, plant
 salvar 2 s (17 MB de IFC). Para isso a anotação do desenho importado não é refeita a
 cada transação, e o diário da sessão serializa cada transação uma vez.
 
+**Revisão de 2026‑10‑28** (revisor: "o DWG está muito travado"), medida com o desenho
+real do diário (planta de arquitetura, 72 camadas, 40 mil linhas, 150 mil pontos):
+
+| | antes | depois |
+|---|---|---|
+| redesenhar a planta (deslocar, zoom) | 0,93 s | 0,04 s |
+| editar o modelo (ex.: criar parede) | 0,80 s | 0,32 s |
+| importar | 4,0 s | 3,0 s |
+
+- A planta desenha cada anotação com caminhos em coordenadas do modelo, montados uma vez
+  (um por espessura e tipo de linha) e levados à tela pela transformação do Qt
+  (`PlanView._stroke_paths`); a planta nova reaproveita os caminhos das anotações que
+  não mudaram. As formas de escolha das anotações não montam mais caminhos à toa.
+- As primitivas do desenho importado ficam guardadas por anotação, pelos parâmetros e
+  pela escala do pavimento (`annotations.base.CACHED`); cotas, etiquetas e outras que
+  leem o resto do modelo continuam sendo refeitas.
+- A planta lê o conteúdo de cada pavimento uma vez por montagem (`plan._decompose`), e o
+  diário serializa sem copiar.
+- A importação ainda grava cerca de 40 mil curvas no IFC (o desenho fica dentro do IFC);
+  é o custo que sobra, só na hora de importar.
+- **Erro corrigido:** texto ou nome de camada com bytes que não valem na codificação
+  declarada (acentos em Windows‑1252) derrubava a importação (`RuntimeError: Attribute
+  not set`, o IFC recusa substitutos isolados). `dxf._text` decodifica esses trechos como
+  Windows‑1252 e tira caracteres de controle. Testes ID11 e ID12.
+
 ## 8. Conversor que vem com o BrasBim (2026‑10‑28)
 Pedido do revisor: o usuário não deve ter de instalar programa nenhum para abrir DWG.
 - **GNU LibreDWG 0.14** (GPL‑3.0‑or‑later, projeto GNU, escrito a partir de especificação

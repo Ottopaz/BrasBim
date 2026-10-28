@@ -27,12 +27,13 @@ class Op:
     before: dict | None = None
     after: dict | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self, copy_: bool = True) -> dict:
+        """``copy_=False``: sem cópia, para quem só vai serializar (o diário)."""
         d = {"op": self.op, "id": self.id}
         for key in ("data", "before", "after"):
             value = getattr(self, key)
             if value is not None:
-                d[key] = copy.deepcopy(value)
+                d[key] = copy.deepcopy(value) if copy_ else value
         return d
 
     @classmethod

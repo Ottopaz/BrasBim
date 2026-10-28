@@ -420,7 +420,8 @@ class Session:
             for tx in self.history.journal:
                 key = id(tx)
                 if key not in cache or cache[key][0] is not tx:
-                    cache[key] = (tx, json.dumps(tx.to_dict(), ensure_ascii=False))
+                    cache[key] = (tx, json.dumps(tx.to_dict(copy_=False),
+                                                    ensure_ascii=False))
                 parts.append(cache[key][1])
             head = json.dumps({"started": self.started.isoformat(timespec="seconds"),
                                "file": self.path}, ensure_ascii=False)[:-1]

@@ -166,6 +166,33 @@ def _exploded(entities, parent: str | None = None, depth: int = 0):
             yield e, layer
 
 
+def _text(value: str) -> str:
+    """Texto do arquivo próprio para o IFC. Bytes que não valem na codificação declarada
+    chegam do leitor como substitutos isolados (U+DC80…), que o IFC recusa: tenta-se o
+    Windows‑1252 (acentos de arquivos brasileiros) e, se ainda falhar, troca-se por "?".
+    Caracteres de controle saem (menos a quebra de linha e a tabulação)."""
+    if any("\ud800" <= c <= "\udfff" for c in value):
+        out, run = [], bytearray()
+
+        def flush():
+            if run:
+                try:
+                    out.append(run.decode("utf-8"))
+                except UnicodeDecodeError:
+                    out.append(run.decode("cp1252", "replace"))
+                run.clear()
+
+        for c in value:
+            if "\udc80" <= c <= "\udcff":  # byte que não valia: decodifica o trecho
+                run.append(ord(c) - 0xDC00)
+                continue
+            flush()
+            out.append("?" if "\ud800" <= c <= "\udfff" else c)
+        flush()
+        value = "".join(out)
+    return "".join(c for c in value if c >= " " or c in "\n\t")
+
+
 def read(path: str) -> Drawing:
     """Lê o DXF (ou converte o DWG e lê): linhas, polilinhas, arcos, círculos, elipses e
     curvas viram polilinhas; textos e pontos ficam; blocos são explodidos (§3)."""
@@ -185,7 +212,7 @@ def read(path: str) -> Drawing:
     layers: dict[str, Layer] = {}
     for e, name in _exploded(doc.modelspace()):
         kind = e.dxftype()
-        layer = layers.setdefault(name, Layer())
+        layer = layers.setdefault(_text(name), Layer())
         try:
             if kind in CURVES:
                 p = ezpath.make_path(e)
@@ -199,7 +226,7 @@ def read(path: str) -> Drawing:
                     layer.lines.append({"points": xy, "closed": closed and len(xy) > 2,
                                         "z": _constant_z(v.z for v in pts)})
             elif kind in ("TEXT", "MTEXT"):
-                text = e.plain_text() if kind == "MTEXT" else e.dxf.text
+                text = _text(e.plain_text() if kind == "MTEXT" else e.dxf.text)
                 if text and text.strip():
                     at = e.dxf.insert
                     height = e.dxf.get("char_height" if kind == "MTEXT" else "height", 1.0)
