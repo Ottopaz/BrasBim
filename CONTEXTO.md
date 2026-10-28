@@ -22,7 +22,11 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > arquivo). Os dois agora chamam por `lambda`; varridos os outros itens e botões da
 > interface, sem mais casos. Teste que dispara os itens do menu
 > (`test_eq_interface_menu_nao_passa_checked`); commit 3dab93c, 781 testes, ruff limpo.
-> A pasta do pendrive já tem a correção. **Próximo:** o revisor testa a Equipe em 2 PCs
+> A pasta do pendrive já tem a correção. Push feito (GitHub em dia até b8b5132; conferido
+> antes que nada de `_restrito/`, `tools/` ou `brasbim/vendor/` está no git). O conversor
+> de DWG fica fora do git de propósito (spec/ui 22 §8). **Pendência antes de distribuir
+> fora da equipe:** a pasta do pendrive leva o binário GPL do LibreDWG; incluir nela um
+> aviso com o link do código‑fonte da versão 0.14. **Próximo:** o revisor testa a Equipe em 2 PCs
 > de verdade (até agora só entrou no próprio PC) e dá retorno sobre a velocidade do
 > DWG; depois, a etapa 3 do projeto legal (quadro de áreas, spec/ui 31 §5).
 
