@@ -105,6 +105,8 @@ class Region:
     rings: Rings = field(hash=False)
     fill: dict = field(hash=False)
     tint: str | None = None  # cor da situação na vista Projeto (spec/ui 31 §3)
+    # Hachura da situação em Imprimir em preto (spec/ui 31 §13): pattern e angle.
+    hatch: dict | None = field(default=None, hash=False)
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,8 @@ class Plan:
     pens: dict = field(default_factory=dict)
     # Cor da situação de cada dono na vista Projeto (spec/ui 31 §3); vazio = sem cores.
     colors: dict = field(default_factory=dict)
+    # Hachura da situação de cada dono, pelo perfil municipal (spec/ui 31 §13).
+    hatches: dict = field(default_factory=dict)
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -447,11 +451,13 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
 
     def key(w):
         tint = tints[w.wall.GlobalId]
-        return f"{w.type_id}|{tint}" if tint else w.type_id
+        hatch = plan.hatches.get(w.wall.GlobalId) or {}
+        return f"{w.type_id}|{tint}|{hatch.get('pattern')}|{hatch.get('angle')}" if tint             else w.type_id
 
     by_type = _type_regions(cuts, key)
     styles = {key(w): w.style for w in cuts}
     tint_of = {key(w): tints[w.wall.GlobalId] for w in cuts}
+    hatch_of = {key(w): plan.hatches.get(w.wall.GlobalId) for w in cuts}
     layered: set[str] = set()
     if detail == "layers":
         plain = [w for w in cuts if w.pieces and not tints[w.wall.GlobalId]]
@@ -466,7 +472,8 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
             plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR, "layer"))
     for k, rings in by_type.items():
         if k not in layered:
-            plan.regions.append(Region(k, rings, _fill_of_type(styles[k]), tint_of[k]))
+            plan.regions.append(Region(k, rings, _fill_of_type(styles[k]), tint_of[k],
+                                       hatch_of[k]))
     for k, rings in by_type.items():
         style = styles[k]
         plan.edges.append(Edge(rings, style["line_weight"], style["line_color"],
@@ -923,11 +930,12 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         z0, z1 = e.z
         ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         tint = plan.colors.get(e.element.GlobalId)
+        hatch = plan.hatches.get(e.element.GlobalId)
         if z0 < cut < z1:
-            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint))
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
             plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))
         elif e.kind == "slab" and z1 <= cut and e.fill["pattern"] != "none":
-            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint))
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
 
 
 def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None:
@@ -936,7 +944,7 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
     if not holes:
         return
     plan.regions[first_region:] = [Region(r.key, clip.difference(r.rings, holes), r.fill,
-                                          r.tint)
+                                          r.tint, r.hatch)
                                    for r in plan.regions[first_region:]]
     plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color, e.pen,
                                     e.tint)
@@ -961,7 +969,10 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
                 show_above: bool = True) -> Plan:
     """Planta do pavimento. ``detail``: ``simple`` ou ``layers`` (spec/ui 06 §2);
     ``show_above``: paredes e vãos acima do plano em tracejado (§3.2)."""
-    plan = Plan(locked=display_layers.locked_ids(doc), colors=intervention.colors(doc))
+    marks = intervention.marks(doc)
+    plan = Plan(locked=display_layers.locked_ids(doc),
+                colors={gid: color for gid, (color, _) in marks.items()},
+                hatches={gid: hatch for gid, (_, hatch) in marks.items()})
     if show_below:
         storeys_ = doc.storeys()
         i = storeys_.index(storey)

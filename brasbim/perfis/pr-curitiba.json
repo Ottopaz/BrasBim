@@ -1,0 +1,10 @@
+{
+  "id": "pr-curitiba",
+  "nome": "Curitiba/PR",
+  "versao": 1,
+  "fonte": {
+    "documento": "Prefeitura de Curitiba, Manual do Autor do Projeto, Aprovação de Projeto Simplificado, 2ª ed., 2020 (mid.curitiba.pr.gov.br), via nota de pesquisa normas_e_projeto_legal_brasil.md §3.",
+    "acesso": "2026-10-21"
+  },
+  "pdf": {"max_mb": 3, "carimbo_ultima_prancha": true}
+}

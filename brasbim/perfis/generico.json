@@ -1,0 +1,24 @@
+{
+  "id": "generico",
+  "nome": "Genérico",
+  "versao": 1,
+  "fonte": {
+    "documento": "Perfil próprio do BrasBim, sem exigência de prefeitura: cores usuais de projeto legal e escalas da NBR 6492 de uso comum.",
+    "acesso": "2026-10-28"
+  },
+  "cores": {
+    "A_CONSTRUIR": {"cor": "#D62828", "hachura": "lines", "angulo": 45},
+    "EXISTENTE": {"cor": "#000000", "hachura": "solid", "angulo": 45},
+    "A_DEMOLIR": {"cor": "#E0A800", "hachura": "none", "angulo": 45},
+    "A_REGULARIZAR": {"cor": "#1F5FBF", "hachura": "cross", "angulo": 45},
+    "A_TRANSFORMAR": {"cor": "#2E9E44", "hachura": "lines", "angulo": 135},
+    "TEMPORARIO": {"cor": null, "hachura": "none", "angulo": 45}
+  },
+  "escalas": {"implantacao": 200, "plantas": 50, "cortes": 50, "fachadas": 50},
+  "planta": "completa",
+  "quadro_de_areas": {"indices": ["TO", "CA", "TP"], "piscina_a_parte": false},
+  "selo": ["Título do desenho", "Proprietário", "Endereço da obra", "Autor do projeto",
+           "Responsável técnico", "ART/RRT", "Escala", "Data", "Prancha", "Revisão"],
+  "notas": [],
+  "pdf": {"max_mb": null, "carimbo_ultima_prancha": false}
+}

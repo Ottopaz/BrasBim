@@ -56,7 +56,8 @@ DEFAULT_VIEW = "project"
 SHOWN = {"project": None, "plain": None,
          "before": frozenset({"EXISTENTE", "A_DEMOLIR", "A_REGULARIZAR", "A_TRANSFORMAR"}),
          "after": frozenset(set(CODES) - {"A_DEMOLIR"})}
-# Cores do perfil Genérico (§4); os outros perfis chegam na etapa 2. Temporário: sem cor.
+# Cores do perfil Genérico (§4), para quem não tem o documento à mão; as que valem vêm do
+# perfil municipal do projeto (``municipal.mark``). Temporário: sem cor.
 GENERIC_COLORS = {"A_CONSTRUIR": "#D62828", "EXISTENTE": "#000000",
                   "A_DEMOLIR": "#E0A800", "A_REGULARIZAR": "#1F5FBF",
                   "A_TRANSFORMAR": "#2E9E44"}
@@ -307,9 +308,12 @@ def hidden_ids(doc: Document) -> set[str]:
     return out
 
 
-def colors(doc: Document) -> dict[str, str]:
-    """GlobalId → cor da situação (perfil Genérico) na vista *Projeto*. Projeto sem
-    nenhuma situação além de *A construir* (obra nova) não é pintado (§3)."""
+def marks(doc: Document) -> dict[str, tuple[str, dict]]:
+    """GlobalId → (cor, hachura) da situação pelo perfil municipal (§4, §13), na vista
+    *Projeto*. Projeto sem nenhuma situação além de *A construir* (obra nova) não é
+    pintado (§3). Situação sem cor no perfil fica de fora."""
+    from brasbim.core import municipal
+
     if doc.situation_view != "project":
         return {}
     mapping = _map(doc)
@@ -317,14 +321,21 @@ def colors(doc: Document) -> dict[str, str]:
                if code not in (None, DEFAULT) and doc.find(gid) is not None}
     if not present:
         return {}
+    profile = municipal.current(doc)
+    by_code = {code: municipal.mark(profile, code) for code in CODES}
     out = {}
     for element in doc.ifc.by_type("IfcProduct"):
         if not situable(element) or display_layers.owner(element) is not element:
             continue
-        color = GENERIC_COLORS.get(mapping.get(element.GlobalId) or DEFAULT)
+        color, hatch = by_code[mapping.get(element.GlobalId) or DEFAULT]
         if color:
-            out[element.GlobalId] = color
+            out[element.GlobalId] = (color, hatch)
     return out
+
+
+def colors(doc: Document) -> dict[str, str]:
+    """GlobalId → cor da situação na vista *Projeto* (ver ``marks``)."""
+    return {gid: color for gid, (color, _) in marks(doc).items()}
 
 
 def present(doc: Document) -> list[str]:

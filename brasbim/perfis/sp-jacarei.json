@@ -1,0 +1,20 @@
+{
+  "id": "sp-jacarei",
+  "nome": "Jacareí/SP",
+  "versao": 1,
+  "fonte": {
+    "documento": "Prefeitura de Jacareí, Anexo XII Manual Técnico (jacarei.sp.gov.br), via nota de pesquisa normas_e_projeto_legal_brasil.md §3.",
+    "acesso": "2026-10-21"
+  },
+  "escalas": {"implantacao": 200, "plantas": 100, "cortes": 100, "fachadas": 100},
+  "planta": "completa",
+  "quadro_de_areas": {"indices": ["TO", "CA", "TP"], "piscina_a_parte": true,
+                      "terreno_real_e_escritura": true, "memoria_de_calculo": true},
+  "selo": ["Título (Projeto de Implantação, de Arquitetura ou Completo)",
+           "Processo substituído", "Assunto", "Requerente",
+           "Endereço (quadra, lote, loteamento, inscrição imobiliária)", "Zoneamento",
+           "Planta de situação sem escala (lote, norte, 3 logradouros)",
+           "Assinaturas (requerente, autor e RT, com CAU/CREA, ART/RRT e contatos)",
+           "Quadro de áreas"],
+  "notas": ["A aprovação deste projeto não implica o reconhecimento da posse ou da propriedade do imóvel."]
+}

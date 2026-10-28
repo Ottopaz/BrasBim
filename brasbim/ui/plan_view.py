@@ -28,6 +28,7 @@ from brasbim.ui.tools import Mods, PlanContext, ToolBox
 
 SNAP_PX = 10  # distância de atração na tela (§3.2)
 HANDLE_PX = 4  # metade do lado da alça na tela (0.2 §4)
+SITUATION_HATCH_SPACING = 0.1  # m: hachura da situação em preto (spec/ui 31 §13)
 BELOW_WEIGHT = 0.00013  # m de papel: pavimento de baixo (spec/ui 27)
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 _FRAME_MAX_SCALE = 200.0  # enquadrar a seleção não aproxima mais que isto (spec/ui 07 §4)
@@ -307,6 +308,12 @@ class PlanView(QWidget, ToolInput):
             if region.tint and not black:  # situação (spec/ui 31 §3)
                 fill = {**fill, "line_color": region.tint,
                         "background": region.tint if fill.get("background") else None}
+            elif region.tint and region.hatch:  # em preto: hachura do perfil (§13)
+                pattern = region.hatch["pattern"]
+                fill = {**fill, "pattern": pattern, "angle": region.hatch["angle"],
+                        "line_color": pens.INK, "source": "situation",
+                        "spacing": SITUATION_HATCH_SPACING,
+                        "background": pens.INK if pattern == "solid" else None}
             self._draw_region(painter, self._rings_path(region.rings), fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:

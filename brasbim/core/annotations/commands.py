@@ -180,9 +180,11 @@ def delete_element(doc: Document, element) -> Transaction:
 def create_view(doc: Document, kind: str, a, b, side: str = "left",
                 **options) -> Transaction:
     """Corte ou fachada pela linha ``a``–``b``, olhando para ``side`` (spec/ui 14 §2)."""
+    from brasbim.core import municipal
     from brasbim.core.drawings import views
 
-    data = {**views.default_state(), "kind": kind, "a": [float(a[0]), float(a[1])],
+    data = {**views.default_state(), "scale": municipal.view_scale(doc, kind), "kind": kind,
+            "a": [float(a[0]), float(a[1])],
             "b": [float(b[0]), float(b[1])], "side": side, **options}
     if data["kind"] == "section" and not data.get("letter"):
         data["letter"] = views.next_letter(doc)

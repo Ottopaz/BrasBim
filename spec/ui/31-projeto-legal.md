@@ -130,7 +130,7 @@ segundo é o nome da etapa na NBR 16636‑2 [USP-16636]; o primeiro, o do mercad
    copiar, selecionar semelhantes e o filtro de vista com cores do perfil Genérico (§3).
    **Feita** (§12).
 2. **Perfil municipal** (§4): arquivo, cópia no IFC, diálogo, perfis prontos; cores e
-   escalas aplicadas.
+   escalas aplicadas. **Feita** (§13).
 3. **Quadro de áreas** (§5) com memória de cálculo e índices.
 4. **Peças na prancha** (§6): legenda, quadro de esquadrias, notas, aviso do PDF.
 5. **Memorial descritivo** (§7).
@@ -152,6 +152,13 @@ Planta simplificada (sem compartimentação) e export DXF ficam para um pacote s
 - **PL07** Memorial gera as seções na ordem, com os tipos de parede e camadas; seção
   editada não muda ao refazer.
 - **PL08** PDF acima do limite do perfil Curitiba avisa.
+- **PL09** Perfis prontos válidos, com fonte; o que falta numa cidade vem do Genérico e o
+  perfil diz quais cores são herdadas.
+- **PL10** Hachura da situação nas paredes cortadas em Imprimir em preto; situações com a
+  mesma cor e hachuras diferentes não se juntam; situação sem cor não é pintada.
+- **PL11** Escolher o perfil com "Aplicar escalas" muda plantas, cortes e fachadas numa
+  transação; corte e fachada novos nascem na escala do perfil.
+- **PL12** Perfil inválido (nome, situação, cor, hachura, escala, planta, PDF) é recusado.
 
 ## 10. Fontes
 | Código | Documento |
@@ -183,6 +190,14 @@ a solução aqui (situação + perfil) é própria.
 (i) Situação dos novos elementos como botão com menu na barra Opções, igual para todas
     as ferramentas, não guardado no projeto (§12).
 (j) Imprimir em preto sem hachura por situação até a etapa 2; 3D sem cores (§12).
+(k) Hachura do perfil só em Imprimir em preto; na tela e na prancha em cores vale a cor
+    sobre o preenchimento do tipo (§13).
+(l) Hachuras do Genérico (próprias, sem fonte): a construir linhas 45°, existente cheia,
+    a demolir sem hachura, a regularizar cruzada, a transformar linhas 135° (§13).
+(m) Escalas de Araras (1:50 ou 1:100 na fonte) fixadas em 1:100; implantação 1:200 no
+    Genérico e em Araras (§13).
+(n) "Aplicar escalas" marcado por padrão no diálogo; a implantação fica guardada até
+    existir uma vista de implantação (§13).
 
 ## 12. Etapa 1 — como ficou (2026‑10‑27)
 - **Núcleo** (`brasbim/core/intervention.py`, sem Qt): `SITUATIONS` (código, rótulo,
@@ -225,3 +240,31 @@ a solução aqui (situação + perfil) é própria.
   filtro "Antes da obra" não mostra o temporário; o 3D só filtra, não pinta.
 - Testes: PL01–PL03 (e PL01b, PL01c, PL02b) em `tests/test_projeto_legal.py`; PL01–PL03 da
   interface em `tests/test_interface_projeto_legal.py`.
+
+## 13. Etapa 2 — como ficou (2026‑10‑28)
+- **Perfis** em `brasbim/perfis/*.json` (`generico`, `sp-araras`, `sp-jacarei`,
+  `sp-sao-paulo`, `pr-curitiba`), com `id`, `nome`, `versao`, `fonte` (documento e data de
+  acesso), `cores` (situação → `cor`, `hachura`, `angulo`), `escalas` (`implantacao`,
+  `plantas`, `cortes`, `fachadas`), `planta`, `quadro_de_areas`, `selo`, `notas` e `pdf`
+  (`max_mb`, `carimbo_ultima_prancha`). Só o Genérico é completo; as cidades trazem só o
+  que tem fonte e o resto vem do Genérico campo a campo (`municipal.resolve`), com a lista
+  `herdado` das cores que não vieram da prefeitura (o diálogo mostra).
+- **Núcleo** `brasbim/core/municipal.py` (sem Qt): cópia **resolvida** no Pset
+  `BrasBim_PerfilMunicipal` do `IfcProject` (`Parametros`, JSON); sem o Pset vale o
+  Genérico. Operação `municipal.set` (before/after `{"profile"}`); `choose` junta a cópia e
+  `apply_scales` (escala das plantas em todos os pavimentos, `storey.edit`; de cortes e
+  fachadas em todas as vistas, `view.edit`) numa transação. Corte e fachada novos nascem
+  na escala do perfil (`view_scale`, em `annotations.commands.create_view`).
+- **Cores e hachuras**: `intervention.marks` (cor e hachura por elemento) substitui as
+  cores fixas; `Plan.hatches` e `Region.hatch`; as paredes cortadas agrupam por tipo, cor
+  **e** hachura. Em Imprimir em preto a região da situação sai com a hachura do perfil em
+  preto (cheia = fundo preto), espaçamento 0,10 m (`SITUATION_HATCH_SPACING`). Corte e
+  fachada ainda sem hachura por situação (só a cor).
+- **Interface**: Projeto > Perfil municipal… (`ui/municipal_dialog.py`): perfil (a cópia
+  do projeto primeiro, depois os prontos), fonte, abas Cores e hachuras | Escalas e
+  entrega | Notas e selo (selo só para ver; entra na folha mestra na etapa 4) e "Aplicar
+  as escalas do perfil…".
+- **Guardado para depois**: `planta: simplificada` (pacote seguinte), `quadro_de_areas`
+  (etapa 3), `selo`, `notas` e `pdf` (etapa 4).
+- Testes: PL04, PL09–PL12 em `tests/test_perfil_municipal.py`; PL04 (diálogo) e PL10
+  (prancha em preto) em `tests/test_interface_perfil_municipal.py`.

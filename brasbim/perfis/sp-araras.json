@@ -1,0 +1,21 @@
+{
+  "id": "sp-araras",
+  "nome": "Araras/SP",
+  "versao": 1,
+  "fonte": {
+    "documento": "Prefeitura de Araras, POP 001/21 Alvará de Construção (araras.sp.gov.br), via nota de pesquisa normas_e_projeto_legal_brasil.md §3.",
+    "acesso": "2026-10-21"
+  },
+  "cores": {
+    "A_CONSTRUIR": {"cor": "#D62828"},
+    "EXISTENTE": {"cor": "#000000"},
+    "A_DEMOLIR": {"cor": "#E0A800"},
+    "A_TRANSFORMAR": {"cor": "#2E9E44"}
+  },
+  "escalas": {"implantacao": 200, "plantas": 100, "cortes": 100, "fachadas": 100},
+  "quadro_de_areas": {"indices": ["TO", "CA", "TP"], "piscina_a_parte": false},
+  "selo": ["Título do desenho", "Proprietário", "Endereço da obra", "Autor do projeto",
+           "Responsável técnico", "ART/RRT/TRT", "Escala", "Data", "Prancha",
+           "Assinaturas (proprietário, autor e RT)"],
+  "notas": ["A aprovação deste projeto pela Prefeitura não implica o reconhecimento da propriedade do terreno."]
+}

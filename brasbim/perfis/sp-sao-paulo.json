@@ -1,0 +1,11 @@
+{
+  "id": "sp-sao-paulo",
+  "nome": "São Paulo/SP",
+  "versao": 1,
+  "fonte": {
+    "documento": "Prefeitura de São Paulo, Peças gráficas de projeto (LOE 16.642/17) (prefeitura.sp.gov.br), via nota de pesquisa normas_e_projeto_legal_brasil.md §3.",
+    "acesso": "2026-10-21"
+  },
+  "escalas": {"implantacao": 100, "plantas": 100, "cortes": 100, "fachadas": 100},
+  "planta": "simplificada"
+}

@@ -4,9 +4,22 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑27, noite (projeto legal, etapa 1: situação de cada elemento).*
+*Atualizado em 2026‑10‑28 (projeto legal, etapa 2: perfil municipal).*
 
-> **Onde paramos (2026‑10‑27, fim da noite):** pedido do revisor fora do roteiro, na
+> **Onde paramos (2026‑10‑28):** **etapa 2 do projeto legal feita** (spec/ui 31 §4;
+> "como ficou" no §13 da spec; pontos novos (k)–(n) no §11). Perfis em
+> `brasbim/perfis/*.json` (Genérico, Araras, Jacareí, São Paulo, Curitiba; cada um com a
+> fonte; o que a cidade não traz vem do Genérico e o diálogo diz quais cores são
+> herdadas); cópia resolvida no Pset `BrasBim_PerfilMunicipal` do `IfcProject`
+> (`core/municipal.py`, operação `municipal.set`); Projeto > Perfil municipal…
+> (`ui/municipal_dialog.py`) com "Aplicar as escalas do perfil" (plantas, cortes e
+> fachadas numa transação); corte/fachada novos nascem na escala do perfil; cores da
+> situação vêm do perfil (`intervention.marks`) e, em Imprimir em preto, as paredes
+> cortadas saem com a hachura da situação (`Plan.hatches`, `Region.hatch`). Testes PL04,
+> PL09–PL12 (+ 2 de interface); 757 testes passando, ruff limpo. **Próximo:** etapa 3
+> (quadro de áreas com memória de cálculo e índices, §5), depois 4 e 5.
+
+> **Antes (2026‑10‑27, fim da noite):** pedido do revisor fora do roteiro, na
 > **spec/ui 32** (`spec/ui/32-navegacao-e-abas.md`, em revisão; pontos (a)–(d) no §6):
 > painel Projeto com **ícones e grupos** (Cortes (n) | Fachadas (n) em árvore; vistas
 > salvas, pranchas, folhas mestras e tabelas com ícone; ícones novos prancha, folha mestra
@@ -161,7 +174,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑27 (fim da noite): 750 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑28: 757 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) instalar o ODA File Converter (opendesign.com) para abrir DWG;
@@ -170,7 +183,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (750 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (757 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -203,7 +216,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
-| `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapa 1 feita** (situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`), etapas 2–5 a fazer (PL04–PL08); pontos §11 (a)–(j) |
+| `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1 e 2 feitas** (situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 3–5 a fazer (PL05–PL08); pontos §11 (a)–(n) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |

@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention, pens, select_similar, snap
+from brasbim.core import display_layers, intervention, municipal, pens, select_similar, snap
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -58,6 +58,7 @@ from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.master_editor import MasterEditor
 from brasbim.ui.materials_dialog import MaterialsDialog
+from brasbim.ui.municipal_dialog import MunicipalDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.pens_dialog import PensDialog
 from brasbim.ui.plan_view import PlanView
@@ -501,6 +502,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de laje…", lambda: self.edit_type("IfcSlabType"))
         self._action(project_menu, "Materiais…", lambda: self.edit_materials())
         self._action(project_menu, "Tabelas de penas…", lambda: self.edit_pens())
+        self._action(project_menu, "Perfil municipal…", lambda: self.edit_municipal())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto…", lambda: self.new_object())
@@ -812,6 +814,20 @@ class MainWindow(QMainWindow):
             return False
         doc, new = self.session.doc, dialog.config
         done = self.session.run(lambda: pens.edit_config(doc, new))
+        self._refresh_all()
+        return done
+
+    def edit_municipal(self, apply=None) -> bool:
+        """Projeto > Perfil municipal… (spec/ui 31 §4); ``apply`` recebe o quadro antes de
+        gravar (testes)."""
+        dialog = MunicipalDialog(self.session.doc, self)
+        if apply is not None:
+            apply(dialog)
+        elif dialog.exec() != QDialog.Accepted:
+            return False
+        doc, profile = self.session.doc, dialog.profile
+        scales = dialog.apply_scales.isChecked()
+        done = self.session.run(lambda: municipal.choose(doc, profile, scales))
         self._refresh_all()
         return done
 
