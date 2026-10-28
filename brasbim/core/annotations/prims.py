@@ -54,11 +54,15 @@ class Prims:
     strokes: list[Stroke] = field(default_factory=list)
     texts: list[Text] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
+    # Muitas linhas em arrays (``linework.Lines``, espessura em mm): desenho importado,
+    # desenhado e atraído sem virar um traço por linha (spec/ui 22 §7).
+    bulk: list = field(default_factory=list)
 
     def extend(self, other: Prims) -> None:
         self.strokes += other.strokes
         self.texts += other.texts
         self.fills += other.fills
+        self.bulk += other.bulk
 
     def points(self) -> list[tuple[float, float]]:
         """Pontos de tudo (escolha, seleção, enquadramento)."""

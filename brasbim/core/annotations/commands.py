@@ -135,7 +135,7 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     state = read_state(doc, element)
     prefix = prefix_of(element)
     keys = (spaces.STATE_KEYS if prefix == "space" else views.STATE_KEYS if prefix == "view"
-            else (*base.KINDS[prefix].defaults, "storey"))
+            else (*base.KINDS[prefix].defaults, "storey", *state))  # (campo antigo: sai)
     unknown = set(changes) - set(keys)
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")

@@ -9,7 +9,7 @@ from estrutura import slab_type, valid
 from brasbim.core import display_layers as dl
 from brasbim.core import edits, plan, snap
 from brasbim.core import select_similar as ss
-from brasbim.core.annotations import base, drafting
+from brasbim.core.annotations import base, drafting, reference
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import drawing2d as d2
 from brasbim.core.document import OpError
@@ -46,7 +46,8 @@ def test_pr01_indice_de_todos_os_elementos(model):
                                 [(10, 0), (14, 0), (14, 3), (10, 3)]))
     line(model, (0, 5), (4, 5))
     make(model, "reference2d", name="Levantamento", source="x.dxf", layer="A",
-         lines=[{"points": [[20, 0], [24, 0]], "closed": False, "z": None}],
+         **reference.pack_lines([{"points": [[20, 0], [24, 0]], "closed": False,
+                                  "z": None}]),
          texts=[], points=[])
     s = at(model, (14.03, 2.98))
     assert (s.kind, s.point) == ("end", pytest.approx((14, 3)))

@@ -500,6 +500,14 @@ class PlanView(QWidget, ToolInput):
                 path.addPolygon(QPolygonF([QPointF(x, y) for x, y, *_ in stroke.points]))
                 if stroke.closed:
                     path.closeSubpath()
+            for lines, weight in prims.bulk:  # desenho importado (arrays, spec/ui 22 §7)
+                path = groups.setdefault((weight, "solid"), QPainterPath())
+                pts = [QPointF(x, y) for x, y in lines.coords.tolist()]
+                for i, (a, b) in enumerate(zip(lines.starts[:-1].tolist(),
+                                               lines.starts[1:].tolist(), strict=True)):
+                    path.addPolygon(QPolygonF(pts[a:b]))
+                    if lines.closed[i]:
+                        path.closeSubpath()
             found = [(w, d, path) for (w, d), path in groups.items()]
             cache[id(prims)] = (prims, found)  # o objeto junto: o id não é reaproveitado
         return found
@@ -519,6 +527,8 @@ class PlanView(QWidget, ToolInput):
             painter.setBrush(Qt.NoBrush)
             painter.save()
             painter.setTransform(world, True)
+            if prims.bulk:  # desenho importado: traço fino, sem suavizar (bem mais rápido)
+                painter.setRenderHint(QPainter.Antialiasing, False)
             for weight, dash, path in self._stroke_paths(prims):
                 # Espessura em unidades do modelo: a transformação a leva aos pixels.
                 px = self._line_px(self.pens.weight(category, weight))
@@ -554,6 +564,16 @@ class PlanView(QWidget, ToolInput):
         for shape in self.ctx.plan.shapes:
             if shape.owner == owner and shape.role != "below":
                 painter.drawPath(self._path(shape.points, shape.closed))
+        for gid, prims in self.ctx.plan.annotations:  # desenho importado: as linhas
+            if gid == owner and prims.bulk:
+                painter.save()
+                painter.setTransform(QTransform(self.scale, 0.0, 0.0, -self.scale,
+                                                self.origin.x(), self.origin.y()), True)
+                painter.setPen(QPen(color, 2.5 * self.unit / self.scale))
+                painter.setRenderHint(QPainter.Antialiasing, False)
+                for _, _, path in self._stroke_paths(prims):
+                    painter.drawPath(path)
+                painter.restore()
 
     def leaveEvent(self, event):
         if self.ctx.hover is not None:

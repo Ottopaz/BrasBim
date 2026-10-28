@@ -138,6 +138,8 @@ class Plan:
     colors: dict = field(default_factory=dict)
     # Hachura da situação de cada dono, pelo perfil municipal (spec/ui 31 §13).
     hatches: dict = field(default_factory=dict)
+    # Desenho importado: (dono, ``linework.Lines``) sem uma forma por linha (spec/ui 22 §7).
+    bulk: list = field(default_factory=list)
 
     def owners(self, role_prefix: str | tuple[str, ...]) -> dict[str, list[Shape]]:
         out: dict[str, list[Shape]] = {}
@@ -148,10 +150,25 @@ class Plan:
 
     def bounds(self) -> tuple[float, float, float, float] | None:
         pts = [p for s in self.shapes for p in s.points]
-        if not pts:
+        boxes = [b for _, lines in self.bulk if (b := lines.bounds()) is not None]
+        if pts:
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            boxes.append((min(xs), min(ys), max(xs), max(ys)))
+        if not boxes:
             return None
-        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-        return min(xs), min(ys), max(xs), max(ys)
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+                max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    def _bulk_near(self, p: Point, tol: float) -> list[tuple[float, str]]:
+        """(distância, dono) das linhas de desenho importado a até ``tol`` de ``p``."""
+        out = []
+        for owner, lines in self.bulk:
+            if owner in self.locked:
+                continue
+            _, dist = lines.near(p, tol)
+            if len(dist):
+                out.append((float(dist.min()), owner))
+        return out
 
     def pick(self, p: Point, tol: float) -> str | None:
         """Elemento sob o ponto, nesta prioridade (spec/ui 10 §4.1): esquadria (caixa
@@ -173,6 +190,8 @@ class Plan:
                     return s.owner
             near = [(_distance_to_outline(s.points, p, s.closed), s.owner) for s in found]
             near = [n for n in near if n[0] <= tol]
+            if roles == ("annotation",):
+                near += self._bulk_near(p, tol)
             if near:
                 return min(near)[1]
         return None
@@ -212,6 +231,19 @@ class Plan:
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
                 out.append(owner)
+        # Desenho importado: as linhas contam junto com os textos e pontos da anotação.
+        for owner, lines in self.bulk:
+            if owner in self.locked:
+                continue
+            ok = _bulk_in_area(lines, rect, crossing)
+            if owner not in groups:
+                found = ok
+            else:
+                found = (owner in out or ok) if crossing else (owner in out and ok)
+            if found and owner not in out:
+                out.append(owner)
+            elif not found and owner in out:
+                out.remove(owner)
         return out
 
 
@@ -259,6 +291,46 @@ def outlines_in_area(outlines, area, crossing: bool = False) -> list[int]:
         elif all(inside(q) for s in shapes for q in s.points):
             out.append(i)
     return out
+
+
+def _inside_many(polygon, pts):
+    """``_inside`` para muitos pontos de uma vez (arrays)."""
+    import numpy as np
+
+    x, y = pts[:, 0], pts[:, 1]
+    out = np.zeros(len(pts), dtype=bool)
+    for i in range(len(polygon)):
+        (x0, y0), (x1, y1) = polygon[i - 1], polygon[i]
+        if y0 == y1:
+            continue
+        crosses = (y0 > y) != (y1 > y)
+        xs = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+        out ^= crosses & (xs > x)
+    return out
+
+
+def _bulk_in_area(lines, polygon, crossing: bool) -> bool:
+    """Desenho importado inteiro dentro da área, ou tocando nela (``crossing``)."""
+    if not len(lines.coords):
+        return False
+    inside = _inside_many(polygon, lines.coords)
+    if not crossing:
+        return bool(inside.all())
+    if inside.any():
+        return True
+    a, b, _, _ = lines.segments()
+    import numpy as np
+
+    def orient(p, q, r):
+        return (q[..., 0] - p[..., 0]) * (r[..., 1] - p[..., 1])             - (q[..., 1] - p[..., 1]) * (r[..., 0] - p[..., 0])
+
+    for r, t in _segments(polygon, True):
+        r, t = np.asarray(r, dtype=float), np.asarray(t, dtype=float)
+        d1, d2 = orient(r, t, a), orient(r, t, b)
+        d3, d4 = orient(a, b, r), orient(a, b, t)
+        if (((d1 > 0) != (d2 > 0)) & ((d3 > 0) != (d4 > 0))).any():
+            return True
+    return False
 
 
 def _touches(shape: Shape, rect, inside) -> bool:
@@ -1299,6 +1371,7 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
                             for st in prims.strokes]
             plan.shapes += [Shape(e.GlobalId, "annotation", tuple(text_box(t)), True)
                             for t in prims.texts]
+            plan.bulk += [(e.GlobalId, lines) for lines, _ in prims.bulk]
     plan.regions[:0] = hatches  # as hachuras ficam sob as paredes
     from brasbim.core import grids  # eixos de projeto (spec/ui 20 §2): em todo pavimento
 

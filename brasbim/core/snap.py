@@ -12,6 +12,7 @@ import math
 from dataclasses import dataclass
 
 import ifcopenshell.util.element
+import numpy as np
 
 from brasbim.core import geom2d
 from brasbim.core.document import Document, OpError
@@ -105,10 +106,13 @@ class CircleRef:
 class SnapIndex:
     """Arestas, pontos e círculos do pavimento para a atração (spec/ui 23 §2.1)."""
 
-    def __init__(self, segments=(), circles=(), corners=()):
+    def __init__(self, segments=(), circles=(), corners=(), bulk=()):
         self.segments = list(segments)
         self.circles = list(circles)
         self.corners = list(corners)  # (ponto, dono)
+        # Desenho importado: (dono, ``linework.Lines``), consultado com arrays (spec/ui 22
+        # §7), sem um ``Segment`` por linha.
+        self.bulk = list(bulk)
         self._cells: dict[tuple[int, int], list[int]] = {}
         self._big: list[int] = []
         self._points: dict[tuple[int, int], list[int]] = {}
@@ -140,11 +144,25 @@ class SnapIndex:
     def segments_near(self, p: Point, r: float) -> list[Segment]:
         found = set(self._around(self._cells, p, r)) | set(self._big)
         out = [self.segments[i] for i in sorted(found)]
-        return [s for s in out if _seg_dist(p, s.a, s.b) <= r]
+        out = [s for s in out if _seg_dist(p, s.a, s.b) <= r]
+        for owner, lines in self.bulk:
+            k, _ = lines.near(p, r)
+            if len(k):
+                a, b, _, straight = lines.segments()
+                out += [Segment(tuple(a[i].tolist()), tuple(b[i].tolist()), owner,
+                                bool(straight[i])) for i in k.tolist()]
+        return out
 
     def corners_near(self, p: Point, r: float) -> list[tuple[Point, str]]:
-        return [self.corners[i] for i in self._around(self._points, p, r)
-                if math.dist(p, self.corners[i][0]) <= r]
+        out = [self.corners[i] for i in self._around(self._points, p, r)
+               if math.dist(p, self.corners[i][0]) <= r]
+        for owner, lines in self.bulk:
+            pts = lines.corners()[0]
+            if not len(pts):
+                continue
+            d = np.hypot(pts[:, 0] - p[0], pts[:, 1] - p[1])
+            out += [(tuple(q), owner) for q in pts[d <= r].tolist()]
+        return out
 
     def circles_near(self, p: Point, r: float) -> list[CircleRef]:
         return [c for c in self.circles if abs(math.dist(p, c.center) - c.radius) <= r]
@@ -152,7 +170,7 @@ class SnapIndex:
     def add_polyline(self, points, closed: bool, owner: str) -> None:
         """Acrescenta uma polilinha (antes de consultar; refaz as tabelas)."""
         segs, corners = polyline_parts(points, closed, owner)
-        self.__init__(self.segments + segs, self.circles, self.corners + corners)
+        self.__init__(self.segments + segs, self.circles, self.corners + corners, self.bulk)
 
 
 def _cell(q: Point) -> tuple[int, int]:
@@ -338,7 +356,7 @@ def build_index(doc: Document, storey, the_plan) -> SnapIndex:
     de círculos, arcos e paredes em arco."""
     from brasbim.core.annotations import drawing2d
 
-    segments, corners, circles, owners = [], [], [], set()
+    segments, corners, circles, owners, bulk = [], [], [], set(), []
     for shape in the_plan.shapes:
         owners.add(shape.owner)
         segs, pts = polyline_parts(shape.points, shape.closed, shape.owner)
@@ -350,6 +368,7 @@ def build_index(doc: Document, storey, the_plan) -> SnapIndex:
             segs, pts = polyline_parts(stroke.points, stroke.closed, owner)
             segments += segs
             corners += pts
+        bulk += [(owner, lines) for lines, _ in prims.bulk]
     for owner in sorted(owners):
         found = drawing2d.curve_of(doc, owner)
         if found is None:
@@ -365,7 +384,7 @@ def build_index(doc: Document, storey, the_plan) -> SnapIndex:
         else:
             span = _wall_span(doc, element)
         circles.append(CircleRef(found[0], found[1], owner, span))
-    return SnapIndex(segments, circles, corners)
+    return SnapIndex(segments, circles, corners, bulk)
 
 
 def _wall_span(doc: Document, wall) -> tuple[float, float] | None:

@@ -114,11 +114,12 @@ def test_aj05_pegar_todas_as_linhas_da_camada(window, tmp_path):
     state = base.read_state(next(a for a in s.doc.ifc.by_type("IfcAnnotation")
                                  if reference.is_reference(a)
                                  and base.read_state(a)["layer"] == "CURVAS"))
-    q = tuple(state["lines"][1]["points"][4])
+    lines = reference.lines_of(state).to_dicts()
+    q = tuple(lines[1]["points"][4])
     tool.move(q, Mods())  # sem Shift: só a linha
     assert len(tool.preview()) == 1
     tool.move(q, Mods(shift=True))  # com Shift: a camada inteira
-    assert len(tool.preview()) == len(state["lines"]) == 3
+    assert len(tool.preview()) == len(lines) == 3
     assert tool.labels()[0][1] == "3 linhas da camada"
     tool.press(q, Mods(shift=True))
     assert sorted(c["z"] for c in terrain.read_state(t)["curves"]) == [100.0, 101.0, 102.0]

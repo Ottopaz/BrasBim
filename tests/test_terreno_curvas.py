@@ -88,9 +88,9 @@ def test_tr04_pegar_linhas_do_desenho(model, tmp_path):
     model.commit(dxf.import_drawing(model.doc, model.terreo, d, "m", (E0, N0)))
     refs = {base.read_state(a)["layer"]: (a.GlobalId, base.read_state(a))
             for a in model.doc.ifc.by_type("IfcAnnotation") if reference.is_reference(a)}
-    border = refs["DIVISA"][1]["lines"][0]
+    border = reference.lines_of(refs["DIVISA"][1]).line(0)
     t = _terrain(model, boundary=border["points"])
-    lines = [line for line in refs["CURVAS"][1]["lines"]]
+    lines = reference.lines_of(refs["CURVAS"][1]).to_dicts()
 
     def pick():
         model.commit(terrain.add_curves(model.doc, t, lines))
@@ -189,7 +189,7 @@ def test_tr08_fluxo_na_interface(window, app, tmp_path):
     state = base.read_state(next(a for a in s.doc.ifc.by_type("IfcAnnotation")
                                  if reference.is_reference(a)
                                  and base.read_state(a)["layer"] == "CURVAS"))
-    for line in state["lines"]:
+    for line in reference.lines_of(state).to_dicts():
         tool.move(tuple(line["points"][4]), Mods())
         assert tool.hover is not None and tool.preview()
         tool.key("enter")
@@ -211,7 +211,7 @@ def test_tr08_fluxo_na_interface(window, app, tmp_path):
     assert terrain.read_state(t)["curves"][3]["z"] == pytest.approx(102.8)
     assert not [m for m in tool.preview() if m.style == "invalid"]
     # a sugestão é a última cota mais o intervalo
-    tool.press(tuple(state["lines"][0]["points"][4]), Mods())
+    tool.press(tuple(reference.lines_of(state).line(0)["points"][4]), Mods())
     assert tool.chosen is not None
     # 4. o 3D acompanha
     from brasbim.ui.scene3d import Scene

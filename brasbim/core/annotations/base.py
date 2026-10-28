@@ -42,8 +42,10 @@ class Kind:
     mapped: Callable  # (state, fn, angle_deg, mirrored, moving: set[str]) -> dict
     depends: Callable = field(default=lambda state: set())  # GlobalIds anotados
     validate: Callable = field(default=lambda state: None)
-    # Linhas como IfcIndexedPolyCurve (desenho importado, com milhares de vértices).
+    # Linhas como IfcIndexedPolyCurve (muitos vértices).
     compact: bool = False
+    # False: só os parâmetros, sem geometria IFC (desenho importado, spec/ui 22 §7).
+    geometry: bool = True
 
 
 KINDS: dict[str, Kind] = {}
@@ -75,6 +77,9 @@ def register_kind(kind: Kind) -> None:
         state = read_state(element)
         check_before(op, state)
         state.update(copy.deepcopy(op.after or {}))
+        for key in [k for k, v in (op.after or {}).items()
+                    if v is None and k not in kind.defaults]:
+            del state[key]  # campo que sai (ex.: formato antigo do desenho importado)
         write(doc, element, kind, state)
         return {op.id}
 
@@ -125,6 +130,10 @@ def rebuild(doc: Document, element) -> None:
     """Geometria a partir do estado (o que é anotado pode ter mudado)."""
     kind = kind_of(element)
     if kind is None:
+        return
+    if not kind.geometry:
+        prims._drop(doc, element)  # (arquivo antigo pode ter a geometria)
+        doc.changed.add(element.GlobalId)
         return
     state = read_state(element)
     storey = doc.get(state["storey"], "IfcBuildingStorey")

@@ -6,7 +6,16 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑28 (projeto legal, etapa 2: perfil municipal).*
 
-> **Onde paramos (2026‑10‑28, fim da tarde):** o revisor achou o DWG "muito travado".
+> **Onde paramos (2026‑10‑28, noite):** o DWG real do revisor (174 mil linhas) ainda
+> travava. A pedido dele, o desenho importado passou a ser **só linhas**, compactadas nos
+> parâmetros da anotação, **sem geometria IFC** (`core/linework.py`, `reference.pack_lines`
+> / `lines_of`; arquivos antigos continuam lidos). Planta, escolha, seleção e atração usam
+> arrays (`Plan.bulk`, `SnapIndex.bulk`); leitor próprio de DXF (`imports/dxf_fast.py`,
+> ezdxf de reserva). Medido com o DWG do revisor: leitura 19,5 → 5,8 s, importar 13 → 1 s,
+> mouse 1–4 s → 0,06 s por movimento, IFC 1,8 MB (spec/ui 22 §7). Testes ID13–ID18;
+> 768 testes passando. Continua pendente o **segundo assunto** do revisor.
+
+> **Antes (2026‑10‑28, fim da tarde):** o revisor achou o DWG "muito travado".
 > Medido com o desenho real do diário (40 mil linhas): redesenho 0,93 → 0,04 s, edição
 > 0,80 → 0,32 s, importação 4,0 → 3,0 s (spec/ui 22 §7: caminhos do Qt em coordenadas do
 > modelo, primitivas do desenho importado guardadas, conteúdo do pavimento lido uma vez).
@@ -194,7 +203,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑28: 762 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑28: 768 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) ~~instalar o ODA File Converter~~ resolvido: LibreDWG vem com o BrasBim (spec/ui 22 §8);
@@ -203,7 +212,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (762 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (768 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

@@ -3312,7 +3312,7 @@ class PickCurvesTool(_TerrainCurveTool):
         if found and mods.shift:
             layer = next(c[2] for c in candidates if c[0] == found[0][1])
             self.group = [line for gid, state, other in candidates if other == layer
-                          for line in state["lines"]]
+                          for line in reference.lines_of(state).to_dicts()]
 
     def _pick(self) -> None:
         from brasbim.core import terrain as terrain_data

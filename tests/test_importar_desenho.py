@@ -87,9 +87,9 @@ def test_id02_importar_em_metros(model, tmp_path):
     assert len(refs) == 4
     by_layer = {base.read_state(a)["layer"]: base.read_state(a) for a in refs}
     assert by_layer["CURVAS"]["name"] == "Levantamento – CURVAS"
-    border = by_layer["DIVISA"]["lines"][0]["points"]
+    border = reference.lines_of(by_layer["DIVISA"]).line(0)["points"]
     assert [tuple(q) for q in border] == [(0, 0), (20, 0), (20, 15), (0, 15)]
-    assert sorted(line["z"] for line in by_layer["CURVAS"]["lines"]) == \
+    assert sorted(line["z"] for line in reference.lines_of(by_layer["CURVAS"]).to_dicts()) == \
         pytest.approx([100, 101, 102])
     assert by_layer["COTAS"]["texts"][0]["height"] == pytest.approx(0.25)
     assert by_layer["COTAS"]["points"][0]["z"] == pytest.approx(102.4)
@@ -112,7 +112,7 @@ def test_id03_planta_camada_e_edicao(model, tmp_path):
         target = display_layers.default_layer(config, "reference2d")
         assert display_layers.layer_name(model.doc, target) == "Levantamento"
     model.commit(transform.move_elements(model.doc, [border.GlobalId], (1.0, 2.0)))
-    assert base.read_state(border)["lines"][0]["points"][0] == pytest.approx([1, 2])
+    assert reference.lines_of(base.read_state(border)).line(0)["points"][0] == pytest.approx([1, 2])
     found = reference.lines_near([(border.GlobalId, base.read_state(border))], (11, 2.05), 0.1)
     assert found and found[0][2] == 0
     model.commit(delete_elements(model.doc, [border.GlobalId])[0])

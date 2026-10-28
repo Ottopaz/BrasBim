@@ -70,30 +70,51 @@ Levantamento com 20 000 polilinhas de 20 vértices: ler 6 s, importar 2 s, plant
 salvar 2 s (17 MB de IFC). Para isso a anotação do desenho importado não é refeita a
 cada transação, e o diário da sessão serializa cada transação uma vez.
 
-**Revisão de 2026‑10‑28** (revisor: "o DWG está muito travado"), medida com o desenho
-real do diário (planta de arquitetura, 72 camadas, 40 mil linhas, 150 mil pontos):
+**Revisão de 2026‑10‑28** (revisor: "o DWG está muito travado"; "o DWG deve ser
+importado apenas como linhas, não como modelos IFC, justamente para ser rápido e leve").
+Medido com o DWG real do revisor (planta de arquitetura com mobiliário: 174 mil linhas,
+13 mil splines em blocos, 72 camadas) e com outro de 40 mil linhas.
 
-| | antes | depois |
+- **Só linhas, cópia compacta no IFC** (escolha do revisor): a anotação do desenho
+  importado **não tem geometria IFC**; as linhas ficam num bloco compactado nos
+  parâmetros (`linework.Lines.pack`: coordenadas quantizadas a 0,01 mm, em diferenças
+  sucessivas, comprimidas, base64), junto com textos e pontos. O projeto abre igual em
+  outra máquina sem o DWG; outros programas IFC não veem as linhas. As operações levam o
+  mesmo texto compactado (o diário cai de 33 MB para 1,8 MB). Arquivos antigos, com a
+  lista de linhas, continuam sendo lidos e passam para o compactado na primeira
+  transformação.
+- **Linhas em arrays** (`core/linework.py`): trechos, cantos, busca por distância e
+  transformação afim são feitos com numpy, sem um objeto por linha. A planta guarda
+  `Plan.bulk` (sem forma de escolha por linha); escolha, janela, laço, enquadramento e
+  atração (`SnapIndex.bulk`) consultam os arrays. Na tela, um caminho do Qt por camada,
+  montado uma vez e levado pela transformação; traço fino sem suavização.
+- **Leitor próprio de DXF** (`core/imports/dxf_fast.py`), só da geometria, direto das
+  tags (DXF Reference, especificação pública): LINE, LWPOLYLINE (com arcos), POLYLINE,
+  ARC, CIRCLE, ELLIPSE, SPLINE (B‑spline avaliada com numpy; por pontos de passagem, pela
+  matemática do ezdxf), TEXT, MTEXT (direção 11/21), POINT; INSERT (inclusive em matriz e
+  espelhado) e DIMENSION (com o deslocamento 12/22/32) explodidos; espaço de papel fora.
+  O ezdxf (leitura normal, e a de recuperação só se ela falhar) fica de reserva para o
+  que o leitor próprio não entende (binário, cota fora do plano, arquivo sem ENTITIES).
+  Conferido contra o ezdxf nos dois DWG do revisor: mesmas camadas, linhas, textos,
+  pontos e extensão; curvas dentro do desvio de 10 mm.
+
+| DWG real (174 mil linhas) | antes | depois |
 |---|---|---|
-| redesenhar a planta (deslocar, zoom) | 0,93 s | 0,04 s |
-| editar o modelo (ex.: criar parede) | 0,80 s | 0,32 s |
-| importar | 4,0 s | 3,0 s |
+| ler o DXF convertido | 19,5 s (ezdxf com recuperação: mais) | 5,8 s |
+| importar (gravar no projeto) | 13,2 s | ~1 s |
+| mover o mouse (Selecionar / Parede) | ~1 s / ~4 s por movimento | ~0,06 s |
+| redesenhar | 0,11 s | 0,04 s |
+| criar parede | 1,25 s | 0,18 s |
+| IFC salvo | — (dezenas de MB) | 1,8 MB em 0,1 s |
 
-- A planta desenha cada anotação com caminhos em coordenadas do modelo, montados uma vez
-  (um por espessura e tipo de linha) e levados à tela pela transformação do Qt
-  (`PlanView._stroke_paths`); a planta nova reaproveita os caminhos das anotações que
-  não mudaram. As formas de escolha das anotações não montam mais caminhos à toa.
-- As primitivas do desenho importado ficam guardadas por anotação, pelos parâmetros e
-  pela escala do pavimento (`annotations.base.CACHED`); cotas, etiquetas e outras que
-  leem o resto do modelo continuam sendo refeitas.
-- A planta lê o conteúdo de cada pavimento uma vez por montagem (`plan._decompose`), e o
-  diário serializa sem copiar.
-- A importação ainda grava cerca de 40 mil curvas no IFC (o desenho fica dentro do IFC);
-  é o custo que sobra, só na hora de importar.
-- **Erro corrigido:** texto ou nome de camada com bytes que não valem na codificação
-  declarada (acentos em Windows‑1252) derrubava a importação (`RuntimeError: Attribute
-  not set`, o IFC recusa substitutos isolados). `dxf._text` decodifica esses trechos como
-  Windows‑1252 e tira caracteres de controle. Testes ID11 e ID12.
+Do clique em Importar até o desenho na tela: ~11 s (2,8 s de conversão pelo LibreDWG,
+5,8 s de leitura, o resto para compactar e montar o desenho uma vez).
+
+- **Erro corrigido:** texto ou nome de camada com bytes fora da codificação declarada
+  (Windows‑1252) derrubava a importação (`RuntimeError: Attribute not set`).
+  `dxf._text` decodifica esses trechos e tira caracteres de controle.
+- Testes ID11–ID12 (`tests/test_importar_desenho.py`) e ID13–ID18
+  (`tests/test_desenho_leve.py`).
 
 ## 8. Conversor que vem com o BrasBim (2026‑10‑28)
 Pedido do revisor: o usuário não deve ter de instalar programa nenhum para abrir DWG.
@@ -123,7 +144,8 @@ Pedido do revisor: o usuário não deve ter de instalar programa nenhum para abr
 ## 9. Fontes
 DXF Reference (Autodesk, documentação pública); ezdxf (MIT); IFC 4.3 `IfcAnnotation`,
 `IfcIndexedPolyCurve`, `IfcCartesianPointList2D` [IFC-ANNOT]. Conversores externos
-usados como programas à parte; GNU LibreDWG 0.14 (GPL‑3.0‑or‑later,
+usados como programas à parte; código do ezdxf (MIT, aberto) lido para a regra do
+deslocamento das cotas; GNU LibreDWG 0.14 (GPL‑3.0‑or‑later,
 gnu.org/software/libredwg). Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 ## 10. Pontos de revisão
@@ -134,3 +156,5 @@ gnu.org/software/libredwg). Nenhum material de `_restrito/` nem de `tools/` foi 
 (d) hachuras e imagens do arquivo não entram; cotas entram explodidas.
 (e) LibreDWG baixado na primeira vez, com pergunta (Windows); ODA, se instalado, tem
     preferência; Abrir… importa DWG/DXF no projeto aberto (§8).
+(f) Desenho importado só como linhas compactadas no IFC, sem geometria IFC (§7).
+(g) Matriz de inserção (MINSERT) traz todas as cópias; o leitor anterior trazia uma (§7).

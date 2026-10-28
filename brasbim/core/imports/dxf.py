@@ -21,9 +21,13 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 from brasbim.core import guid
+from brasbim.core.annotations import reference
 from brasbim.core.document import Document, OpError
 from brasbim.core.imports import libredwg
+from brasbim.core.linework import Lines
 from brasbim.core.ops import Op, Transaction
 
 log = logging.getLogger(__name__)
@@ -193,6 +197,30 @@ def _text(value: str) -> str:
     return "".join(c for c in value if c >= " " or c in "\n\t")
 
 
+def _read_fast(path: str, source: str) -> Drawing | None:
+    """Leitor próprio, só da geometria (``dxf_fast``); None = usar o ezdxf."""
+    from brasbim.core.imports import dxf_fast
+
+    try:
+        data = Path(path).read_bytes()
+    except OSError as e:
+        raise OpError(f"não foi possível ler {source}: {e}") from e
+    try:
+        unit, found = dxf_fast.parse(data, CHORD)
+    except (dxf_fast.Unsupported, ValueError, IndexError, KeyError, ZeroDivisionError,
+            np.linalg.LinAlgError) as e:
+        log.info("leitor rápido não leu %s (%s): usando o ezdxf", source, e)
+        return None
+    layers: dict[str, Layer] = {}
+    for name, items in found.items():
+        layer = layers.setdefault(_text(name), Layer())
+        layer.lines += items["lines"]
+        layer.texts += [{**t, "text": _text(t["text"])} for t in items["texts"]
+                        if _text(t["text"]).strip()]
+        layer.points += items["points"]
+    return Drawing(source, unit, {k: v for k, v in layers.items() if len(v)})
+
+
 def read(path: str) -> Drawing:
     """Lê o DXF (ou converte o DWG e lê): linhas, polilinhas, arcos, círculos, elipses e
     curvas viram polilinhas; textos e pontos ficam; blocos são explodidos (§3)."""
@@ -203,8 +231,16 @@ def read(path: str) -> Drawing:
     source = Path(path).name
     with tempfile.TemporaryDirectory() as folder:
         dxf_path = dwg_to_dxf(path, folder) if path.lower().endswith(".dwg") else path
+        fast = _read_fast(dxf_path, source)
+        if fast is not None:
+            return fast
         try:
-            doc, _ = recover.readfile(dxf_path)
+            # Leitura normal (rápida); o modo de recuperação, que repara o arquivo tag a
+            # tag e é várias vezes mais lento, só se ela falhar (spec/ui 22 §7).
+            try:
+                doc = ezdxf.readfile(dxf_path)
+            except (ezdxf.DXFError, UnicodeDecodeError, ValueError):
+                doc, _ = recover.readfile(dxf_path)
         except (OSError, ezdxf.DXFStructureError) as e:
             raise OpError(f"não foi possível ler {source}: {e}") from e
     unit = _INSUNITS.get(int(doc.header.get("$INSUNITS", 0) or 0))
@@ -277,11 +313,11 @@ def import_drawing(doc: Document, storey, drawing: Drawing, unit: str,
         if layers is not None and name not in layers:
             continue
         layer = drawing.layers[name]
+        lines = Lines.from_dicts(layer.lines)
+        lines = Lines((lines.coords - (ox, oy)) * scale, lines.starts, lines.closed,
+                      lines.z * scale)
         data = {"storey": storey_id, "name": f"{group} – {name}", "source": drawing.source,
-                "layer": name,
-                "lines": [{"points": [m(p) for p in line["points"]],
-                           "closed": line["closed"], "z": z(line["z"])}
-                          for line in layer.lines],
+                "layer": name, **reference.pack_lines(lines),
                 "texts": [{**t, "at": m(t["at"]), "height": round(t["height"] * scale, 6)}
                           for t in layer.texts],
                 "points": [{"at": m(p["at"]), "z": z(p["z"])} for p in layer.points]}
