@@ -6,7 +6,16 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, ferramenta; linhas-guia, spec/ui 37).*
 
-> **Onde paramos (2026‑10‑29, manhã):** o revisor criou a **logo** (`logoBrasBim.png`,
+> **Onde paramos (2026‑10‑29, fim da manhã):** o revisor pôs 3 prints de barras e do
+> painel lateral de outro programa em `feedback/prints/` (só como descrição de função).
+> Inventário e plano em `reports/Plano barras e navegador (prints 2026-10-29).md`: 46
+> funções (15 ✅, 14 ◐, 16 ✗, 1 a perguntar), fases 0 (pesquisa complementar) → 1 (barra
+> da vista, girar a vista, ocultar, travar, ordem de desenho) → 2 (localizar e selecionar,
+> pegar/aplicar ajustes, grupos) → 3 (3D) → 4 (modelagem: assentar, recortar pela cobertura,
+> escalar, varinha, sólidos) → 5 (navegador em árvore, regras de aparência, publicar, BCF).
+> Pontos (a)–(e) para o revisor. **Próximo:** resposta do revisor; spec/ui 38 §5.
+
+> **Antes (2026‑10‑29, manhã):** o revisor criou a **logo** (`logoBrasBim.png`,
 > na raiz: B de fitas jabuticaba→magenta) e pediu a paleta "roxo meio jabuticaba". Feito
 > (spec/ui 11 §8): `scripts/gerar_logo.py` gera `brasbim/ui/logo/` (logo transparente,
 > símbolo 16–256 px, `brasbim.ico`); ícone da janela/barra de tarefas (AppUserModelID),
