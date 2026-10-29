@@ -35,6 +35,7 @@ from brasbim.core.structure import profiles, roofs
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.tools import (
+    AreaTool,
     BeamTool,
     ColumnTool,
     DimensionTool,
@@ -144,6 +145,8 @@ EDIT_TOOLS = [
     ("measure", "measure", "Medir",
      ("clique os pontos (total); no primeiro, fecha e dá a área; Shift+clique mede um "
      "elemento")),
+    ("selection_area", "selection_area", "Área de seleção",
+     ("marque uma área; arraste um vértice dentro dela para esticar; Esc remove a área")),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -616,6 +619,18 @@ class OptionsBar(QToolBar):
             self._combo([("Copiar", True), ("Mover o original", False)], tool.copy,
                         lambda v: setattr(tool, "copy", v),
                         "Cria um elemento novo deslocado, ou desloca o próprio elemento")
+        elif isinstance(tool, AreaTool):  # spec/ui 38 §2
+            self._choices([("rectangle", "area_rect", "Retângulo", "dois cantos opostos"),
+                           ("polygon", "area_polygon", "Polígono",
+                            "clique os pontos; fecha no primeiro, Enter ou clique duplo")],
+                          tool.shape, lambda v: (setattr(tool, "shape", v), tool.cancel()))
+            self.addSeparator()
+            self._choices([(False, "area_storey", "Este pavimento",
+                            "a área vale só no pavimento ativo (tracejado fino)"),
+                           (True, "area_all", "Todos os pavimentos",
+                            "a área vale em todos os pavimentos (tracejado grosso)")],
+                          tool.all_storeys, lambda v: (tool.set_all_storeys(v),
+                                                       self.window_.plan.update()))
         elif isinstance(tool, FilletTool):  # spec/ui 23 §6
             self._label("Raio")
             self._number(tool.radius, lambda v: setattr(tool, "radius", v),

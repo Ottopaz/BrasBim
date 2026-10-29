@@ -67,7 +67,9 @@ def touched(plan, area: Area) -> list[str]:
     """Donos de formas da planta com algum ponto dentro da área (os que podem esticar)."""
     out: dict[str, None] = {}
     for s in plan.shapes:
-        if s.owner and s.owner not in plan.locked and any(area.contains(q) for q in s.points):
+        if s.role == "below" or not s.owner or s.owner in plan.locked:
+            continue  # paredes do pavimento de baixo não são deste
+        if any(area.contains(q) for q in s.points):
             out[s.owner] = None
     for owner, prims in plan.annotations:
         if owner in plan.locked or owner in out:

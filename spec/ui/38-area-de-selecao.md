@@ -3,7 +3,7 @@ documento: Interação — área de seleção (esticar, 3D da área, exportar e 
 requisito: RF-NUC-05 (edição); pedido do revisor em 2026-10-29
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão (implementação por etapas: §3 núcleo feito; §2, §4, §5 a fazer)
+status: em revisão (implementação por etapas: §2 e §3 feitos; §4, §5 a fazer)
 revisor: OTTO
 ---
 
@@ -16,7 +16,7 @@ primeira entrega com **Esticar**, **3D da área** e **Exportar/imprimir a área*
 Selecionar/editar o conteúdo (mover, copiar, excluir o que está dentro) fica para
 depois (§7).
 
-## 2. Ferramenta
+## 2. Ferramenta *(feito)*
 - Ícone próprio no grupo **Edição** da barra Ferramentas; menu Editar > Área de seleção.
 - Barra Opções: forma **Retângulo** (2 cliques, padrão) ou **Polígono** (cliques; fecha
   no primeiro ponto, Enter ou clique duplo), e alcance **Este pavimento** (contorno
@@ -30,7 +30,7 @@ depois (§7).
 - Mover a área: com a ferramenta ativa, arrastar a partir de um ponto **dentro da área
   que não é vértice nem ponta de elemento** leva só a área.
 
-## 3. Esticar *(núcleo feito)*
+## 3. Esticar *(feito)*
 - Com a ferramenta ativa, arrastar a partir de um **vértice ou ponta dentro da área**
   (ou clicar nele e depois no destino; distância e ângulo no quadro de medidas) estica:
   todo ponto que define um elemento e está dentro da área (ou na borda) anda pelo vetor;
@@ -46,6 +46,8 @@ depois (§7).
 - Uma transação "Esticar" (desfaz com Ctrl+Z); recusa "nada a esticar" se nenhum ponto
   muda. Junções das paredes refeitas como em mover.
 - Não há esticar no 3D (o 3D só mostra a área).
+- Paredes do pavimento de baixo, que a planta mostra em cinza, não contam como deste
+  pavimento.
 
 ## 4. 3D da área *(a fazer)*
 - Exibir > **3D da área** (também no botão direito da planta com a área desenhada).
@@ -66,6 +68,12 @@ depois (§7).
 ## 6. Onde está
 - Núcleo sem Qt: `brasbim/core/selection_area.py` (`Area`, `contains`, `touched`,
   `stretch_fn`), `transform.stretch_elements`, `geom2d.stretched`.
+- Interface: `AreaTool` em `brasbim/ui/tools.py` (a área fica em `PlanContext.area`;
+  `Tool.escape` separa o Esc da vista do `cancel` da troca de ferramenta); contorno em
+  `PlanView._draw_area`; barra Opções em `toolbars.py`; ícones `selection_area`,
+  `area_rect`, `area_polygon`, `area_storey`, `area_all`.
+- Na ferramenta, o quadro de medidas dá largura e altura no retângulo, e distância e
+  ângulo ao esticar ou mover a área. O retângulo também sai arrastando do 1º canto.
 
 ## 7. Fica para depois
 Selecionar o conteúdo (tudo ou por tipo), mover/copiar/excluir o conteúdo recortado,
@@ -78,8 +86,8 @@ e fachadas.
   área não entra; IFC válido.
 - **AS03** Elemento todo dentro anda inteiro.
 - **AS04** Área que não pega nenhum ponto: recusa.
-- **AS05** *(a fazer)* Ferramenta: retângulo, polígono, mover a área, esticar
-  arrastando, Esc remove.
+- **AS05** Ferramenta: retângulo, polígono, mover a área, esticar
+  arrastando, Esc remove (`tests/test_area_selecao_ui.py`).
 - **AS06** *(a fazer)* 3D da área: aba temporária só com os elementos da área.
 - **AS07** *(a fazer)* Exportar PDF/DXF da área: só o que está dentro.
 

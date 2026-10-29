@@ -461,7 +461,7 @@ class ToolInput:
         elif tool.release_reference():
             pass  # o primeiro Esc solta os pontos de referência (spec/ui 37 §2)
         else:
-            busy = tool.cancel()
+            busy = tool.escape()
             session = self.ctx.session
             if tool.name in SELECTION_TOOLS or not busy:
                 if tool.name == "select" and session.selection:

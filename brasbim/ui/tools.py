@@ -15,7 +15,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from brasbim.core import edits, geom2d, guides, plan, snap, storeys, transform
+from brasbim.core import edits, geom2d, guides, plan, selection_area, snap, storeys, transform
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
@@ -225,6 +225,7 @@ class PlanContext:
         # Seleção (spec/ui 28): somar cliques (como no CAD) ou trocar a cada clique.
         self.accumulate = True
         self.hover: str | None = None  # elemento realçado sob o cursor
+        self.area: selection_area.Area | None = None  # área de seleção (spec/ui 38 §2)
         self._index = None
 
     def invalidate(self) -> None:
@@ -572,6 +573,10 @@ class Tool:
     def cancel(self) -> bool:
         """Esc: descarta o que estiver em andamento; devolve se havia algo."""
         return False
+
+    def escape(self) -> bool:
+        """Esc da vista; ``cancel`` também vale na troca de ferramenta."""
+        return self.cancel()
 
 
 # --- Selecionar (0.1 §5.1; 0.2 §3, §4) ---------------------------------------------------
@@ -5148,13 +5153,231 @@ class MeasureTool(Tool):
         return out
 
 
+# --- área de seleção (spec/ui 38 §2, §3) -----------------------------------------------------
+
+
+class AreaTool(Tool):
+    """Área de seleção: desenha a área (retângulo ou polígono), move a área e estica o que
+    tem pontos dentro dela. A área fica no ``PlanContext`` ao trocar de ferramenta."""
+
+    name, label = "selection_area", "Área de seleção"
+    number_hint = "distância"
+    creates = True
+    STRETCH_SNAPS = ("end", "inter")  # vértice ou ponta: estica; outro ponto: move a área
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.shape = "rectangle"  # ou "polygon"
+        self.all_storeys = False
+        self.points: list[Point] = []
+        self.pressed: Point | None = None  # 1º canto apertado: soltar longe fecha o retângulo
+        self.drag: dict | None = None  # esticar ou mover a área: base, início, ativo, preso
+
+    def hint(self):
+        if self.drag is not None:
+            verb = "esticar" if self.drag["kind"] == "stretch" else "mover a área"
+            return f"Clique o destino para {verb}; Tab digita distância e ângulo; Esc cancela"
+        if self.points:
+            if self.shape == "rectangle":
+                return "Clique o canto oposto; Tab digita largura e altura; Esc cancela"
+            return ("Clique o próximo ponto; no primeiro, Enter ou clique duplo fecha; "
+                    "Esc cancela")
+        text = ("Clique o primeiro canto da área" if self.shape == "rectangle"
+                else "Clique o primeiro ponto da área")
+        if self.ctx.area is not None:
+            text += ("; arraste um vértice dentro da área para esticar, ou outro ponto dentro "
+                     "para mover a área; Esc remove a área")
+        return text
+
+    def _origin(self) -> Point | None:
+        if self.drag is not None:
+            return self.drag["base"]
+        return self.points[-1] if self.points else None
+
+    def _point(self, p, mods) -> Point:
+        origin = self._origin()
+        self.snapped = self.ctx.snap(p, mods, origin, extra=self.points)
+        if origin is not None and self.fixed:
+            self.snapped = snap.Snap(self._resolve(self.snapped.point), "free")
+        return self.snapped.point
+
+    def _drawing_rect(self) -> bool:
+        return self.drag is None and self.shape == "rectangle" and bool(self.points)
+
+    def _resolve(self, q: Point) -> Point:
+        if self._drawing_rect():
+            return rect_corner(self.points[0], q, self.fixed.get("width"),
+                               self.fixed.get("height"))
+        return polar_point(self._origin(), q, self.fixed.get("distance"),
+                           self.fixed.get("angle"))
+
+    def fields(self):
+        origin = self._origin()
+        if origin is None:
+            return []
+        q = self.snapped.point if self.snapped else None
+        if self._drawing_rect():
+            return [Field("width", "Largura", "m", abs(q[0] - origin[0]) if q else None,
+                          self.fixed.get("width")),
+                    Field("height", "Altura", "m", abs(q[1] - origin[1]) if q else None,
+                          self.fixed.get("height"))]
+        v = (q[0] - origin[0], q[1] - origin[1]) if q else None
+        length = math.hypot(*v) if v else None
+        angle = _degrees(*v) if v and length > 1e-9 else None
+        return [Field("distance", "Distância", "m", length, self.fixed.get("distance")),
+                Field("angle", "Ângulo", "°", angle, self.fixed.get("angle"))]
+
+    def check(self, key, value):
+        if key != "angle" and value <= 1e-9:
+            return "o valor deve ser maior que zero"
+        return None
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        d = self.drag
+        if d is not None and not d["active"]:
+            if math.dist(p, d["start"]) < self.ctx.tol * DRAG_START:
+                return
+            d["active"] = True
+        self._point(p, mods)
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        q = self._point(p, mods)
+        self.fixed.clear()
+        if self.drag is not None:  # destino depois de clicar a base (ou Enter no quadro)
+            self._drop(q)
+        elif self.points:
+            self._add(q)
+        elif self.ctx.area is not None and self.ctx.area.contains(q):
+            kind = "stretch" if self.snapped.kind in self.STRETCH_SNAPS else "move"
+            self.drag = {"kind": kind, "base": q, "start": p, "active": False,
+                         "sticky": False}
+        else:
+            self.points, self.pressed = [q], p
+
+    def release(self, p, mods):
+        d, pressed, self.pressed = self.drag, self.pressed, None
+        if d is not None:
+            if not d["active"]:
+                d["sticky"] = True  # clique sem arrastar: o destino é o próximo clique
+            elif not d["sticky"]:
+                self._drop(self._point(p, mods))
+        elif (self.shape == "rectangle" and len(self.points) == 1 and pressed is not None
+              and math.dist(p, pressed) >= self.ctx.tol * DRAG_START):
+            self._add(self._point(p, mods))  # retângulo arrastado
+
+    def double(self, p, mods):
+        if self.shape == "polygon" and len(self.points) >= 3:
+            self._finish(self.points)
+
+    def key(self, key):
+        if key == "enter" and self.shape == "polygon" and len(self.points) >= 3:
+            self._finish(self.points)
+            return True
+        return False
+
+    def _add(self, q: Point) -> None:
+        if self.shape == "rectangle":
+            if math.dist(q, self.points[0]) > 1e-9:
+                self._finish(selection_area.Area.rectangle(self.points[0], q).points)
+            return
+        if len(self.points) >= 3 and math.dist(q, self.points[0]) <= self.ctx.tol:
+            self._finish(self.points)  # fechou no primeiro ponto
+        elif math.dist(q, self.points[-1]) > 1e-9:
+            self.points.append(q)
+
+    def _finish(self, points) -> None:
+        self.points = []
+        if not selection_area.valid(points):
+            self.session.message("a área precisa ter largura e altura", "recusa")
+            return
+        self.ctx.area = selection_area.Area(tuple(points), self.all_storeys)
+
+    def set_all_storeys(self, value: bool) -> None:
+        """Alcance da área (barra Opções): vale também para a área já desenhada."""
+        self.all_storeys = value
+        area = self.ctx.area
+        if area is not None:
+            self.ctx.area = selection_area.Area(area.points, value)
+
+    def touched(self, area: selection_area.Area) -> list[str]:
+        """Elementos com algum ponto dentro: do pavimento ativo ou de todos."""
+        if not area.all_storeys:
+            return selection_area.touched(self.ctx.plan, area)
+        doc, found = self.session.doc, {}
+        for storey in doc.storeys():
+            found.update(dict.fromkeys(selection_area.touched(
+                plan.storey_plan(doc, storey, show_below=False), area)))
+        return list(found)
+
+    def _drop(self, q: Point) -> None:
+        d, self.drag = self.drag, None
+        vector = (q[0] - d["base"][0], q[1] - d["base"][1])
+        area = self.ctx.area
+        if area is None or math.hypot(*vector) <= 1e-9:
+            return
+        if d["kind"] == "move":
+            self.ctx.area = area.moved(vector)
+            return
+        doc, gids = self.session.doc, self.touched(area)
+        if not gids:
+            self.session.message("nada a esticar: nenhum ponto dentro da área", "recusa")
+        elif self.session.run(lambda: transform.stretch_elements(doc, gids, area, vector)):
+            self.ctx.area = area.moved(vector)
+
+    def cancel(self):
+        busy = bool(self.points or self.drag)
+        self.points, self.drag, self.pressed = [], None, None
+        self.fixed.clear()
+        return busy
+
+    def escape(self):
+        """Esc: descarta o que está em andamento; senão, remove a área (§2)."""
+        if self.cancel():
+            return True
+        if self.ctx.area is not None:
+            self.ctx.area = None
+            return True
+        return False
+
+    def transform_fn(self):
+        d = self.drag
+        if d is None or not d["active"] or self.snapped is None:
+            return None
+        q, base = self.snapped.point, d["base"]
+        return geom2d.translation((q[0] - base[0], q[1] - base[1]))
+
+    def preview(self):
+        q = self.snapped.point if self.snapped else self.cursor
+        d = self.drag
+        if d is not None:
+            if not d["active"] or q is None:
+                return []
+            vector = (q[0] - d["base"][0], q[1] - d["base"][1])
+            area = self.ctx.area
+            marks = [Mark((d["base"], q), False),
+                     Mark(area.moved(vector).points, True, "area")]
+            if d["kind"] == "stretch":
+                fn = selection_area.stretch_fn(area, vector)
+                marks += _shape_marks(moving_shapes(self.ctx, self.touched(area)), fn)
+            return marks
+        if not self.points or q is None:
+            return []
+        if self.shape == "rectangle":
+            return [Mark(selection_area.Area.rectangle(self.points[0], q).points, True,
+                         "area")]
+        return [Mark((*self.points, q), len(self.points) >= 2, "area")]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
          GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
-         MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool)
+         MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",

@@ -390,8 +390,10 @@ class MainWindow(QMainWindow):
             self._action(situation_menu, text,
                          lambda _=False, c=code: self.set_selection_situation(c))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
-                          ("fillet", "Concordar"), ("measure", "Medir")):
+                          ("fillet", "Concordar"), ("measure", "Medir"),
+                          ("selection_area", "Área de seleção")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        self._action(edit_menu, "Remover área de seleção", self.remove_selection_area)
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
         group = QActionGroup(self)
         self.select_mode_actions = {}
@@ -692,6 +694,7 @@ class MainWindow(QMainWindow):
                     or state["storey"] != self.session.storey_id:
                 self.close_saved_view()
         if event == "document":
+            self.ctx.area = None  # a área de seleção é da sessão (spec/ui 38 §2)
             self.toolbox.reset()
             self._hook_tools()
             self._refresh_section_views(reset=True)
@@ -1651,6 +1654,13 @@ class MainWindow(QMainWindow):
         self.plan.update()
         self.view3d.update()
         (self.ctx.input_view or self.plan).setFocus()
+
+    def remove_selection_area(self) -> None:
+        """Editar > Remover área de seleção (spec/ui 38 §2)."""
+        if self.ctx.area is not None:
+            self.ctx.area = None
+            self._set_hint(self.toolbox.active.hint())
+            self.plan.update()
 
     def undo(self) -> None:
         self.toolbox.active.cancel()

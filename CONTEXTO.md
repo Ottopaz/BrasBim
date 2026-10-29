@@ -4,7 +4,22 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, núcleo; linhas-guia, spec/ui 37).*
+*Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, ferramenta; linhas-guia, spec/ui 37).*
+
+> **Onde paramos (2026‑10‑29, madrugada):** feita a **§2 da spec/ui 38**: a ferramenta
+> **Área de seleção** aparece no grupo Edição da barra Ferramentas e em Editar > Área de
+> seleção (e Editar > Remover área de seleção). Barra Opções: Retângulo | Polígono e Este
+> pavimento (tracejado fino) | Todos os pavimentos (tracejado grosso). A área fica em
+> `PlanContext.area` (da sessão, sai ao abrir outro projeto) e continua na planta ao
+> trocar de ferramenta; Esc na ferramenta descarta o que está em andamento, depois remove a
+> área, depois volta para Selecionar (`Tool.escape`, novo, separado do `cancel` da troca
+> de ferramenta). Arrastar (ou clicar e clicar) de um vértice/ponta dentro da área
+> **estica** (prévia das formas esticadas; a área anda junto); de outro ponto dentro,
+> **move só a área**. Achado e corrigido: `selection_area.touched` pegava as paredes do
+> pavimento de baixo (cinza na planta). Testes AS05 (`tests/test_area_selecao_ui.py`);
+> 801 testes. **Próximo:** §4 3D da área (aba temporária com planos de corte, AS06); §5
+> exportar PDF/DXF e imprimir a área (AS07). Depois, spec 35 (Câmera primeiro) e 36.
+> Remontar a pasta do pendrive.
 
 > **Onde paramos (2026‑10‑29, fim da noite):** o revisor aprovou as linhas-guia
 > ("ótimo") e pediu uma ferramenta como a "marquee" do Archicad. Lida a ajuda pública

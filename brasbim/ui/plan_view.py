@@ -623,6 +623,9 @@ class PlanView(QWidget, ToolInput):
                                     Qt.SolidLine if mark.style == "reference"
                                     else Qt.DashLine))
                 painter.setBrush(Qt.NoBrush)
+            elif mark.style == "area":  # área de seleção sendo desenhada ou movida
+                painter.setPen(self._area_pen(getattr(tool, "all_storeys", False)))
+                painter.setBrush(Qt.NoBrush)
             elif mark.style in ("window", "crossing"):
                 color = C["preview"] if mark.style == "window" else C["crossing"]
                 fill = QColor(color)
@@ -662,6 +665,24 @@ class PlanView(QWidget, ToolInput):
             q = self.to_screen(point)
             self._label(painter, QPointF(q.x() + 10, q.y() - 10), text)
 
+    @staticmethod
+    def _area_pen(all_storeys: bool) -> QPen:
+        """Contorno da área de seleção: tracejado fino (este pavimento) ou grosso (todos),
+        spec/ui 38 §2."""
+        pen = QPen(C["select"], 2.6 if all_storeys else 1.2, Qt.DashLine)
+        pen.setDashPattern([6, 4] if all_storeys else [5, 4])
+        return pen
+
+    def _draw_area(self, painter: QPainter) -> None:
+        area = self.ctx.area
+        if area is None:
+            return
+        fill = QColor(C["select"])
+        fill.setAlpha(14)
+        painter.setPen(self._area_pen(area.all_storeys))
+        painter.setBrush(QBrush(fill))
+        painter.drawPath(self._path(area.points, True))
+
     def _label(self, painter: QPainter, at: QPointF, text: str) -> None:
         painter.setFont(QFont(self.font().family(), 9))
         rect = painter.fontMetrics().boundingRect(text).adjusted(-4, -2, 4, 2)
@@ -682,6 +703,7 @@ class PlanView(QWidget, ToolInput):
         self._draw_tags(painter)
         self._draw_reservations(painter)
         self._draw_hover(painter)
+        self._draw_area(painter)
         self._draw_tool(painter)
         painter.end()
         if self.selection_bar is not None:
