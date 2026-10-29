@@ -4,7 +4,26 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (pesquisa complementar; specs/ui 35 e 36).*
+*Atualizado em 2026‑10‑29 (linhas-guia, spec/ui 37; specs/ui 35 e 36 aprovadas).*
+
+> **Onde paramos (2026‑10‑29, noite):** o revisor respondeu **"ok"** às specs 35 e 36
+> (todos os pontos (a)–(p) como propostos; status "aprovada") e pediu, antes delas, uma
+> coisa **urgente**: **linhas-guia** como no Archicad. Feito na **spec/ui 37**
+> (`spec/ui/37-linhas-guia.md`, em revisão; pontos (a)–(b) no §9), a partir da pesquisa
+> (`interface_e_interacao.md` §1, `archicad_modelagem.md`, `autocad.md` §1). Parar o
+> cursor ~0,4 s sobre extremidade, interseção, meio ou centro de **qualquer** elemento
+> cria um ponto de referência (x); até 3; ficam até Esc ou troca de ferramenta (antes
+> caíam ao clicar). Guias a 0°, 45°, 90° e 135° saem das referências **e do ponto
+> anterior**; prendem o cursor; cruzamento de duas guias, ou de guia com aresta, prende
+> mais forte e marca interseção; pontos fortes vencem a guia; sobre a guia a distância
+> segue a grade de 0,10 m (ponto da grade já alinhado fica). Vale em todas as
+> ferramentas que pedem ponto (passa por `PlanContext.snap`), inclusive Mover, Copiar,
+> Girar e Espelhar, na planta e no 3D. Exibir > Atração > **Linhas-guia** liga/desliga.
+> Núcleo em `core/guides.py`; referências agora ficam no `PlanContext` (o
+> `Tool.reference` virou propriedade). Testes LG01–LG06 (`tests/test_linhas_guia.py`);
+> 794 testes, ruff limpo. **Próximo:** o revisor testa as guias; depois implementar a
+> spec 35 na ordem Câmera → Elevação interna → Folha → Detalhe, e a 36 (Ponto de apoio →
+> Polilinha → Figura → Desenho). Remontar a pasta do pendrive.
 
 > **Onde paramos (2026‑10‑29, fim do dia):** feita a **pesquisa complementar** da spec/ui 34
 > §4 em fontes públicas (help Archicad AC25–AC30, help Autodesk Revit/AutoCAD 2023–2026,
@@ -295,7 +314,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (788 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (794 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -330,6 +349,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
 | `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1, 2 e 3 feitas** (quadro de áreas: PL05, PL05b–e em `tests/test_quadro_de_areas.py` e `test_interface_quadro_de_areas.py`; situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 4–5 a fazer (PL06–PL08); pontos §11 (a)–(r) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
+| `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
+| `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |

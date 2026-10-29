@@ -1543,6 +1543,11 @@ class MainWindow(QMainWindow):
             action.setChecked(kind in self.ctx.snap_kinds)
             self.snap_actions[kind] = action
         menu.addSeparator()
+        # Linhas-guia (spec/ui 37 §4): preferência própria, ligada por padrão.
+        self.ctx.guides_on = settings.value("atracao/guias", "true") in (True, "true")
+        self.guides_action = self._action(menu, "Linhas-guia", self._set_guides)
+        self.guides_action.setCheckable(True)
+        self.guides_action.setChecked(self.ctx.guides_on)
         self.snap_off_action = self._action(menu, "Desligar toda a atração", self._set_snap_off)
         self.snap_off_action.setCheckable(True)
         self.snap_off_action.setChecked(self.ctx.snap_off)
@@ -1550,6 +1555,10 @@ class MainWindow(QMainWindow):
     def _set_snap_kind(self, kind: str, on: bool) -> None:
         (self.ctx.snap_kinds.add if on else self.ctx.snap_kinds.discard)(kind)
         _settings().setValue("atracao/tipos", sorted(self.ctx.snap_kinds))
+
+    def _set_guides(self, on: bool) -> None:
+        self.ctx.guides_on = bool(on)
+        _settings().setValue("atracao/guias", "true" if on else "false")
 
     def _set_snap_off(self, on: bool) -> None:
         self.ctx.snap_off = bool(on)

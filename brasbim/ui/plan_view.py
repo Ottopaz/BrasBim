@@ -614,7 +614,7 @@ class PlanView(QWidget, ToolInput):
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
-        for mark in tool.preview():
+        for mark in tool.preview() + self.ctx.guide_marks():
             if mark.style == "gap":
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(QBrush(C["background"]))

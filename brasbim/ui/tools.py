@@ -15,7 +15,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from brasbim.core import edits, geom2d, plan, snap, storeys, transform
+from brasbim.core import edits, geom2d, guides, plan, snap, storeys, transform
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
@@ -193,6 +193,11 @@ class Mark:
     style: str = "preview"
 
 
+# Atração forte: vence a linha-guia (spec/ui 37 §3); as outras cedem a ela.
+STRONG_SNAPS = ("end", "inter", "mid", "center", "perp", "tan")
+REFERENCE_SNAPS = ("end", "inter", "mid", "center")  # viram ponto de referência (§2)
+
+
 class PlanContext:
     """Sessão + dados do pavimento ativo que as ferramentas consultam."""
 
@@ -211,6 +216,9 @@ class PlanContext:
         self.snap_kinds = set(snap.KINDS)  # Exibir > Atração (spec/ui 23 §2.3)
         self.snap_off = False  # Exibir > Atração > Desligar toda a atração
         self.axis_lock: tuple[str, Point] | None = None  # seta: ("x" | "y", origem) (§3.1)
+        self.guides_on = True  # Exibir > Atração > Linhas-guia (spec/ui 37 §4)
+        self.references: list[Point] = []  # pontos de referência (spec/ui 37 §2)
+        self.tracked: guides.Tracked | None = None  # guia em uso no último ``snap``
         self.last_tool: tuple[str, str] | None = None  # (nome, rótulo): Enter repete (§3.2)
         self.last_point: Point | None = None  # último ponto clicado ou digitado (ui/24 §4)
         self.last_origin: Point | None = None  # ponto anterior do último ``snap``
@@ -298,6 +306,7 @@ class PlanContext:
     def snap(self, p: Point, mods: Mods, origin: Point | None = None,
              extra=()) -> snap.Snap:
         self.last_origin = origin
+        self.tracked = None
         lock = self.axis_lock if origin is not None and self.axis_lock else None
         if lock is not None and math.dist(lock[1], origin) > 1e-9:
             lock = self.axis_lock = None  # o ponto anterior mudou: a trava caiu
@@ -309,6 +318,8 @@ class PlanContext:
             found = snap.snap(self.walls, p, self.tol, self.grid,
                               list(extra) + self.grid_points, self.index, origin,
                               self.snap_kinds)
+            if lock is None and self.guides_on:
+                found = self._guide(p, found, origin)
         if lock is None:
             return found
         q = found.point
@@ -316,6 +327,65 @@ class PlanContext:
         attracted = found.kind not in ("free", "grid")
         return snap.Snap(q, found.kind if attracted else "free", found.wall,
                          found.point if attracted else None)
+
+    def _guide(self, p: Point, found: snap.Snap, origin: Point | None) -> snap.Snap:
+        """Linhas-guia (spec/ui 37 §3): ponto atraído forte fica (e mostra as guias que
+        passam por ele); senão, guia, cruzamento de guias ou de guia com aresta."""
+        lines = guides.guides_from(self.references, origin)
+        if not lines:
+            return found
+        on_guide = guides.through(found.point, lines, self.tol * 0.02)
+        if found.kind in STRONG_SNAPS or (found.kind == "grid" and on_guide):
+            self.tracked = on_guide  # o ponto atraído já está alinhado: só mostra a guia
+            if found.kind == "grid" and len(on_guide.guides) > 1:
+                return snap.Snap(found.point, "inter")  # cruzamento de guias na grade
+            return found
+        segments = [(s.a, s.b) for s in self.index.segments_near(p, self.tol)]
+        self.tracked = guides.track(p, lines, self.tol, segments)
+        if self.tracked is None:
+            return found
+        if not self.tracked.crossing and "grid" in self.snap_kinds and self.grid:
+            self.tracked = guides.round_along(self.tracked, self.grid)  # passo da grade
+        return snap.Snap(self.tracked.point, "inter" if self.tracked.crossing else "guide")
+
+    def acquire(self, p: Point) -> bool:
+        """Cursor parado sobre um ponto (extremidade, interseção, meio, centro): ele vira
+        ponto de referência (spec/ui 37 §2). Até ``guides.MAX_REFS``; o mais antigo sai."""
+        found = snap.snap(self.walls, p, self.tol, None,
+                          self.vertices + self.column_points + self.grid_points, self.index,
+                          None, set(REFERENCE_SNAPS) & self.snap_kinds | {"end"})
+        if found.kind not in REFERENCE_SNAPS:
+            return False
+        q = found.point
+        if any(math.dist(q, r) < 1e-9 for r in self.references):
+            return False
+        self.references = (self.references + [q])[-guides.MAX_REFS:]
+        return True
+
+    def clear_references(self) -> bool:
+        if not self.references:
+            return False
+        self.references, self.tracked = [], None
+        return True
+
+    def guide_marks(self) -> list[Mark]:
+        """Um x em cada ponto de referência e as guias em uso, passando do cursor."""
+        r = max(self.tol, 0.01) * 0.6
+        marks = []
+        for x, y in self.references:
+            marks += [Mark(((x - r, y - r), (x + r, y + r)), False, "reference"),
+                      Mark(((x - r, y + r), (x + r, y - r)), False, "reference")]
+        if self.tracked is not None:
+            q = self.tracked.point
+            for g in self.tracked.guides:
+                d = math.dist(g.source, q)
+                if d < 1e-9:
+                    continue
+                ux, uy = (q[0] - g.source[0]) / d, (q[1] - g.source[1]) / d
+                reach = d + max(self.tol, 0.01) * 6
+                marks.append(Mark((g.source, (g.source[0] + reach * ux,
+                                              g.source[1] + reach * uy)), False, "guide"))
+        return marks
 
     def toggle_axis(self, axis: str) -> bool:
         """Seta: trava (ou solta) o eixo a partir do ponto anterior (spec/ui 23 §3.1)."""
@@ -363,8 +433,7 @@ class Tool:
         self.finished = False  # a ferramenta terminou: a vista volta para Selecionar
         self.fixed: dict[str, float] = {}  # valores digitados nos campos (spec/ui 07 §2)
         self.mods = Mods()  # modificadores do último movimento (Enter confirma com eles)
-        self.reference: Point | None = None  # ponto de referência (spec/ui 09 §2.1)
-        self.tracking: dict | None = None  # linha de referência em uso: dir, ponto, distância
+        self.tracking: dict | None = None  # guia em uso: origem, dir, ponto, distância
 
     @property
     def session(self) -> Session:
@@ -387,54 +456,47 @@ class Tool:
         """Digitar um número abre o campo de entrada numérica."""
         return bool(self.fields())
 
-    # ponto de referência (spec/ui 09 §2.1)
+    # pontos de referência e linhas-guia (spec/ui 09 §2.1, 37)
 
     creates = False  # ferramenta de criação: aceita ponto de referência
+    guided = False  # aceita ponto de referência sem criar (mover, copiar, girar…)
+
+    @property
+    def reference(self) -> Point | None:
+        """Ponto de referência em uso: o da guia em que o cursor está, senão o mais novo."""
+        if self.tracking is not None:
+            return self.tracking["source"]
+        t = self.ctx.tracked
+        g = t.reference() if t is not None else None
+        if g is not None:
+            return g.source
+        return self.ctx.references[-1] if self.ctx.references else None
 
     def acquire(self, p: Point | None = None) -> bool:
-        """Cursor parado sobre um vértice: ele vira o ponto de referência."""
+        """Cursor parado sobre um ponto: ele vira ponto de referência (spec/ui 37 §2)."""
         p = p if p is not None else self.cursor
-        if not self.creates or p is None:
+        if not (self.creates or self.guided) or p is None or not self.ctx.acquire(p):
             return False
-        near = [(math.dist(p, q), q) for q in self.ctx.vertices
-                if math.dist(p, q) <= self.ctx.tol]
-        if not near:
-            return False
-        q = min(near)[1]
-        if self.reference is not None and math.dist(q, self.reference) < 1e-9:
-            return False
-        self.reference, self.tracking = q, None
+        self.tracking = None
         self.fixed.pop("ref", None)
         if self.cursor is not None:
             self.move(self.cursor, self.mods)
         return True
 
     def release_reference(self) -> bool:
-        if self.reference is None:
+        if not self.ctx.clear_references():
             return False
-        self.reference = self.tracking = None
+        self.tracking = None
         self.fixed.pop("ref", None)
         if self.cursor is not None:
             self.move(self.cursor, self.mods)
         return True
 
-    def reference_marks(self) -> list[Mark]:
-        """Marca do ponto de referência (um x) e a linha de referência em uso."""
-        if self.reference is None:
-            return []
-        x, y = self.reference
-        r = max(self.ctx.tol, 0.01) * 0.6
-        marks = [Mark(((x - r, y - r), (x + r, y + r)), False, "reference"),
-                 Mark(((x - r, y + r), (x + r, y - r)), False, "reference")]
-        if self.tracking is not None:
-            marks.append(Mark((self.reference, self.tracking["point"]), False, "guide"))
-        return marks
-
     def field_anchor(self) -> Point | None:
         """Onde fica o quadro de medidas (no meio da linha de referência); None = cursor."""
-        if self.tracking is None or self.reference is None:
+        if self.tracking is None:
             return None
-        (x0, y0), (x1, y1) = self.reference, self.tracking["point"]
+        (x0, y0), (x1, y1) = self.tracking["source"], self.tracking["point"]
         return ((x0 + x1) / 2, (y0 + y1) / 2)
 
     # campos de medida (spec/ui 07 §2)
@@ -1325,41 +1387,33 @@ class _WallTool(Tool):
     def _point(self, p, mods) -> Point:
         origin = self.points[-1] if self.points else None
         self.snapped = self.ctx.snap(p, mods, origin, extra=self._extra())
-        tracked = self._track(p, origin)
+        tracked = self._track(p)
         if tracked is not None:
-            self.snapped = snap.Snap(tracked, "free")
+            if math.dist(tracked, self.snapped.point) > 1e-9:
+                self.snapped = snap.Snap(tracked, "free")
         elif self.points and self.fixed:
             self.snapped = snap.Snap(self._resolve(self.snapped.point), "free")
         return self.snapped.point
 
-    def _track(self, p: Point, origin: Point | None) -> Point | None:
-        """Ponto na linha de referência (spec/ui 09 §2.1.1): direções ortogonais que saem
-        da referência; o cruzamento com a ortogonal do ponto anterior também prende."""
-        ref, tol = self.reference, self.ctx.tol
-        if ref is None:
-            self.tracking = None
-            return None
-        dx, dy = p[0] - ref[0], p[1] - ref[1]
+    def _track(self, p: Point) -> Point | None:
+        """Ponto na guia de um ponto de referência (spec/ui 37 §3), achada por
+        ``ctx.snap``; com a distância digitada, a guia fica travada e o ponto vai a essa
+        distância da referência, do lado do cursor."""
         fixed = self.fixed.get("ref")
         if fixed is not None and self.tracking is not None:  # direção travada
-            ux, uy = self.tracking["dir"]
-            sign = -1.0 if dx * ux + dy * uy < 0 else 1.0
+            ref, (ux, uy) = self.tracking["source"], self.tracking["dir"]
+            sign = -1.0 if (p[0] - ref[0]) * ux + (p[1] - ref[1]) * uy < 0 else 1.0
             q = (ref[0] + sign * fixed * ux, ref[1] + sign * fixed * uy)
         else:
-            near = [(abs(dy), (1.0, 0.0)), (abs(dx), (0.0, 1.0))]
-            near = [n for n in near if n[0] <= tol and math.hypot(dx, dy) > tol]
-            if not near:
+            t = self.ctx.tracked
+            g = t.reference() if t is not None else None
+            if g is None:
                 self.tracking = None
                 self.fixed.pop("ref", None)
                 return None
-            _, (ux, uy) = min(near)
-            q = (ref[0] + dx * ux * ux, ref[1] + dy * uy * uy)  # projeção na linha
-            if origin is not None:
-                if ux and abs(p[0] - origin[0]) <= tol:
-                    q = (origin[0], ref[1])
-                elif uy and abs(p[1] - origin[1]) <= tol:
-                    q = (ref[0], origin[1])
-        self.tracking = {"dir": (ux, uy), "point": q, "distance": math.dist(ref, q)}
+            ref, (ux, uy), q = g.source, g.dir, t.point
+        self.tracking = {"source": ref, "dir": (ux, uy), "point": q,
+                         "distance": math.dist(ref, q)}
         return q
 
     def fields(self):
@@ -1380,10 +1434,10 @@ class _WallTool(Tool):
         return None
 
     def _consume_reference(self) -> None:
-        """O ponto marcado com a linha de referência a solta (spec/ui 09 §2.1)."""
-        if self.tracking is not None:
-            self.reference = self.tracking = None
-            self.fixed.pop("ref", None)
+        """O ponto marcado solta a distância digitada; os pontos de referência ficam
+        até Esc ou a troca de ferramenta (spec/ui 37 §2)."""
+        self.tracking = None
+        self.fixed.pop("ref", None)
 
     def _resolve(self, q: Point) -> Point:
         """Ponto com os valores fixados nos campos (spec/ui 07 §2.3)."""
@@ -1403,7 +1457,7 @@ class _WallTool(Tool):
         return False
 
     def preview(self):
-        return self.shape_preview() + self.reference_marks()
+        return self.shape_preview()
 
     def shape_preview(self) -> list[Mark]:
         return []
@@ -1724,13 +1778,13 @@ class ColumnTool(Tool):
         self.session.run(lambda: sc.create_column(doc, self.type, storey, q,
                                                   section=self.section(), **options))
         self.fixed.clear()
-        self.reference = self.tracking = None  # a referência serviu a este ponto
+        self.tracking = None
         self.move(p, mods)
 
     def preview(self):
         ring = self._outline()
         marks = [Mark(tuple(ring), True)] if ring else []
-        return marks + self.reference_marks()
+        return marks
 
 
 class _BeamOptions:
@@ -3850,16 +3904,15 @@ class _FillingTool(Tool):
             target["height"], target["base"], hinges=hinges, opens_to=target["opens_to"],
             align=self.align, offset=self.offset))
         self.fixed.pop("ref", None)
-        self.reference = None  # a referência serviu a este ponto (spec/ui 09 §2.1)
         self.move(p, mods)
 
     def preview(self):
         if not self.target:
-            return self.reference_marks()
+            return []
         marks = list(self.target["marks"])
         if "ref_line" in self.target:
             marks.append(Mark(self.target["ref_line"], False, "guide"))
-        return marks + self.reference_marks()
+        return marks
 
     def labels(self):
         return self.target["labels"] if self.target else []
@@ -4013,7 +4066,6 @@ class WallOpeningTool(_FillingTool):
             doc, s["wall"], s["distance"], s["width"], s["height"], s["sill"], s["kind"],
             s["depth"], s["side"]))
         self.fixed.pop("ref", None)
-        self.reference = None
         self.move(p, mods)
 
 
@@ -4154,6 +4206,8 @@ class _SelectionTool(Tool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.points: list[Point] = []
+
+    guided = True  # pontos de referência e linhas-guia (spec/ui 37 §2)
 
     def _gids(self) -> list[str]:
         return sorted(self.session.selection)
@@ -4684,7 +4738,7 @@ class ObjectTool(Tool):
                 values=values))
         self.first = None
         self.fixed.clear()
-        self.reference = self.tracking = None
+        self.tracking = None
         self.move(p, mods)
 
     # desenho
@@ -4719,7 +4773,7 @@ class ObjectTool(Tool):
         marks = [Mark(tuple(points), closed, style) for points, closed in self._ghost()]
         if self.first is not None:
             marks.append(Mark((self.first, self.cursor), False, "guide"))
-        return marks + self.reference_marks()
+        return marks
 
     def labels(self):
         if self._cache is not None and self._cache[2] and self.cursor is not None:
@@ -5237,6 +5291,7 @@ class ToolBox:
                 self.ctx.last_tool = (prev.name, prev.label)
         self.active = self.tools[name]
         self.ctx.axis_lock = None
+        self.ctx.references, self.ctx.tracked = [], None  # spec/ui 37 §2
         if name in ("wall", "arc", "rectangle"):
             self.wall_form = name
         return self.active

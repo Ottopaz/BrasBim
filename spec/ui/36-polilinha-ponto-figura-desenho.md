@@ -3,8 +3,8 @@ documento: Documentação — polilinha com arcos, ponto de apoio, figura e dese
 requisito: spec/ui 34 §4 (grupo Documentação); RF-DOC-06, RF-DOC-14, RF-INT-07 (imagem)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão
-revisor: OTTO
+status: aprovada (pontos de revisão como propostos)
+revisor: OTTO ("ok" em 2026-10-29)
 ---
 
 # Documentação: polilinha, ponto de apoio, figura e desenho

@@ -3,8 +3,8 @@ documento: Vistas — elevação interna, detalhe, folha de trabalho e câmera
 requisito: spec/ui 34 §4 (grupo Vistas); RF-DOC-12, RF-DOC-14
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão
-revisor: OTTO
+status: aprovada (pontos de revisão como propostos)
+revisor: OTTO ("ok" em 2026-10-29)
 ---
 
 # Vistas: elevação interna, detalhe, folha de trabalho e câmera

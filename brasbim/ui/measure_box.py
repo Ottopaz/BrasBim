@@ -362,7 +362,8 @@ class ToolInput:
 
     def restart_dwell(self) -> None:
         """Cursor andou: recomeça a contar a parada sobre um vértice."""
-        if self.toolbox.active.creates:
+        tool = self.toolbox.active
+        if tool.creates or tool.guided:
             self.dwell.start()
 
     def _dwelled(self) -> None:
@@ -457,6 +458,8 @@ class ToolInput:
             self.ctx.axis_lock = None  # Esc solta a trava de eixo primeiro (spec/ui 23 §3.1)
             if tool.cursor is not None:
                 tool.move(tool.cursor, tool.mods)
+        elif tool.release_reference():
+            pass  # o primeiro Esc solta os pontos de referência (spec/ui 37 §2)
         else:
             busy = tool.cancel()
             session = self.ctx.session

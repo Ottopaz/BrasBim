@@ -23,7 +23,7 @@ from brasbim.core.walls.wall import read_state as read_wall
 # Nomes curtos mostrados junto ao marcador (spec/ui 01 §3.2, 23 §2.2).
 KIND_LABEL = {"end": "extremidade", "inter": "interseção", "mid": "meio", "center": "centro",
               "perp": "perpendicular", "tan": "tangente", "path": "na parede",
-              "near": "na borda", "grid": "grade", "free": ""}
+              "near": "na borda", "grid": "grade", "guide": "", "free": ""}
 # Tipos que o usuário liga e desliga (Exibir > Atração); "path" segue "near".
 KINDS = ("end", "inter", "mid", "center", "perp", "tan", "near", "grid")
 # Prioridade (spec/ui 23 §2.2): dentro de um nível ganha o mais próximo do cursor.

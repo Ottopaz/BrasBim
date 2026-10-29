@@ -99,7 +99,7 @@ def test_ui83a_referencia_na_borda_de_uma_porta(window):
     tool.fix("ref", 0.50)
     tool.confirm()
     assert _opening(window, _last(window))["distance"] == pytest.approx(2.36)
-    assert tool.reference is None  # solta ao criar
+    assert tool.reference == pytest.approx(corner)  # fica até o Esc (spec/ui 37 §2)
     tool.move(corner, Mods())
     window.plan._dwelled()
     assert tool.cancel() and tool.reference is None  # Esc solta a referência
@@ -137,7 +137,7 @@ def test_ui83c_parede_a_partir_da_ponta_de_outra(window):
     tool.fix("ref", 1.20)
     tool.confirm()
     assert tool.points == [pytest.approx((6.2, Y))]
-    assert tool.reference is None
+    assert tool.reference == pytest.approx((5.0, Y))  # fica (spec/ui 37 §2)
     tool.move((8.0, 5.0), Mods())
     assert [f.key for f in tool.fields()] == ["length", "angle"]
 

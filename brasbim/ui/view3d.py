@@ -299,7 +299,7 @@ class View3D(QOpenGLWidget, ToolInput):
         z = self.work_z() + 0.005
         GL.glDisable(GL.GL_DEPTH_TEST)
         GL.glLineWidth(1.5)
-        for mark in tool.preview():
+        for mark in tool.preview() + self.ctx.guide_marks():
             if mark.style == "gap" or len(mark.points) < 2:
                 continue
             GL.glColor3f(*_MARK_COLOR.get(mark.style, _PREVIEW))

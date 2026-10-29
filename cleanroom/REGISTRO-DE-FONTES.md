@@ -584,7 +584,7 @@ IFC 4.3 no repositório oficial da buildingSMART, ramo `ifc4.3-main`, consultado
 |---|---|
 | IFC-ANNOT | `docs/schemas/core/IfcProductExtension/Entities/IfcAnnotation.md` (contenção no pavimento; `IfcGeometricCurveSet`, `IfcAnnotationFillArea`, `IfcTextLiteral`) |
 | IFC-SPACE | `docs/schemas/core/IfcProductExtension/Entities/IfcSpace.md` (agregação ao pavimento; `Name` = número, `LongName` = nome; `FootPrint` e `Body`; `Qto_SpaceBaseQuantities`) |
-| IFC-QTO-SPACE | `Qto_SpaceBaseQuantities` no modelo de propriedades do IFC 4.3 distribuído com o IfcOpenShell (`ifcopenshell.util.pset.get_template("IFC4X3")`) |
+| IFC-QTO-SPACE | `Qto_SpaceBaseQuantities` no modelo de propriedades do IFC 4.3 distribuído com o IfcOpenShell (`ifcopenshell.util.pset.get_template("IFC4X3")`): bruta inclui o que está dentro do espaço (pilares, paredes internas); líquida exclui |
 
 Outras:
 - **NBR 8403** (espessuras de linha) e **NBR 6492** (representação de projetos de
@@ -706,7 +706,9 @@ sinal de vida. Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 DXF Reference (Autodesk, documentação pública); ezdxf (MIT); IFC 4.3 `IfcAnnotation`,
 `IfcIndexedPolyCurve`, `IfcCartesianPointList2D` [IFC-ANNOT]. Conversores externos
-usados como programas à parte. Nenhum material de `_restrito/` nem de `tools/` foi usado.
+usados como programas à parte; código do ezdxf (MIT, aberto) lido para a regra do
+deslocamento das cotas; GNU LibreDWG 0.14 (GPL‑3.0‑or‑later,
+gnu.org/software/libredwg). Nenhum material de `_restrito/` nem de `tools/` foi usado.
 
 ### `spec/ui/23-precisao.md`
 *Pacote de precisão (atração completa, teclado no traço, deslocar, aparar, concordar, semelhantes, giro rápido, paleta de comandos)*; data 2026-10-23; situação em revisão (fluxo do MVP: implementado na sequência).
@@ -862,6 +864,120 @@ Endereços citados (4): https://community.graphisoft.com/t5/Getting-started/Arch
   próprios.
 
 Endereços citados (5): https://community.graphisoft.com/t5/Documentation/Border-lines-around-drawings-on-layout/m-p/212041/highlight/true; https://community.graphisoft.com/t5/Documentation/VIEW-EDGE-quot-AUTO-ADJUST-quot-OR-quot-MANUAL-quot-EXPLAIN/td-p/142401; https://forums.autodesk.com/t5/autocad-forum/viewport-border-showing-on-print/m-p/7979089; https://help.autodesk.com/cloudhelp/2023/ENU/Revit-DocumentPresent/files/GUID-47430A55-A8F0-4894-A636-14E0A29182D3.htm; https://ukcommunity.arkance.world/hc/en-us/articles/21550812943762-AutoCAD-Tip-Freezing-Viewport-Layer-removes-clipping-boundary-from-viewport
+
+### `spec/ui/30-ajustes-curtos.md`
+*Ajustes curtos do pente fino (bloco 1)*; data 2026-10-27; situação em revisão (§2–§9 implementados para teste).
+
+| Código | Documento |
+|---|---|
+| RHINO-WIN | McNeel, *The Rhino window* (Rhino 8, docs.mcneel.com), citado em `research_notes/.../interface_e_interacao.md` |
+| AC-TRACKER | Graphisoft, *Tracker* (Archicad 28, help.graphisoft.com), citado em `research_notes/.../archicad_modelagem.md` |
+
+Conhecimento geral (CG): matriz/cópia em série, vistas ortogonais e isométricas. Nenhum
+material de `_restrito/` nem de `tools/` foi usado; nomes, textos e layout são próprios.
+
+### `spec/ui/31-projeto-legal.md`
+*Projeto legal (projeto para licenciamentos)*; data 2026-10-27; situação em revisão (fluxo do MVP: implementar por etapas, §8; etapas 1–3 feitas, §12–§14).
+
+| Código | Documento |
+|---|---|
+| ARARAS | Prefeitura de Araras, *POP 001/21 Alvará de Construção* (araras.sp.gov.br), via `research_notes/.../normas_e_projeto_legal_brasil.md` §3 |
+| JACAREI | Prefeitura de Jacareí, *Anexo XII Manual Técnico* (jacarei.sp.gov.br), idem |
+| SP-PECAS | Prefeitura de São Paulo, *Peças gráficas de projeto (LOE 16.642/17)* (prefeitura.sp.gov.br), idem |
+| CURITIBA | Prefeitura de Curitiba, *Manual do Autor do Projeto*, 2ª ed., 2020 (mid.curitiba.pr.gov.br), idem |
+| SIENGE-QA | Sienge, *Quadro de áreas* (blog), idem |
+| IFSC-K22 | Repositório IFSC, Karkotli 2022, idem (trecho de busca) |
+| USP-16636 | USP e‑Disciplinas, *Gestão do processo de projeto* (trecho de busca), idem §2 |
+| IFC43 | Esquema IFC 4.3 do IfcOpenShell: enumeração do `Status` dos Psets comuns (conferido em 2026‑10‑26) |
+
+Conhecimento geral (CG): TO, CA e taxa de permeabilidade como razões de áreas. Nada de
+`_restrito/` nem de `tools/`; nomes, textos e layout são próprios. Os filtros de reforma
+e as fases dos outros programas foram citados na pesquisa só como existência do recurso;
+a solução aqui (situação + perfil) é própria.
+
+### `spec/ui/32-navegacao-e-abas.md`
+*Painel Projeto com ícones e abas que fecham*; data 2026-10-27; situação em revisão (fluxo do MVP: implementada junto, §6).
+
+| Código | Documento |
+|---|---|
+| NAV-AC | Graphisoft Community, *Archicad Basic Concepts – The Navigator* (F184 da pesquisa; trecho de busca), via `research_notes/.../archicad_documentacao_colaboracao.md` |
+| RVT-26 | BIMsmith, *Revit 2026* (F268), via `research_notes/.../revit_documentacao_colaboracao.md` §2 |
+| RVT-27 | BIMpure, *Revit 2027* (F228), idem, "Folhas, carimbos e posicionamento" |
+| NOTA-RVT | Inferência da pesquisa em `revit_documentacao_colaboracao.md` §2 (separar modelo de documentação) |
+| RHINO | McNeel, *The Rhino window* (F374): botão direito na aba de vista abre comandos, via `interface_e_interacao.md` §3 |
+
+Conhecimento geral (CG): abas fecháveis com ×, clique do meio e Ctrl+W são convenção de
+interfaces com abas (navegadores, editores). Nada de `_restrito/` nem de `tools/`; nomes,
+ícones e organização do painel são próprios.
+
+### `spec/ui/33-projeto-compartilhado.md`
+*Projeto compartilhado na rede local (reserva de elementos)*; data 2026-10-28; situação em revisão (fluxo do MVP: implementada junto, §9).
+
+| Código | Documento | Uso |
+|---|---|---|
+| AC-COL | Graphisoft Help, visão geral da reserva (spec/REQUISITOS.md §13); nota `research_notes/.../archicad_documentacao_colaboracao.md` §3 (F203, F204 no relatório) | criar livre, editar exige reserva, autorreserva, pedido, estado ao vivo |
+| REV-COL | Autodesk Revit Help, empréstimo de elementos (spec/REQUISITOS.md §13); nota `revit_documentacao_colaboracao.md` §3 | empréstimo automático do sem dono, pedido ao dono |
+| RFC 8259 | JSON, https://www.rfc-editor.org/rfc/rfc8259 | formato das mensagens |
+
+Endereços citados (1): https://www.rfc-editor.org/rfc/rfc8259
+
+### `spec/ui/34-barra-de-ferramentas.md`
+*Barra de ferramentas — ícones isométricos, grupos e ferramentas de vista e documentação*; data 2026-10-29; situação em revisão; §2 e §3 feitos, §4 especificado nas specs/ui 35 e 36.
+
+Conhecimento geral (CG): projeção isométrica. Pedido e print do revisor
+(`feedback/prints/barra de ferramentas.png`), usado só como descrição de função. Nada de
+`_restrito/`.
+
+### `spec/ui/35-elevacao-interna-detalhe-folha-camera.md`
+*Vistas — elevação interna, detalhe, folha de trabalho e câmera*; data 2026-10-29; situação aprovada (pontos de revisão como propostos).
+
+- Pesquisa complementar (2026‑10‑29):
+  `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_vistas_e_documentacao.md`
+  §1 (elevação interna: Archicad AC27 050_ViewsVB‑48 a ‑55; Revit 2024 "About/Create
+  Elevation Views"), §2 (detalhe: Archicad AC30 050_ViewsVB‑62 a ‑69; Revit LT 2023
+  drafting/callout), §3 (folha de trabalho: Archicad AC28/AC30), §4 (câmera: Archicad AC29
+  Camera Tool Settings; Revit 2024 perspective/camera).
+- IFC 4.3: `IfcAnnotation`, `IfcRelAggregates`, `IfcRelContainedInSpatialStructure`
+  [IFC-ANNOT].
+- **NBR 6492**: símbolos de chamada de detalhe e de elevação. **Texto não lido.** Os
+  marcadores seguem convenções usuais (CG) e serão conferidos quando a norma for lida.
+- CG: escala usual 1:25 de elevação interna; círculo dividido "número / prancha".
+- Nada de `_restrito/`. Os nomes das ferramentas são nossos ("Folha de trabalho" e
+  "Elevação interna" são termos correntes em pt‑BR; "Detalhe" e "Câmera", palavras comuns).
+
+### `spec/ui/36-polilinha-ponto-figura-desenho.md`
+*Documentação — polilinha com arcos, ponto de apoio, figura e desenho*; data 2026-10-29; situação aprovada (pontos de revisão como propostos).
+
+- Pesquisa complementar (2026‑10‑29):
+  `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_vistas_e_documentacao.md`
+  §5 (polilinha: AutoCAD 2024 PLINE; Archicad AC28 polylines), §6 (ponto de apoio:
+  Archicad hotspot; AutoCAD POINT/DIVIDE), §7 (figura: Archicad AC25 Figure; AutoCAD 2024
+  IMAGEATTACH; Revit 2024 image), §8 (desenho: Archicad AC25 Drawing; Revit 2024 Add Views
+  to a Sheet).
+- IFC 4.3: `IfcIndexedPolyCurve`, `IfcArcIndex`, `IfcAnnotationTypeEnum.ASSUMEDPOINT`
+  (conferido no esquema do IfcOpenShell instalado), `IfcBlobTexture`,
+  `IfcIndexedTriangleTextureMap`, `IfcTriangulatedFaceSet` [IFC-ANNOT].
+- Qt (LGPL): `QImage`, Qt PDF (`QPdfDocument`) para gerar a imagem da página. O Qt PDF
+  vem no pacote à parte **`PySide6_Pdf`** (conferido no `.venv`), que a pasta do pendrive
+  ainda não leva: entra em `scripts/pendrive/requisitos.txt` quando o §5.2 for feito. Sem
+  ele, o Desenho aceita só imagem e avisa que falta o leitor de PDF.
+- CG: arco de polilinha pela tangente de ¼ do ângulo (DXF); título de desenho com número
+  em círculo e escala.
+- Nada de `_restrito/`. Nenhum nome de comando de outro programa: "Polilinha", "Ponto de
+  apoio", "Figura" e "Desenho" são palavras comuns em pt‑BR.
+
+### `spec/ui/37-linhas-guia.md`
+*Interação — linhas-guia a partir de pontos de referência e do ponto anterior*; data 2026-10-29; situação em revisão (pedido urgente do revisor: implementado na sequência).
+
+- Pesquisa: `research_notes/Pesquisa Archicad Revit AutoCAD/interface_e_interacao.md` §1
+  (Archicad: referências de atração ativadas ao passar o cursor, várias ao mesmo tempo,
+  e guias temporárias em X/Y e a cada 45°; AutoCAD 2026: pontos adquiridos por pausa e
+  caminhos de alinhamento horizontais, verticais e polares, com distância digitada sobre
+  o caminho; SketchUp: pausa dá prioridade ao ponto) e `archicad_modelagem.md` (guias de
+  atração AC28 temporárias, linhas-guia persistentes AC25) e `autocad.md` §1
+  (rastreamento por snap e polar).
+- CG: projeção de ponto em reta, interseção de retas.
+- Nada de `_restrito/`. "Linhas-guia" e "ponto de referência" são termos comuns em pt‑BR.
 
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
