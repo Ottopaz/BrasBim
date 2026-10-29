@@ -658,15 +658,37 @@ def _effective(doc: Document, layer_id: str | None, known: set[str] | None = Non
     return layer_id if layer_id in known else NONE
 
 
+def _hidden_layers(doc: Document) -> frozenset:
+    """Camadas ocultas; com ``only_layer`` (exportar DWG), também todas as outras."""
+    only = getattr(doc, "only_layer", None)
+    if only is None:
+        return doc.display.hidden
+    return doc.display.hidden | (frozenset(_known(doc)) | {NONE}) - {only}
+
+
+@contextlib.contextmanager
+def only_layer(doc: Document, layer_id: str):
+    """Desenha só os elementos da camada ``layer_id`` (``NONE`` = Sem camada), além do
+    que já está oculto; ``""`` oculta todas (fica o que não é de camada). Usado ao
+    exportar DWG/DXF, uma camada por vez (spec/ui 41 §2)."""
+    previous = getattr(doc, "only_layer", None)
+    doc.only_layer = layer_id
+    try:
+        yield
+    finally:
+        doc.only_layer = previous
+
+
 def is_hidden(doc: Document, element) -> bool:
     """Oculto pela camada ou pelo filtro de situação da vista (spec/ui 31 §3)."""
     from brasbim.core import intervention
 
     if intervention.SHOWN.get(doc.situation_view) is not None and             owner(element) is not None and layerable(owner(element)) and             intervention.situation_of(doc, element) not in             intervention.SHOWN[doc.situation_view]:
         return True
-    if not doc.display.hidden or read_config(doc) is None:
+    hidden = _hidden_layers(doc)
+    if not hidden or read_config(doc) is None:
         return False
-    return _effective(doc, layer_of(doc, element)) in doc.display.hidden
+    return _effective(doc, layer_of(doc, element)) in hidden
 
 
 def is_locked(doc: Document, element) -> bool:
@@ -681,7 +703,7 @@ def hidden_ids(doc: Document) -> set[str]:
     from brasbim.core import intervention
 
     extra = getattr(doc, "extra_hidden", None) or set()  # ocultos da janela (ui/39 §4)
-    return _ids(doc, doc.display.hidden) | intervention.hidden_ids(doc) | extra
+    return _ids(doc, _hidden_layers(doc)) | intervention.hidden_ids(doc) | extra
 
 
 def filtering(doc: Document) -> bool:

@@ -27,14 +27,19 @@ ganha DWG também.
 - O mesmo desenho da tela e do PDF (penas, hachuras, textos, cotas, situação, camadas
   visíveis da vista), pelo gravador DXF da área (`_DxfPainter`), que sai da exportação da
   área para um módulo próprio.
-- Vista (planta, corte, vista salva): espaço do modelo, em **metros**, na posição real do
-  projeto (0,0 do projeto). Opção: coordenadas do terreno (georreferência, se houver).
+- Vista (planta, corte, vista salva): espaço do modelo, em **centímetros** (resposta (a)),
+  na posição real do projeto (0,0 do projeto). Opção: coordenadas do terreno
+  (georreferência, se houver).
 - Prancha: espaço do papel, em **milímetros**, um layout com o nome da prancha; cada
   desenho posto vira um **bloco** escalado e recortado pelo limite; carimbo e moldura em
   linhas. (Espaço do modelo com viewport e XREF ficam para depois de testar num CAD.)
 - **Camadas do DWG = camadas do BrasBim** (o nome e a ordem); anotações na camada delas.
   Cor = cor da pena (cor verdadeira; opção "cores do AutoCAD" pela mais próxima).
-  **Espessura = a da pena** em cada objeto (o DWG imprime igual ao PDF).
+  **Espessura = a da pena** em cada objeto (o DWG imprime igual ao PDF). O DWG 2000 não
+  tem cor verdadeira: nele fica a cor do AutoCAD mais próxima (preto e branco → 7); o
+  DXF 2018 leva as duas.
+- Textos sempre alinhados à esquerda na linha de base (posição calculada pela largura):
+  o `dxf2dwg` perde o segundo ponto de alinhamento dos textos centrados.
 - Cotas e textos em linhas e textos simples na primeira entrega (sem entidades de cota
   associativas). Hachuras: sólidas e de linhas, como na tela.
 - DXF: versão 2018 (ezdxf). DWG: o DXF passa pelo `dxf2dwg` do GNU LibreDWG, que grava a
@@ -134,6 +139,9 @@ perfis na interface.
 3. §4 perfil complexo: 3 sessões (núcleo e IFC; editor; planta e junções).
 
 ## 6. Pontos para o revisor
+**Respostas (2026‑10‑29):** (a) **centímetros**; (b) papel + blocos; (c) cor verdadeira;
+(d) DWG 2000 serve. (e)–(k) em aberto.
+
 - (a) DWG: unidade da vista em **metros** (proposta), centímetros ou milímetros?
 - (b) DWG: prancha no espaço do papel com os desenhos como blocos (proposta), ou já
   tentar viewport no espaço do modelo?

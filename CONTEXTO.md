@@ -4,9 +4,31 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (spec/ui 40 escrita e implementada: sem reticências, painéis Pavimentos e Navegador, orientação no 3D).*
+*Atualizado em 2026‑10‑29 (spec/ui 41 §2 implementada: exportar DWG/DXF).*
 
-> **Onde paramos (2026‑10‑29, depois da spec 40):** o revisor achou a 40 "bem legal" e
+> **Onde paramos (2026‑10‑29, DWG feito):** respostas do revisor ao §6 da spec/ui 41:
+> (a) vistas em **centímetros**, (b) prancha no papel com blocos, (c) cor verdadeira,
+> (d) DWG 2000 serve; (e)–(k) ainda sem resposta. **§2 implementado:**
+> `ui/dwg_export.py` (`DxfPainter` genérico, saiu de `area_export`; `write_view` em cm no
+> espaço do modelo; `write_sheet` no papel em mm, cada desenho num bloco em cm inserido a
+> 10/den e recortado pelo limite; `export_item`; `save` passa o DXF 2000 pelo `dxf2dwg`).
+> **Camadas do DWG = camadas do BrasBim**: uma passada de desenho por camada com
+> `display_layers.only_layer` (núcleo; `hidden_ids`/`is_hidden` o respeitam); a passada
+> `""` (todas ocultas) vai para a `0` e o que ela grava não se repete. Cor verdadeira +
+> ACI mais próxima (o DWG 2000 só guarda a ACI). Textos sempre à esquerda na linha de
+> base (o `dxf2dwg` perde o ponto de alinhamento dos centrados: iam para o 0,0).
+> `libredwg.find_writer`/`write_dwg`; `install` extrai também o `dxf2dwg.exe` (quem já
+> tinha baixado baixa de novo ao exportar). Interface: Arquivo > Exportar DWG/DXF
+> (`ui/export_dialog.py`: lista com caixas, formato, pasta lembrada em
+> `pasta_exportar_dwg`), Exportar área (DWG), botão direito no Navegador (corte, vista
+> salva, prancha) > Exportar DWG; sem conversor pergunta Baixar / Gravar em DXF /
+> Cancelar (`ask_dwg_writer`). A exportação da área passou a centímetros e camadas do
+> BrasBim (AS07 ajustado). DG01–DG03 em `tests/test_exportar_dwg.py`. Conferido
+> renderizando o DXF da prancha e o DWG relido pelo `dwg2dxf`. **Falta (e):** abrir um
+> DWG num CAD comercial. **Próximo:** §3 sólidos (SO01–SO06), depois §4 perfil; as
+> respostas (f)–(k) definem detalhes deles.
+
+> **Antes (2026‑10‑29, depois da spec 40):** o revisor achou a 40 "bem legal" e
 > pediu **Exportar DWG**, **operações de sólidos** e **perfil complexo**, estudando os
 > outros programas. Feito: pesquisa
 > `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_dwg_solidos_perfis.md` e
@@ -498,7 +520,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
-| `spec/ui/41-dwg-solidos-perfil-complexo` | **em revisão**; a implementar (pontos §6 (a)–(k)) |
+| `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** ((a)–(d) respondidos); §3 sólidos e §4 perfil a fazer ((e)–(k) em aberto) |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |

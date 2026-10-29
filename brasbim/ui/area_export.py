@@ -5,48 +5,28 @@ A planta do pavimento ativo é desenhada pelo mesmo código da tela (``PlanView`
 de ``paper._PlanPainter``), recortada pelo polígono da área:
 
 - PDF e impressão: ``QPainter`` com o recorte pelo caminho da área;
-- DXF: ``_DxfPainter`` faz o papel do ``QPainter`` e grava o que recebe (linhas, áreas
-  cheias e textos) com ``ezdxf``, recortado pela área com ``shapely``. Fundos da cor do
-  papel não vão (no DXF não há o que cobrir).
+- DXF e DWG: ``dwg_export.DxfPainter`` faz o papel do ``QPainter`` e grava o que recebe
+  (linhas, áreas cheias e textos), recortado pela área, em centímetros e com as camadas
+  do BrasBim (spec/ui 41 §2). Fundos da cor do papel não vão (no DXF não há o que
+  cobrir).
 
-No ``_DxfPainter`` 1 unidade = 1 mm de papel nas espessuras (``unit`` = 25,4/96) e o
-modelo fica a ``_S`` unidades por metro; ``_to_model`` desfaz essa escala.
+O pintor desenha com 1 pixel = 1 mm de papel nas espessuras (``unit`` = 25,4/96) e o
+modelo a ``_S`` pixels por metro.
 """
 
 from __future__ import annotations
 
-import math
+from PySide6.QtCore import QMarginsF, QPointF, QRectF, QSizeF
+from PySide6.QtGui import QPageLayout, QPageSize, QPainter, QPdfWriter, QTransform
+from shapely.geometry import Polygon
 
-import ezdxf
-import shapely
-from ezdxf.enums import TextEntityAlignment
-from PySide6.QtCore import QMarginsF, QPointF, QRectF, QSizeF, Qt
-from PySide6.QtGui import (
-    QBrush,
-    QColor,
-    QFontMetricsF,
-    QPageLayout,
-    QPageSize,
-    QPainter,
-    QPainterPath,
-    QPdfWriter,
-    QPen,
-    QTransform,
-)
-from shapely.geometry import LineString, Point, Polygon
-
+from brasbim.ui import dwg_export
 from brasbim.ui.paper import _PAPER, _PlanPainter
 from brasbim.ui.plan_view import C
 
 MARGIN_MM = 10.0  # folha do PDF: a área mais esta margem em volta
-_S = 1000.0  # unidades por metro do modelo no DXF
+_S = 1000.0  # pixels por metro do modelo no desenho para o DXF
 _UNIT_MM = 25.4 / 96  # ``unit`` que faz as espessuras saírem em mm de papel
-# Espessuras do DXF (centésimos de mm)
-_WEIGHTS = (0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120,
-            140, 158, 200, 211)
-_LINETYPES = {Qt.DashLine: "DASHED", Qt.DashDotLine: "DASHDOT", Qt.DotLine: "DOT"}
-LAYERS = {"lines": "LINHAS", "hatch": "HACHURAS", "fill": "PREENCHIMENTOS",
-          "text": "TEXTOS"}
 
 
 def _drawer(plan, view, pens_, scale: float, origin: QPointF, unit: float) -> _PlanPainter:
@@ -125,193 +105,23 @@ def print_area(printer, plan, view, pens_, area, den: int) -> bool:
     return fit >= 1.0
 
 
-# --- DXF ------------------------------------------------------------------------------
+# --- DXF e DWG ------------------------------------------------------------------------
 
 
-def _to_model(p: QPointF) -> tuple[float, float]:
-    return p.x() / _S, -p.y() / _S
-
-
-def _lineweight(mm: float) -> int:
-    target = mm * 100
-    return min(_WEIGHTS[1:], key=lambda w: abs(w - target))
-
-
-def _lines(found):
-    """As linhas de um resultado do ``shapely`` (ignora pontos)."""
-    if isinstance(found, LineString):
-        return [found] if not found.is_empty else []
-    return [g for g in getattr(found, "geoms", ()) if isinstance(g, LineString)
-            and not g.is_empty]
-
-
-def _polygons(found):
-    if isinstance(found, Polygon):
-        return [found] if not found.is_empty else []
-    out = []
-    for g in getattr(found, "geoms", ()):
-        out.extend(_polygons(g))
-    return out
-
-
-class _DxfPainter:
-    """Faz o papel do ``QPainter`` para o desenho da planta e grava no ``msp`` do DXF."""
-
-    def __init__(self, msp, clip):
-        self.msp = msp
-        self.area = clip
-        self.clip = clip
-        shapely.prepare(self.clip)
-        self.t = QTransform()
-        self.pen = QPen()
-        self.brush = QBrush()
-        self.font = None
-        self._stack = []
-        self.in_hatch = False  # linhas desenhadas sob recorte de região: hachura
-
-    # --- estado ---------------------------------------------------------------------
-
-    def save(self) -> None:
-        self._stack.append((QTransform(self.t), QPen(self.pen), QBrush(self.brush),
-                            self.font, self.clip, self.in_hatch))
-
-    def restore(self) -> None:
-        self.t, self.pen, self.brush, self.font, self.clip, self.in_hatch = self._stack.pop()
-
-    def setPen(self, pen) -> None:  # mesma interface do QPainter
-        self.pen = QPen(pen)
-
-    def setBrush(self, brush) -> None:
-        self.brush = QBrush(brush)
-
-    def setFont(self, font) -> None:
-        self.font = font
-
-    def fontMetrics(self) -> QFontMetricsF:
-        return QFontMetricsF(self.font)
-
-    def setRenderHint(self, *args) -> None:
-        pass
-
-    def setTransform(self, t: QTransform, combine: bool = False) -> None:
-        self.t = t * self.t if combine else QTransform(t)
-
-    def translate(self, *args) -> None:
-        p = args[0] if len(args) == 1 else QPointF(*args)
-        self.t = QTransform.fromTranslate(p.x(), p.y()) * self.t
-
-    def rotate(self, degrees: float) -> None:
-        self.t = QTransform().rotate(degrees) * self.t
-
-    def setClipPath(self, path: QPainterPath, op=Qt.ReplaceClip) -> None:
-        shape = self._shape(path)
-        base = self.clip if op == Qt.IntersectClip else self.area
-        self.clip = base.intersection(shape)
-        shapely.prepare(self.clip)
-        self.in_hatch = True
-
-    # --- desenho --------------------------------------------------------------------
-
-    def _rings(self, path: QPainterPath) -> list[list[tuple[float, float]]]:
-        return [[_to_model(q) for q in poly] for poly in path.toSubpathPolygons(self.t)]
-
-    def _shape(self, path: QPainterPath):
-        """Área do caminho, par‑ímpar entre os anéis."""
-        found = Polygon()
-        for ring in self._rings(path):
-            if len(ring) >= 3:
-                found = found.symmetric_difference(Polygon(ring).buffer(0))
-        return found
-
-    def _attribs(self, layer: str, color: QColor) -> dict:
-        return {"layer": LAYERS[layer], "true_color": ezdxf.rgb2int(
-            (color.red(), color.green(), color.blue()))}
-
-    def _stroke(self, ring) -> None:
-        if self.pen.style() == Qt.NoPen or len(ring) < 2:
-            return
-        attribs = self._attribs("hatch" if self.in_hatch else "lines", self.pen.color())
-        width = self.pen.widthF() * math.sqrt(abs(self.t.determinant()))
-        attribs["lineweight"] = _lineweight(width)
-        linetype = _LINETYPES.get(self.pen.style())
-        if linetype:
-            attribs["linetype"] = linetype
-        closed = len(ring) > 2 and math.dist(ring[0], ring[-1]) < 1e-9
-        line = LineString(ring)
-        if self.clip.contains(line):
-            self.msp.add_lwpolyline(ring[:-1] if closed else ring, close=closed,
-                                    dxfattribs=attribs)
-            return
-        for piece in _lines(line.intersection(self.clip)):
-            self.msp.add_lwpolyline(list(piece.coords), dxfattribs=attribs)
-
-    def _fill(self, path: QPainterPath, color: QColor) -> None:
-        if color.alpha() == 0 or color.rgb() == C["background"].rgb():
-            return  # fundo da cor do papel: no DXF não cobre nada
-        found = _polygons(self._shape(path).intersection(self.clip))
-        if not found:
-            return
-        hatch = self.msp.add_hatch(dxfattribs={"layer": LAYERS["fill"]})
-        hatch.set_solid_fill(rgb=(color.red(), color.green(), color.blue()))
-        if color.alpha() < 255:
-            hatch.transparency = 1.0 - color.alpha() / 255.0
-        for poly in found:
-            hatch.paths.add_polyline_path(list(poly.exterior.coords)[:-1], is_closed=True,
-                                          flags=ezdxf.const.BOUNDARY_PATH_EXTERNAL)
-            for hole in poly.interiors:
-                hatch.paths.add_polyline_path(list(hole.coords)[:-1], is_closed=True)
-
-    def drawPath(self, path: QPainterPath) -> None:
-        if self.brush.style() != Qt.NoBrush:
-            self._fill(path, self.brush.color())
-        for ring in self._rings(path):
-            self._stroke(ring)
-
-    def fillPath(self, path: QPainterPath, brush) -> None:
-        self._fill(path, QBrush(brush).color())
-
-    def drawLine(self, a: QPointF, b: QPointF) -> None:
-        self._stroke([_to_model(self.t.map(a)), _to_model(self.t.map(b))])
-
-    def drawText(self, *args) -> None:
-        """``(QRectF, alinhamento, texto)`` ou ``(QPointF, texto)`` (linha de base)."""
-        metrics = QFontMetricsF(self.font)
-        if len(args) == 3:
-            rect, flags, text = args
-            if flags & Qt.AlignHCenter:
-                at, align = rect.center(), TextEntityAlignment.MIDDLE_CENTER
-            else:
-                at = QPointF(rect.left(), rect.bottom() - metrics.descent())
-                align = TextEntityAlignment.LEFT
-        else:
-            at, text = args
-            align = TextEntityAlignment.LEFT
-        p = _to_model(self.t.map(at))
-        if not text or not self.clip.contains(Point(p)):
-            return
-        k = math.sqrt(abs(self.t.determinant()))
-        o, x = self.t.map(QPointF(0, 0)), self.t.map(QPointF(1, 0))
-        angle = math.degrees(math.atan2(-(x.y() - o.y()), x.x() - o.x()))
-        attribs = self._attribs("text", self.pen.color())
-        attribs["rotation"] = angle
-        self.msp.add_text(text, height=metrics.capHeight() * k / _S,
-                          dxfattribs=attribs).set_placement(p, align=align)
-
-
-def export_dxf(path: str, plan, view, pens_, area, den: int) -> None:
-    """A planta recortada pela área, em metros, nas coordenadas do pavimento."""
-    doc = ezdxf.new("R2018", setup=True)
-    doc.header["$INSUNITS"] = 6  # metros
-    doc.header["$MEASUREMENT"] = 1
-    doc.header["$LTSCALE"] = 0.006 * den  # traço de ~3 mm no papel na escala da vista
-    for name in LAYERS.values():
-        doc.layers.add(name)
-    painter = _DxfPainter(doc.modelspace(), Polygon(area.points))
-    drawer = _drawer(plan, view, pens_, _S, QPointF(0, 0), _UNIT_MM)
-    old_background = C["background"]
-    C["background"] = _PAPER
-    try:
-        drawer.paint(painter)
-    finally:
-        C["background"] = old_background
-    doc.saveas(path)
+def export_dxf(path: str, doc, make_plan, view, pens_, area, den: int,
+               fmt: str = "dxf") -> str:
+    """A planta recortada pela área, em centímetros, nas coordenadas do pavimento, com as
+    camadas do BrasBim (spec/ui 41 §2). ``make_plan()`` refaz a planta da janela (uma vez
+    por camada). ``fmt``: ``dxf`` ou ``dwg``."""
+    dxf = dwg_export.new_document(fmt)
+    dxf.header["$INSUNITS"] = dwg_export.INSUNITS_CM
+    dxf.header["$LTSCALE"] = 0.6 * den  # traço de ~8 mm no papel na escala da vista
+    k = dwg_export.UNITS_PER_M / _S
+    clip = Polygon([(x * dwg_export.UNITS_PER_M, y * dwg_export.UNITS_PER_M)
+                    for x, y in area.points])
+    painter = dwg_export.DxfPainter(dxf.modelspace(), QTransform(k, 0, 0, -k, 0, 0), 1.0,
+                                    clip)
+    with dwg_export._paper_background():
+        dwg_export._paint_layers(dxf, doc, painter, lambda: _drawer(
+            make_plan(), view, pens_, _S, QPointF(0, 0), _UNIT_MM))
+    return dwg_export.save(dxf, path, fmt)

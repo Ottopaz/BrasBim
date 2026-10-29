@@ -257,7 +257,10 @@ class ProjectPanel(QWidget):
         self.views.itemDoubleClicked.connect(lambda item, _c=0: self._open_view_item(item))
         self.views.itemActivated.connect(lambda item, _c=0: self._open_view_item(item))
         self.views.itemClicked.connect(self._select_view_item)
+        self.views.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.views.customContextMenuRequested.connect(self._views_menu_at)
         self.open_view = None  # posto pela janela principal
+        self.export_dwg = None  # idem: exportar uma vista ou prancha (spec/ui 41 §2)
         # Vistas salvas (spec/ui 25 §4): clique duplo abre; arrastar leva à prancha
         self.saved = SavedViewList()
         self.saved.setToolTip("Clique duplo abre a vista; arraste para uma prancha; botão "
@@ -281,6 +284,8 @@ class ProjectPanel(QWidget):
         self.sheets.itemDoubleClicked.connect(lambda item, _c=0: self._open_sheet_item(item))
         self.sheets.itemActivated.connect(lambda item, _c=0: self._open_sheet_item(item))
         self.sheets.itemClicked.connect(self._select_sheet_item)
+        self.sheets.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.sheets.customContextMenuRequested.connect(self._sheets_menu_at)
         self.open_sheet = None
         self.open_plan = None  # posto pela janela principal: planta do pavimento à frente
         self.new_sheet_button = icon_button("add", "Nova prancha", lambda: self.add_sheet())
@@ -690,6 +695,33 @@ class ProjectPanel(QWidget):
 
     # --- vistas salvas (spec/ui 25 §4) ---------------------------------------------------
 
+    def _views_menu_at(self, pos) -> None:
+        item = self.views.itemAt(pos)
+        gid = item.data(0, Qt.UserRole) if item is not None else None
+        if gid:
+            self.view_menu(gid).exec(self.views.viewport().mapToGlobal(pos))
+
+    def view_menu(self, gid: str) -> QMenu:
+        """Botão direito num corte ou fachada."""
+        menu = QMenu(self)
+        menu.addAction("Abrir", lambda: self.open_view and self.open_view(gid))
+        menu.addAction("Exportar DWG", lambda: self.export_dwg and self.export_dwg("view", gid))
+        return menu
+
+    def _sheets_menu_at(self, pos) -> None:
+        item = self.sheets.itemAt(pos)
+        gid = item.data(0, Qt.UserRole) if item is not None else None
+        if gid:
+            self.sheet_menu(gid).exec(self.sheets.viewport().mapToGlobal(pos))
+
+    def sheet_menu(self, gid: str) -> QMenu:
+        """Botão direito numa prancha."""
+        menu = QMenu(self)
+        menu.addAction("Abrir", lambda: self.open_sheet and self.open_sheet(gid))
+        menu.addAction("Exportar DWG",
+                       lambda: self.export_dwg and self.export_dwg("sheet", gid))
+        return menu
+
     def _saved_menu_at(self, pos) -> None:
         item = self.saved.itemAt(pos)
         if item is not None:
@@ -705,6 +737,10 @@ class ProjectPanel(QWidget):
         menu.addAction("Atualizar com a janela",
                        lambda: self.update_saved_view and self.update_saved_view(gid))
         menu.addAction("Renomear", lambda: self.rename_saved_view(gid))
+        entity = doc.find(gid) if gid else None
+        if entity is None or saved_.read_state(entity)["kind"] != "3d":
+            menu.addAction("Exportar DWG",
+                           lambda: self.export_dwg and self.export_dwg("saved", gid))
         sub = menu.addMenu("Pôr na prancha")
         for sheet in sheets_.all_sheets(doc):
             state = sheets_.read_state(sheet)

@@ -45,6 +45,7 @@ from brasbim.core import (
     select_similar,
     snap,
 )
+from brasbim.core import plan as plan_mod
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -292,6 +293,7 @@ class MainWindow(QMainWindow):
         self.project.update_saved_view = self.update_saved_view
         self.project.save_view = self.save_view
         self.project.open_sheet = self.open_sheet
+        self.project.export_dwg = self.export_dwg_item
         self.project.open_master = self.open_master
         self.project.open_table = self.open_table
         self.project.open_library = self.show_library
@@ -379,9 +381,11 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Importar desenho (DXF, DWG)", lambda: self.import_drawing())
         self._action(file_menu, "Exportar PDF", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela", lambda: self.export_table())
+        self._action(file_menu, "Exportar DWG/DXF", lambda: self.export_dwg_dialog())
         # Pedaço da planta pela área de seleção (spec/ui 38 §5)
         self._action(file_menu, "Exportar área (PDF)", lambda: self.export_area("pdf"))
         self._action(file_menu, "Exportar área (DXF)", lambda: self.export_area("dxf"))
+        self._action(file_menu, "Exportar área (DWG)", lambda: self.export_area("dwg"))
         self._action(file_menu, "Imprimir área", lambda: self.print_area())
         self._action(file_menu, "Dados do projeto", self.edit_project_info)
         file_menu.addSeparator()
@@ -1439,26 +1443,159 @@ class MainWindow(QMainWindow):
         return self.ctx.plan, self.plan, resolved, self.ctx.area, storeys_.scale(storey)
 
     def export_area(self, kind: str, path: str | None = None) -> str | None:
-        """Arquivo > Exportar área (PDF ou DXF)…: a planta do pavimento ativo recortada pela
-        área de seleção, na escala da vista (spec/ui 38 §5)."""
+        """Arquivo > Exportar área (PDF, DXF ou DWG): a planta do pavimento ativo recortada
+        pela área de seleção, na escala da vista (spec/ui 38 §5, spec/ui 41 §2)."""
         found = self._area_drawing()
         if found is None:
             return None
+        if kind == "dwg":
+            kind = self.dwg_writer_ready()
+            if kind is None:
+                return None
         if path is None:
-            label = "PDF (*.pdf)" if kind == "pdf" else "DXF (*.dxf)"
+            label = {"pdf": "PDF (*.pdf)", "dxf": "DXF (*.dxf)", "dwg": "DWG (*.dwg)"}[kind]
             path, _ = QFileDialog.getSaveFileName(self, f"Exportar área ({kind.upper()})",
                                                   "", label)
             if not path:
                 return None
-        if not path.lower().endswith(f".{kind}"):
+        if Path(path).suffix.lower() in (".pdf", ".dxf", ".dwg"):
+            path = str(Path(path).with_suffix(f".{kind}"))
+        else:
             path += f".{kind}"
         try:
-            (area_export.export_pdf if kind == "pdf" else area_export.export_dxf)(path, *found)
-        except OSError as error:
+            if kind == "pdf":
+                area_export.export_pdf(path, *found)
+            else:
+                ctx, storey, doc = self.ctx, self.session.storey, self.session.doc
+                _plan, view, resolved, area, den = found
+                area_export.export_dxf(path, doc, lambda: plan_mod.storey_plan(
+                    doc, storey, detail=ctx.detail, show_above=ctx.show_above,
+                    hide=ctx.hidden), view, resolved, area, den, kind)
+        except (OSError, RuntimeError) as error:
             self.session.message(f"não foi possível gravar {path}: {error}", "recusa")
             return None
         self.session.message(f"área exportada (1:{found[-1]}): {path}")
         return path
+
+    # --- exportar DWG/DXF (spec/ui 41 §2) -------------------------------------------------
+
+    def ask_dwg_writer(self) -> str:
+        """Sem o conversor de DWG: ``download``, ``dxf`` ou ``cancel`` (testes trocam)."""
+        from brasbim.core.imports import libredwg
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Conversor de DWG")
+        box.setIcon(QMessageBox.Question)
+        can_download = libredwg.supported()
+        box.setText(
+            "Para gravar DWG, o BrasBim usa o conversor livre GNU LibreDWG (licença GPL), "
+            "que ainda não está neste computador. "
+            + (f"Baixar agora ({libredwg.SIZE_MB} MB, uma vez só)? Fica na pasta do "
+               "BrasBim; nada é instalado no sistema." if can_download else
+               "Instale o pacote libredwg do sistema ou grave em DXF."))
+        download = box.addButton("Baixar", QMessageBox.AcceptRole) if can_download else None
+        dxf = box.addButton("Gravar em DXF", QMessageBox.ActionRole)
+        box.addButton("Cancelar", QMessageBox.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if download is not None and clicked is download:
+            return "download"
+        return "dxf" if clicked is dxf else "cancel"
+
+    def dwg_writer_ready(self) -> str | None:
+        """``dwg`` se há conversor (baixa se o usuário quiser), ``dxf`` se ele prefere
+        gravar DXF, ``None`` se desistiu (spec/ui 41 §2, DG03)."""
+        from brasbim.core.imports import libredwg
+        from brasbim.ui import dwg_export
+
+        if dwg_export.find_writer():
+            return "dwg"
+        answer = self.ask_dwg_writer()
+        if answer == "dxf":
+            return "dxf"
+        if answer != "download":
+            return None
+        self.statusBar().showMessage("Baixando o conversor de DWG (LibreDWG)")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            libredwg.install()
+        except RuntimeError as e:
+            self.session.message(str(e), "recusa")
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.statusBar().clearMessage()
+        self.session.message(f"Conversor de DWG LibreDWG {libredwg.VERSION} baixado em "
+                             f"{libredwg.user_folder()}")
+        return "dwg" if dwg_export.find_writer() else None
+
+    def export_drawings(self, items, fmt: str, folder: str) -> list[str]:
+        """Grava cada (tipo, GlobalId, nome) em ``folder``, um arquivo por item, com o
+        nome dele. Devolve os caminhos gravados."""
+        from brasbim.ui import dwg_export
+
+        if fmt == "dwg":
+            fmt = self.dwg_writer_ready()
+            if fmt is None:
+                return []
+        done, failed = [], []
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for kind, gid, name in items:
+                path = str(Path(folder) / f"{dwg_export.file_name(name)}.{fmt}")
+                self.statusBar().showMessage(f"Exportando {name}")
+                try:
+                    dwg_export.export_item(self.session.doc, kind, gid, path, fmt)
+                except (OSError, RuntimeError, ValueError, OpError) as error:
+                    failed.append(f"{name} ({error})")
+                    continue
+                done.append(path)
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.statusBar().clearMessage()
+        if done:
+            n = len(done)
+            self.session.message(f"{n} arquivo{'' if n == 1 else 's'} {fmt.upper()} "
+                                 f"exportado{'' if n == 1 else 's'} em {folder}")
+        for text in failed:
+            self.session.message(f"não foi possível exportar {text}", "recusa")
+        return done
+
+    def export_dwg_dialog(self) -> list[str]:
+        """Arquivo > Exportar DWG/DXF: o quadro com a lista do Navegador."""
+        from brasbim.ui.export_dialog import ExportDwgDialog
+
+        storey = self.session.storey
+        checked = {storey.GlobalId} if storey is not None else set()
+        view = self.tabs.currentWidget()
+        if isinstance(view, SheetView):
+            checked = {view.sheet_gid}
+        folder = _settings().value("pasta_exportar_dwg", "") or ""
+        dialog = ExportDwgDialog(self.session.doc, folder, checked, self)
+        if dialog.exec() != QDialog.Accepted:
+            return []
+        folder = dialog.folder.text().strip()
+        _settings().setValue("pasta_exportar_dwg", folder)
+        return self.export_drawings(dialog.chosen(), dialog.fmt(), folder)
+
+    def export_dwg_item(self, kind: str, gid: str, path: str | None = None) -> str | None:
+        """Botão direito no Navegador > Exportar DWG: uma vista ou prancha."""
+        from brasbim.ui import dwg_export
+        from brasbim.ui.export_dialog import drawing_items
+
+        name = next((n for _, found in drawing_items(self.session.doc)
+                     for k, g, n in found if (k, g) == (kind, gid)), gid)
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Exportar DWG", f"{dwg_export.file_name(name)}.dwg",
+                "DWG (*.dwg);;DXF (*.dxf)")
+            if not path:
+                return None
+        fmt = "dxf" if path.lower().endswith(".dxf") else "dwg"
+        stem = Path(path).with_suffix("") if Path(path).suffix.lower() in (
+            ".dwg", ".dxf") else Path(path)
+        done = self.export_drawings([(kind, gid, stem.name)], fmt, str(stem.parent))
+        return done[0] if done else None
 
     def print_area(self, printer=None) -> bool:
         """Arquivo > Imprimir área…: a mesma folha pela impressora (spec/ui 38 §5)."""
@@ -2144,7 +2281,8 @@ class MainWindow(QMainWindow):
         """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
         area = ([("3D da área", self.open_area_3d),  # spec/ui 38 §4 e §5
                  ("Exportar área (PDF)", lambda: self.export_area("pdf")),
-                 ("Exportar área (DXF)", lambda: self.export_area("dxf"))]
+                 ("Exportar área (DXF)", lambda: self.export_area("dxf")),
+                 ("Exportar área (DWG)", lambda: self.export_area("dwg"))]
                 if view is self.plan and self.ctx.area is not None else [])
         if not gid:
             if isinstance(view, View3D):

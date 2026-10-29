@@ -172,15 +172,15 @@ def test_as07_exportar_area_dxf_so_o_de_dentro(window, tmp_path):
     path = window.export_area("dxf", str(tmp_path / "area"))
     assert path.endswith(".dxf")
     doc = ezdxf.readfile(path)
-    assert doc.header["$INSUNITS"] == 6
+    assert doc.header["$INSUNITS"] == 5  # centímetros (spec/ui 41 §2)
     points = list(_dxf_points(doc))
     assert points, "a parede recortada aparece"
     for x, y in points:
-        assert 2.0 - 1e-6 <= x <= 5.0 + 1e-6 and -1.0 - 1e-6 <= y <= 1.0 + 1e-6
+        assert 200 - 1e-4 <= x <= 500 + 1e-4 and -100 - 1e-4 <= y <= 100 + 1e-4
     xs = [x for x, _ in points]
-    assert min(xs) == pytest.approx(2.0) and max(xs) == pytest.approx(5.0)
+    assert min(xs) == pytest.approx(200) and max(xs) == pytest.approx(500)
     layers = {e.dxf.layer for e in doc.modelspace()}
-    assert layers <= {"LINHAS", "HACHURAS", "PREENCHIMENTOS", "TEXTOS"}
+    assert layers == {"Paredes"}  # as camadas do BrasBim
 
 
 def test_as07_exportar_area_pdf_e_imprimir(window, tmp_path):
