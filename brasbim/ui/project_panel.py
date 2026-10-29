@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Painel Projeto: tabela de pavimentos (``spec/ui/02-edicao.md`` §7), vistas, pranchas e
-tabelas de quantitativos (spec/ui 17 §5).
+"""Painéis Pavimentos e Navegador (``spec/ui/40-reticencias-paineis-e-orientacao-3d.md``
+§3).
 
-Um clique numa linha torna o pavimento ativo; clique duplo numa célula edita o nome, a
-cota ou o plano de corte (``storey.edit``; spec/ui 06 §3.1, vazio = padrão); os botões
-criam e excluem pavimentos.
+Pavimentos: a tabela de pavimentos (``spec/ui/02-edicao.md`` §7). Um clique numa linha
+torna o pavimento ativo; clique duplo numa célula edita o nome, a cota ou o plano de corte
+(``storey.edit``; spec/ui 06 §3.1, vazio = padrão); os botões criam e excluem pavimentos.
+
+Navegador: cortes e fachadas, vistas salvas, pranchas, folhas mestras, tabelas (spec/ui 17
+§5) e objetos, cada um numa seção escolhida pela fileira de ícones do alto.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -23,10 +27,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -45,6 +48,16 @@ from brasbim.ui.tools import fmt, parse_number
 VIEW_GROUPS = {"section": ("Cortes", "section"), "elevation": ("Fachadas", "elevation")}
 # Ícone da vista salva pelo que ela mostra (spec/ui 32 §2)
 SAVED_ICONS = {"plan": "view_plan", "3d": "view_3d", "section": "section"}
+
+# Seções do Navegador (spec/ui 40 §3.2), na ordem da fileira: chave → (nome, ícone)
+SECTIONS = {
+    "views": ("Cortes e fachadas", "section"),
+    "saved": ("Vistas salvas", "save_view"),
+    "sheets": ("Pranchas", "sheet"),
+    "masters": ("Folhas mestras", "master"),
+    "tables": ("Tabelas", "table"),
+    "objects": ("Objetos", "object"),
+}
 
 NEW_STOREY_HEIGHT = 2.80  # cota do pavimento novo: a maior + 2,80 m (§7)
 
@@ -69,7 +82,23 @@ def new_storey_name(doc) -> str:
     return f"Pavimento {n}"
 
 
-class ProjectPanel(QWidget):
+def icon_button(name: str, tip: str, slot=None, menu: QMenu | None = None) -> QToolButton:
+    """Botão só de ícone com dica (spec/ui 40 §3); com ``menu``, abre a lista no clique."""
+    button = QToolButton()
+    button.setIcon(icon(name))
+    button.setToolTip(tip)
+    button.setAutoRaise(True)
+    if menu is not None:
+        button.setMenu(menu)
+        button.setPopupMode(QToolButton.InstantPopup)
+    if slot is not None:
+        button.clicked.connect(lambda _=False: slot())
+    return button
+
+
+class StoreysPanel(QWidget):
+    """Painel Pavimentos (spec/ui 40 §3.1)."""
+
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
@@ -86,152 +115,25 @@ class ProjectPanel(QWidget):
                                    | QAbstractItemView.EditKeyPressed)
         self.table.cellClicked.connect(self._activate)
         self.table.itemChanged.connect(self._edited)
-        # Cortes e fachadas (spec/ui 14 §7), em grupos com ícone (spec/ui 32 §2)
-        self.views = QTreeWidget()
-        self.views.setHeaderHidden(True)
-        self.views.setIndentation(12)
-        self.views.setToolTip("Clique duplo (ou Enter) abre a vista")
-        self.views.itemDoubleClicked.connect(lambda item, _c=0: self._open_view_item(item))
-        self.views.itemActivated.connect(lambda item, _c=0: self._open_view_item(item))
-        self.views.itemClicked.connect(self._select_view_item)
-        self.open_view = None  # posto pela janela principal
-        # Vistas salvas (spec/ui 25 §4): clique duplo abre; arrastar leva à prancha
-        self.saved = SavedViewList()
-        self.saved.setToolTip("Clique duplo abre a vista; arraste para uma prancha; botão "
-                              "direito: ações")
-        self.saved.itemDoubleClicked.connect(
-            lambda item: self.open_saved_view and self.open_saved_view(item.data(Qt.UserRole)))
-        self.saved.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.saved.customContextMenuRequested.connect(self._saved_menu_at)
-        self.open_saved_view = None  # postos pela janela principal
-        self.update_saved_view = None
-        self.save_view = None
-        self.save_view_button = QToolButton()  # spec/ui 25 §3: no canto das abas de vistas
-        self.save_view_button.setIcon(icon("save_view"))
-        self.save_view_button.setText("Salvar vista")
-        self.save_view_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.save_view_button.setToolTip("Salvar vista (Ctrl+Alt+S): guarda a escala, as "
-                                         "camadas e as opções da vista à frente")
-        self.save_view_button.setAutoRaise(True)
-        self.save_view_button.clicked.connect(lambda: self.save_view and self.save_view())
-        # Pranchas (spec/ui 15 §5)
-        # Pranchas com os desenhos postos nelas (spec/ui 32 §2): clique duplo na prancha a
-        # abre; num desenho, abre a origem dele (planta, corte ou vista salva)
-        self.sheets = QTreeWidget()
-        self.sheets.setHeaderHidden(True)
-        self.sheets.setIndentation(12)
-        self.sheets.setToolTip("Clique duplo abre a prancha; num desenho, abre a origem dele")
-        self.sheets.itemDoubleClicked.connect(lambda item, _c=0: self._open_sheet_item(item))
-        self.sheets.itemActivated.connect(lambda item, _c=0: self._open_sheet_item(item))
-        self.sheets.itemClicked.connect(self._select_sheet_item)
-        self.open_sheet = None
-        self.open_plan = None  # posto pela janela principal: planta do pavimento à frente
-        # Folhas mestras (spec/ui 26 §4)
-        self.masters = QListWidget()
-        self.masters.setToolTip("Clique duplo abre a folha mestra para editar o carimbo")
-        self.masters.itemDoubleClicked.connect(
-            lambda item: self.open_master and self.open_master(item.data(Qt.UserRole)))
-        self.open_master = None
-        self.new_master_button = QPushButton("Nova")
-        self.new_master_button.setMenu(self._new_master_menu())
-        self.duplicate_master_button = QPushButton("Duplicar")
-        self.duplicate_master_button.clicked.connect(self.duplicate_master)
-        self.delete_master_button = QPushButton("Excluir")
-        self.delete_master_button.clicked.connect(self.delete_master)
-        self.new_sheet_button = QPushButton("Nova prancha")
-        self.new_sheet_button.clicked.connect(lambda: self.add_sheet())
-        self.delete_sheet_button = QPushButton("Excluir prancha")
-        self.delete_sheet_button.clicked.connect(self.delete_sheet)
-        # Tabelas (spec/ui 17 §5)
-        self.tables = QListWidget()
-        self.tables.setToolTip("Clique duplo abre a tabela")
-        self.tables.itemDoubleClicked.connect(
-            lambda item: self.open_table and self.open_table(item.data(Qt.UserRole)))
-        self.tables.itemClicked.connect(
-            lambda item: self.session.select([item.data(Qt.UserRole)]))
-        self.open_table = None
-        self.new_table_button = QPushButton("Nova tabela")
-        self.new_table_button.setMenu(self._templates_menu())
-        self.delete_table_button = QPushButton("Excluir tabela")
-        self.delete_table_button.clicked.connect(self.delete_table)
-        # Objetos paramétricos (objeto-parametrico.md §5.4)
-        self.objects = QTreeWidget()
-        self.objects.setHeaderHidden(True)
-        self.objects.setIconSize(QSize(28, 28))
-        self.objects.setIndentation(12)
-        self.objects.setToolTip("Clique duplo num tipo: inserir; botão direito: ações")
-        self.objects.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.objects.customContextMenuRequested.connect(
-            lambda pos: self._objects_menu().exec(self.objects.viewport().mapToGlobal(pos)))
-        self.objects.itemDoubleClicked.connect(self._object_double)
-        self.objects_button = QPushButton("Ações do objeto")
-        self.objects_button.clicked.connect(
-            lambda: self._objects_menu().exec(self.objects_button.mapToGlobal(
-                self.objects_button.rect().bottomLeft())))
-        self.library_button = QPushButton("Biblioteca")
-        self.library_button.clicked.connect(lambda: self.open_library and self.open_library())
-        self.open_library = None  # postos pela janela principal
-        self.use_object_type = None
-        self.edit_object_type = None
-        self.edit_object = None
-        self.new_object = None
-        self.save_to_library = None
-        self.library_index = None
-        self.add_button = QPushButton("Novo pavimento")
-        self.add_button.clicked.connect(self.add_storey)
-        self.delete_button = QPushButton("Excluir pavimento")
-        self.delete_button.clicked.connect(self.delete_storey)
+        self.add_button = icon_button("add", "Novo pavimento, 2,80 m acima do mais alto",
+                                      self.add_storey)
+        self.delete_button = icon_button("delete", "Excluir pavimento", self.delete_storey)
         buttons = QHBoxLayout()
         buttons.addWidget(self.add_button)
         buttons.addWidget(self.delete_button)
+        buttons.addStretch(1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
-        layout.addWidget(self.table)
+        layout.setSpacing(2)
+        layout.addWidget(self.table, 1)
         layout.addLayout(buttons)
-        self.view_tabs = QTabWidget()  # vistas salvas e cortes num lugar só (spec/ui 25 §4)
-        self.view_tabs.setDocumentMode(True)
-        self.view_tabs.addTab(self.saved, "Vistas salvas")
-        self.view_tabs.addTab(self.views, "Cortes e fachadas")
-        self.view_tabs.setCornerWidget(self.save_view_button, Qt.TopRightCorner)
-        layout.addWidget(self.view_tabs)
-        self.sheet_tabs = QTabWidget()  # pranchas e folhas mestras (spec/ui 26 §4)
-        self.sheet_tabs.setDocumentMode(True)
-        for title, listing, buttons in (
-                ("Pranchas", self.sheets, (self.new_sheet_button, self.delete_sheet_button)),
-                ("Folhas mestras", self.masters,
-                 (self.new_master_button, self.duplicate_master_button,
-                  self.delete_master_button))):
-            page = QWidget()
-            page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(0, 2, 0, 0)
-            page_layout.setSpacing(2)
-            page_layout.addWidget(listing)
-            row = QHBoxLayout()
-            for button in buttons:
-                row.addWidget(button)
-            page_layout.addLayout(row)
-            self.sheet_tabs.addTab(page, title)
-        layout.addWidget(self.sheet_tabs)
-        layout.addWidget(QLabel("Tabelas"))
-        layout.addWidget(self.tables)
-        table_buttons = QHBoxLayout()
-        table_buttons.addWidget(self.new_table_button)
-        table_buttons.addWidget(self.delete_table_button)
-        layout.addLayout(table_buttons)
-        layout.addWidget(QLabel("Objetos"))
-        layout.addWidget(self.objects)
-        object_buttons = QHBoxLayout()
-        object_buttons.addWidget(self.objects_button)
-        object_buttons.addWidget(self.library_button)
-        layout.addLayout(object_buttons)
-        # listas baixas no mínimo: o painel não empurra os outros (as listas crescem juntas)
-        for widget in (self.saved, self.views, self.sheets, self.masters, self.tables,
-                       self.objects):
-            widget.setMinimumHeight(40)
         self.table.setMinimumHeight(80)
         # o nome do pavimento cabe inteiro ao lado das outras três colunas
         self.setMinimumWidth(320)
         self.refresh()
+
+    def sizeHint(self) -> QSize:
+        return QSize(320, 170)
 
     def refresh(self) -> None:
         self.table.blockSignals(True)
@@ -264,6 +166,234 @@ class ProjectPanel(QWidget):
             self.table.setItem(row, 3, scale)
         self.delete_button.setEnabled(len(storeys) > 1)
         self.table.blockSignals(False)
+
+    def storey_at(self, row: int):
+        item = self.table.item(row, 0)
+        return self.session.doc.find(item.data(Qt.UserRole)) if item is not None else None
+
+    def _activate(self, row: int, _column: int = 0) -> None:
+        storey = self.storey_at(row)
+        if storey is not None and storey.GlobalId != self.session.storey_id:
+            self.session.set_storey(storey)
+
+    def _edited(self, item: QTableWidgetItem) -> None:
+        storey = self.storey_at(item.row())
+        if storey is None:
+            return
+        text = item.text().strip()
+        doc = self.session.doc
+        if item.column() == 0:
+            name = text.removeprefix("● ").strip()
+            if name and name != storey.Name:
+                self.session.run(lambda: cmd.edit_storey(doc, storey, name=name))
+        elif item.column() == 2:
+            self._edit_cut(storey, text)
+        elif item.column() == 3:
+            self.set_scale(storey, text)
+        else:
+            try:
+                elevation = parse_number(text)
+            except ValueError:
+                self.session.message(f"cota inválida: {text!r}", "recusa")
+                elevation = None
+            if elevation is not None and abs(elevation - (storey.Elevation or 0.0)) > 1e-9:
+                self.session.run(lambda: cmd.edit_storey(doc, storey, elevation=elevation))
+        self.refresh()  # recusa ou texto inválido: volta ao valor do modelo
+
+    def _edit_cut(self, storey, text: str) -> None:
+        if not text:
+            value = None
+        else:
+            try:
+                value = parse_number(text)
+            except ValueError:
+                self.session.message(f"plano de corte inválido: {text!r}", "recusa")
+                return
+        current = storeys_.read(storey)["cut_height"]
+        if value is None and current is None:
+            return
+        if value is not None and abs(value - storeys_.cut_height(storey)) < 1e-9:
+            return
+        doc = self.session.doc
+        self.session.run(lambda: cmd.edit_storey(doc, storey, cut_height=value))
+
+    def set_scale(self, storey, text: str) -> None:
+        """Escala da planta do pavimento (spec/ui 13 §2): "1:100" ou "100"."""
+        try:
+            value = int(text.replace(" ", "").removeprefix("1:"))
+        except ValueError:
+            self.session.message(f"escala inválida: {text!r}", "recusa")
+            return
+        if value != storeys_.scale(storey):
+            doc = self.session.doc
+            self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
+
+    def add_storey(self) -> None:
+        doc = self.session.doc
+        top = max((s.Elevation or 0.0 for s in doc.storeys()), default=-NEW_STOREY_HEIGHT)
+        tx = cmd.create_storey(doc, new_storey_name(doc), top + NEW_STOREY_HEIGHT)
+        if self.session.run(tx):
+            self.session.set_storey(doc.find(tx.ops[0].id))
+
+    def delete_storey(self) -> None:
+        rows = self.table.selectionModel().selectedRows()
+        storey = self.storey_at(rows[0].row()) if rows else self.session.storey
+        if storey is not None:
+            doc = self.session.doc
+            self.session.run(lambda: cmd.delete_storey(doc, storey))
+
+
+class ProjectPanel(QWidget):
+    """Painel Navegador (spec/ui 40 §3.2); na janela principal, ``window.project``."""
+
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.session = session
+        # Cortes e fachadas (spec/ui 14 §7), em grupos com ícone (spec/ui 32 §2)
+        self.views = QTreeWidget()
+        self.views.setHeaderHidden(True)
+        self.views.setIndentation(12)
+        self.views.setToolTip("Clique duplo (ou Enter) abre a vista")
+        self.views.itemDoubleClicked.connect(lambda item, _c=0: self._open_view_item(item))
+        self.views.itemActivated.connect(lambda item, _c=0: self._open_view_item(item))
+        self.views.itemClicked.connect(self._select_view_item)
+        self.open_view = None  # posto pela janela principal
+        # Vistas salvas (spec/ui 25 §4): clique duplo abre; arrastar leva à prancha
+        self.saved = SavedViewList()
+        self.saved.setToolTip("Clique duplo abre a vista; arraste para uma prancha; botão "
+                              "direito: ações")
+        self.saved.itemDoubleClicked.connect(
+            lambda item: self.open_saved_view and self.open_saved_view(item.data(Qt.UserRole)))
+        self.saved.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.saved.customContextMenuRequested.connect(self._saved_menu_at)
+        self.open_saved_view = None  # postos pela janela principal
+        self.update_saved_view = None
+        self.save_view = None
+        self.save_view_button = icon_button(  # spec/ui 25 §3
+            "save_view", "Salvar vista (Ctrl+Alt+S): guarda a escala, as camadas e as opções "
+            "da vista à frente", lambda: self.save_view and self.save_view())
+        # Pranchas com os desenhos postos nelas (spec/ui 15 §5, spec/ui 32 §2): clique duplo
+        # na prancha a abre; num desenho, abre a origem dele (planta, corte ou vista salva)
+        self.sheets = QTreeWidget()
+        self.sheets.setHeaderHidden(True)
+        self.sheets.setIndentation(12)
+        self.sheets.setToolTip("Clique duplo abre a prancha; num desenho, abre a origem dele")
+        self.sheets.itemDoubleClicked.connect(lambda item, _c=0: self._open_sheet_item(item))
+        self.sheets.itemActivated.connect(lambda item, _c=0: self._open_sheet_item(item))
+        self.sheets.itemClicked.connect(self._select_sheet_item)
+        self.open_sheet = None
+        self.open_plan = None  # posto pela janela principal: planta do pavimento à frente
+        self.new_sheet_button = icon_button("add", "Nova prancha", lambda: self.add_sheet())
+        self.delete_sheet_button = icon_button("delete", "Excluir prancha", self.delete_sheet)
+        # Folhas mestras (spec/ui 26 §4)
+        self.masters = QListWidget()
+        self.masters.setToolTip("Clique duplo abre a folha mestra para editar o carimbo")
+        self.masters.itemDoubleClicked.connect(
+            lambda item: self.open_master and self.open_master(item.data(Qt.UserRole)))
+        self.open_master = None
+        self.new_master_button = icon_button("add", "Nova folha mestra",
+                                             menu=self._new_master_menu())
+        self.duplicate_master_button = icon_button("copy", "Duplicar folha mestra",
+                                                   self.duplicate_master)
+        self.delete_master_button = icon_button("delete", "Excluir folha mestra",
+                                                self.delete_master)
+        # Tabelas (spec/ui 17 §5)
+        self.tables = QListWidget()
+        self.tables.setToolTip("Clique duplo abre a tabela")
+        self.tables.itemDoubleClicked.connect(
+            lambda item: self.open_table and self.open_table(item.data(Qt.UserRole)))
+        self.tables.itemClicked.connect(
+            lambda item: self.session.select([item.data(Qt.UserRole)]))
+        self.open_table = None
+        self.new_table_button = icon_button("add", "Nova tabela", menu=self._templates_menu())
+        self.delete_table_button = icon_button("delete", "Excluir tabela", self.delete_table)
+        # Objetos paramétricos (objeto-parametrico.md §5.4)
+        self.objects = QTreeWidget()
+        self.objects.setHeaderHidden(True)
+        self.objects.setIconSize(QSize(28, 28))
+        self.objects.setIndentation(12)
+        self.objects.setToolTip("Clique duplo num tipo: inserir; botão direito: ações")
+        self.objects.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.objects.customContextMenuRequested.connect(
+            lambda pos: self._objects_menu().exec(self.objects.viewport().mapToGlobal(pos)))
+        self.objects.itemDoubleClicked.connect(self._object_double)
+        self.objects_button = icon_button(
+            "options", "Ações do objeto escolhido",
+            lambda: self._objects_menu().exec(self.objects_button.mapToGlobal(
+                self.objects_button.rect().bottomLeft())))
+        self.library_button = icon_button(
+            "library", "Biblioteca de objetos (Ctrl+Shift+B)",
+            lambda: self.open_library and self.open_library())
+        self.open_library = None  # postos pela janela principal
+        self.use_object_type = None
+        self.edit_object_type = None
+        self.edit_object = None
+        self.new_object = None
+        self.save_to_library = None
+        self.library_index = None
+        # Fileira de seções, nome da seção e a seção (spec/ui 40 §3.2)
+        self.section_buttons: dict[str, QToolButton] = {}
+        self.section_group = QButtonGroup(self)
+        row = QHBoxLayout()
+        row.setSpacing(1)
+        for key, (_name, icon_name) in SECTIONS.items():
+            button = icon_button(icon_name, "", lambda k=key: self.show_section(k))
+            button.setCheckable(True)
+            button.setObjectName(f"secao_{key}")
+            self.section_group.addButton(button)
+            self.section_buttons[key] = button
+            row.addWidget(button)
+        row.addStretch(1)
+        self.title = QLabel()
+        self.title.setProperty("role", "group")
+        self.stack = QStackedWidget()
+        self.pages: dict[str, QWidget] = {}
+        for key, listing, actions in (
+                ("views", self.views, ()),
+                ("saved", self.saved, (self.save_view_button,)),
+                ("sheets", self.sheets, (self.new_sheet_button, self.delete_sheet_button)),
+                ("masters", self.masters, (self.new_master_button,
+                                           self.duplicate_master_button,
+                                           self.delete_master_button)),
+                ("tables", self.tables, (self.new_table_button, self.delete_table_button)),
+                ("objects", self.objects, (self.objects_button, self.library_button))):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(2)
+            page_layout.addWidget(listing, 1)
+            if actions:
+                buttons = QHBoxLayout()
+                for button in actions:
+                    buttons.addWidget(button)
+                buttons.addStretch(1)
+                page_layout.addLayout(buttons)
+            self.pages[key] = page
+            self.stack.addWidget(page)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
+        layout.addLayout(row)
+        layout.addWidget(self.title)
+        layout.addWidget(self.stack, 1)
+        self.counts: dict[str, int] = dict.fromkeys(SECTIONS, 0)
+        self.section = "views"
+        self.refresh()
+        self.show_section("views")
+
+    def show_section(self, key: str) -> None:
+        """Abre a seção ``key`` de ``SECTIONS`` (estado da janela, não vai para o IFC)."""
+        self.section = key
+        self.section_buttons[key].setChecked(True)
+        self.stack.setCurrentWidget(self.pages[key])
+        self._update_title()
+
+    def _update_title(self) -> None:
+        self.title.setText(f"{SECTIONS[self.section][0]} ({self.counts[self.section]})")
+        for key, button in self.section_buttons.items():
+            button.setToolTip(f"{SECTIONS[key][0]} ({self.counts[key]})")
+
+    def refresh(self) -> None:
         from brasbim.core.drawings import views as views_
 
         closed = {self.views.topLevelItem(i).data(0, Qt.UserRole + 1)
@@ -338,6 +468,11 @@ class ProjectPanel(QWidget):
             self.tables.addItem(item)
         self.delete_table_button.setEnabled(self.tables.count() > 0)
         self._refresh_objects()
+        self.counts = {
+            "views": len(self.view_ids()), "saved": self.saved.count(),
+            "sheets": self.sheets.topLevelItemCount(), "masters": self.masters.count(),
+            "tables": self.tables.count(), "objects": sum(1 for _ in self._type_items())}
+        self._update_title()
 
     def _placed(self, placed: dict) -> tuple[str, str, str, str] | None:
         """(tipo, GlobalId da origem, nome, ícone) do desenho posto na prancha; ``None`` se
@@ -440,6 +575,15 @@ class ProjectPanel(QWidget):
         if not groups:
             empty = QTreeWidgetItem(self.objects, ["Nenhum: traga da biblioteca"])
             empty.setFlags(Qt.ItemIsEnabled)
+
+    def _type_items(self):
+        """Itens de tipo da árvore de objetos (categoria › objeto › tipo)."""
+        for i in range(self.objects.topLevelItemCount()):
+            group = self.objects.topLevelItem(i)
+            for j in range(group.childCount()):
+                definition = group.child(j)
+                for k in range(definition.childCount()):
+                    yield definition.child(k)
 
     def _object_double(self, item, _column=0) -> None:
         data = item.data(0, Qt.UserRole)
@@ -544,67 +688,6 @@ class ProjectPanel(QWidget):
             return
         self.session.run(lambda: oc.delete_definition(doc, object_id))
 
-    def storey_at(self, row: int):
-        item = self.table.item(row, 0)
-        return self.session.doc.find(item.data(Qt.UserRole)) if item is not None else None
-
-    def _activate(self, row: int, _column: int = 0) -> None:
-        storey = self.storey_at(row)
-        if storey is not None and storey.GlobalId != self.session.storey_id:
-            self.session.set_storey(storey)
-
-    def _edited(self, item: QTableWidgetItem) -> None:
-        storey = self.storey_at(item.row())
-        if storey is None:
-            return
-        text = item.text().strip()
-        doc = self.session.doc
-        if item.column() == 0:
-            name = text.removeprefix("● ").strip()
-            if name and name != storey.Name:
-                self.session.run(lambda: cmd.edit_storey(doc, storey, name=name))
-        elif item.column() == 2:
-            self._edit_cut(storey, text)
-        elif item.column() == 3:
-            self.set_scale(storey, text)
-        else:
-            try:
-                elevation = parse_number(text)
-            except ValueError:
-                self.session.message(f"cota inválida: {text!r}", "recusa")
-                elevation = None
-            if elevation is not None and abs(elevation - (storey.Elevation or 0.0)) > 1e-9:
-                self.session.run(lambda: cmd.edit_storey(doc, storey, elevation=elevation))
-        self.refresh()  # recusa ou texto inválido: volta ao valor do modelo
-
-    def _edit_cut(self, storey, text: str) -> None:
-        if not text:
-            value = None
-        else:
-            try:
-                value = parse_number(text)
-            except ValueError:
-                self.session.message(f"plano de corte inválido: {text!r}", "recusa")
-                return
-        current = storeys_.read(storey)["cut_height"]
-        if value is None and current is None:
-            return
-        if value is not None and abs(value - storeys_.cut_height(storey)) < 1e-9:
-            return
-        doc = self.session.doc
-        self.session.run(lambda: cmd.edit_storey(doc, storey, cut_height=value))
-
-    def set_scale(self, storey, text: str) -> None:
-        """Escala da planta do pavimento (spec/ui 13 §2): "1:100" ou "100"."""
-        try:
-            value = int(text.replace(" ", "").removeprefix("1:"))
-        except ValueError:
-            self.session.message(f"escala inválida: {text!r}", "recusa")
-            return
-        if value != storeys_.scale(storey):
-            doc = self.session.doc
-            self.session.run(lambda: cmd.edit_storey(doc, storey, scale=value))
-
     # --- vistas salvas (spec/ui 25 §4) ---------------------------------------------------
 
     def _saved_menu_at(self, pos) -> None:
@@ -680,6 +763,7 @@ class ProjectPanel(QWidget):
 
         if not self.session.run(build):
             return None
+        self.show_section("sheets")
         if self.open_sheet:
             self.open_sheet(tx.ops[0].id)
         return tx.ops[0].id
@@ -713,7 +797,7 @@ class ProjectPanel(QWidget):
 
         if not self.session.run(build):
             return None
-        self.sheet_tabs.setCurrentIndex(1)
+        self.show_section("masters")
         if self.open_master:
             self.open_master(tx.ops[0].id)
         return tx.ops[0].id
@@ -767,6 +851,7 @@ class ProjectPanel(QWidget):
         tx = tables_.create_table(doc, template, category)
         if not self.session.run(tx):
             return None
+        self.show_section("tables")
         if self.open_table:
             for op in reversed(tx.ops):  # a primeira fica à frente
                 self.open_table(op.id)
@@ -777,17 +862,3 @@ class ProjectPanel(QWidget):
         if item is not None:
             doc, gid = self.session.doc, item.data(Qt.UserRole)
             self.session.run(lambda: tables_.delete_table(doc, gid))
-
-    def add_storey(self) -> None:
-        doc = self.session.doc
-        top = max((s.Elevation or 0.0 for s in doc.storeys()), default=-NEW_STOREY_HEIGHT)
-        tx = cmd.create_storey(doc, new_storey_name(doc), top + NEW_STOREY_HEIGHT)
-        if self.session.run(tx):
-            self.session.set_storey(doc.find(tx.ops[0].id))
-
-    def delete_storey(self) -> None:
-        rows = self.table.selectionModel().selectedRows()
-        storey = self.storey_at(rows[0].row()) if rows else self.session.storey
-        if storey is not None:
-            doc = self.session.doc
-            self.session.run(lambda: cmd.delete_storey(doc, storey))

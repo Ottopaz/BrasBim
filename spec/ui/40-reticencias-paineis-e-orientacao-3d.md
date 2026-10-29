@@ -61,7 +61,8 @@ anterior, pedido pelo revisor.
 - Criar uma prancha, folha mestra ou tabela abre a seção dela. A seção aberta é estado da
   janela (não vai para o IFC).
 - Exibir > Painéis lista **Pavimentos** e **Navegador** no lugar de Projeto. A disposição
-  gravada de antes não traz o painel antigo; os dois novos entram na posição padrão.
+  de painéis e barras gravada antes desta mudança volta uma vez à padrão (Ferramentas,
+  Pavimentos e Navegador à esquerda).
 
 ## 4. Controle de orientação no 3D
 Pesquisa: os detalhes dos cubos e controles de vista de outros programas ficaram como

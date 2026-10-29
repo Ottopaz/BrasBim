@@ -36,7 +36,8 @@ def test_vs06_salvar_e_abrir_planta(window):
     _casa(window)
     terreo = s.storey
     paredes = _layer(s.doc, "Paredes")
-    button = window.project.save_view_button  # no canto das abas de vistas do painel
+    window.project.show_section("saved")
+    button = window.project.save_view_button  # na seção Vistas salvas do Navegador
     assert button.isVisible() and button.parent() is not None
     window.set_view("split")  # lado a lado as abas das vistas somem; o botão fica
     assert button.isVisible()

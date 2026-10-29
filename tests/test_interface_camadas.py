@@ -41,7 +41,7 @@ def test_acima_do_plano_no_menu(window):
 
 def test_coluna_plano_de_corte(window):
     s = window.session
-    panel = window.project
+    panel = window.storeys
     table = panel.table
     assert table.horizontalHeaderItem(2).text() == "Plano de corte"
     row = next(r for r in range(table.rowCount())

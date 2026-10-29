@@ -71,7 +71,7 @@ from brasbim.ui.municipal_dialog import MunicipalDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.pens_dialog import PensDialog
 from brasbim.ui.plan_view import PlanView
-from brasbim.ui.project_panel import ProjectPanel
+from brasbim.ui.project_panel import ProjectPanel, StoreysPanel
 from brasbim.ui.properties import PropertiesPanel
 from brasbim.ui.scene3d import STANDARD_VIEWS, Scene
 from brasbim.ui.section_view import SectionView
@@ -92,7 +92,7 @@ from brasbim.ui.types_dialog import (
 from brasbim.ui.view3d import AreaView3D, View3D, storey_of
 from brasbim.ui.view_bar import ViewBar
 
-STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
+STATE_VERSION = 4  # disposição de painéis e barras; muda quando painéis ou barras mudam
 _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 
 
@@ -300,8 +300,13 @@ class MainWindow(QMainWindow):
         self.project.save_to_library = self.save_object_to_library
         self.project.edit_object = self.edit_object
         self.project.new_object = self.new_object
-        self.project_dock = self._dock("Projeto", "projeto", self.project,
+        # Pavimentos em cima e o Navegador embaixo, à esquerda (spec/ui 40 §3)
+        self.storeys = StoreysPanel(self.session)
+        self.storeys_dock = self._dock("Pavimentos", "pavimentos", self.storeys,
                                        Qt.LeftDockWidgetArea)
+        self.project_dock = self._dock("Navegador", "navegador", self.project,
+                                       Qt.LeftDockWidgetArea)
+        self.splitDockWidget(self.storeys_dock, self.project_dock, Qt.Vertical)
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
@@ -474,7 +479,8 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Pavimento abaixo", lambda: self.step_storey(-1), "PgDown")
         view_menu.addSeparator()
         self.panels_menu = view_menu.addMenu("Painéis")
-        for dock in (self.project_dock, self.properties_dock, self.messages_dock):
+        for dock in (self.storeys_dock, self.project_dock, self.properties_dock,
+                     self.messages_dock):
             self.panels_menu.addAction(dock.toggleViewAction())
         assistant_action = self.assistant_dock.toggleViewAction()
         assistant_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
@@ -607,12 +613,17 @@ class MainWindow(QMainWindow):
         self.tools_bar.setFloating(False)
         self.removeDockWidget(self.tools_bar)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.tools_bar)
-        # coluna própria, ao lado dos painéis da esquerda (o Projeto tem largura mínima)
+        # coluna própria, ao lado dos painéis da esquerda (Pavimentos tem largura mínima)
         others = [d for d in self.findChildren(QDockWidget) if d is not self.tools_bar
                   and not d.isFloating()
                   and self.dockWidgetArea(d) == Qt.LeftDockWidgetArea]
         if others:
             self.splitDockWidget(self.tools_bar, others[0], Qt.Horizontal)
+        # Pavimentos em cima do Navegador (spec/ui 40 §3)
+        if {self.storeys_dock, self.project_dock} <= set(others):
+            self.splitDockWidget(self.storeys_dock, self.project_dock, Qt.Vertical)
+            self.resizeDocks([self.storeys_dock], [self.storeys.sizeHint().height()],
+                             Qt.Vertical)
         self.tools_bar.show()
         self.resizeDocks([self.tools_bar], [2 * self.tools_bar.button_size + 22],
                          Qt.Horizontal)
@@ -930,6 +941,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_all(self) -> None:
         self.refresh_pens()
+        self.storeys.refresh()
         self.project.refresh()
         self.options_bar.refresh()
         self.properties.refresh()
@@ -1662,6 +1674,7 @@ class MainWindow(QMainWindow):
     def _after_object_edit(self) -> None:
         self.options_bar.refresh()
         self.properties.refresh()
+        self.storeys.refresh()
         self.project.refresh()
         self.plan.update()
 

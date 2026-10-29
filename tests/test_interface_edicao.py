@@ -236,7 +236,7 @@ def test_ui22_girar_por_tres_pontos(window):
 
 def test_ui24_painel_de_pavimentos(window):
     s = window.session
-    panel = window.project
+    panel = window.storeys  # painel Pavimentos (spec/ui 40 §3.1)
     assert panel.table.rowCount() == 2
     panel.add_storey()
     assert s.storey.Name == "Pavimento 3" and s.storey.Elevation == pytest.approx(5.6)
