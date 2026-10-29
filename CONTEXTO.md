@@ -6,6 +6,22 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑29 (spec/ui 40 escrita e implementada: sem reticências, painéis Pavimentos e Navegador, orientação no 3D).*
 
+> **Onde paramos (2026‑10‑29, depois da spec 40):** o revisor achou a 40 "bem legal" e
+> pediu **Exportar DWG**, **operações de sólidos** e **perfil complexo**, estudando os
+> outros programas. Feito: pesquisa
+> `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_dwg_solidos_perfis.md` e
+> **spec/ui 41** (`spec/ui/41-dwg-solidos-perfil-complexo.md`, em revisão, pontos
+> (a)–(k) no §6). Resumo: DWG = desenho da tela → DXF (ezdxf) → `dxf2dwg.exe` do mesmo
+> pacote LibreDWG 0.14 já baixado (grava só DWG 2000; testado ida e volta, falta abrir
+> num CAD comercial); camadas = camadas do BrasBim, espessura da pena vai no DWG.
+> Sólidos = `IfcRelInterferesElements` (Relating = alvo, Related = operador,
+> `ImpliedOrder`, `InterferenceType` SUBTRACT/SUBTRACT_UP/SUBTRACT_DOWN/INTERSECT) +
+> forma do alvo já recortada; ferramenta "Recortar por elemento". Perfil complexo =
+> `IfcMaterialProfileSet` com uma parte por material, editor em Projeto > Perfis, faixas
+> de esticar; parede, viga, pilar. O plano das barras previa "spec/ui 41" para o 3D: passa
+> a 42. **Próximo:** respostas do revisor ao §6 e implementar na ordem DWG → sólidos →
+> perfil (DG01–DG03, SO01–SO06, PC01–PC06).
+
 > **Onde paramos (2026‑10‑29, fim da noite):** os pedidos (a)–(c) do revisor viraram a
 > **spec/ui 40** (`spec/ui/40-reticencias-paineis-e-orientacao-3d.md`, em revisão), feita
 > na ordem pedida, um commit por parte; 829 testes. (b) **Sem reticências**: nenhum menu,
@@ -482,6 +498,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
+| `spec/ui/41-dwg-solidos-perfil-complexo` | **em revisão**; a implementar (pontos §6 (a)–(k)) |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
