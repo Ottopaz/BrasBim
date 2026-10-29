@@ -680,3 +680,276 @@ def transformed(vertices: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     xy = vertices[:, :2].astype(np.float64)
     out[:, :2] = xy @ matrix[:2, :2].T + matrix[:2, 2]
     return out
+
+
+# --- 3D da área de seleção (spec/ui 38 §4) ---------------------------------------------------
+
+
+def area_scene(source: Scene, area, keep=None) -> Scene:
+    """Cena só com o que a área pega, a partir das malhas de ``source`` (já com as camadas
+    aplicadas). Área convexa: recortada pelas paredes verticais da área. Côncava: os
+    elementos inteiros que tocam a área. ``keep(gid)`` filtra os elementos (pavimento)."""
+    out = Scene()
+    out.doc = source.doc
+    pts = [tuple(map(float, p)) for p in area.points]
+    planes = _area_planes(pts)
+    for gid, mesh in source.meshes.items():
+        if keep is not None and not keep(gid):
+            continue
+        if planes is None:
+            if _touches_xy(mesh, pts):
+                out.meshes[gid] = mesh
+            continue
+        clipped = _clip_mesh(mesh, planes)
+        if clipped is not None:
+            out.meshes[gid] = clipped
+    return out
+
+
+def _area_planes(pts) -> list | None:
+    """Semiplanos (a, b, c), dentro com a·x + b·y + c >= 0, de um polígono convexo; None
+    se ele for côncavo."""
+    n = len(pts)
+    twice = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
+                for i in range(n))
+    sign = 1.0 if twice > 0 else -1.0
+    planes = []
+    for i in range(n):
+        (x0, y0), (x1, y1), (x2, y2) = pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+        turn = (x1 - x0) * (y2 - y1) - (y1 - y0) * (x2 - x1)
+        if turn * sign < -1e-12:
+            return None  # vértice reentrante
+        a, b = -(y1 - y0) * sign, (x1 - x0) * sign
+        length = math.hypot(a, b)
+        if length < 1e-12:
+            continue
+        a, b = a / length, b / length
+        planes.append((a, b, -(a * x0 + b * y0)))
+    return planes
+
+
+def _clip_polys(tri: np.ndarray, attr: np.ndarray, planes) -> tuple[np.ndarray, np.ndarray]:
+    """Recorta triângulos (n, 3, 3) com atributos por vértice (n, 3, k) pelos semiplanos;
+    os pedaços voltam em leque de triângulos."""
+    for a, b, c in planes:
+        if not len(tri):
+            break
+        d = tri[:, :, 0] * a + tri[:, :, 1] * b + c
+        inside = (d >= -1e-9).all(axis=1)
+        mixed = ~inside & (d > 1e-9).any(axis=1)
+        new_tri, new_attr = [tri[inside]], [attr[inside]]
+        for t, at, dd in zip(tri[mixed], attr[mixed], d[mixed], strict=True):
+            poly = []
+            for i in range(3):
+                j = (i + 1) % 3
+                if dd[i] >= 0:
+                    poly.append((t[i], at[i]))
+                if (dd[i] >= 0) != (dd[j] >= 0):
+                    s = dd[i] / (dd[i] - dd[j])
+                    poly.append((t[i] + s * (t[j] - t[i]), at[i] + s * (at[j] - at[i])))
+            for k in range(1, len(poly) - 1):
+                trio = (poly[0], poly[k], poly[k + 1])
+                new_tri.append(np.array([[q for q, _ in trio]]))
+                new_attr.append(np.array([[v for _, v in trio]]))
+        tri = np.concatenate(new_tri).astype(np.float32)
+        attr = np.concatenate(new_attr).astype(np.float32)
+    return tri, attr
+
+
+def _clip_edges(edges: np.ndarray, planes) -> np.ndarray:
+    seg = edges.reshape(-1, 2, 3).astype(np.float64)
+    for a, b, c in planes:
+        if not len(seg):
+            break
+        d = seg[:, :, 0] * a + seg[:, :, 1] * b + c
+        keep = (d >= -1e-9).any(axis=1)
+        seg, d = seg[keep], d[keep]
+        for i, j in ((0, 1), (1, 0)):  # a ponta de fora vai para o plano
+            out = d[:, i] < -1e-9
+            s = (d[out, i] / (d[out, i] - d[out, j]))[:, None]
+            seg[out, i] = seg[out, i] + s * (seg[out, j] - seg[out, i])
+    return seg.reshape(-1, 3).astype(np.float32)
+
+
+def _clip_mesh(mesh: Mesh, planes) -> Mesh | None:
+    tri, colors = _clip_polys(mesh.vertices.reshape(-1, 3, 3),
+                              mesh.colors.reshape(-1, 3, mesh.colors.shape[-1]), planes)
+    glass = glass_colors = None
+    if mesh.glass is not None:
+        glass, glass_colors = _clip_polys(mesh.glass.reshape(-1, 3, 3),
+                                          mesh.glass_colors.reshape(-1, 3, 4), planes)
+        if not len(glass):
+            glass = glass_colors = None
+        else:
+            glass, glass_colors = glass.reshape(-1, 3), glass_colors.reshape(-1, 4)
+    if not len(tri) and glass is None:
+        return None
+    edges = _clip_edges(mesh.edges, planes) if len(mesh.edges) else mesh.edges
+    vertices, colors = tri.reshape(-1, 3), colors.reshape(-1, 3)
+    cap, cap_edges = _caps(mesh.vertices.reshape(-1, 3, 3).astype(np.float64), planes,
+                           None)
+    if cap:  # faces cortadas fechadas, na cor do elemento mais escura
+        shade = (mesh.colors.mean(axis=0) * CUT_SHADE).astype(np.float32)
+        vertices = np.concatenate([vertices, np.asarray(cap, dtype=np.float32)])
+        colors = np.concatenate([colors, np.tile(shade, (len(cap), 1))])
+        edges = np.concatenate([edges.reshape(-1, 3),
+                                np.asarray(cap_edges, dtype=np.float32)])
+    return Mesh(vertices, colors, edges, mesh.base, None, glass, glass_colors)
+
+
+def _cross2(ax, ay, bx, by):
+    return ax * by - ay * bx
+
+
+def _touches_xy(mesh: Mesh, pts) -> bool:
+    """Em planta, a malha e a área se tocam: vértice da malha dentro da área, canto da área
+    dentro de um triângulo da malha ou lado de triângulo cruzando a borda da área."""
+    tri = mesh.all_vertices.reshape(-1, 3, 3)[:, :, :2].astype(np.float64)
+    if _inside_xy(tri.reshape(-1, 2), pts).any():
+        return True
+    v0, v1, v2 = tri[:, 0], tri[:, 1], tri[:, 2]
+    for qx, qy in pts:  # canto da área dentro de um triângulo
+        s = [_cross2(b[:, 0] - a[:, 0], b[:, 1] - a[:, 1], qx - a[:, 0], qy - a[:, 1])
+             for a, b in ((v0, v1), (v1, v2), (v2, v0))]
+        if (((s[0] >= 0) & (s[1] >= 0) & (s[2] >= 0))
+                | ((s[0] <= 0) & (s[1] <= 0) & (s[2] <= 0))).any():
+            return True
+    starts = np.concatenate([v0, v1, v2])
+    ends = np.concatenate([v1, v2, v0])
+    n = len(pts)
+    for i in range(n):  # lado de triângulo cruzando um lado da área
+        (x0, y0), (x1, y1) = pts[i], pts[(i + 1) % n]
+        d1 = _cross2(x1 - x0, y1 - y0, starts[:, 0] - x0, starts[:, 1] - y0)
+        d2 = _cross2(x1 - x0, y1 - y0, ends[:, 0] - x0, ends[:, 1] - y0)
+        ex, ey = ends[:, 0] - starts[:, 0], ends[:, 1] - starts[:, 1]
+        d3 = _cross2(ex, ey, x0 - starts[:, 0], y0 - starts[:, 1])
+        d4 = _cross2(ex, ey, x1 - starts[:, 0], y1 - starts[:, 1])
+        if ((d1 * d2 < 0) & (d3 * d4 < 0)).any():
+            return True
+    return False
+
+
+def _inside_xy(xy: np.ndarray, pts) -> np.ndarray:
+    """Pontos (n, 2) dentro do polígono (par-ímpar)."""
+    inside = np.zeros(len(xy), dtype=bool)
+    x, y = xy[:, 0], xy[:, 1]
+    n = len(pts)
+    for i in range(n):
+        (x0, y0), (x1, y1) = pts[i], pts[(i + 1) % n]
+        if y0 == y1:
+            continue
+        cross = ((y0 > y) != (y1 > y)) & (x < x0 + (y - y0) * (x1 - x0) / (y1 - y0))
+        inside ^= cross
+    return inside
+
+
+CUT_SHADE = 0.8  # tampa do corte: a cor do elemento, mais escura
+
+
+def _caps(tri: np.ndarray, planes, _color=None) -> tuple[list, list]:
+    """Tampas das faces cortadas (triângulos e contornos): a seção de cada plano da área,
+    recortada pelos outros planos."""
+    tris, edges = [], []
+    for i, (a, b, c) in enumerate(planes):
+        others = planes[:i] + planes[i + 1:]
+        for loop in _section_loops(tri, (a, b, c)):
+            for plane in others:
+                loop = _clip_loop(loop, plane)
+            if len(loop) < 3:
+                continue
+            uv = [(-b * p[0] + a * p[1], p[2]) for p in loop]  # no plano: (ao longo, z)
+            for i0, i1, i2 in _ear_clip(uv):
+                tris += [loop[i0], loop[i1], loop[i2]]
+            for k in range(len(loop)):
+                edges += [loop[k], loop[(k + 1) % len(loop)]]
+    return tris, edges
+
+
+def _section_loops(tri: np.ndarray, plane) -> list[list]:
+    """Contornos fechados onde o plano vertical corta a malha."""
+    a, b, c = plane
+    d = tri[:, :, 0] * a + tri[:, :, 1] * b + c
+    mixed = (d > 1e-9).any(axis=1) & (d < -1e-9).any(axis=1)
+    links: dict[tuple, list] = {}
+    points: dict[tuple, np.ndarray] = {}
+
+    def key(p):
+        k = (round(float(p[0]), 5), round(float(p[1]), 5), round(float(p[2]), 5))
+        points.setdefault(k, p)
+        return k
+
+    for t, dd in zip(tri[mixed], d[mixed], strict=True):
+        found = []
+        for i in range(3):
+            j = (i + 1) % 3
+            if (dd[i] > 0) != (dd[j] > 0):
+                s = dd[i] / (dd[i] - dd[j])
+                found.append(key(t[i] + s * (t[j] - t[i])))
+        if len(found) == 2 and found[0] != found[1]:
+            links.setdefault(found[0], []).append(found[1])
+            links.setdefault(found[1], []).append(found[0])
+    loops, seen = [], set()
+    for start in links:
+        if start in seen:
+            continue
+        loop, prev, cur = [start], None, start
+        seen.add(start)
+        while True:
+            nxt = next((q for q in links[cur] if q != prev and q not in seen), None)
+            if nxt is None:
+                break
+            loop.append(nxt)
+            seen.add(nxt)
+            prev, cur = cur, nxt
+        if len(loop) >= 3:
+            loops.append([points[k].astype(np.float64) for k in loop])
+    return loops
+
+
+def _clip_loop(loop: list, plane) -> list:
+    a, b, c = plane
+    out = []
+    n = len(loop)
+    for i in range(n):
+        p, q = loop[i], loop[(i + 1) % n]
+        dp, dq = a * p[0] + b * p[1] + c, a * q[0] + b * q[1] + c
+        if dp >= -1e-9:
+            out.append(p)
+        if (dp >= -1e-9) != (dq >= -1e-9):
+            out.append(p + dp / (dp - dq) * (q - p))
+    return out
+
+
+def _ear_clip(uv: list) -> list[tuple[int, int, int]]:
+    """Triângulos de um polígono simples (pode ser côncavo), por orelhas."""
+    idx = list(range(len(uv)))
+    area = sum(uv[i][0] * uv[(i + 1) % len(uv)][1] - uv[(i + 1) % len(uv)][0] * uv[i][1]
+               for i in range(len(uv)))
+    if abs(area) < 1e-12:
+        return []
+    if area < 0:
+        idx.reverse()
+
+    def cross(o, p, q):
+        return (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0])
+
+    out = []
+    guard = 0
+    while len(idx) > 3 and guard < 10 * len(uv):
+        guard += 1
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            o, p, q = uv[i0], uv[i1], uv[i2]
+            if cross(o, p, q) <= 1e-12:
+                continue  # vértice reentrante (ou alinhado)
+            if any(cross(o, p, uv[m]) > 0 and cross(p, q, uv[m]) > 0 and cross(q, o, uv[m]) > 0
+                   for m in idx if m not in (i0, i1, i2)):
+                continue
+            out.append((i0, i1, i2))
+            idx.pop(k)
+            break
+        else:
+            break  # polígono ruim: fica o que deu
+    if len(idx) == 3:
+        out.append(tuple(idx))
+    return out

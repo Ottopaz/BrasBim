@@ -23,7 +23,7 @@ from brasbim.core.document import OpError
 from brasbim.ui import theme
 from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
 from brasbim.ui.measure_box import ToolInput
-from brasbim.ui.scene3d import Camera, Scene, affine_of, ray_plane, transformed
+from brasbim.ui.scene3d import Camera, Scene, affine_of, area_scene, ray_plane, transformed
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
 from brasbim.ui.tools import Mods, ToolBox
 
@@ -664,3 +664,49 @@ class View3D(QOpenGLWidget, ToolInput):
             self.fit()
         else:
             super().keyPressEvent(event)
+
+
+class AreaView3D(View3D):
+    """Aba temporária "3D da área" (spec/ui 38 §4): só o que a área de seleção pega,
+    recortado por ela, sem mudar a aba 3D principal. Refaz a cena quando a área, o
+    pavimento ou o modelo mudam (o modelo avisa por ``refresh``)."""
+
+    title = "3D da área"
+
+    def __init__(self, source: Scene, toolbox: ToolBox, parent=None):
+        super().__init__(Scene(), toolbox, parent)
+        self.source = source  # cena do 3D principal, já com as camadas aplicadas
+        self.area = None
+        self.storey_id: str | None = None
+        self.dirty = True
+
+    def refresh(self) -> None:
+        self.dirty = True
+        self.update()
+
+    def rebuild(self) -> None:
+        """Cena da área atual; sem área (removida), fica a última."""
+        session = self.ctx.session
+        area = self.ctx.area or self.area
+        storey_id = session.storey_id
+        if area is None or (not self.dirty and area is self.area and (
+                area.all_storeys or storey_id == self.storey_id)):
+            return
+        first = self.area is None
+        self.area, self.storey_id, self.dirty = area, storey_id, False
+        keep = None
+        if not area.all_storeys:
+            doc = session.doc
+
+            def keep(gid):
+                element = doc.find(gid)
+                storey = storey_of(element) if element is not None else None
+                return storey is not None and storey.GlobalId == storey_id
+
+        self.scene = area_scene(self.source, area, keep)
+        if first:
+            self.fit()
+
+    def paintGL(self):
+        self.rebuild()
+        super().paintGL()

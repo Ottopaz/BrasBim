@@ -93,3 +93,58 @@ def test_as05_todos_os_pavimentos_e_menu(window):
         (0, 0, 2, 2))
     window.remove_selection_area()  # Editar > Remover área de seleção
     assert window.ctx.area is None
+
+
+def _area(window, a, b, all_storeys=False):
+    tool = _tool(window)
+    tool.set_all_storeys(all_storeys)
+    _click(tool, a)
+    _click(tool, b)
+    window.activate_tool("select")
+
+
+def test_as06_3d_da_area_recortado(window):
+    inside = _wall(window, (0.0, 0.0), (10.0, 0.0))  # cruza a área: sai recortada
+    far = _wall(window, (0.0, 20.0), (10.0, 20.0))  # longe: não entra
+    assert window.open_area_3d() is None  # sem área: recusa
+    _area(window, (2.0, -1.0), (5.0, 1.0))
+    view = window.open_area_3d()
+    assert window.tabs.currentWidget() is view and window.closable(view)
+    view.rebuild()
+    assert set(view.scene.meshes) == {inside.GlobalId}
+    low, high = view.scene.bounds()
+    assert (low[0], high[0]) == (pytest.approx(2.0), pytest.approx(5.0))
+    xs = window.scene.meshes[inside.GlobalId].vertices[:, 0]
+    assert xs.min() < 0.1 and xs.max() > 9.9  # o 3D principal não muda
+    assert far.GlobalId in window.scene.meshes
+    window.ctx.area = window.ctx.area.moved((0.0, 20.0))  # a aba acompanha a área
+    view.rebuild()
+    assert set(view.scene.meshes) == {far.GlobalId}
+    window.close_tab(view)
+    assert not window.area_views
+
+
+def test_as06_concava_inteira_e_pavimentos(window):
+    s = window.session
+    wall = _wall(window, (0.0, 0.0), (10.0, 0.0))
+    if len(s.doc.storeys()) < 2:
+        assert s.run(lambda: cmd.create_storey(s.doc, "Superior", 2.8))
+    s.set_storey(s.doc.storeys()[1])
+    top = _wall(window, (0.0, 0.0), (10.0, 0.0))
+    tool = _tool(window)
+    tool.shape = "polygon"  # em L: côncavo, mostra os elementos inteiros
+    for p in ((2.0, -1.0), (6.0, -1.0), (6.0, 3.0), (4.0, 3.0), (4.0, 1.0), (2.0, 1.0),
+              (2.0, -1.0)):
+        _click(tool, p)
+    view = window.open_area_3d()
+    view.rebuild()
+    assert set(view.scene.meshes) == {top.GlobalId}  # este pavimento: só o de cima
+    xs = view.scene.meshes[top.GlobalId].vertices[:, 0]
+    assert xs.min() < 0.1 and xs.max() > 9.9
+    tool.set_all_storeys(True)
+    view.rebuild()
+    assert set(view.scene.meshes) == {wall.GlobalId, top.GlobalId}
+    s.run(lambda: cmd.create_wall(s.doc, window.toolbox.tools["wall"].options.type,
+                                  s.storey, (3.0, 2.0), (3.0, 5.0)))  # o modelo muda
+    view.rebuild()
+    assert len(view.scene.meshes) == 3

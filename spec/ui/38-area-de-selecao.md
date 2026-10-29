@@ -3,7 +3,7 @@ documento: Interação — área de seleção (esticar, 3D da área, exportar e 
 requisito: RF-NUC-05 (edição); pedido do revisor em 2026-10-29
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão (implementação por etapas: §2 e §3 feitos; §4, §5 a fazer)
+status: em revisão (implementação por etapas: §2, §3 e §4 feitos; §5 a fazer)
 revisor: OTTO
 ---
 
@@ -49,14 +49,18 @@ depois (§7).
 - Paredes do pavimento de baixo, que a planta mostra em cinza, não contam como deste
   pavimento.
 
-## 4. 3D da área *(a fazer)*
+## 4. 3D da área *(feito)*
 - Exibir > **3D da área** (também no botão direito da planta com a área desenhada).
 - Abre uma aba **temporária** "3D da área" (não muda a aba 3D principal nem vistas
   salvas): mostra só os elementos que têm alguma parte dentro da área, **recortados**
   pelas paredes verticais da área (planos de corte); retângulo e polígono convexo
   recortam exato; polígono côncavo mostra os elementos inteiros que tocam a área.
 - Pavimentos: "Este pavimento" mostra só o pavimento ativo; "Todos", o prédio todo.
-- A aba acompanha o modelo; mudar a área atualiza a aba aberta.
+- A aba acompanha o modelo; mudar a área atualiza a aba aberta. Sem área (removida),
+  fica a última; abrir outro projeto fecha a aba.
+- As faces cortadas saem fechadas (tampa na cor do elemento, mais escura).
+- Feito: `scene3d.area_scene` (recorte das malhas do 3D principal, sem tesselar de novo;
+  tampas por `_caps`) e `view3d.AreaView3D` (aba que fecha, refaz a cena ao pintar).
 
 ## 5. Exportar e imprimir a área *(a fazer)*
 - Arquivo > **Exportar área (PDF)…** e **Exportar área (DXF)…**: a planta do pavimento
@@ -88,7 +92,8 @@ e fachadas.
 - **AS04** Área que não pega nenhum ponto: recusa.
 - **AS05** Ferramenta: retângulo, polígono, mover a área, esticar
   arrastando, Esc remove (`tests/test_area_selecao_ui.py`).
-- **AS06** *(a fazer)* 3D da área: aba temporária só com os elementos da área.
+- **AS06** 3D da área: aba temporária só com os elementos da área, recortados; côncava
+  inteiros; este pavimento ou todos (`tests/test_area_selecao_ui.py`).
 - **AS07** *(a fazer)* Exportar PDF/DXF da área: só o que está dentro.
 
 ## 9. Fontes

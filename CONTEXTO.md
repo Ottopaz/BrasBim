@@ -17,8 +17,11 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > **estica** (prévia das formas esticadas; a área anda junto); de outro ponto dentro,
 > **move só a área**. Achado e corrigido: `selection_area.touched` pegava as paredes do
 > pavimento de baixo (cinza na planta). Testes AS05 (`tests/test_area_selecao_ui.py`);
-> 801 testes. **Próximo:** §4 3D da área (aba temporária com planos de corte, AS06); §5
-> exportar PDF/DXF e imprimir a área (AS07). Depois, spec 35 (Câmera primeiro) e 36.
+> 801 testes. **Depois (mesma sessão):** feita a **§4, 3D da área**: Exibir > 3D da área
+> (e botão direito na planta) abre a aba temporária "3D da área", só com o que a área
+> pega, recortado pelos planos verticais da área (côncava: elementos inteiros), com as
+> faces cortadas fechadas; acompanha modelo, área e pavimento. AS06; 803 testes.
+> **Próximo:** §5 exportar PDF/DXF e imprimir a área (AS07). Depois, spec 35 (Câmera primeiro) e 36.
 > Remontar a pasta do pendrive.
 
 > **Onde paramos (2026‑10‑29, fim da noite):** o revisor aprovou as linhas-guia

@@ -80,7 +80,7 @@ from brasbim.ui.types_dialog import (
     WallTypesDialog,
     WindowTypesDialog,
 )
-from brasbim.ui.view3d import View3D, storey_of
+from brasbim.ui.view3d import AreaView3D, View3D, storey_of
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
 _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         self.sheet_views: dict[str, SheetView] = {}  # abas de prancha (spec/ui 15)
         self.table_views: dict[str, TableView] = {}  # abas de tabela (spec/ui 17)
         self.master_views: dict[str, MasterEditor] = {}  # folhas mestras (spec/ui 26)
+        self.area_views: dict[str, AreaView3D] = {}  # 3D da área (spec/ui 38 §4)
         self.toolbox = ToolBox(self.ctx)
         self.scene = Scene()
         self.scene.load(session.doc.ifc, session.doc)
@@ -202,14 +203,7 @@ class MainWindow(QMainWindow):
         self._build_status()
         session.listeners.append(self._on_session)
         for view in (self.plan, self.view3d):
-            view.cursor_moved.connect(self._show_cursor)
-            view.hint_changed.connect(self._set_hint)
-            view.tool_finished.connect(lambda: self.activate_tool("select"))
-            view.tool_options_changed.connect(self._options_changed)
-            view.tool_requested.connect(self.activate_tool)
-            view.context_requested.connect(
-                lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
-            view.selection_bar = SelectionBar(view, self.run_selection_action)
+            self._hook_view(view)
         self.selection_bar = self.plan.selection_bar
         self.resize(1280, 800)
         self._hook_tools()
@@ -228,6 +222,17 @@ class MainWindow(QMainWindow):
         self.team_timer.timeout.connect(self.session.poll)
         self.team_timer.start()
         self._refresh_team()
+
+    def _hook_view(self, view) -> None:
+        """Liga a vista de modelo (planta ou 3D) à janela."""
+        view.cursor_moved.connect(self._show_cursor)
+        view.hint_changed.connect(self._set_hint)
+        view.tool_finished.connect(lambda: self.activate_tool("select"))
+        view.tool_options_changed.connect(self._options_changed)
+        view.tool_requested.connect(self.activate_tool)
+        view.context_requested.connect(
+            lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
+        view.selection_bar = SelectionBar(view, self.run_selection_action)
 
     # --- montagem --------------------------------------------------------------------
 
@@ -414,6 +419,7 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        self._action(view_menu, "3D da área", self.open_area_3d)  # spec/ui 38 §4
         standard = view_menu.addMenu("Vista 3D padrão")
         for key, (label, _, _) in STANDARD_VIEWS.items():
             if key == "iso_sw":
@@ -695,6 +701,8 @@ class MainWindow(QMainWindow):
                 self.close_saved_view()
         if event == "document":
             self.ctx.area = None  # a área de seleção é da sessão (spec/ui 38 §2)
+            for view in list(self.area_views.values()):
+                self.close_tab(view)
             self.toolbox.reset()
             self._hook_tools()
             self._refresh_section_views(reset=True)
@@ -704,7 +712,10 @@ class MainWindow(QMainWindow):
             self.plan.fit()
             self.view3d.fit()
             self._refresh_all()
-        elif event == "model":
+        if event in ("model", "storey", "layers"):
+            for view in self.area_views.values():
+                view.refresh()  # refaz ao pintar, já com a cena do 3D principal nova
+        if event == "model":
             self.ctx.invalidate()
             self._refresh_section_views()
             if self.session.last_tx is not None and any(
@@ -1035,6 +1046,24 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(view)
         return view
 
+    def open_area_3d(self) -> AreaView3D | None:
+        """Exibir > 3D da área (spec/ui 38 §4): aba temporária com o que a área pega."""
+        if self.ctx.area is None:
+            self.session.message("desenhe uma área de seleção antes", "recusa")
+            return None
+        view = self.area_views.get("area")
+        if view is None:
+            view = AreaView3D(self.scene, self.toolbox)
+            self._hook_view(view)
+            self.area_views["area"] = view
+            self.tabs.addTab(view, view.title)
+        else:
+            view.refresh()
+        if self.split:
+            self.set_view("plan")
+        self.tabs.setCurrentWidget(view)
+        return view
+
     def open_plan(self, storey_gid: str) -> bool:
         """Planta do pavimento à frente (desenho de prancha no painel Projeto)."""
         storey = self.session.doc.find(storey_gid)
@@ -1100,7 +1129,8 @@ class MainWindow(QMainWindow):
                 bar.setTabButton(index, side, None)
 
     def _tab_views(self) -> tuple[dict, ...]:
-        return self.section_views, self.sheet_views, self.master_views, self.table_views
+        return (self.section_views, self.sheet_views, self.master_views, self.table_views,
+                self.area_views)
 
     def closable(self, widget) -> bool:
         return any(widget in views.values() for views in self._tab_views())
@@ -1828,20 +1858,22 @@ class MainWindow(QMainWindow):
 
     def context_actions(self, view, gid) -> list[tuple[str, object]]:
         """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
+        area = ([("3D da área", self.open_area_3d)]  # spec/ui 38 §4
+                if view is self.plan and self.ctx.area is not None else [])
         if not gid:
-            if view is self.view3d:
+            if isinstance(view, View3D):
                 return [("Enquadrar tudo", view.fit),
                         ("Vista de topo", lambda: view.standard_view("top")),
                         ("Isométrica", lambda: view.standard_view("iso_sw"))]
-            return [("Enquadrar tudo", view.fit)]
-        if view is self.view3d:
+            return [("Enquadrar tudo", view.fit)] + area
+        if isinstance(view, View3D):
             actions = [("Mostrar na planta", lambda: self.show_in_plan(gid)),
                        ("Enquadrar a seleção", view.frame_selection)]
         else:
             actions = [("Mostrar no 3D", self.show_in_3d),
                        ("Enquadrar a seleção", view.frame_selection)]
         return (actions + self._object_context(gid) + self._layer_actions(gid)
-                + self._team_context(gid))
+                + self._team_context(gid) + area)
 
     def _team_context(self, gid) -> list:
         """Pedir liberação do que é de outra pessoa (spec/ui 33 §3)."""
