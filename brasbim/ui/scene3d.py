@@ -530,6 +530,7 @@ _ISO = math.degrees(math.atan(1 / math.sqrt(2)))  # 35,26°: as três direções
 # direção de onde a câmera olha (0 = do leste); o topo fica a um fio da vertical.
 STANDARD_VIEWS = {
     "top": ("Topo", -90.0, 89.95),
+    "bottom": ("De baixo", -90.0, -89.95),  # spec/ui 40 §4
     "front": ("Frente (sul)", -90.0, 0.0),
     "back": ("Fundos (norte)", 90.0, 0.0),
     "left": ("Lateral esquerda (oeste)", 180.0, 0.0),
@@ -539,6 +540,51 @@ STANDARD_VIEWS = {
     "iso_ne": ("Isométrica nordeste", 45.0, _ISO),
     "iso_nw": ("Isométrica noroeste", 135.0, _ISO),
 }
+
+
+# Controle de orientação do 3D (spec/ui 40 §4): marca → (direção, vista padrão, dica)
+ORIENTATION_MARKS = {
+    "+x": ((1.0, 0.0, 0.0), "right", "Do leste (+X)"),
+    "-x": ((-1.0, 0.0, 0.0), "left", "Do oeste (−X)"),
+    "+y": ((0.0, 1.0, 0.0), "back", "Do norte (+Y)"),
+    "-y": ((0.0, -1.0, 0.0), "front", "Do sul (−Y)"),
+    "+z": ((0.0, 0.0, 1.0), "top", "Topo (+Z)"),
+    "-z": ((0.0, 0.0, -1.0), "bottom", "De baixo (−Z)"),
+}
+
+
+def opposite_mark(key: str) -> str:
+    return ("-" if key[0] == "+" else "+") + key[1]
+
+
+def orientation_marks(camera: Camera, center, radius: float
+                      ) -> list[tuple[str, float, float, float]]:
+    """(marca, x, y, profundidade) das pontas dos eixos na tela, de trás para a frente:
+    profundidade > 0 está atrás do centro do controle (desenhar primeiro e mais apagado)."""
+    forward, right, up = camera.axes()
+    out = []
+    for key, (axis, _, _) in ORIENTATION_MARKS.items():
+        v = np.asarray(axis)
+        out.append((key, center[0] + radius * float(v @ right),
+                    center[1] - radius * float(v @ up), float(v @ forward)))
+    return sorted(out, key=lambda m: -m[3])
+
+
+def orientation_pick(camera: Camera, center, radius: float, point, hit: float) -> str | None:
+    """Marca sob ``point`` (pixels): a da frente, se duas se cobrem."""
+    for key, x, y, _ in reversed(orientation_marks(camera, center, radius)):
+        if math.hypot(point[0] - x, point[1] - y) <= hit:
+            return key
+    return None
+
+
+def current_mark(camera: Camera) -> str | None:
+    """Marca de onde a câmera olha agora (a um fio do eixo), ou ``None``."""
+    forward, _, _ = camera.axes()
+    for key, (axis, _, _) in ORIENTATION_MARKS.items():
+        if float(-forward @ np.asarray(axis)) > 1 - 1e-5:
+            return key
+    return None
 
 
 class Camera:

@@ -15,15 +15,28 @@ import math
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QToolTip
 
 from brasbim.core import edit_state, snap, transform
 from brasbim.core.document import OpError
 from brasbim.ui import theme
 from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
 from brasbim.ui.measure_box import ToolInput
-from brasbim.ui.scene3d import Camera, Scene, affine_of, area_scene, ray_plane, transformed
+from brasbim.ui.scene3d import (
+    ORIENTATION_MARKS,
+    Camera,
+    Scene,
+    affine_of,
+    area_scene,
+    current_mark,
+    opposite_mark,
+    orientation_marks,
+    orientation_pick,
+    ray_plane,
+    transformed,
+)
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
 from brasbim.ui.tools import Mods, ToolBox
 
@@ -45,6 +58,11 @@ CLICK_PX = 4  # o clique só vale se o cursor andar menos que isto (§3.1)
 HANDLE_PX = 8  # raio de captura das alças na tela (spec/ui 08 §3)
 SNAP_PX = 10
 TRANSFORM_TOOLS = ("move", "copy", "rotate", "mirror")
+# Controle de orientação (spec/ui 40 §4), em pixels: raio dos eixos, das marcas e margem
+ORIENT_AXIS = 32
+ORIENT_MARK = 9
+ORIENT_MARGIN = 14
+_AXIS_COLORS = {"x": theme.AXIS_X, "y": theme.AXIS_Y, "z": theme.AXIS_Z}
 
 
 def display_layers_locked(doc) -> set[str]:
@@ -144,6 +162,8 @@ class View3D(QOpenGLWidget, ToolInput):
         self.failed = GL is None
         self.window_start: QPointF | None = None  # janela por dois cliques (spec/ui 28 §3)
         self.mouse_pos: QPointF | None = None
+        self.orientation_hover: str | None = None  # marca sob o cursor (spec/ui 40 §4)
+        self._orient_key: str | None = None  # marca do clique em curso
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
@@ -165,6 +185,62 @@ class View3D(QOpenGLWidget, ToolInput):
         """Vista 3D padrão (topo, frente, laterais, isométricas) com tudo enquadrado."""
         self.camera.look_from(name)
         self.fit()
+
+    # --- controle de orientação (spec/ui 40 §4) ------------------------------------------
+
+    def orientation_center(self) -> tuple[float, float]:
+        r = ORIENT_AXIS + ORIENT_MARK
+        return self.width() - ORIENT_MARGIN - r, ORIENT_MARGIN + r
+
+    def on_orientation(self, pos: QPointF) -> bool:
+        """``pos`` cai no controle (o disco dos eixos com as marcas)."""
+        cx, cy = self.orientation_center()
+        return math.hypot(pos.x() - cx, pos.y() - cy) <= ORIENT_AXIS + ORIENT_MARK
+
+    def orientation_at(self, pos: QPointF) -> str | None:
+        return orientation_pick(self.camera, self.orientation_center(), ORIENT_AXIS,
+                                (pos.x(), pos.y()), ORIENT_MARK + 2)
+
+    def orient(self, key: str) -> None:
+        """Olha da direção da marca, com o mesmo centro e distância; de novo na mesma
+        marca, a vista inversa."""
+        if current_mark(self.camera) == key:
+            key = opposite_mark(key)
+        self.camera.look_from(ORIENTATION_MARKS[key][1])
+        self.update()
+
+    def _paint_orientation(self) -> None:
+        from PySide6.QtGui import QColor, QFont, QPainter, QPen
+
+        center = self.orientation_center()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        font = QFont(self.font())
+        font.setBold(True)
+        font.setPointSizeF(max(font.pointSizeF() - 1, 6))
+        painter.setFont(font)
+        back = QColor(theme.VIEW3D_BACKGROUND)
+        for key, x, y, depth in orientation_marks(self.camera, center, ORIENT_AXIS):
+            color = QColor(_AXIS_COLORS[key[1]])
+            if depth > 0.05:  # atrás do centro: mais apagado
+                color.setAlphaF(0.55)
+            hot = key == self.orientation_hover
+            if key[0] == "+":
+                painter.setPen(QPen(color, 2))
+                painter.drawLine(QPointF(*center), QPointF(x, y))
+            r = ORIENT_MARK if key[0] == "+" else ORIENT_MARK - 3
+            if hot:
+                painter.setPen(QPen(QColor(theme.ACCENT), 2))
+                painter.setBrush(QColor(theme.FIELD))
+                painter.drawEllipse(QPointF(x, y), r + 3, r + 3)
+            painter.setPen(QPen(color, 1.5))
+            painter.setBrush(color if key[0] == "+" else back)
+            painter.drawEllipse(QPointF(x, y), r, r)
+            if key[0] == "+":
+                painter.setPen(QColor(theme.ACCENT_INK))
+                painter.drawText(QRectF(x - r, y - r, 2 * r, 2 * r), Qt.AlignCenter,
+                                 key[1].upper())
+        painter.end()
 
     def frame_selection(self) -> bool:
         """Enquadra a seleção mantendo a direção da câmera (spec/ui 07 §4)."""
@@ -268,6 +344,7 @@ class View3D(QOpenGLWidget, ToolInput):
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
         if self.window_start is not None and self.mouse_pos is not None:
             self._paint_window()
+        self._paint_orientation()
         if self.selection_bar is not None:
             # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
             # a mini-barra é posta depois que a pintura termina.
@@ -495,6 +572,11 @@ class View3D(QOpenGLWidget, ToolInput):
             tool.commit3d()
             self.after_tool_input()
             return
+        if button == Qt.LeftButton and self.on_orientation(event.position()):
+            # controle de orientação: clique escolhe a vista, arraste orbita (spec/ui 40 §4)
+            self._orient_key = self.orientation_at(event.position())
+            self._press = ("orient", event.position())
+            return
         kind = self.handle_at(event.position()) if button == Qt.LeftButton else None
         if kind is not None:
             self._start_handle(kind)
@@ -514,11 +596,21 @@ class View3D(QOpenGLWidget, ToolInput):
             if press is None or (pos - press[1]).manhattanLength() >= CLICK_PX:
                 self._feed_handle(pos, self._mods(event))
             return
-        if press is not None and press[0] == "left" and self._drag is None \
+        if press is not None and press[0] in ("left", "orient") and self._drag is None \
                 and (pos - press[1]).manhattanLength() >= CLICK_PX:
             self._drag = ("orbit", press[1])
             self._press = None
         if self._drag is None:
+            hover = self.orientation_at(pos) if self.on_orientation(pos) else None
+            if hover != self.orientation_hover:
+                self.orientation_hover = hover
+                if hover:
+                    self.setCursor(Qt.PointingHandCursor)
+                else:
+                    self.apply_cursor()
+                self.update()
+            if press is None and self.on_orientation(pos):
+                return  # a ferramenta não segue o cursor sobre o controle
             self._feed_move(pos, self._mods(event))
             return
         kind, last = self._drag
@@ -553,6 +645,10 @@ class View3D(QOpenGLWidget, ToolInput):
         if press is None:
             return
         button, at = press
+        if button == "orient":
+            if self._orient_key is not None:
+                self.orient(self._orient_key)
+            return
         self.click(at, button, self._mods(event), event.globalPosition().toPoint())
 
     def click(self, pos: QPointF, button: str, mods: Mods, global_pos=None) -> None:
@@ -656,6 +752,13 @@ class View3D(QOpenGLWidget, ToolInput):
 
     def event(self, event):
         if self.tool_event(event):
+            return True
+        if event.type() == QEvent.ToolTip:  # nome da vista da marca (spec/ui 40 §4)
+            key = self.orientation_at(QPointF(event.pos()))
+            if key is not None:
+                QToolTip.showText(event.globalPos(), ORIENTATION_MARKS[key][2], self)
+            else:
+                QToolTip.hideText()
             return True
         return super().event(event)
 
