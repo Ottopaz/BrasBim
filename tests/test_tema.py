@@ -46,3 +46,15 @@ def test_ap02_cores_de_interface_so_no_tema():
 def test_ap03_fonte_distribuida_com_licenca():
     assert (theme.FONT_DIR / "Archivo.ttf").is_file()
     assert "SIL Open Font License" in (theme.FONT_DIR / "OFL.txt").read_text(encoding="utf-8")
+
+
+def test_ap04_marca(app):
+    """Logo e símbolo gerados (spec/ui 11 §8): ícone em vários tamanhos, .ico válido."""
+    import struct
+
+    sizes = {s.width() for s in theme.app_icon().availableSizes()}
+    assert {16, 32, 48, 256} <= sizes
+    assert theme.logo(150).width() == 150
+    ico = (theme.LOGO_DIR / "brasbim.ico").read_bytes()
+    reserved, kind, count = struct.unpack("<HHH", ico[:6])
+    assert (reserved, kind) == (0, 1) and count >= 5

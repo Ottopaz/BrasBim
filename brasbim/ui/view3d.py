@@ -36,11 +36,11 @@ except ImportError:  # PyOpenGL ausente: a vista não desenha
     GL = None
     GLError = RuntimeError
 
-_SELECT = np.array([0.11, 0.44, 0.84], dtype=np.float32)
+_SELECT = np.array(theme.rgbf(theme.ACCENT), dtype=np.float32)
 _BACKGROUND = theme.rgbf(theme.VIEW3D_BACKGROUND)
-_MARK_COLOR = {"invalid": (0.83, 0.23, 0.18), "guide": (0.45, 0.60, 0.80),
-               "reference": (0.10, 0.45, 0.85)}
-_PREVIEW = (0.11, 0.44, 0.84)
+_MARK_COLOR = {"invalid": theme.rgbf(theme.ERROR), "guide": theme.rgbf("#A9739B"),
+               "reference": theme.rgbf(theme.ACCENT)}
+_PREVIEW = theme.rgbf(theme.ACCENT)
 CLICK_PX = 4  # o clique só vale se o cursor andar menos que isto (§3.1)
 HANDLE_PX = 8  # raio de captura das alças na tela (spec/ui 08 §3)
 SNAP_PX = 10

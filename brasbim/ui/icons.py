@@ -48,7 +48,7 @@ def icon(name: str) -> QIcon:
     svg = (ICON_DIR / f"{name}.svg").read_text(encoding="utf-8")
     palette = QGuiApplication.palette()
     normal = palette.color(QPalette.WindowText).name()
-    checked = palette.color(QPalette.HighlightedText).name()  # sobre a placa cobalto
+    checked = palette.color(QPalette.HighlightedText).name()  # sobre a placa roxa
     disabled = palette.color(QPalette.Disabled, QPalette.WindowText).name()
     result = QIcon()
     for size in _SIZES:

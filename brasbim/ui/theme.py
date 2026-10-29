@@ -1,49 +1,67 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Aparência do aplicativo (``spec/ui/11-aparencia.md``).
 
-Um só lugar para cores, fonte e folha de estilo. O tema é sempre claro: a moldura em
-cinza de concreto e a folha de desenho em branco frio, com grafite no texto e um azul
-cobalto só para o que está ativo ou selecionado. Não segue o modo escuro do sistema
-(misturava moldura escura com folha clara e deixava textos ilegíveis).
+Um só lugar para cores, fonte, folha de estilo e marca. O tema é sempre claro: a moldura
+em cinza levemente arroxeado e a folha de desenho quase branca, com grafite no texto e o
+roxo jabuticaba da logo só para o que está ativo ou selecionado. Não segue o modo escuro
+do sistema (misturava moldura escura com folha clara e deixava textos ilegíveis).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
 FONT_DIR = Path(__file__).parent / "fonts"
+LOGO_DIR = Path(__file__).parent / "logo"  # gerada por scripts/gerar_logo.py
 FAMILY = "Archivo"
 POINT_SIZE = 9.5
 
-# Cores (spec/ui 11 §2)
-PAPER = "#F7F8F6"        # folha da planta
-FRAME = "#E3E6E4"        # moldura: janela, barras
-PANEL = "#EDEFED"        # painéis encaixados
+# Cores (spec/ui 11 §2), a partir da logo (2026-10-29): roxo jabuticaba e magenta.
+PAPER = "#F8F7F8"        # folha da planta
+FRAME = "#E6E3E6"        # moldura: janela, barras
+PANEL = "#EFEDEF"        # painéis encaixados
 FIELD = "#FFFFFF"        # campos de edição
-INK = "#23272A"          # grafite: texto e linhas do desenho
-INK_SOFT = "#596064"     # rótulos, texto secundário
-INK_FAINT = "#8C9396"    # desativado, dicas
-RULE = "#C7CCC9"         # bordas e divisões
-RULE_SOFT = "#D8DCD9"
-ACCENT = "#1F5FC4"       # cobalto: ferramenta ativa, seleção, foco
-ACCENT_SOFT = "#D9E4F6"  # fundo de item selecionado / passagem do mouse
+INK = "#26222A"          # grafite: texto e linhas do desenho
+INK_SOFT = "#5C5661"     # rótulos, texto secundário
+INK_FAINT = "#918A95"    # desativado, dicas
+RULE = "#CBC6CC"         # bordas e divisões
+RULE_SOFT = "#DCD8DC"
+ACCENT = "#6B1F5A"       # roxo jabuticaba: ferramenta ativa, seleção, foco
+ACCENT_SOFT = "#EEDDEA"  # fundo de item selecionado / passagem do mouse
 ACCENT_INK = "#FFFFFF"
+BRAND_DARK = "#3A0D2C"   # jabuticaba escuro da logo
+BRAND_PINK = "#E2336F"   # magenta da logo ("Bim")
 WARN = "#8A5A00"
 ERROR = "#B3261E"
 ERROR_SOFT = "#FBE9E7"
 OK = "#2F7D4A"
 
-GRID = "#E7EAE8"
-GRID_MAJOR = "#D3D8D5"
-VIEW3D_BACKGROUND = "#E9ECEA"
+GRID = "#EAE7EA"
+GRID_MAJOR = "#D8D3D8"
+VIEW3D_BACKGROUND = "#EBE8EB"
 
 
 def rgbf(color: str) -> tuple[float, float, float]:
     c = QColor(color)
     return (c.redF(), c.greenF(), c.blueF())
+
+
+def app_icon() -> QIcon:
+    """Ícone do aplicativo: o símbolo da logo em todos os tamanhos gerados."""
+    result = QIcon()
+    for path in sorted(LOGO_DIR.glob("simbolo-*.png")):
+        result.addPixmap(QPixmap(str(path)))
+    return result
+
+
+def logo(width: int) -> QPixmap:
+    """Logo inteira (símbolo e nome) com ``width`` pixels de largura."""
+    from PySide6.QtCore import Qt
+
+    return QPixmap(str(LOGO_DIR / "logo.png")).scaledToWidth(width, Qt.SmoothTransformation)
 
 
 def _load_font() -> str:

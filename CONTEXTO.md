@@ -6,7 +6,16 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, ferramenta; linhas-guia, spec/ui 37).*
 
-> **Onde paramos (2026‑10‑29, madrugada):** feita a **§2 da spec/ui 38**: a ferramenta
+> **Onde paramos (2026‑10‑29, manhã):** o revisor criou a **logo** (`logoBrasBim.png`,
+> na raiz: B de fitas jabuticaba→magenta) e pediu a paleta "roxo meio jabuticaba". Feito
+> (spec/ui 11 §8): `scripts/gerar_logo.py` gera `brasbim/ui/logo/` (logo transparente,
+> símbolo 16–256 px, `brasbim.ico`); ícone da janela/barra de tarefas (AppUserModelID),
+> Ajuda > Sobre com a logo, README, atalho do pendrive com o ícone (atalhos antigos ganham
+> na próxima abertura). Tema: destaque `#6B1F5A` (fundo `#EEDDEA`), neutros levemente
+> arroxeados, seleção e prévias do 3D tiradas do tema. AP04; 804 testes. **Próximo:**
+> §5 da spec 38 (exportar/imprimir a área, AS07); remontar a pasta do pendrive.
+
+> **Antes (2026‑10‑29, madrugada):** feita a **§2 da spec/ui 38**: a ferramenta
 > **Área de seleção** aparece no grupo Edição da barra Ferramentas e em Editar > Área de
 > seleção (e Editar > Remover área de seleção). Barra Opções: Retângulo | Polígono e Este
 > pavimento (tracejado fino) | Todos os pavimentos (tracejado grosso). A área fica em

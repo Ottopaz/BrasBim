@@ -17,9 +17,14 @@ def main() -> int:
     from brasbim.ui.main_window import MainWindow
     from brasbim.ui.session import Session, feedback_dir
 
+    if sys.platform == "win32":  # barra de tarefas com o ícone do BrasBim, não o do Python
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("BrasBim.BrasBim")
     app = QApplication(sys.argv)
     app.setApplicationName("BrasBim")
     theme.apply(app)
+    app.setWindowIcon(theme.app_icon())
     data = QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation)
     recovery_dir = Path(data) / "recuperacao" if data else Path.home() / "BrasBim" / "recuperacao"
     session = Session(journal_dir=feedback_dir() / "diarios", recovery_dir=recovery_dir)

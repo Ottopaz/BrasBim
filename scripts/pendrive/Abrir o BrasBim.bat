@@ -58,7 +58,8 @@ if errorlevel 1 goto erro_pip
 echo ok> "%OK%"
 
 rem Atalho na Área de Trabalho
-powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\BrasBim.lnk'); $s.TargetPath='%~f0'; $s.WorkingDirectory='%~dp0'; $s.WindowStyle=7; $s.Save()" >nul 2>&1
+powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\BrasBim.lnk'); $s.TargetPath='%~f0'; $s.WorkingDirectory='%~dp0'; $s.WindowStyle=7; $s.IconLocation='%~dp0brasbim\ui\logo\brasbim.ico'; $s.Save()" >nul 2>&1
+echo ok> "%LOCALAPPDATA%\BrasBim\icone.txt"
 
 echo.
 echo  Pronto! Criei um atalho "BrasBim" na Área de Trabalho.
@@ -67,6 +68,12 @@ echo.
 timeout /t 5 >nul
 
 :abrir
+rem Atalho criado antes da logo: ganha o ícone do BrasBim (uma vez só)
+if exist "%LOCALAPPDATA%\BrasBim\icone.txt" goto iniciar
+powershell -NoProfile -Command "$p=[Environment]::GetFolderPath('Desktop')+'\BrasBim.lnk'; if (Test-Path $p) { $s=(New-Object -ComObject WScript.Shell).CreateShortcut($p); $s.IconLocation='%~dp0brasbim\ui\logo\brasbim.ico'; $s.Save() }" >nul 2>&1
+echo ok> "%LOCALAPPDATA%\BrasBim\icone.txt"
+
+:iniciar
 start "" "%VENV%\Scripts\pythonw.exe" -m brasbim.ui.app %*
 exit /b 0
 

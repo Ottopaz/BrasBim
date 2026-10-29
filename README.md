@@ -1,3 +1,5 @@
+<p align="center"><img src="brasbim/ui/logo/logo.png" alt="BrasBim" width="220"></p>
+
 # BrasBim
 
 Software BIM **open source** e **IFC‑nativo** (IFC 4.3), com foco no mercado brasileiro
