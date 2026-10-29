@@ -408,7 +408,7 @@ class PlanView(QWidget, ToolInput):
         elif spacing < 1:  # menos de 1 px: só o fundo (spec/ui 06 §4.1)
             return
         painter.save()
-        painter.setClipPath(path)
+        painter.setClipPath(path, Qt.IntersectClip)  # dentro do recorte da vista ou da área
         painter.setPen(QPen(color, self.unit))
         rect = path.boundingRect()
         corners = [rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()]

@@ -4,16 +4,28 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, ferramenta; linhas-guia, spec/ui 37).*
+*Atualizado em 2026‑10‑29 (área de seleção completa, spec/ui 38 §5; respostas do plano das barras).*
 
-> **Onde paramos (2026‑10‑29, fim da manhã):** o revisor pôs 3 prints de barras e do
+> **Onde paramos (2026‑10‑29, tarde):** feita a **§5 da spec/ui 38**: Arquivo > Exportar
+> área (PDF)… / (DXF)… e Imprimir área… (também no botão direito da planta). A planta do
+> pavimento ativo como está na janela, recortada pela área, na escala da vista. PDF: folha
+> do tamanho da área + 10 mm. DXF (R2018, metros): `_DxfPainter` em
+> `brasbim/ui/area_export.py` recebe o mesmo desenho de `PlanView` no lugar do `QPainter`
+> e grava linhas, hachuras sólidas e textos recortados com shapely. A hachura das regiões
+> agora recorta com `IntersectClip` (antes podia escapar do limite da vista na prancha).
+> AS07; 808 testes. O revisor respondeu (a)–(e) do plano (registrado no §4 dele): ordem
+> livre (fica a proposta), item 46 = botões de situação (existente/demolir/novo, entra na
+> Fase 1), sólidos associativos; (c) travar e (d) ocultar pediram recomendação: IFC e
+> só sessão, a confirmar na spec/ui 39. **Próximo:** Fase 0 (pesquisa complementar).
+
+> **Antes (2026‑10‑29, fim da manhã):** o revisor pôs 3 prints de barras e do
 > painel lateral de outro programa em `feedback/prints/` (só como descrição de função).
 > Inventário e plano em `reports/Plano barras e navegador (prints 2026-10-29).md`: 46
 > funções (15 ✅, 14 ◐, 16 ✗, 1 a perguntar), fases 0 (pesquisa complementar) → 1 (barra
 > da vista, girar a vista, ocultar, travar, ordem de desenho) → 2 (localizar e selecionar,
 > pegar/aplicar ajustes, grupos) → 3 (3D) → 4 (modelagem: assentar, recortar pela cobertura,
 > escalar, varinha, sólidos) → 5 (navegador em árvore, regras de aparência, publicar, BCF).
-> Pontos (a)–(e) para o revisor. **Próximo:** resposta do revisor; spec/ui 38 §5.
+> Pontos (a)–(e) para o revisor.
 
 > **Antes (2026‑10‑29, manhã):** o revisor criou a **logo** (`logoBrasBim.png`,
 > na raiz: B de fitas jabuticaba→magenta) e pediu a paleta "roxo meio jabuticaba". Feito
@@ -365,7 +377,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (794 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (808 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

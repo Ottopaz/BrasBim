@@ -45,7 +45,7 @@ from brasbim.core.drawings import sheets as sheets_
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
-from brasbim.ui import feedback, paper, saved_views_ui, theme
+from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
 from brasbim.ui.assistant import AssistantPanel
 from brasbim.ui.command_line import (
     VISIBLE_KEY,
@@ -359,6 +359,10 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Importar desenho (DXF, DWG)…", lambda: self.import_drawing())
         self._action(file_menu, "Exportar PDF…", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
+        # Pedaço da planta pela área de seleção (spec/ui 38 §5)
+        self._action(file_menu, "Exportar área (PDF)…", lambda: self.export_area("pdf"))
+        self._action(file_menu, "Exportar área (DXF)…", lambda: self.export_area("dxf"))
+        self._action(file_menu, "Imprimir área…", lambda: self.print_area())
         self._action(file_menu, "Dados do projeto…", self.edit_project_info)
         file_menu.addSeparator()
         backup_menu = file_menu.addMenu("Salvamento automático")  # spec/ui 21 §2
@@ -1207,6 +1211,59 @@ class MainWindow(QMainWindow):
         self.session.message(f"PDF exportado ({pages} página(s)): {path}")
         return pages
 
+    def _area_drawing(self):
+        """Planta, vista, penas de papel, área e escala para exportar a área; ``None``
+        (com a recusa) sem área ou sem pavimento."""
+        if self.ctx.area is None:
+            self.session.message("desenhe uma área de seleção antes", "recusa")
+            return None
+        storey = self.session.storey
+        if storey is None:
+            self.session.message("não há pavimento ativo", "recusa")
+            return None
+        resolved = pens.resolve(self.session.doc, self.window_pens, paper=True)
+        return self.ctx.plan, self.plan, resolved, self.ctx.area, storeys_.scale(storey)
+
+    def export_area(self, kind: str, path: str | None = None) -> str | None:
+        """Arquivo > Exportar área (PDF ou DXF)…: a planta do pavimento ativo recortada pela
+        área de seleção, na escala da vista (spec/ui 38 §5)."""
+        found = self._area_drawing()
+        if found is None:
+            return None
+        if path is None:
+            label = "PDF (*.pdf)" if kind == "pdf" else "DXF (*.dxf)"
+            path, _ = QFileDialog.getSaveFileName(self, f"Exportar área ({kind.upper()})",
+                                                  "", label)
+            if not path:
+                return None
+        if not path.lower().endswith(f".{kind}"):
+            path += f".{kind}"
+        try:
+            (area_export.export_pdf if kind == "pdf" else area_export.export_dxf)(path, *found)
+        except OSError as error:
+            self.session.message(f"não foi possível gravar {path}: {error}", "recusa")
+            return None
+        self.session.message(f"área exportada (1:{found[-1]}): {path}")
+        return path
+
+    def print_area(self, printer=None) -> bool:
+        """Arquivo > Imprimir área…: a mesma folha pela impressora (spec/ui 38 §5)."""
+        found = self._area_drawing()
+        if found is None:
+            return False
+        if printer is None:
+            from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+
+            printer = QPrinter(QPrinter.HighResolution)
+            if QPrintDialog(printer, self).exec() != QDialog.Accepted:
+                return False
+        if area_export.print_area(printer, *found):
+            self.session.message(f"área impressa na escala 1:{found[-1]}")
+        else:
+            self.session.message(f"a área não cabe na folha em 1:{found[-1]}: impressa "
+                                 "reduzida", "aviso")
+        return True
+
     def edit_project_info(self) -> None:
         """Dados do projeto para o carimbo (spec/ui 15 §4)."""
         info = sheets_.read_project(self.session.doc)
@@ -1858,7 +1915,9 @@ class MainWindow(QMainWindow):
 
     def context_actions(self, view, gid) -> list[tuple[str, object]]:
         """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
-        area = ([("3D da área", self.open_area_3d)]  # spec/ui 38 §4
+        area = ([("3D da área", self.open_area_3d),  # spec/ui 38 §4 e §5
+                 ("Exportar área (PDF)…", lambda: self.export_area("pdf")),
+                 ("Exportar área (DXF)…", lambda: self.export_area("dxf"))]
                 if view is self.plan and self.ctx.area is not None else [])
         if not gid:
             if isinstance(view, View3D):

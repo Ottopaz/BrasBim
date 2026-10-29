@@ -30,7 +30,7 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 | 9 | **Travar elementos** um a um (não editáveis) e destravar todos | ✗ só a camada inteira (spec/ui 18) | ✗ |
 | 10 | **Agrupar / desagrupar** e pausar os grupos (selecionar só um membro) | ✗ | ◐ comparação: `IfcGroup` simples (RF‑NUC‑07) |
 | 11 | **Varinha**: contorno detectado num clique, para laje, cobertura, hachura, área… | ◐ laje, cobertura e ambiente por clique dentro do cômodo | ✅ `interface_e_interacao.md` §1 |
-| 12 | Área de seleção, esticar, 3D da área | ✅ spec/ui 38 (§5, exportar a área, a fazer) | ✅ |
+| 12 | Área de seleção, esticar, 3D da área, exportar/imprimir a área | ✅ spec/ui 38 | ✅ |
 | 13 | **Operações de sólidos**: subtrair, somar, intersectar um elemento com outro, associativo | ✗ | ✅ `archicad_modelagem.md` |
 | 14 | Dividir, aparar/estender, concordar, deslocar paralela | ✅ spec/ui 23 e 0.2 | ✅ |
 | 15 | **Escalar** (redimensionar por fator ou por referência) | ✗ | ◐ comparação (esticar/escala por referência) |
@@ -79,10 +79,10 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 | 43 | Abas do navegador: o que o modelo gera / vistas salvas / pranchas / publicação | ◐ abas Vistas salvas, Pranchas e Folhas mestras | ✅ |
 | 44 | Novo / ajustes / excluir na base da árvore + nome e número do item selecionado | ◐ botões por lista | — |
 | 45 | Pavimento marcado em negrito como o ativo; duplo clique abre | ✅ | — |
-| 46 | ? Elementos padrão (três botões no topo do painel) | ? não deu para entender pelo print; perguntar ao revisor | — |
+| 46 | **Situação em um clique**: três botões (existente / a demolir / novo) que marcam a seleção (resposta do revisor) | ◐ Editar > Situação já marca a seleção (spec/ui 31); faltam os botões à mão | ✅ (situação, spec/ui 31) |
 
-**Resumo:** das 46 funções, **15 já temos** (✅), **14 temos em parte** (◐), **16 não temos**
-(✗) e **1 não deu para identificar**. Várias das ✗ e ◐ já são pedidos antigos (comparação de
+**Resumo:** das 46 funções, **15 já temos** (✅), **15 temos em parte** (◐) e **16 não temos**
+(✗). O item 46 foi explicado pelo revisor. Várias das ✗ e ◐ já são pedidos antigos (comparação de
 2026‑10‑23 §3.2 e §3.3). As elevações internas, detalhes e folhas de trabalho que a árvore
 lista já estão especificadas e aprovadas (specs 35 e 36), mas falta implementar.
 
@@ -113,6 +113,8 @@ como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
    respeita. Destravar tudo fica no menu Editar.
 5. **Ordem de desenho** (#20) para anotações, hachuras e figuras: propriedade de ordem na
    anotação. O plano de corte do modelo não muda.
+6. **Situação em um clique** (#46): três botões (existente, a demolir, novo) na mini‑barra
+   da seleção ou no topo do painel; usam a mesma transação de Editar > Situação.
 - Testes: VB01… (zoom, giro, ocultar, travar, ordem) com o IFC conferido quando grava.
 
 ### Fase 2: seleção e ajustes (spec/ui 40)
@@ -184,13 +186,20 @@ como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
 | 4 Modelagem | 3–4 sessões (sólidos sozinhos ~2) | Fase 2 (varinha usa a seleção) |
 | 5 Documentação | 3 sessões | specs 35/36 implementadas; Fase 2 (critérios) |
 
-Recomendação: **Fase 0 → 1 → 2** logo depois de terminar a spec/ui 38 §5, e encaixar as
-specs 35/36 antes da Fase 5.
+Recomendação (aceita pelo revisor): **Fase 0 → 1 → 2**, com a spec/ui 38 §5 já feita, e
+encaixar as specs 35/36 antes da Fase 5.
 
-## 4. Pontos para o revisor
-(a) Ordem das fases, e se a Fase 1 entra antes das specs 35/36.
-(b) Item 46: o que fazem os três botões no topo do painel lateral do print?
-(c) Travar elemento vai para o IFC (proposto: sim, numa Pset própria) ou fica só na sessão?
-(d) Ocultar selecionados é só da sessão (proposto) ou vai junto na vista salva?
-(e) Operações de sólidos são associativas desde a primeira entrega (proposto) ou
-    começam permanentes?
+## 4. Respostas do revisor (2026‑10‑29)
+(a) **Ordem:** "tanto faz, pode propor". Fica a proposta: Fase 0 → 1 → 2 → 3 → 4, specs
+    35/36 antes da Fase 5.
+(b) **Item 46:** os três botões são *existente*, *a demolir* e *novo*: escolhe‑se um
+    elemento, aperta‑se um botão e ele passa a essa situação (o filtro de reforma).
+    Entra na Fase 1 (item 6).
+(c) **Travar:** o revisor pediu recomendação. Recomendado: **vai para o IFC**, em
+    `Pset_BrasBim_Edicao.Travado`, para valer ao reabrir o arquivo e para a equipe.
+    Decidir na revisão da spec/ui 39.
+(d) **Ocultar selecionados:** o revisor pediu recomendação. Recomendado: **só da
+    sessão**, como a área de seleção. A vista salva continua guardando camadas e
+    combinação, que são o jeito durável de esconder. Decidir na revisão da spec/ui 39.
+(e) **Operações de sólidos:** entram **associativas** (o resultado se refaz quando o
+    elemento operador muda).

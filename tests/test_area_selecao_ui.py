@@ -2,6 +2,7 @@
 """Área de seleção: ferramenta na planta (``spec/ui/38-area-de-selecao.md`` §2, §8): AS05."""
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -148,3 +149,56 @@ def test_as06_concava_inteira_e_pavimentos(window):
                                   s.storey, (3.0, 2.0), (3.0, 5.0)))  # o modelo muda
     view.rebuild()
     assert len(view.scene.meshes) == 3
+
+
+def _dxf_points(doc):
+    for e in doc.modelspace():
+        if e.dxftype() == "LWPOLYLINE":
+            yield from ((x, y) for x, y, *_ in e.get_points())
+        elif e.dxftype() == "HATCH":
+            for path in e.paths:
+                yield from ((v[0], v[1]) for v in path.vertices)
+        elif e.dxftype() == "TEXT":
+            yield tuple(e.dxf.insert)[:2]
+
+
+def test_as07_exportar_area_dxf_so_o_de_dentro(window, tmp_path):
+    import ezdxf
+
+    _wall(window, (0.0, 0.0), (10.0, 0.0))  # cruza a área: sai recortada
+    _wall(window, (0.0, 20.0), (10.0, 20.0))  # longe: não entra
+    assert window.export_area("dxf", str(tmp_path / "x.dxf")) is None  # sem área: recusa
+    _area(window, (2.0, -1.0), (5.0, 1.0))
+    path = window.export_area("dxf", str(tmp_path / "area"))
+    assert path.endswith(".dxf")
+    doc = ezdxf.readfile(path)
+    assert doc.header["$INSUNITS"] == 6
+    points = list(_dxf_points(doc))
+    assert points, "a parede recortada aparece"
+    for x, y in points:
+        assert 2.0 - 1e-6 <= x <= 5.0 + 1e-6 and -1.0 - 1e-6 <= y <= 1.0 + 1e-6
+    xs = [x for x, _ in points]
+    assert min(xs) == pytest.approx(2.0) and max(xs) == pytest.approx(5.0)
+    layers = {e.dxf.layer for e in doc.modelspace()}
+    assert layers <= {"LINHAS", "HACHURAS", "PREENCHIMENTOS", "TEXTOS"}
+
+
+def test_as07_exportar_area_pdf_e_imprimir(window, tmp_path):
+    from PySide6.QtPrintSupport import QPrinter
+
+    from brasbim.core import storeys
+    from brasbim.ui import area_export
+
+    _wall(window, (0.0, 0.0), (10.0, 0.0))
+    _area(window, (2.0, -1.0), (5.0, 1.0))
+    path = window.export_area("pdf", str(tmp_path / "area.pdf"))
+    data = Path(path).read_bytes()
+    assert data.startswith(b"%PDF")
+    den = storeys.scale(window.session.storey)
+    w, h = area_export.paper_size(window.ctx.area, den)
+    assert w == pytest.approx(3000 / den + 20) and h == pytest.approx(2000 / den + 20)
+    printer = QPrinter(QPrinter.HighResolution)
+    printer.setOutputFormat(QPrinter.PdfFormat)
+    printer.setOutputFileName(str(tmp_path / "impresso.pdf"))
+    assert window.print_area(printer)
+    assert (tmp_path / "impresso.pdf").read_bytes().startswith(b"%PDF")

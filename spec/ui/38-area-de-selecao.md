@@ -3,7 +3,7 @@ documento: Interação — área de seleção (esticar, 3D da área, exportar e 
 requisito: RF-NUC-05 (edição); pedido do revisor em 2026-10-29
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão (implementação por etapas: §2, §3 e §4 feitos; §5 a fazer)
+status: em revisão (implementação por etapas: §2 a §5 feitos)
 revisor: OTTO
 ---
 
@@ -62,12 +62,25 @@ depois (§7).
 - Feito: `scene3d.area_scene` (recorte das malhas do 3D principal, sem tesselar de novo;
   tampas por `_caps`) e `view3d.AreaView3D` (aba que fecha, refaz a cena ao pintar).
 
-## 5. Exportar e imprimir a área *(a fazer)*
-- Arquivo > **Exportar área (PDF)…** e **Exportar área (DXF)…**: a planta do pavimento
-  ativo (com as anotações visíveis) **recortada** pela área, na escala da vista, em
-  folha do tamanho da área mais margem (PDF) ou em metros (DXF).
-- Arquivo > **Imprimir área…**: o mesmo PDF pela impressora do sistema.
-- Usa o desenho da planta que já gera PDF (spec/ui 15) com o recorte por polígono.
+## 5. Exportar e imprimir a área *(feito)*
+- Arquivo > **Exportar área (PDF)…** e **Exportar área (DXF)…** (também no botão direito
+  da planta com a área desenhada): a planta do pavimento ativo **recortada** pela área,
+  como está na janela (camadas, detalhe, situação, etiquetas, espessuras), com a tabela
+  de penas da janela no modo papel ("Imprimir em preto" vale), na escala da vista.
+  - **PDF:** uma folha do tamanho da área na escala, mais 10 mm de margem em volta;
+    vetorial. Texto que cruza a borda é cortado como o resto.
+  - **DXF** (R2018, em metros, nas coordenadas do pavimento): linhas recortadas pela
+    área (polilinhas), áreas cheias como hachura sólida, textos inteiros quando o ponto
+    de inserção fica dentro. Camadas `LINHAS`, `HACHURAS`, `PREENCHIMENTOS` e `TEXTOS`;
+    cor verdadeira e espessura de cada traço; traço tracejado com `$LTSCALE` para dar
+    uns 3 mm no papel. Fundos da cor do papel (o que na tela cobre o que está por
+    baixo) não vão: o DXF não tem o que cobrir.
+- Arquivo > **Imprimir área…**: a mesma folha pela impressora do sistema, centrada; se
+  não couber na folha na escala, sai reduzida e a mensagem avisa.
+- Sem área ou sem pavimento ativo: recusa. Com "Todos os pavimentos", exporta só o
+  pavimento ativo (ponto (c) de §10).
+- A hachura das regiões passou a recortar **dentro** do recorte que já existe
+  (`Qt.IntersectClip`): antes ela podia escapar do limite da vista na prancha.
 
 ## 6. Onde está
 - Núcleo sem Qt: `brasbim/core/selection_area.py` (`Area`, `contains`, `touched`,
@@ -78,6 +91,9 @@ depois (§7).
   `area_rect`, `area_polygon`, `area_storey`, `area_all`.
 - Na ferramenta, o quadro de medidas dá largura e altura no retângulo, e distância e
   ângulo ao esticar ou mover a área. O retângulo também sai arrastando do 1º canto.
+- Exportar/imprimir: `brasbim/ui/area_export.py` (`export_pdf`, `export_dxf`,
+  `print_area`; `_DxfPainter` recebe o desenho de `PlanView` no lugar do `QPainter`);
+  `MainWindow.export_area` e `print_area`.
 
 ## 7. Fica para depois
 Selecionar o conteúdo (tudo ou por tipo), mover/copiar/excluir o conteúdo recortado,
@@ -94,7 +110,10 @@ e fachadas.
   arrastando, Esc remove (`tests/test_area_selecao_ui.py`).
 - **AS06** 3D da área: aba temporária só com os elementos da área, recortados; côncava
   inteiros; este pavimento ou todos (`tests/test_area_selecao_ui.py`).
-- **AS07** *(a fazer)* Exportar PDF/DXF da área: só o que está dentro.
+- **AS07** Exportar a área: DXF só com o que está dentro (parede cortada na borda,
+  parede longe fora), em metros, nas camadas previstas; PDF do tamanho da área na escala
+  mais a margem; impressão (impressora em modo PDF); sem área, recusa
+  (`tests/test_area_selecao_ui.py`).
 
 ## 9. Fontes
 - Ajuda pública Graphisoft (lida em 2026‑10‑29): Marquee Area (AC19,
