@@ -21,20 +21,20 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 |---|---|---|---|
 | 1 | Desfazer / refazer | ✅ | — |
 | 2 | **Localizar e selecionar** por critérios (classe, tipo, camada, pavimento, propriedade; somar ou tirar da seleção) | ◐ só "Selecionar semelhantes" (spec/ui 23 §7) | ◐ `interface_e_interacao.md` §2 (filtros do Revit, critérios IFC) |
-| 3 | **Pegar ajustes** de um elemento para a ferramenta e **aplicar ajustes** a outros elementos | ✗ | ◐ `archicad_modelagem.md` (configurações salvas por ferramenta); a transferência em si não tem fonte |
+| 3 | **Pegar ajustes** de um elemento para a ferramenta e **aplicar ajustes** a outros elementos | ✗ | ✅ `complemento_barras_e_navegacao.md` §9 |
 | 4 | Linhas‑guia liga/desliga | ✅ spec/ui 37 | ✅ |
 | 5 | Pontos de atração e seus tipos | ✅ spec/ui 23 | ✅ |
 | 6 | **Assentar** o elemento novo sobre laje, cobertura ou terreno (a base segue a superfície) | ✗ | ✅ `archicad_modelagem.md` (assentar só na criação; "reassentar" é melhoria) |
 | 7 | Grade: atrair, mostrar e **escolher o passo** | ◐ passo fixo de 0,10 m | ◐ |
-| 8 | **Pavimento de referência**: ver outro pavimento (ou vista) por baixo, em cinza | ◐ só as paredes do pavimento de baixo | ◐ (citado em `autocad.md`/`complemento…`; falta fonte de como escolher a referência) |
-| 9 | **Travar elementos** um a um (não editáveis) e destravar todos | ✗ só a camada inteira (spec/ui 18) | ✗ |
+| 8 | **Pavimento de referência**: ver outro pavimento (ou vista) por baixo, em cinza | ◐ só as paredes do pavimento de baixo | ✅ `complemento_barras_e_navegacao.md` §10 |
+| 9 | **Travar elementos** um a um (não editáveis) e destravar todos | ✗ só a camada inteira (spec/ui 18) | ✅ `complemento_barras_e_navegacao.md` §1 |
 | 10 | **Agrupar / desagrupar** e pausar os grupos (selecionar só um membro) | ✗ | ◐ comparação: `IfcGroup` simples (RF‑NUC‑07) |
 | 11 | **Varinha**: contorno detectado num clique, para laje, cobertura, hachura, área… | ◐ laje, cobertura e ambiente por clique dentro do cômodo | ✅ `interface_e_interacao.md` §1 |
 | 12 | Área de seleção, esticar, 3D da área, exportar/imprimir a área | ✅ spec/ui 38 | ✅ |
 | 13 | **Operações de sólidos**: subtrair, somar, intersectar um elemento com outro, associativo | ✗ | ✅ `archicad_modelagem.md` |
 | 14 | Dividir, aparar/estender, concordar, deslocar paralela | ✅ spec/ui 23 e 0.2 | ✅ |
 | 15 | **Escalar** (redimensionar por fator ou por referência) | ✗ | ◐ comparação (esticar/escala por referência) |
-| 16 | **Recortar pela cobertura ou laje**: parede e pilar terminam na face de baixo da cobertura | ◐ topo "pavimento de cima" e inclinação; não segue a cobertura | ✗ |
+| 16 | **Recortar pela cobertura ou laje**: parede e pilar terminam na face de baixo da cobertura | ◐ topo "pavimento de cima" e inclinação; não segue a cobertura | ✅ `complemento_barras_e_navegacao.md` §2 |
 | 17 | Marcador de alteração | ✅ (Alteração) | — |
 | 18 | **Questões de coordenação** (marcar um problema numa vista, trocar por BCF) | ✗ | ✅ `interoperabilidade_openbim.md` |
 | 19 | Equipe: enviar, receber, reservar, liberar, sair | ✅ spec/ui 33 (envio automático) | ✅ |
@@ -43,11 +43,11 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 
 | # | Função | BrasBim hoje | Pesquisa |
 |---|---|---|---|
-| 20 | **Ordem de desenho** na planta (trazer para frente, mandar para trás) | ✗ | ✗ |
-| 21 | **Ocultar elementos selecionados** e "mostrar tudo de novo" | ◐ só por camada (ocultar/isolar a camada) | ✗ |
+| 20 | **Ordem de desenho** na planta (trazer para frente, mandar para trás) | ✗ | ✅ `complemento_barras_e_navegacao.md` §3 |
+| 21 | **Ocultar elementos selecionados** e "mostrar tudo de novo" | ◐ só por camada (ocultar/isolar a camada) | ✅ `complemento_barras_e_navegacao.md` §4 |
 | 22 | Ver a seleção ou a área no 3D | ✅ "Mostrar no 3D", "3D da área" | ✅ |
-| 23 | **Projeção paralela** × perspectiva no 3D | ✗ só perspectiva; vistas padrão ✅ | ✗ |
-| 24 | **Andar pelo modelo** (navegação em primeira pessoa, altura dos olhos) | ✗ | ◐ `visualizacao_apresentacao.md` (lacuna declarada) |
+| 23 | **Projeção paralela** × perspectiva no 3D | ✗ só perspectiva; vistas padrão ✅ | ✅ `complemento_barras_e_navegacao.md` §5 |
+| 24 | **Andar pelo modelo** (navegação em primeira pessoa, altura dos olhos) | ✗ | ✅ `complemento_barras_e_navegacao.md` §6 |
 | 25 | **Estilos do 3D**: sombreado com arestas, linhas ocultas, raio‑x, cor por propriedade | ◐ só sombreado | ◐ `visualizacao_apresentacao.md` |
 | 26 | **Filtro do 3D**: tipos de elemento e pavimentos que aparecem; **caixa de corte** livre | ◐ 3D da área | ✅ comparação §3.3 |
 | 27 | Situação na vista (existente/demolir/construir) | ✅ spec/ui 31 §3 | ✅ |
@@ -59,8 +59,8 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 
 | # | Função | BrasBim hoje | Pesquisa |
 |---|---|---|---|
-| 31 | **Zoom anterior / seguinte** e zoom em % | ✗ (só enquadrar) | ✗ |
-| 32 | **Girar a vista da planta** (trabalhar com o desenho torto na tela) | ✗ | ✗ |
+| 31 | **Zoom anterior / seguinte** e zoom em % | ✗ (só enquadrar) | ✅ `complemento_barras_e_navegacao.md` §7 |
+| 32 | **Girar a vista da planta** (trabalhar com o desenho torto na tela) | ✗ | ✅ `complemento_barras_e_navegacao.md` §8 |
 | 33 | Escala da vista | ✅ (seletor na barra de estado) | — |
 | 34 | Combinação de camadas | ✅ spec/ui 18 §6, só pelo painel/menu | — |
 | 35 | Detalhe da planta (opções de exibição do modelo) | ✅ Exibir > Detalhe | — |
@@ -79,7 +79,7 @@ Legenda: ✅ temos · ◐ temos em parte · ✗ não temos · ? função incerta
 | 43 | Abas do navegador: o que o modelo gera / vistas salvas / pranchas / publicação | ◐ abas Vistas salvas, Pranchas e Folhas mestras | ✅ |
 | 44 | Novo / ajustes / excluir na base da árvore + nome e número do item selecionado | ◐ botões por lista | — |
 | 45 | Pavimento marcado em negrito como o ativo; duplo clique abre | ✅ | — |
-| 46 | **Situação em um clique**: três botões (existente / a demolir / novo) que marcam a seleção (resposta do revisor) | ◐ Editar > Situação já marca a seleção (spec/ui 31); faltam os botões à mão | ✅ (situação, spec/ui 31) |
+| 46 | **Situação em um clique**: três botões (existente / a demolir / novo) que marcam a seleção (resposta do revisor) | ◐ Editar > Situação já marca a seleção (spec/ui 31); faltam os botões à mão | ✅ `complemento_barras_e_navegacao.md` §11 |
 
 **Resumo:** das 46 funções, **15 já temos** (✅), **15 temos em parte** (◐) e **16 não temos**
 (✗). O item 46 foi explicado pelo revisor. Várias das ✗ e ◐ já são pedidos antigos (comparação de
@@ -93,12 +93,19 @@ modelagem pesada. O que já está na fila continua antes: spec/ui 38 §5 (export
 as specs 35/36 aprovadas (Câmera → Elevação interna → Folha → Detalhe; Ponto de apoio →
 Polilinha → Figura → Desenho).
 
-### Fase 0: pesquisa complementar (antes das specs)
+### Fase 0: pesquisa complementar (antes das specs) *(feita em 2026‑10‑29)*
 Fontes públicas (help oficial Graphisoft/Autodesk/Bricsys/McNeel, fóruns) para os itens sem
 cobertura: 9 (travar elemento), 16 (recortar pela cobertura), 20 (ordem de desenho),
 21 (ocultar seleção), 23 (paralela), 24 (andar), 31 (zoom anterior), 32 (girar a vista),
 3 (pegar/aplicar ajustes), 8 (escolher a referência). Nota nova em `research_notes/`,
 como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
+- Feita: `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_barras_e_navegacao.md`
+  (também cobre o item 46). Os achados vêm de resumos de busca: abrir as páginas oficiais
+  ao fechar cada spec. O que muda no plano: o elemento travado **continua escolhível e
+  atraível** (Archicad e Revit fazem assim), e a recusa vem antes de arrastar; ocultar
+  ganha **isolar** e um aviso na vista; pegar/aplicar ajustes não passa as medidas
+  próprias por padrão; os botões de situação, sem seleção, escolhem a situação dos
+  próximos elementos.
 
 ### Fase 1: barra de vista e organização rápida (spec/ui 39)
 1. **Barra da vista** (#41) sob a planta: zoom anterior/seguinte e % (#31), escala,
@@ -106,15 +113,18 @@ como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
    mesma lista que o menu. Ela substitui o seletor de escala atual da barra de estado.
 2. **Girar a vista da planta** (#32): ângulo na barra. A grade, as guias e as setas seguem
    a vista, e o desenho fica igual. É estado da vista; vai junto na vista salva.
-3. **Ocultar selecionados / mostrar tudo** (#21): estado da sessão, como a área de seleção,
-   e não vai para o IFC. Vale na planta e no 3D.
-4. **Travar / destravar elementos** (#9): `Pset_BrasBim_Edicao.Travado`. O travado não é
-   escolhido nem editado; o núcleo recusa a edição ("elemento travado") e a equipe também
-   respeita. Destravar tudo fica no menu Editar.
+3. **Ocultar selecionados / isolar / mostrar tudo** (#21): estado da sessão, como a área
+   de seleção, e não vai para o IFC. Vale na planta e no 3D; a vista avisa enquanto há
+   algo oculto.
+4. **Travar / destravar elementos** (#9): `Pset_BrasBim_Edicao.Travado`. O travado é
+   escolhido e atrai, mas não é editado; o núcleo recusa a edição ("elemento travado")
+   antes de começar a arrastar, e a equipe também respeita. Destravar tudo fica no menu
+   Editar; uma chave na barra da vista desliga a escolha dos travados.
 5. **Ordem de desenho** (#20) para anotações, hachuras e figuras: propriedade de ordem na
    anotação. O plano de corte do modelo não muda.
 6. **Situação em um clique** (#46): três botões (existente, a demolir, novo) na mini‑barra
-   da seleção ou no topo do painel; usam a mesma transação de Editar > Situação.
+   da seleção ou no topo do painel; com seleção, usam a mesma transação de Editar >
+   Situação; sem seleção, escolhem a situação dos próximos elementos criados.
 - Testes: VB01… (zoom, giro, ocultar, travar, ordem) com o IFC conferido quando grava.
 
 ### Fase 2: seleção e ajustes (spec/ui 40)
@@ -179,7 +189,7 @@ como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
 
 | Fase | Tamanho | Depende de |
 |---|---|---|
-| 0 Pesquisa | 1 sessão | — |
+| 0 Pesquisa | feita | — |
 | 1 Barra da vista e organização | 1–2 sessões | Fase 0 (itens 9, 20, 21, 31, 32) |
 | 2 Seleção e ajustes | 2 sessões | — |
 | 3 3D | 2–3 sessões | 3D da área (feito) |

@@ -16,7 +16,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > AS07; 808 testes. O revisor respondeu (a)–(e) do plano (registrado no §4 dele): ordem
 > livre (fica a proposta), item 46 = botões de situação (existente/demolir/novo, entra na
 > Fase 1), sólidos associativos; (c) travar e (d) ocultar pediram recomendação: IFC e
-> só sessão, a confirmar na spec/ui 39. **Próximo:** Fase 0 (pesquisa complementar).
+> só sessão, a confirmar na spec/ui 39. Feita também a **Fase 0** (pesquisa complementar):
+> `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_barras_e_navegacao.md`, com
+> os 10 itens sem fonte e o 46 (achados dos resumos de busca: abrir as páginas oficiais ao
+> fechar cada spec). Ajustes no plano: travado continua escolhível/atraível; ocultar ganha
+> isolar; pegar ajustes não passa medidas por padrão; situação sem seleção vale para os
+> próximos elementos. **Próximo:** spec/ui 39 (Fase 1: barra da vista, girar, ocultar,
+> travar, ordem de desenho, situação em um clique).
 
 > **Antes (2026‑10‑29, fim da manhã):** o revisor pôs 3 prints de barras e do
 > painel lateral de outro programa em `feedback/prints/` (só como descrição de função).
