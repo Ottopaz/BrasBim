@@ -4,9 +4,41 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (área de seleção completa, spec/ui 38 §5; respostas do plano das barras).*
+*Atualizado em 2026‑10‑29 (spec/ui 39 implementada; pedidos novos do revisor).*
 
-> **Onde paramos (2026‑10‑29, tarde):** feita a **§5 da spec/ui 38**: Arquivo > Exportar
+> **Onde paramos (2026‑10‑29, noite):** **spec/ui 39 implementada** nas 6 partes, VB01–VB10
+> (`tests/test_barra_da_vista.py`, `tests/test_barra_da_vista_ui.py`); 819 testes. (1)
+> **Travar**: `core/edit_state.py` (Pset `BrasBim_Edicao`: `Travado`, `Ordem`, op
+> `edit_state.set`); `ops.history.run` chama `check_op` antes de cada operação
+> (`register_check` em `ops/base.py`), então a recusa vale para interface, assistente e
+> equipe. Editar > Travar (Ctrl+L)/Destravar/Destravar tudo, botão direito, mini‑barra;
+> alças cinza + cadeado; recusa antes de arrastar. (2) **Barra da vista**
+> (`ui/view_bar.py`) acima da linha de comando: zoom anterior/seguinte/enquadrar/%
+> (`FrameHistory` em `plan_view.py`, também nos cortes), giro, escala (saiu da barra de
+> estado), camadas, detalhe, penas, situação, "N ocultos · Mostrar tudo" e a chave
+> Escolher travados; sem lugar, os botões ficam só com ícone. (3) **Girar a vista**:
+> `PlanView.rotation` (= `PlanContext.view_angle`); grade, guias, Shift e setas seguem a
+> tela (`snap.grid_point`, `constrain(base=)`); textos legíveis (`reading_angle`);
+> ferramenta `view_rotate` (dois cliques); giro por pavimento na sessão;
+> `options.rotation` na vista salva, a prancha desenha girada. Falta: a exportação da área
+> não gira. (4) **Ocultar/isolar** só na sessão (`PlanContext.hidden`,
+> `storey_plan(hide=)`, `Scene.extra_hidden`), Ctrl+H / Ctrl+Shift+H. (5) **Ordem de
+> desenho**: `plan._documentation` ordena anotações e hachuras; Editar > Ordem de desenho.
+> (6) Três **botões de situação** no grupo Edição. Corrigido: os grupos recolhidos da
+> barra Ferramentas iam direto para o registro (testes e capturas os alcançavam). As URLs
+> da pesquisa ainda não foram conferidas nas páginas oficiais (spec §11).
+>
+> **Pedidos novos do revisor (2026‑10‑29, noite), a fazer:** (a) **Controle de
+> orientação no 3D** (como o do Blender, print em `feedback/prints/Controle3dBlender.png`,
+> só como descrição de função): clicar dá topo, laterais e as vistas inversas. (b)
+> **Tirar as reticências "…"** de todos os botões, menus e ícones (ex.: painel Projeto,
+> "Nova prancha…", "Biblioteca…"): "não é profissional"; inclui texto cortado pelo Qt.
+> (c) **Desmembrar o painel Projeto**: Pavimentos num painel próprio; vistas, pranchas,
+> tabelas, mestras etc. num painel só, mas em seções separadas, como o navegador do
+> Archicad (casa com a Fase 5 do plano das barras). Spec curta (spec/ui 40) antes,
+> partindo da pesquisa em `research_notes/`.
+
+> **Antes (2026‑10‑29, tarde):** feita a **§5 da spec/ui 38**: Arquivo > Exportar
 > área (PDF)… / (DXF)… e Imprimir área… (também no botão direito da planta). A planta do
 > pavimento ativo como está na janela, recortada pela área, na escala da vista. PDF: folha
 > do tamanho da área + 10 mm. DXF (R2018, metros): `_DxfPainter` em
