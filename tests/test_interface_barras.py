@@ -14,7 +14,7 @@ import ifcopenshell.util.element as ue
 from conftest import LAYERS_14, Model
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QToolBar, QToolButton
+from PySide6.QtWidgets import QApplication, QDockWidget, QToolBar, QToolButton
 from test_interface import _click, _move, _rectangle, _walls
 
 from brasbim.core import plan
@@ -40,28 +40,34 @@ def _alvenaria(s):
 
 def test_ui29_barras_moveis_e_lembradas(window):
     bars = {b.objectName(): b for b in window.findChildren(QToolBar)}
-    assert {"barra_ferramentas", "barra_historico", "barra_opcoes"} <= bars.keys()
-    tools = bars["barra_ferramentas"]
-    assert window.toolBarArea(tools) == Qt.LeftToolBarArea
+    assert {"barra_historico", "barra_opcoes"} <= bars.keys()
     for bar in bars.values():
         assert bar.allowedAreas() == Qt.AllToolBarAreas and bar.isMovable()
         assert bar.isFloatable()
-    window.removeToolBar(tools)
-    window.addToolBar(Qt.BottomToolBarArea, tools)
+    # Ferramentas: painel encaixável (spec/ui 34 §3), à esquerda, em qualquer borda.
+    tools = window.tools_bar
+    assert tools.objectName() == "barra_ferramentas"
+    assert window.dockWidgetArea(tools) == Qt.LeftDockWidgetArea
+    assert tools.allowedAreas() == Qt.AllDockWidgetAreas
+    assert tools.features() & QDockWidget.DockWidgetFloatable
+    window.removeDockWidget(tools)
+    window.addDockWidget(Qt.BottomDockWidgetArea, tools)
     tools.show()
     state = window.saveState(3)
     window.reset_bars()
-    assert window.toolBarArea(tools) == Qt.LeftToolBarArea
+    assert window.dockWidgetArea(tools) == Qt.LeftDockWidgetArea
     assert window.restoreState(state, 3)
-    assert window.toolBarArea(tools) == Qt.BottomToolBarArea
+    assert window.dockWidgetArea(tools) == Qt.BottomDockWidgetArea
     window.reset_bars()
 
 
 def test_ui30_icones_sem_texto_e_com_dica(window):
     window.activate_tool("wall")
     QApplication.processEvents()
-    for bar in (window.tools_bar, window.history_bar, window.options_bar):
-        buttons = [(a, bar.widgetForAction(a)) for a in bar.actions()
+    for bar, actions in ((window.tools_bar, list(window.tools_bar.buttons)),
+                         (window.history_bar, window.history_bar.actions()),
+                         (window.options_bar, window.options_bar.actions())):
+        buttons = [(a, bar.widgetForAction(a)) for a in actions
                    if isinstance(bar.widgetForAction(a), QToolButton)]  # sem campos e listas
         assert buttons
         for action, button in buttons:
@@ -70,6 +76,40 @@ def test_ui30_icones_sem_texto_e_com_dica(window):
             assert button.toolButtonStyle() == Qt.ToolButtonIconOnly
     assert set(icons.names()) >= {"select", "wall", "door", "move", "copy", "rotate", "split",
                                   "delete", "undo", "redo"}
+
+
+def test_ui34_barra_dimensionavel_e_grupos(window):
+    """Puxar a borda muda quantos ícones ficam lado a lado; grupos recolhem (spec/ui 34)."""
+    tools = window.tools_bar
+    assert list(tools.headers) == ["modelagem", "vistas", "documentacao", "edicao"]
+    wall = tools.widgetForAction(window.tool_actions["wall"])
+    door = tools.widgetForAction(window.tool_actions["door"])
+
+    def side_by_side():
+        QApplication.processEvents()
+        return wall.y() == door.y()
+
+    window.resizeDocks([tools], [tools.button_size + 16], Qt.Horizontal)
+    assert not side_by_side()  # uma coluna
+    box = tools.boxes["modelagem"]
+    tall = box.height()
+    window.resizeDocks([tools], [8 * tools.button_size], Qt.Horizontal)
+    assert side_by_side()
+    assert box.height() <= tall / 2  # mais largo: menos linhas
+    # Recolher a Documentação esconde os ícones dela, e fica guardado.
+    header = tools.headers["documentacao"]
+    header.click()
+    assert not tools.boxes["documentacao"].isVisibleTo(tools)
+    assert "documentacao" in tools._collapsed()
+    header.click()
+    assert tools.boxes["documentacao"].isVisibleTo(tools)
+    assert "documentacao" not in tools._collapsed()
+    # Corte e Fachada no grupo Vistas; clicar ativa a ferramenta.
+    section = window.tool_actions["section"]
+    assert tools.widgetForAction(section).parent() is tools.boxes["vistas"]
+    section.trigger()
+    assert window.toolbox.active.name == "section"
+    window.reset_bars()
 
 
 # --- UI31–UI32: barra de opções -------------------------------------------------------

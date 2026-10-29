@@ -562,10 +562,21 @@ class MainWindow(QMainWindow):
         self.tool_actions["select"].setChecked(True)
 
     def reset_bars(self) -> None:
-        """Posição inicial (spec/ui 03 §2): Ferramentas à esquerda, Histórico e Opções no
-        topo."""
-        for toolbar, area in ((self.tools_bar, Qt.LeftToolBarArea),
-                              (self.history_bar, Qt.TopToolBarArea),
+        """Posição inicial (spec/ui 03 §2): Ferramentas à esquerda, com duas colunas
+        (spec/ui 34 §3), Histórico e Opções no topo."""
+        self.tools_bar.setFloating(False)
+        self.removeDockWidget(self.tools_bar)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.tools_bar)
+        # coluna própria, ao lado dos painéis da esquerda (o Projeto tem largura mínima)
+        others = [d for d in self.findChildren(QDockWidget) if d is not self.tools_bar
+                  and not d.isFloating()
+                  and self.dockWidgetArea(d) == Qt.LeftDockWidgetArea]
+        if others:
+            self.splitDockWidget(self.tools_bar, others[0], Qt.Horizontal)
+        self.tools_bar.show()
+        self.resizeDocks([self.tools_bar], [2 * self.tools_bar.button_size + 22],
+                         Qt.Horizontal)
+        for toolbar, area in ((self.history_bar, Qt.TopToolBarArea),
                               (self.options_bar, Qt.TopToolBarArea)):
             self.removeToolBar(toolbar)
             self.addToolBar(area, toolbar)
@@ -1584,7 +1595,8 @@ class MainWindow(QMainWindow):
 
         return command_palette.tool_commands([
             ("Ferramentas", toolbars.CREATE_TOOLS + toolbars.WALL_FORMS),
-            ("Documentação", toolbars.DOC_TOOLS), ("Edição", toolbars.EDIT_TOOLS)])
+            ("Vistas", toolbars.VIEW_TOOLS), ("Documentação", toolbars.DOC_TOOLS),
+            ("Edição", toolbars.EDIT_TOOLS)])
 
     def open_palette(self) -> None:
         if getattr(self, "palette_widget", None) is None:

@@ -11,8 +11,9 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > isométricos da modelagem, desenhados sobre prévias aprovadas pelo revisor (porta = folha
 > fechada com maçaneta, "opção A"; janela/vão = parede de 4 linhas; cobertura = 2 águas em
 > trapézio; escada só degraus; guarda‑corpo em linhas finas), gerador
-> `scripts/icones_isometricos.py`. **Próximo:** (1) §3 grupos recolhíveis Modelagem |
-> Vistas | Documentação | Edição (a barra hoje não cabe na altura); (2) **pesquisa
+> `scripts/icones_isometricos.py`. **Feito (§3):** a barra Ferramentas é um painel
+> encaixável dimensionável (puxar a borda põe os ícones lado a lado) com grupos
+> recolhíveis Modelagem | Vistas | Documentação | Edição; 788 testes. **Próximo:** (2) **pesquisa
 > complementar** em fontes públicas sobre Elevação interna, Detalhe, Folha de trabalho,
 > Câmera, Polilinha, Hotspot, Figura e Desenho (Archicad, com o que Revit e AutoCAD fazem
 > bem) — a pesquisa atual declara essas lacunas; nota nova em `research_notes/`; (3) specs
@@ -267,7 +268,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑29: 787 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑29: 788 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) ~~instalar o ODA File Converter~~ resolvido: LibreDWG vem com o BrasBim (spec/ui 22 §8);
@@ -276,7 +277,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (787 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (788 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -311,7 +312,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
 | `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1, 2 e 3 feitas** (quadro de áreas: PL05, PL05b–e em `tests/test_quadro_de_areas.py` e `test_interface_quadro_de_areas.py`; situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 4–5 a fazer (PL06–PL08); pontos §11 (a)–(r) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
-| `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos feito; §3 grupos e §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
+| `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |

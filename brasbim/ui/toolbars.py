@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSettings, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
+    QDockWidget,
+    QFrame,
     QLabel,
+    QLayout,
     QLineEdit,
     QMenu,
+    QScrollArea,
+    QSizePolicy,
     QToolBar,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -120,6 +126,9 @@ DOC_TOOLS = [
     ("hatch", "hatch", "Hachura", "polígono ou retângulo"),
     ("north", "north", "Norte", "clique a posição e a direção"),
     ("revision", "revision", "Alteração", "dois cantos da área alterada (nuvem e número)"),
+]
+# Grupo Vistas (spec/ui 34 §3): ferramentas que geram desenhos a partir do modelo.
+VIEW_TOOLS = [
     ("section", "section", "Corte", "clique os dois pontos da linha e o lado olhado"),
     ("elevation", "elevation", "Fachada",
      "clique os dois pontos da linha, fora do edifício, e o lado olhado"),
@@ -249,36 +258,187 @@ def _bar(title: str, name: str, parent) -> QToolBar:
     return bar
 
 
-class ToolsBar(QToolBar):
+class _Flow(QLayout):
+    """Botões em grade que se acomoda à largura: quantos couberem por linha."""
+
+    def __init__(self, parent=None, spacing: int = 2):
+        super().__init__(parent)
+        self._items = []
+        self.setSpacing(spacing)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientations(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._place(QRect(0, 0, width, 0), move=False)
+
+    def setGeometry(self, rect) -> None:
+        super().setGeometry(rect)
+        self._place(rect, move=True)
+
+    def sizeHint(self) -> QSize:
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        return size
+
+    def _place(self, rect, move: bool) -> int:
+        x, y, line = rect.x(), rect.y(), 0
+        gap = self.spacing()
+        for item in self._items:
+            hint = item.sizeHint()
+            if x + hint.width() > rect.right() + 1 and line > 0:
+                x, y, line = rect.x(), y + line + gap, 0
+            if move:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + gap
+            line = max(line, hint.height())
+        return y + line - rect.y()
+
+
+class _FlowBox(QWidget):
+    """Caixa com ``_Flow``: a altura acompanha a largura."""
+
+    def __init__(self):
+        super().__init__()
+        self.flow = _Flow(self)
+        policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+
+# Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" fica sempre no topo.
+TOOL_GROUPS = [("Modelagem", "modelagem", CREATE_TOOLS[1:]), ("Vistas", "vistas", VIEW_TOOLS),
+               ("Documentação", "documentacao", DOC_TOOLS), ("Edição", "edicao", EDIT_TOOLS)]
+_WIDE = 90  # px: abaixo disso o título do grupo vira só a seta (com a dica)
+_SETTING = "ferramentas/recolhidos"
+
+
+class ToolsBar(QDockWidget):
+    """Barra de ferramentas como painel encaixável (spec/ui 34 §3): puxar a borda muda
+    quantos ícones ficam lado a lado; os grupos recolhem pelo título, e os recolhidos
+    ficam guardados nas preferências."""
+
     def __init__(self, window):
         super().__init__("Ferramentas", window)
         self.setObjectName("barra_ferramentas")
-        self.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        self.setIconSize(QSize(ICON_PX, ICON_PX))
-        self.setAllowedAreas(Qt.AllToolBarAreas)
-        group = QActionGroup(self)
-        self.actions_by_tool = {}
-        for tool, icon_name, name, usage in CREATE_TOOLS:
-            action = make_action(self, icon_name, name, usage, checkable=True)
-            if tool == "wall":
-                action.triggered.connect(lambda _=False: window.activate_tool(
-                    window.toolbox.wall_form))
-            else:
-                action.triggered.connect(lambda _=False, t=tool: window.activate_tool(t))
-            group.addAction(action)
-            self.addAction(action)
-            self.actions_by_tool[tool] = action
-        self.addSeparator()
-        for item in DOC_TOOLS + [None] + EDIT_TOOLS:
-            if item is None:
-                self.addSeparator()
-                continue
-            tool, icon_name, name, usage = item
-            action = make_action(self, icon_name, name, usage, checkable=True)
+        self.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable
+                         | QDockWidget.DockWidgetClosable)
+        self.group = QActionGroup(self)
+        self.actions_by_tool: dict[str, QAction] = {}
+        self.buttons: dict[QAction, QToolButton] = {}
+        self.headers: dict[str, QToolButton] = {}
+        self.boxes: dict[str, _FlowBox] = {}
+        body = QWidget()
+        column = QVBoxLayout(body)
+        column.setContentsMargins(3, 3, 3, 3)
+        column.setSpacing(2)
+        top = _FlowBox()
+        self._add(window, top, CREATE_TOOLS[0])
+        column.addWidget(top)
+        collapsed = self._collapsed()
+        for title, key, tools in TOOL_GROUPS:
+            line = QFrame()
+            line.setProperty("role", "rule")
+            line.setFixedHeight(1)
+            column.addWidget(line)
+            header = QToolButton()
+            header.setObjectName(f"grupo_{key}")
+            header.setText(title)
+            header.setToolTip(f"{title}: clique para mostrar ou esconder")
+            header.setCheckable(True)
+            header.setChecked(key not in collapsed)
+            header.setAutoRaise(True)
+            header.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)  # não segura a largura
+            header.setStyleSheet(
+                f"QToolButton {{ color: {theme.INK_SOFT}; padding: 1px 2px; }}"
+                " QToolButton:checked { background: transparent;"
+                " border-color: transparent; }")
+            box = _FlowBox()
+            for item in tools:
+                self._add(window, box, item)
+            box.setVisible(header.isChecked())
+            header.toggled.connect(lambda on, k=key: self._toggle(k, on))
+            column.addWidget(header)
+            column.addWidget(box)
+            self.headers[key] = header
+            self.boxes[key] = box
+        column.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(body)
+        self.setWidget(scroll)
+        self.setMinimumWidth(self.button_size + 14)
+        self._style_headers()
+
+    @property
+    def button_size(self) -> int:
+        return ICON_PX + 12
+
+    def _add(self, window, box: _FlowBox, item) -> None:
+        tool, icon_name, name, usage = item
+        action = make_action(self, icon_name, name, usage, checkable=True)
+        if tool == "wall":
+            action.triggered.connect(lambda _=False: window.activate_tool(
+                window.toolbox.wall_form))
+        else:
             action.triggered.connect(lambda _=False, t=tool: window.activate_tool(t))
-            group.addAction(action)
-            self.addAction(action)
-            self.actions_by_tool[tool] = action
+        self.group.addAction(action)
+        button = QToolButton()
+        button.setDefaultAction(action)
+        button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        button.setIconSize(QSize(ICON_PX, ICON_PX))
+        button.setFixedSize(self.button_size, self.button_size)
+        box.flow.addWidget(button)
+        self.actions_by_tool[tool] = action
+        self.buttons[action] = button
+
+    def widgetForAction(self, action):
+        return self.buttons.get(action)
+
+    @staticmethod
+    def _collapsed() -> set[str]:
+        value = QSettings("BrasBim", "BrasBim").value(_SETTING, "")
+        return {k for k in str(value or "").split(",") if k}
+
+    def _toggle(self, key: str, on: bool) -> None:
+        self.boxes[key].setVisible(on)
+        self._style_headers()
+        collapsed = sorted(k for k, h in self.headers.items() if not h.isChecked())
+        QSettings("BrasBim", "BrasBim").setValue(_SETTING, ",".join(collapsed))
+
+    def _style_headers(self) -> None:
+        wide = self.width() >= _WIDE
+        for header in self.headers.values():
+            header.setArrowType(Qt.DownArrow if header.isChecked() else Qt.RightArrow)
+            header.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if wide
+                                      else Qt.ToolButtonIconOnly)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._style_headers()
 
     def mark(self, tool_name: str) -> None:
         key = "wall" if tool_name in ("wall", "arc", "rectangle") else tool_name
