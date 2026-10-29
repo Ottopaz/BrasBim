@@ -16,7 +16,16 @@
   },
   "escalas": {"implantacao": 200, "plantas": 50, "cortes": 50, "fachadas": 50},
   "planta": "completa",
-  "quadro_de_areas": {"indices": ["TO", "CA", "TP"], "piscina_a_parte": false},
+  "quadro_de_areas": {
+    "indices": ["TO", "CA", "TP"],
+    "piscina_a_parte": false,
+    "regras": [
+      {"nomes": ["Varanda", "Sacada", "Terraço coberto"], "classe": "NAO_COMPUTAVEL", "motivo": "varanda"},
+      {"nomes": ["Ático"], "classe": "NAO_COMPUTAVEL", "motivo": "ático"},
+      {"nomes": ["Quintal", "Pátio", "Terraço descoberto", "Piscina"], "classe": "DESCOBERTA"},
+      {"nomes": ["Jardim", "Gramado", "Área permeável"], "classe": "PERMEAVEL"}
+    ]
+  },
   "selo": ["Título do desenho", "Proprietário", "Endereço da obra", "Autor do projeto",
            "Responsável técnico", "ART/RRT", "Escala", "Data", "Prancha", "Revisão"],
   "notas": [],

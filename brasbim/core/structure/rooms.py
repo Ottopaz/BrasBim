@@ -27,6 +27,11 @@ _ON = 1e-5  # m: ponto sobre a face de uma parede
 
 def walls_of(doc: Document, storey) -> list[tuple[list, float]]:
     """(planta, espessura) de cada parede do pavimento."""
+    return [(ring, thickness) for ring, thickness, _ in wall_rings(doc, storey)]
+
+
+def wall_rings(doc: Document, storey) -> list[tuple[list, float, object]]:
+    """(planta, espessura, parede) de cada parede do pavimento."""
     out = []
     for wall in ifcopenshell.util.element.get_decomposition(storey):
         if not wall.is_a("IfcWall"):
@@ -38,7 +43,7 @@ def walls_of(doc: Document, storey) -> list[tuple[list, float]]:
         except (OpError, ValueError):
             continue
         ring = [band.frame.to_global(p) for p in geom2d.polygon(segments, arc_steps=16)]
-        out.append((ring, band.thickness))
+        out.append((ring, band.thickness, wall))
     return out
 
 
@@ -149,13 +154,15 @@ def room_outline(doc: Document, storey, point, boundary: str = "outer",
     return [list(p) for p in points]
 
 
-def building_rings(doc: Document, storey) -> list:
+def building_rings(doc: Document, storey, rings=None) -> list:
     """Contornos externos (face externa das paredes) de todas as edificações do
-    pavimento, sem os furos dos cômodos; vazio sem paredes."""
-    walls = walls_of(doc, storey)
-    if not walls:
+    pavimento, sem os furos dos cômodos; vazio sem paredes. ``rings``: a planta das
+    paredes, já lida."""
+    if rings is None:
+        rings = [r for r, _ in walls_of(doc, storey)]
+    if not rings:
         return []
-    union = clip.union([list(r) for r, _ in walls])
+    union = clip.union([list(r) for r in rings])
     outer = math.copysign(1.0, clip.signed_area(max(union, key=lambda r: abs(
         clip.signed_area(r)))))
     return [r for r in union if clip.signed_area(r) * outer > 0]

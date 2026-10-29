@@ -89,6 +89,7 @@ HANDLER_MODULES = (
     "brasbim.core.grids",
     "brasbim.core.drawings.sheets",
     "brasbim.core.quantities.tables",
+    "brasbim.core.quantities.legal_areas",
     "brasbim.core.objects.types",
     "brasbim.core.objects.elements",
     "brasbim.core.objects.rebuild",

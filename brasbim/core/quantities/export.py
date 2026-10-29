@@ -96,7 +96,7 @@ def xlsx_bytes(result: Result) -> bytes:
                 cells.append(f'<c r="{ref}" s="{style}"><v>{value!r}</v></c>')
             else:
                 cells.append(f'<c r="{ref}" t="s" s="{1 if bold else 0}">'
-                             f'<v>{shared(str(value))}</v></c>')
+                             f'<v>{shared(format_value(value))}</v></c>')
         xml_rows.append(f'<row r="{r}">{"".join(cells)}</row>')
     sheet = (f'{_HEAD}<worksheet xmlns="{_MAIN}" xmlns:r="{_REL}">'
              f'<sheetData>{"".join(xml_rows)}</sheetData></worksheet>')

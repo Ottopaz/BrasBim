@@ -38,6 +38,8 @@ from brasbim.core.ops.base import Op, check_before, invert_swap, register, regis
 PSET = "BrasBim_Tabela"
 OBJECT_TYPE = "Tabela"
 MIXED = "vários"
+LEGAL = "legal_areas"
+LEGAL_COLUMNS = ("item", "area", "index", "limit", "ok", "memo")
 STATE_KEYS = ("name", "category", "columns", "storeys", "types", "group_by", "rows", "sort",
               "totals", "built_area")
 ROWS = ("element", "group")
@@ -48,6 +50,7 @@ class Category:
     label: str
     classes: tuple[str, ...]
     type_classes: tuple[str, ...]  # tipos que o filtro oferece
+    summary: bool = False  # linhas próprias, sem colunas nem filtro (quadro do projeto legal)
 
 
 CATEGORIES = {
@@ -75,6 +78,8 @@ CATEGORIES = {
                         ("IfcFurnitureType", "IfcSanitaryTerminalType",
                          "IfcElectricApplianceType", "IfcGeographicElementType",
                          "IfcBuildingElementProxyType")),
+    # quadro de áreas do projeto legal (spec/ui 31 §5): linhas de legal_areas
+    LEGAL: Category("Quadro de áreas (projeto legal)", (), (), summary=True),
 }
 OBJECT_CATEGORIES = ("furniture", "sanitary", "appliances", "vegetation", "objects")
 PARAM_PREFIX = "param:"
@@ -392,6 +397,10 @@ _OWN = {
         Field("perimeter", "Perímetro", "m", True, lambda r, e: _q(e, _SP, "GrossPerimeter")),
         Field("height", "Pé-direito", "m", False, lambda r, e: _q(e, _SP, "Height")),
     ],
+    LEGAL: [Field(key, title, unit, False, lambda r, e: None) for key, title, unit in (
+        ("item", "Descrição", None), ("area", "Área", "m²"), ("index", "Índice", None),
+        ("limit", "Limite", None), ("ok", "Atende", None),
+        ("memo", "Memória de cálculo", None))],
 }
 # Desempate da ordem (§3.1: "depois o código").
 _NATURAL = {"doors": "code", "windows": "code", "fillings": "code", "spaces": "number"}
@@ -478,6 +487,7 @@ class Row:
     kind: str
     cells: list
     elements: list[str] = field(default_factory=list)
+    memo: str = ""  # memória de cálculo (quadro do projeto legal)
 
     @property
     def bold(self) -> bool:
@@ -527,6 +537,8 @@ def compute(doc: Document, table) -> Result:
     """Linhas da tabela (entidade ou estado), recalculadas do modelo (§3)."""
     state = read_state(table) if hasattr(table, "is_a") else {**default_state(), **table}
     validate(state)
+    if state["category"] == LEGAL:
+        return _legal(doc, state)
     fields = fields_of(state["category"])
     columns = [Column(c["field"], c.get("title") or fields[c["field"]].heading,
                       fields[c["field"]].sums) for c in state["columns"]]
@@ -600,6 +612,24 @@ def compute(doc: Document, table) -> Result:
         cells = [None] * len(columns)
         cells[area_col] = built_total
         rows.append(labelled("built_total", "Área construída total", [], cells))
+    return Result(state["name"], columns, rows)
+
+
+_LEGAL_KINDS = {"head": "group", "item": "element", "subtotal": "subtotal",
+                "total": "total", "index": "total"}
+
+
+def _legal(doc: Document, state: dict) -> Result:
+    """Quadro de áreas do projeto legal: linhas fixas com a memória de cálculo na última
+    coluna (spec/ui 31 §5)."""
+    from brasbim.core.quantities import legal_areas
+
+    fields = fields_of(LEGAL)
+    columns = [Column(key, fields[key].heading, False) for key in LEGAL_COLUMNS]
+    rows = []
+    for line in legal_areas.compute(doc):
+        cells = [line.label, line.area, line.index, line.limit, line.ok, line.memo]
+        rows.append(Row(_LEGAL_KINDS[line.kind], cells, list(line.spaces), line.memo))
     return Result(state["name"], columns, rows)
 
 
@@ -681,6 +711,9 @@ def fitted(state: dict) -> dict:
         out["sort"] = None
     if out["category"] != "spaces":
         out["built_area"] = False
+    if out["category"] == LEGAL:
+        out.update(columns=_cols(*LEGAL_COLUMNS), group_by=None,
+                   sort=None, storeys=[], types=[])
     return out
 
 
@@ -766,6 +799,9 @@ TEMPLATES = {
         "name": "Quadro de áreas", "category": "spaces",
         "columns": _cols("number", "space_name", "floor_area", "perimeter"),
         "group_by": "storey", "rows": "element", "built_area": True}]),
+    "legal_areas": ("Quadro de áreas (projeto legal)", [{
+        "name": "Quadro de áreas (projeto legal)", "category": LEGAL,
+        "columns": _cols(*LEGAL_COLUMNS), "rows": "element", "totals": False}]),
     "walls": ("Paredes por tipo", [{
         "name": "Paredes por tipo", "category": "walls",
         "columns": _cols("type", "thickness", "length", "side_area", "volume"),

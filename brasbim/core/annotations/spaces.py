@@ -7,13 +7,17 @@ Operações: ``space.create`` / ``space.delete`` (data: estado completo) e ``spa
 Estado::
 
     {"storey": "<GlobalId>", "outline": [[x, y], ...], "number": "01", "name": "Sala",
-     "height": None, "label_at": None, "seed": None}
+     "height": None, "label_at": None, "seed": None, "area_class": None,
+     "area_reason": None}
 
 ``number`` vai em ``Name`` e ``name`` em ``LongName`` [IFC-SPACE]. ``height`` ``None`` =
 pé-direito calculado (da cota do pavimento ao fundo da laje que cobre o centro; sem laje,
 até o pavimento de cima; sem pavimento de cima, 2,80). ``label_at`` ``None`` = centro.
 ``seed`` é o ponto clicado no ambiente pelo cômodo: enquanto existir, o contorno é refeito
 pelas paredes na derivação (``refit``); editar o contorno à mão o apaga.
+``area_class`` / ``area_reason`` = classificação no quadro de áreas (spec/ui 31 §5), no Pset
+``BrasBim_QuadroDeAreas`` (``Classificacao``, ``Motivo``); ``None`` = a regra do perfil
+municipal (``quantities.legal_areas.classify``).
 Pset ``BrasBim_Ambiente``: ``PeDireitoFixo``, ``EtiquetaX``/``EtiquetaY``,
 ``SementeX``/``SementeY``. O contorno é lido do ``FootPrint``; ``Body`` e quantidades são
 derivados (``rebuild``). ``GrossFloorArea`` é a área do contorno; ``NetFloorArea`` desconta
@@ -31,17 +35,19 @@ from brasbim.core.document import Document, OpError, axis_placement, local_place
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
 PSET = "BrasBim_Ambiente"
+AREA_PSET = "BrasBim_QuadroDeAreas"
 QTO = "Qto_SpaceBaseQuantities"
 DEFAULT_HEIGHT = 2.80
 DEFAULT_NAME = "Ambiente"
 NAMES = ("Sala", "Cozinha", "Quarto", "Banheiro", "Área de serviço", "Varanda", "Circulação",
-         "Garagem")  # sugestões (spec/ui 13 §3.3)
-STATE_KEYS = ("storey", "outline", "number", "name", "height", "label_at", "seed")
+         "Garagem", "Quintal", "Jardim", "Piscina")  # sugestões (spec/ui 13 §3.3)
+STATE_KEYS = ("storey", "outline", "number", "name", "height", "label_at", "seed",
+              "area_class", "area_reason")
 
 
 def default_state() -> dict:
     return {"number": None, "name": DEFAULT_NAME, "height": None, "label_at": None,
-            "seed": None}
+            "seed": None, "area_class": None, "area_reason": None}
 
 
 def storey_of(space):
@@ -63,11 +69,15 @@ def read_state(space) -> dict:
     fixed = values.get("PeDireitoFixo")
     lx, ly = values.get("EtiquetaX"), values.get("EtiquetaY")
     sx, sy = values.get("SementeX"), values.get("SementeY")
+    area_values = ifcopenshell.util.element.get_pset(space, AREA_PSET,
+                                                     should_inherit=False) or {}
     return {"storey": storey.GlobalId if storey else None, "outline": outline,
             "number": space.Name, "name": space.LongName,
             "height": None if fixed is None else float(fixed),
             "label_at": None if lx is None else [float(lx), float(ly)],
-            "seed": None if sx is None else [float(sx), float(sy)]}
+            "seed": None if sx is None else [float(sx), float(sy)],
+            "area_class": area_values.get("Classificacao"),
+            "area_reason": area_values.get("Motivo")}
 
 
 def area(outline) -> float:
@@ -181,6 +191,22 @@ def _write(doc: Document, space, state: dict) -> None:
         props.write_pset(doc, space, PSET, values)
     else:
         props.remove_pset(doc, space, PSET)
+    _write_area_class(doc, space, state)
+
+
+def _write_area_class(doc: Document, space, state: dict) -> None:
+    from brasbim.core.quantities import legal_areas
+
+    values = {}
+    if state.get("area_class") is not None:
+        values["Classificacao"] = doc.ifc.createIfcLabel(
+            legal_areas.check_class(state["area_class"]))
+    if state.get("area_reason"):
+        values["Motivo"] = doc.ifc.createIfcLabel(str(state["area_reason"]))
+    if values:
+        props.write_pset(doc, space, AREA_PSET, values)
+    else:
+        props.remove_pset(doc, space, AREA_PSET)
 
 
 def refit(doc: Document, space, walls=None) -> bool:

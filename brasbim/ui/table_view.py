@@ -1,16 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Aba da tabela de quantitativos (spec/ui 17 §5): grade com as linhas calculadas do
 modelo, exportação para CSV e XLSX. Clicar numa linha seleciona os elementos dela;
-clique duplo mostra na planta."""
+clique duplo mostra na planta. No quadro de áreas do projeto legal (spec/ui 31 §5), a
+memória de cálculo da linha escolhida aparece embaixo da grade (e sai na exportação)."""
 
 from __future__ import annotations
 
+from html import escape
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -21,6 +26,7 @@ from PySide6.QtWidgets import (
 from brasbim.core.document import OpError
 from brasbim.core.quantities import export
 from brasbim.core.quantities import tables as tables_
+from brasbim.ui import theme
 
 FORMATS = {"csv": ("CSV (*.csv)", export.write_csv),
            "xlsx": ("Planilha XLSX (*.xlsx)", export.write_xlsx)}
@@ -48,10 +54,16 @@ class TableView(QWidget):
         bar.addStretch(1)
         bar.addWidget(self.csv_button)
         bar.addWidget(self.xlsx_button)
+        self.memo = QLabel()
+        self.memo.setWordWrap(True)
+        self.memo.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.memo.setStyleSheet(f"color: {theme.INK}; padding: 6px; background: {theme.PANEL}")
+        self.memo.hide()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addLayout(bar)
-        layout.addWidget(self.grid)
+        layout.addWidget(self.grid, 1)
+        layout.addWidget(self.memo)
         self.invalidate()
 
     @property
@@ -88,9 +100,24 @@ class TableView(QWidget):
                     font = item.font()
                     font.setBold(True)
                     item.setFont(font)
+                if isinstance(value, bool):  # "Atende" do quadro do projeto legal
+                    item.setForeground(QColor(theme.OK if value else theme.ERROR))
                 self.grid.setItem(r, c, item)
         header = self.grid.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        legal = any(row.memo for row in result.rows)
+        for c, column in enumerate(result.columns):  # a memória vai embaixo, não numa coluna
+            self.grid.setColumnHidden(c, legal and column.field == "memo")
+        self.memo.setVisible(legal)
+        self._show_memo(self.grid.currentRow())
+
+    def _show_memo(self, row: int) -> None:
+        if self.result is None or not 0 <= row < len(self.result.rows) \
+                or not self.result.rows[row].memo:
+            self.memo.setText("Memória de cálculo: escolha uma linha.")
+            return
+        line = self.result.rows[row]
+        self.memo.setText(f"<b>{escape(str(line.cells[0]))}</b>: {escape(line.memo)}")
 
     def elements_at(self, row: int) -> list[str]:
         if self.result is None or not 0 <= row < len(self.result.rows):
@@ -98,6 +125,7 @@ class TableView(QWidget):
         return self.result.rows[row].elements
 
     def _clicked(self, row: int, _column: int = 0) -> None:
+        self._show_memo(row)
         self.session.select(self.elements_at(row))
 
     def _double_clicked(self, row: int, _column: int = 0) -> None:

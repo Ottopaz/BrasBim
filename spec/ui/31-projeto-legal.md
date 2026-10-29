@@ -3,7 +3,7 @@ documento: Projeto legal (projeto para licenciamentos)
 requisito: roteiro do CONTEXTO, item 2; recomendações 1, 2, 3 e 8 de reports/Pesquisa Archicad Revit AutoCAD.md
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-27
-status: em revisão (fluxo do MVP: implementar por etapas, §8; etapa 1 feita em 2026-10-27, §12)
+status: em revisão (fluxo do MVP: implementar por etapas, §8; etapas 1–3 feitas, §12–§14)
 revisor: OTTO
 ---
 
@@ -131,7 +131,7 @@ segundo é o nome da etapa na NBR 16636‑2 [USP-16636]; o primeiro, o do mercad
    **Feita** (§12).
 2. **Perfil municipal** (§4): arquivo, cópia no IFC, diálogo, perfis prontos; cores e
    escalas aplicadas. **Feita** (§13).
-3. **Quadro de áreas** (§5) com memória de cálculo e índices.
+3. **Quadro de áreas** (§5) com memória de cálculo e índices. **Feita** (§14).
 4. **Peças na prancha** (§6): legenda, quadro de esquadrias, notas, aviso do PDF.
 5. **Memorial descritivo** (§7).
 Planta simplificada (sem compartimentação) e export DXF ficam para um pacote seguinte.
@@ -148,6 +148,9 @@ Planta simplificada (sem compartimentação) e export DXF ficam para um pacote s
   arquivo do perfil.
 - **PL05** Lote 10 × 30 (300 m²), casa 8 × 10 com varanda 2 × 8 não computável: TO =
   (80 + 16)/300, CA = 80/300; memória de cálculo lista os ambientes.
+  Mais: PL05b (lote de escritura e limites, atende/não atende), PL05c (classificação
+  escolhida no ambiente, motivo, descoberta), PL05d (área por situação com paredes, a
+  demolir fora da soma), PL05e (piscina à parte em Jacareí, tabela e CSV com a memória).
 - **PL06** Quadro de esquadrias agrupa 3 janelas J1 e 2 portas P1 com L × H e peitoril.
 - **PL07** Memorial gera as seções na ordem, com os tipos de parede e camadas; seção
   editada não muda ao refazer.
@@ -198,6 +201,14 @@ a solução aqui (situação + perfil) é própria.
     Genérico e em Araras (§13).
 (n) "Aplicar escalas" marcado por padrão no diálogo; a implantação fica guardada até
     existir uma vista de implantação (§13).
+(o) Área construída = face externa das paredes ∪ ambientes cobertos; cômodo sem ambiente
+    fica com a situação das paredes em volta; a demolir e temporário não somam (§14).
+(p) Índices sobre a área de escritura quando digitada, senão a levantada (§14).
+(q) Regras do Genérico (próprias, sem fonte): varanda/sacada/terraço coberto e ático não
+    computáveis; quintal/pátio/terraço descoberto/piscina descobertos; jardim/gramado
+    permeáveis; garagem fica computável (cada cidade decide) (§14).
+(r) TO e TP mostrados em %, CA em número; limites do lote digitados no painel do quadro
+    (§14).
 
 ## 12. Etapa 1 — como ficou (2026‑10‑27)
 - **Núcleo** (`brasbim/core/intervention.py`, sem Qt): `SITUATIONS` (código, rótulo,
@@ -268,3 +279,36 @@ a solução aqui (situação + perfil) é própria.
   (etapa 3), `selo`, `notas` e `pdf` (etapa 4).
 - Testes: PL04, PL09–PL12 em `tests/test_perfil_municipal.py`; PL04 (diálogo) e PL10
   (prancha em preto) em `tests/test_interface_perfil_municipal.py`.
+
+## 14. Etapa 3 — como ficou (2026‑10‑29)
+- **Núcleo** `brasbim/core/quantities/legal_areas.py` (sem Qt). Classificação de cada
+  ambiente (`CLASSES`: computável, não computável, descoberta, permeável, fora do total)
+  no estado do ambiente (`area_class`, `area_reason`; Pset `BrasBim_QuadroDeAreas`,
+  `Classificacao` e `Motivo`), então copiar, desfazer e excluir já a levam; `None` = regra
+  do perfil pelo nome (`classify`: nome igual ou começando pela palavra; `ate_m2`
+  opcional). O perfil ganhou `quadro_de_areas.regras` (validadas em `municipal.validate`);
+  com `piscina_a_parte` (Jacareí) a piscina vai para "Fora do total".
+- **Lote**: Pset `BrasBim_Lote` do `IfcSite` (JSON: `deed_area`, `to_max`, `ca_max`,
+  `tp_min`, em fração), operação `lot.edit`, `edit_lot`. Área levantada = contorno dos
+  terrenos (`terrain_area`).
+- **Cálculo** (`compute` → linhas com ambientes e memória): por pavimento, a área
+  construída (face externa das paredes ∪ ambientes computáveis e não computáveis) é
+  repartida por situação: ambientes primeiro, depois paredes; cômodo sem ambiente fica com
+  a situação das paredes em volta (`rooms.wall_rings`, novo). Linhas: situações e área
+  construída por pavimento, totais por situação, construída total, não computável (com o
+  motivo), computável, descoberta, fora do total por motivo, terreno levantado e de
+  escritura, projeção (união em planta de todos os pavimentos), área livre, permeável e
+  os índices do perfil (TO e TP em %, CA em número) com limite e "atende".
+- **Tabela**: categoria `legal_areas` ("Quadro de áreas (projeto legal)", modelo próprio em
+  Nova tabela…; fora do "Em branco"), colunas fixas Descrição | Área | Índice | Limite |
+  Atende | Memória de cálculo. `Row.memo`. Na aba a coluna da memória fica escondida e a
+  memória da linha escolhida aparece embaixo da grade; clicar seleciona os ambientes;
+  "Atende" em verde/vermelho do tema. CSV e XLSX levam a memória (XLSX escreve sim/não).
+- **Painéis**: ambiente ganhou o grupo Quadro de áreas (Classificação, com "Pelo perfil:
+  …" mostrando a regra; Motivo para não computável e fora do total). O painel do quadro
+  mostra só nome, categoria e Dados do lote (área levantada, escritura, TO máx. %, CA
+  máx., permeabilidade mín. %). Sugestões de nome do ambiente: + Quintal, Jardim, Piscina.
+- **Ficou para depois**: a planta não mostra a classificação; quadro na prancha (etapa 4);
+  piscina como objeto (hoje é um ambiente com o nome); quadros da NBR 12721.
+- Testes: PL05, PL05b–PL05e em `tests/test_quadro_de_areas.py`; PL05 da interface em
+  `tests/test_interface_quadro_de_areas.py`.

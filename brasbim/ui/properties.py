@@ -51,7 +51,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops.history import combine
-from brasbim.core.quantities import tables
+from brasbim.core.quantities import legal_areas, tables
 from brasbim.core.structure import beams, columns, profiles, roofs, skylights, slab_openings, slabs
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
@@ -1053,12 +1053,63 @@ class PropertiesPanel(QScrollArea):
         q = ifcopenshell.util.element.get_pset(space, space_data.QTO) or {}
         self._number("Pé-direito", state["height"], lambda v: edit(height=v),
                      placeholder=f"calculado: {fmt(q.get('Height', 0))}", allow_empty=True)
+        self._area_class(space, state, edit)
         self._section("Quantidades")
         self._read("Área", f"{fmt(q.get('NetFloorArea', 0))} m²")
         self._read("Perímetro", f"{fmt(q.get('GrossPerimeter', 0))} m")
         self._read("Pé-direito", f"{fmt(q.get('Height', 0))} m")
         self._section("Identificação")
         self._read("GlobalId", space.GlobalId)
+
+    def _area_class(self, space, state: dict, edit) -> None:
+        """Classificação no quadro de áreas do projeto legal (spec/ui 31 §5): a regra do
+        perfil pelo nome, ou a escolhida aqui."""
+        from brasbim.core import municipal
+
+        profile = municipal.current(self.session.doc)
+        rule, reason, _ = legal_areas.classify(
+            profile, {**state, "area_class": None}, space_data.area(state["outline"] or []))
+        auto = legal_areas.CLASS_LABEL[rule] + (f" ({reason})" if reason else "")
+        self._section("Quadro de áreas")
+        self._combo("Classificação", [(f"Pelo perfil: {auto}", None),
+                                      *[(label, code) for code, label in legal_areas.CLASSES]],
+                    state["area_class"],
+                    lambda v: edit(area_class=v, area_reason=None if v is None
+                                   else state["area_reason"]))
+        if state["area_class"] in ("NAO_COMPUTAVEL", "FORA_DO_TOTAL"):
+            self._text("Motivo", state["area_reason"],
+                       lambda v: edit(area_reason=v.strip() or None),
+                       placeholder="ex.: varanda, garagem, piscina")
+
+    def _lot(self) -> None:
+        """Dados do lote (spec/ui 31 §5), no painel do quadro de áreas do projeto legal."""
+        doc = self.session.doc
+        lot = legal_areas.read_lot(doc)
+
+        def edit(**changes):
+            self._run(lambda: legal_areas.edit_lot(doc, **changes))
+
+        def percent(key):
+            return lambda v: edit(**{key: None if v is None else v / 100})
+
+        self._section("Dados do lote")
+        real = legal_areas.terrain_area(doc)
+        self._read("Área levantada", f"{fmt(real)} m²" if real is not None
+                   else "sem terreno desenhado")
+        self._number("Área de escritura (m²)", lot["deed_area"],
+                     lambda v: edit(deed_area=v), placeholder="opcional", allow_empty=True)
+        self._number("TO máxima (%)", None if lot["to_max"] is None else lot["to_max"] * 100,
+                     percent("to_max"), placeholder="do zoneamento", allow_empty=True)
+        self._number("CA máximo", lot["ca_max"], lambda v: edit(ca_max=v),
+                     placeholder="do zoneamento", allow_empty=True)
+        self._number("Permeabilidade mín. (%)",
+                     None if lot["tp_min"] is None else lot["tp_min"] * 100,
+                     percent("tp_min"), placeholder="do zoneamento", allow_empty=True)
+        note = QLabel("Índices sobre a escritura, se digitada. Classificação: no painel "
+                      "de cada ambiente.")
+        note.setStyleSheet(f"color: {theme.INK_SOFT}")
+        note.setWordWrap(True)
+        self._add(note)
 
     def _annotation(self, element) -> None:
         doc = self.session.doc
@@ -1264,6 +1315,11 @@ class PropertiesPanel(QScrollArea):
         self._text("Nome", state["name"], lambda v: v and edit(name=v))
         self._combo("Categoria", [(c.label, k) for k, c in tables.CATEGORIES.items()],
                     state["category"], lambda v: edit(category=v))
+        if tables.CATEGORIES[state["category"]].summary:
+            self._lot()
+            if self.open_table is not None and self.active_table != table.GlobalId:
+                self._buttons(("Abrir a tabela", lambda: self.open_table(table.GlobalId)))
+            return
         self._section("Colunas")
         columns = state["columns"]
         chosen = [c["field"] for c in columns]

@@ -757,6 +757,8 @@ class ProjectPanel(QWidget):
             menu.addAction(label, lambda k=key: self.add_table(k))
         blank = menu.addMenu("Em branco")
         for key, category in tables_.CATEGORIES.items():
+            if category.summary:
+                continue
             blank.addAction(category.label, lambda c=key: self.add_table("blank", c))
         return menu
 

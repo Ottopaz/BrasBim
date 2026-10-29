@@ -10,8 +10,8 @@
 - Operação ``municipal.set`` (before/after ``{"profile": perfil | None}``).
 - Aplicado nesta etapa: cores e hachuras de cada situação (``mark``), escala de cortes e
   fachadas novos (``view_scale``) e "Aplicar escalas" às plantas, cortes e fachadas
-  (``apply_scales``). Quadro de áreas, selo, notas e PDF ficam guardados para as etapas
-  3 e 4.
+  (``apply_scales``), regras do quadro de áreas (``quantities.legal_areas``, etapa 3).
+  Selo, notas e PDF ficam guardados para a etapa 4.
 """
 
 from __future__ import annotations
@@ -116,6 +116,9 @@ def validate(profile: dict) -> None:
             raise OpError(f"escala inválida em {label}")
     if profile.get("planta", "completa") not in dict(PLANS):
         raise OpError("planta deve ser completa ou simplificada")
+    from brasbim.core.quantities import legal_areas
+
+    legal_areas.validate_rules(profile.get("quadro_de_areas") or {})
     size = (profile.get("pdf") or {}).get("max_mb")
     if size is not None and not 0 < float(size) <= 1000:
         raise OpError("tamanho máximo do PDF inválido")

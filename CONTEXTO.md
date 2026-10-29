@@ -4,9 +4,22 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑28 (pasta para pendrive e correção do menu Equipe).*
+*Atualizado em 2026‑10‑29 (etapa 3 do projeto legal: quadro de áreas).*
 
-> **Onde paramos (2026‑10‑28, depois):** para o teste em 2 PCs, o revisor pediu um jeito
+> **Onde paramos (2026‑10‑29):** o revisor testou a **Equipe em 2 PCs: deu muito certo**.
+> Feita a **etapa 3 do projeto legal** (spec/ui 31 §5; "como ficou" no §14; pontos novos
+> (o)–(r) no §11): classificação de área em cada ambiente (regra do perfil pelo nome ou
+> escolhida no painel), dados do lote no `IfcSite` (escritura, TO/CA máx., TP mín.),
+> tabela nova **Quadro de áreas (projeto legal)** com área por pavimento e situação,
+> computável/não computável, projeção, área livre, permeável, índices com "atende" e
+> **memória de cálculo** embaixo da grade (e no CSV/XLSX). Núcleo em
+> `core/quantities/legal_areas.py`. Testes PL05, PL05b–e (+ interface); 787 testes, ruff
+> limpo. **Próximo:** o revisor pediu, depois disto, **melhorar o layout e a UX** do
+> programa (conversar com ele o que incomoda antes de mexer; usar frontend-design e
+> `ui/theme.py`, print antes de reportar). Depois, etapas 4 (peças na prancha) e 5
+> (memorial). Continua pendente o aviso do código‑fonte do LibreDWG na pasta do pendrive.
+
+> **Antes (2026‑10‑28, depois):** para o teste em 2 PCs, o revisor pediu um jeito
 > **nada técnico** de abrir o BrasBim no outro computador. Feito a pasta
 > `E:\Otavio\Nova pasta\BrasBim para pendrive\BrasBim` (fora do git, só o que roda o
 > programa, sem `_restrito/`), com **Abrir o BrasBim.bat** (na 1ª vez instala o Python
@@ -242,7 +255,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 >    1, 2, 3 e 8 e as notas `normas_e_projeto_legal_brasil.md`,
 >    `archicad_documentacao_colaboracao.md` e `revit_documentacao_colaboracao.md`;
 >    conferir as fontes marcadas "conferir".
-> 4. Estado verificado em 2026‑10‑28: 780 testes passando, ruff limpo.
+> 4. Estado verificado em 2026‑10‑29: 787 testes passando, ruff limpo.
 > 5. Decisões que são do revisor: (a) segunda rodada de pesquisa, que exige aumentar
 >    `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` (cada sessão tem 200 buscas, divididas
 >    entre os agentes); (b) ~~instalar o ODA File Converter~~ resolvido: LibreDWG vem com o BrasBim (spec/ui 22 §8);
@@ -251,7 +264,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (780 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (787 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -284,7 +297,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/26-folhas-mestras` | **em revisão**, implementada (FM01–FM04 em `tests/test_folhas_mestras.py`, FM05–FM06 em `test_interface_folhas_mestras.py`); pontos §8 |
 | `spec/ui/27-tabela-de-penas` | **em revisão**, implementada (PN01–PN02 em `tests/test_penas.py`, PN02–PN04 em `test_interface_penas.py`); pontos §8 |
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
-| `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1 e 2 feitas** (situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 3–5 a fazer (PL05–PL08); pontos §11 (a)–(n) |
+| `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1, 2 e 3 feitas** (quadro de áreas: PL05, PL05b–e em `tests/test_quadro_de_areas.py` e `test_interface_quadro_de_areas.py`; situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 4–5 a fazer (PL06–PL08); pontos §11 (a)–(r) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
