@@ -1335,12 +1335,14 @@ SPACE_NAME_MM, SPACE_AREA_MM = 3.0, 2.5  # §3.4
 def _documentation(doc: Document, storey, plan: Plan) -> None:
     """Ambientes (forma de escolha e etiqueta), anotações (primitivas, hachuras como
     regiões sob tudo) e a altura das etiquetas pela escala do pavimento."""
+    from brasbim.core import edit_state
     from brasbim.core.annotations import base, spaces
     from brasbim.core.annotations.prims import text_box
 
     height = storeys.paper(storey, LABEL_MM)
     plan.labels = [dataclasses.replace(lb, height=height) for lb in plan.labels]
     hatches = []
+    ordered = []  # anotações na ordem de desenho (spec/ui 39 §6)
     hidden = display_layers.hidden_ids(doc)
     for e in _decompose(storey):
         if e.GlobalId in hidden:
@@ -1366,9 +1368,11 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
                 prims = base.build(doc, e)
             except (OpError, ValueError, KeyError):
                 continue
-            plan.annotations.append((e.GlobalId, prims))
+            order = edit_state.annotation_order(e)
+            ordered.append((order, len(ordered), e.GlobalId, prims))
             for f in prims.fills:
-                hatches.append(Region(e.GlobalId, [list(r) for r in f.rings], f.fill))
+                hatches.append((order, len(hatches),
+                                Region(e.GlobalId, [list(r) for r in f.rings], f.fill)))
                 plan.shapes += [Shape(e.GlobalId, "annotation", tuple(r), True)
                                 for r in f.rings]
             plan.shapes += [Shape(e.GlobalId, "annotation", st.points, st.closed)
@@ -1376,7 +1380,9 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             plan.shapes += [Shape(e.GlobalId, "annotation", tuple(text_box(t)), True)
                             for t in prims.texts]
             plan.bulk += [(e.GlobalId, lines) for lines, _ in prims.bulk]
-    plan.regions[:0] = hatches  # as hachuras ficam sob as paredes
+    plan.annotations += [(gid, prims) for _, _, gid, prims in sorted(
+        ordered, key=lambda o: o[:2])]
+    plan.regions[:0] = [r for *_, r in sorted(hatches, key=lambda h: h[:2])]  # sob as paredes
     from brasbim.core import grids  # eixos de projeto (spec/ui 20 §2): em todo pavimento
 
     for grid in grids.all_grids(doc):

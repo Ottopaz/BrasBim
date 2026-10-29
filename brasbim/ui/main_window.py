@@ -100,6 +100,9 @@ SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
 SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
 SITUATION_VIEW_KEY = "situacao/vista"  # spec/ui 31 §3
 VIEW_BAR_KEY = "barras/barra_da_vista"  # spec/ui 39 §2
+DRAW_ORDER = (("front", "Trazer para a frente"), ("back", "Mandar para trás"),
+              ("forward", "Um passo à frente"), ("backward", "Um passo atrás"),
+              ("default", "Ordem padrão"))  # spec/ui 39 §6
 
 
 def _settings() -> QSettings:
@@ -413,6 +416,9 @@ class MainWindow(QMainWindow):
         self._action(edit_menu, "Travar", lambda: self.lock_selection(True), "Ctrl+L")
         self._action(edit_menu, "Destravar", lambda: self.lock_selection(False))
         self._action(edit_menu, "Destravar tudo", self.unlock_all)
+        order_menu = edit_menu.addMenu("Ordem de desenho")  # spec/ui 39 §6
+        for mode, text in DRAW_ORDER:
+            self._action(order_menu, text, lambda _=False, m=mode: self.draw_order(m))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar"), ("measure", "Medir"),
                           ("selection_area", "Área de seleção")):
@@ -582,6 +588,7 @@ class MainWindow(QMainWindow):
         self.history_bar = history_bar(self)
         self.options_bar = OptionsBar(self)
         self.tool_actions = self.tools_bar.actions_by_tool
+        self.tools_bar.add_situation_buttons(self)  # spec/ui 39 §7
         for toolbar in (self.tools_bar, self.history_bar, self.options_bar):
             self.bars_menu.addAction(toolbar.toggleViewAction())
         self.command_line_action = self._action(self.bars_menu, "Linha de comando",
@@ -654,6 +661,38 @@ class MainWindow(QMainWindow):
             return
         self.plan.set_rotation(math.radians(degrees))
         self.view_bar.refresh()
+
+    # --- ordem de desenho (spec/ui 39 §6) --------------------------------------------------
+
+    def _annotation_boxes(self) -> dict[str, tuple[float, float, float, float]]:
+        """Retângulo de cada anotação do pavimento ativo (para "um passo")."""
+        pts: dict[str, list] = {}
+        for s in self.ctx.plan.shapes:
+            if s.role == "annotation":
+                pts.setdefault(s.owner, []).extend(s.points)
+        return {g: (min(p[0] for p in q), min(p[1] for p in q),
+                    max(p[0] for p in q), max(p[1] for p in q)) for g, q in pts.items() if q}
+
+    def draw_order(self, mode: str) -> bool:
+        """Editar > Ordem de desenho: só anotações; uma transação por comando."""
+        session, doc = self.session, self.session.doc
+        chosen = [g for g in sorted(session.selection)
+                  if edit_state.annotation_order(doc.find(g)) is not None]
+        if not chosen:
+            session.message("selecione anotações (linhas, textos, cotas, hachuras)", "recusa")
+            return False
+        items = [(g, edit_state.annotation_order(doc.find(g)))
+                 for g, _ in self.ctx.plan.annotations
+                 if doc.find(g) is not None
+                 and edit_state.annotation_order(doc.find(g)) is not None]
+        boxes = self._annotation_boxes()
+
+        def overlaps(a: str, b: str) -> bool:
+            p, q = boxes.get(a), boxes.get(b)
+            return (p is not None and q is not None and p[0] <= q[2] and q[0] <= p[2]
+                    and p[1] <= q[3] and q[1] <= p[3])
+
+        return session.run(lambda: edit_state.reorder(doc, items, chosen, mode, overlaps))
 
     # --- ocultar, isolar e mostrar tudo (spec/ui 39 §4) -----------------------------------
 
@@ -957,6 +996,15 @@ class MainWindow(QMainWindow):
         self.session.set_situation_view(view)
         if hasattr(self, "view_bar"):
             self.view_bar.refresh()
+
+    def situation_click(self, code: str) -> None:
+        """Botões de situação (spec/ui 39 §7): a seleção, ou a dos novos elementos."""
+        if self.session.selection:
+            self.set_selection_situation(code)
+        else:
+            self.options_bar.set_new_situation(code)
+            self.session.message(f"novos elementos: {intervention.LABEL[code]}")
+        self.tools_bar.show_new_situation(self.session.new_situation)
 
     def set_selection_situation(self, code: str) -> None:
         """Editar > Situação e mini-barra Situação (spec/ui 31 §2)."""
@@ -2099,7 +2147,13 @@ class MainWindow(QMainWindow):
         hide = [("Ocultar selecionados", self.hide_selection),
                 ("Isolar selecionados", self.isolate_selection)]
         return (actions + hide + self._object_context(gid) + self._layer_actions(gid)
-                + self._lock_context(gid) + self._team_context(gid) + area)
+                + self._order_context(gid) + self._lock_context(gid)
+                + self._team_context(gid) + area)
+
+    def _order_context(self, gid) -> list:
+        if edit_state.annotation_order(self.session.doc.find(gid)) is None:
+            return []
+        return [(text, lambda m=mode: self.draw_order(m)) for mode, text in DRAW_ORDER]
 
     def _lock_context(self, gid) -> list:
         """Travar ou destravar o que está sob o cursor (com a seleção, se for dela)."""

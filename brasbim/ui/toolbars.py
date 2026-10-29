@@ -332,6 +332,8 @@ class _FlowBox(QWidget):
 # Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" fica sempre no topo.
 TOOL_GROUPS = [("Modelagem", "modelagem", CREATE_TOOLS[1:]), ("Vistas", "vistas", VIEW_TOOLS),
                ("Documentação", "documentacao", DOC_TOOLS), ("Edição", "edicao", EDIT_TOOLS)]
+SITUATION_BUTTONS = (("EXISTENTE", "sit_existing"), ("A_DEMOLIR", "sit_demolish"),
+                     ("A_CONSTRUIR", "sit_new"))  # spec/ui 39 §7
 _WIDE = 90  # px: abaixo disso o título do grupo vira só a seta (com a dica)
 _SETTING = "ferramentas/recolhidos"
 
@@ -400,6 +402,33 @@ class ToolsBar(QDockWidget):
     def button_size(self) -> int:
         return ICON_PX + 12
 
+    def add_situation_buttons(self, window) -> None:
+        """Situação em um clique (spec/ui 39 §7), no grupo Edição: com seleção muda a
+        situação dela; sem seleção escolhe a situação dos novos elementos, e esse botão
+        fica marcado."""
+        self.situation_buttons: dict[str, QToolButton] = {}
+        for code, icon_name in SITUATION_BUTTONS:
+            label = intervention.LABEL[code]
+            action = make_action(self, icon_name, label,
+                                 "com seleção, muda a situação dela; sem seleção, é a "
+                                 "situação dos novos elementos", checkable=True)
+            action.triggered.connect(lambda _=False, c=code: window.situation_click(c))
+            button = QToolButton()
+            button.setDefaultAction(action)
+            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            button.setIconSize(QSize(ICON_PX, ICON_PX))
+            button.setFixedSize(self.button_size, self.button_size)
+            # Marcado sem a placa roxa: o ícone já tem a cor da situação.
+            button.setStyleSheet(f"QToolButton:checked {{ background: {theme.ACCENT_SOFT};"
+                                 f" border: 1px solid {theme.ACCENT}; }}")
+            self.boxes["edicao"].flow.addWidget(button)
+            self.situation_buttons[code] = button
+        self.show_new_situation(window.session.new_situation)
+
+    def show_new_situation(self, code: str) -> None:
+        for key, button in getattr(self, "situation_buttons", {}).items():
+            button.defaultAction().setChecked(key == code)
+
     def _add(self, window, box: _FlowBox, item) -> None:
         tool, icon_name, name, usage = item
         action = make_action(self, icon_name, name, usage, checkable=True)
@@ -423,14 +452,14 @@ class ToolsBar(QDockWidget):
 
     @staticmethod
     def _collapsed() -> set[str]:
-        value = QSettings("BrasBim", "BrasBim").value(_SETTING, "")
+        value = QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim").value(_SETTING, "")
         return {k for k in str(value or "").split(",") if k}
 
     def _toggle(self, key: str, on: bool) -> None:
         self.boxes[key].setVisible(on)
         self._style_headers()
         collapsed = sorted(k for k, h in self.headers.items() if not h.isChecked())
-        QSettings("BrasBim", "BrasBim").setValue(_SETTING, ",".join(collapsed))
+        QSettings(QSettings.defaultFormat(), QSettings.UserScope, "BrasBim", "BrasBim").setValue(_SETTING, ",".join(collapsed))
 
     def _style_headers(self) -> None:
         wide = self.width() >= _WIDE
@@ -528,6 +557,7 @@ class OptionsBar(QToolBar):
     def set_new_situation(self, code: str) -> None:
         self.window_.session.new_situation = code
         self._show_situation()
+        self.window_.tools_bar.show_new_situation(code)  # botões do grupo Edição
 
     def _show_situation(self) -> None:
         code = self.window_.session.new_situation

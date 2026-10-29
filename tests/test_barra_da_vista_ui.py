@@ -235,3 +235,55 @@ def test_vb06_ocultar_isolar_mostrar(window):
     assert a.GlobalId not in ctx.hidden  # excluído sai da lista
     window.undo()
     assert s.doc.find(a.GlobalId) is not None and a.GlobalId not in ctx.hidden
+
+
+def test_vb09_ordem_de_desenho_na_planta(window):
+    from brasbim.core.annotations import commands as ac
+
+    s = window.session
+    gids = []
+    for y in (0.0, 0.1):
+        tx = ac.create_annotation(s.doc, "line2d", s.storey, points=[[0, y], [5, y]])
+        s.run(tx)
+        gids.append(tx.ops[0].id)
+    tx = ac.create_annotation(s.doc, "text", s.storey, at=[1, 0], text="nota")
+    s.run(tx)
+    text = tx.ops[0].id
+    window.ctx.invalidate()
+    order = [g for g, _ in window.ctx.plan.annotations if g in (*gids, text)]
+    assert set(order[:2]) == set(gids) and order[2] == text  # padrão: linhas, depois textos
+    s.select([gids[0]])
+    labels = [t for t, _ in window.context_actions(window.plan, gids[0])]
+    assert "Trazer para a frente" in labels
+    assert window.draw_order("front")
+    window.ctx.invalidate()
+    order = [g for g, _ in window.ctx.plan.annotations if g in (*gids, text)]
+    assert order[-1] == gids[0]  # na frente, acima do texto
+    assert window.draw_order("default")
+    assert edit_state.read(s.doc.find(gids[0]))["order"] is None
+    s.select([])
+    assert not window.draw_order("front")  # sem anotação escolhida: recusa
+
+
+def test_vb10_situacao_em_um_clique(window):
+    from brasbim.core import intervention
+
+    s = window.session
+    buttons = window.tools_bar.situation_buttons
+    assert list(buttons) == ["EXISTENTE", "A_DEMOLIR", "A_CONSTRUIR"]
+    assert window.tools_bar.boxes["edicao"].isAncestorOf(buttons["EXISTENTE"])
+    assert buttons["A_CONSTRUIR"].defaultAction().isChecked()  # a dos novos, marcada
+    wall = _wall(window, (0, 0), (5, 0))
+    s.select([wall.GlobalId])
+    buttons["A_DEMOLIR"].click()  # com seleção: muda a situação dela
+    assert intervention.situation_of(s.doc, wall) == "A_DEMOLIR"
+    assert s.new_situation == "A_CONSTRUIR"
+    s.select([])
+    buttons["EXISTENTE"].click()  # sem seleção: a dos novos, para todas as ferramentas
+    assert s.new_situation == "EXISTENTE"
+    assert buttons["EXISTENTE"].defaultAction().isChecked()
+    assert not buttons["A_CONSTRUIR"].defaultAction().isChecked()
+    other = _wall(window, (0, 3), (5, 3))
+    assert intervention.situation_of(s.doc, other) == "EXISTENTE"
+    window.options_bar.set_new_situation("A_CONSTRUIR")  # pela barra de opções: o mesmo
+    assert buttons["A_CONSTRUIR"].defaultAction().isChecked()

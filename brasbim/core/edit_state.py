@@ -162,6 +162,24 @@ def unlock_all(doc: Document) -> Transaction:
 DEFAULT_ORDER = {"hatch": 0, "figure": 0, "line": 100, "text": 200}
 
 
+# Tipo de anotação (prefixo) → grupo da ordem padrão.
+_ORDER_GROUP = {"hatch": "hatch", "text": "text", "label": "text", "dimension": "text",
+                "angle_dim": "text", "radius_dim": "text", "level_mark": "text",
+                "revision": "text"}
+
+
+def order_group(prefix: str) -> str:
+    return _ORDER_GROUP.get(prefix, "line")
+
+
+def annotation_order(element) -> int | None:
+    """Ordem efetiva de uma anotação da planta, ou ``None`` se não for anotação."""
+    from brasbim.core.annotations import base
+
+    kind = base.kind_of(element)
+    return None if kind is None else order_of(element, order_group(kind.prefix))
+
+
 def default_order(kind: str) -> int:
     return DEFAULT_ORDER.get(kind, 100)
 

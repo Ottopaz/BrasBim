@@ -240,6 +240,15 @@ ICONS = {
               'stroke-width="1"/>',
     "table": '<rect x="3.75" y="4.75" width="16.5" height="14.5"/>'
              '<path d="M3.75 9 H20.25 M3.75 13.5 H20.25 M10 9 V19.25" stroke-width="1"/>',
+    # situação em um clique (spec/ui 39 §7), nas cores do perfil Genérico: existente
+    # (parede cheia preta), a demolir (amarela tracejada com X), a construir (vermelha)
+    "sit_existing": '<rect x="2.75" y="8.75" width="18.5" height="6.5" fill="#000000" '
+                    'stroke="#000000"/>',
+    "sit_demolish": '<rect x="2.75" y="8.75" width="18.5" height="6.5" stroke="#E0A800" '
+                    'stroke-dasharray="2.5 1.5"/>'
+                    '<path d="M7 9.5 L17 14.5 M17 9.5 L7 14.5" stroke="#E0A800"/>',
+    "sit_new": '<rect x="2.75" y="8.75" width="18.5" height="6.5" fill="#D62828" '
+               'stroke="#D62828"/>',
     # barra da vista (spec/ui 39 §2): lupa com seta para trás e para a frente; enquadrar
     # (cantos em volta de um retângulo); régua da escala; detalhe (parede com camadas);
     # pena de desenho; giro da vista (folha inclinada com a seta de giro)
