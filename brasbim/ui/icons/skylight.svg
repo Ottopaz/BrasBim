@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
 <!-- SPDX-License-Identifier: GPL-3.0-or-later. Ícone próprio do BrasBim. -->
-<path d="M2.5 16.5 L12 6.5 L21.5 16.5"/><path d="M8.5 13.5 L12 9.8 L15.5 13.5 Z" stroke-width="1"/>
+<path d="M10.89 3.02 L22.00 9.43 L13.11 20.98 L2.00 14.57 L10.89 3.02"/>
+<path d="M8.00 13.03 L12.44 15.59 L16.44 10.40 L12.00 7.83 L8.00 13.03"/>
 </svg>

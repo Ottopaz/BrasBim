@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
 <!-- SPDX-License-Identifier: GPL-3.0-or-later. Ícone próprio do BrasBim. -->
-<path d="M7.25 3.5 V20.5 M7.25 13.25 H16.75 V20.5"/><path d="M7.25 9.5 H11" stroke-width="1"/>
+<path d="M12.81 9.73 L17.93 12.68 L12.00 16.11 L6.07 12.68 L6.09 12.67"/>
+<path d="M12.83 2.48 L6.90 5.90 L6.90 13.16 L12.83 9.74 L12.83 2.48 Z" fill="currentColor" fill-opacity="0.18" stroke="none"/>
+<path d="M12.83 9.74 L6.90 13.16 L6.90 5.90 L12.83 2.48 L12.83 9.74"/>
+<path d="M12.00 17.07 L12.00 16.11 L6.07 12.68 L6.07 13.64 L12.00 17.07 Z" fill="currentColor" fill-opacity="0.08" stroke="none"/>
+<path d="M6.07 13.64 L6.07 12.68 L12.00 16.11 L12.00 17.07 L6.07 13.64"/>
+<path d="M17.93 12.68 L12.00 16.11 L12.00 17.07 L17.93 13.64 L17.93 12.68 Z" fill="currentColor" fill-opacity="0.18" stroke="none"/>
+<path d="M17.93 13.64 L12.00 17.07 L12.00 16.11 L17.93 12.68 L17.93 13.64"/>
+<path d="M6.90 13.16 L6.90 5.90 L6.07 5.42 L6.07 12.68 L6.90 13.16 Z" fill="currentColor" fill-opacity="0.08" stroke="none"/>
+<path d="M6.07 12.68 L6.07 5.42 L6.90 5.90 L6.90 13.16 L6.07 12.68"/>
+<path d="M12.00 2.00 L12.83 2.48 L6.90 5.90 L6.07 5.42 L12.00 2.00"/>
+<path d="M12.00 16.25 L12.00 10.77" stroke-width="1.0"/>
+<path d="M16.98 19.12 L16.98 13.64" stroke-width="1.0"/>
+<path d="M12.00 22.00 L12.00 16.52" stroke-width="1.0"/>
+<path d="M7.02 19.12 L7.02 13.64" stroke-width="1.0"/>
 </svg>

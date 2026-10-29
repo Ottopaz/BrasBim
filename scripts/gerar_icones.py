@@ -3,6 +3,7 @@
 
 Uso, na raiz do repositório: python scripts/gerar_icones.py
 """
+import sys
 from pathlib import Path
 
 HEAD = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
@@ -241,8 +242,15 @@ ICONS = {
              '<path d="M3.75 9 H20.25 M3.75 13.5 H20.25 M10 9 V19.25" stroke-width="1"/>',
 }
 
+# Ferramentas de modelagem em isometria (spec/ui 34 §2): substituem os desenhos em planta.
+sys.path.insert(0, str(Path(__file__).parent))
+from icones_isometricos import ICONS as ISOMETRIC
+
 out = Path("brasbim/ui/icons")
 out.mkdir(exist_ok=True)
 for name, body in ICONS.items():
-    (out / f"{name}.svg").write_text(HEAD + body + "\n</svg>\n", encoding="utf-8")
-print(len(ICONS), "ícones")
+    if name not in ISOMETRIC:
+        (out / f"{name}.svg").write_text(HEAD + body + "\n</svg>\n", encoding="utf-8")
+for name, svg in ISOMETRIC.items():
+    (out / f"{name}.svg").write_text(svg, encoding="utf-8")
+print(len(set(ICONS) | set(ISOMETRIC)), "ícones")

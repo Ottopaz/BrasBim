@@ -4,9 +4,21 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (etapa 3 do projeto legal: quadro de áreas).*
+*Atualizado em 2026‑10‑29 (ícones isométricos; spec/ui 34).*
 
-> **Onde paramos (2026‑10‑29):** o revisor testou a **Equipe em 2 PCs: deu muito certo**.
+> **Onde paramos (2026‑10‑29, depois):** começou o pedido de **layout e UX**. Spec
+> **`spec/ui/34-barra-de-ferramentas.md`** (em revisão). **Feito (§2):** ícones
+> isométricos da modelagem, desenhados sobre prévias aprovadas pelo revisor (porta = folha
+> fechada com maçaneta, "opção A"; janela/vão = parede de 4 linhas; cobertura = 2 águas em
+> trapézio; escada só degraus; guarda‑corpo em linhas finas), gerador
+> `scripts/icones_isometricos.py`. **Próximo:** (1) §3 grupos recolhíveis Modelagem |
+> Vistas | Documentação | Edição (a barra hoje não cabe na altura); (2) **pesquisa
+> complementar** em fontes públicas sobre Elevação interna, Detalhe, Folha de trabalho,
+> Câmera, Polilinha, Hotspot, Figura e Desenho (Archicad, com o que Revit e AutoCAD fazem
+> bem) — a pesquisa atual declara essas lacunas; nota nova em `research_notes/`; (3) specs
+> e implementação dessas ferramentas (§4). Prints do revisor só como descrição de função.
+
+> **Antes (2026‑10‑29):** o revisor testou a **Equipe em 2 PCs: deu muito certo**.
 > Feita a **etapa 3 do projeto legal** (spec/ui 31 §5; "como ficou" no §14; pontos novos
 > (o)–(r) no §11): classificação de área em cada ambiente (regra do perfil pelo nome ou
 > escolhida no painel), dados do lote no `IfcSite` (escritura, TO/CA máx., TP mín.),
@@ -299,6 +311,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/28-selecao` | **em revisão**, implementada (SE01–SE05 em `tests/test_interface_selecao.py`); pontos §7 |
 | `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1, 2 e 3 feitas** (quadro de áreas: PL05, PL05b–e em `tests/test_quadro_de_areas.py` e `test_interface_quadro_de_areas.py`; situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 4–5 a fazer (PL06–PL08); pontos §11 (a)–(r) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
+| `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos feito; §3 grupos e §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
 | `spec/ui/22-importar-desenho` | **em revisão**, implementada (RF-DOC-11 antecipado; ID01–ID06 em `tests/test_importar_desenho.py`) |
 | `spec/ui/18-camadas` | aprovada e implementada (pacote 12; CM01–CM19 em `tests/test_camadas_organizacao.py` e `test_interface_camadas_organizacao.py`) |
