@@ -21,8 +21,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > os 10 itens sem fonte e o 46 (achados dos resumos de busca: abrir as páginas oficiais ao
 > fechar cada spec). Ajustes no plano: travado continua escolhível/atraível; ocultar ganha
 > isolar; pegar ajustes não passa medidas por padrão; situação sem seleção vale para os
-> próximos elementos. **Próximo:** spec/ui 39 (Fase 1: barra da vista, girar, ocultar,
-> travar, ordem de desenho, situação em um clique).
+> próximos elementos. O revisor seguiu as recomendações de (c) travar → IFC
+> (`BrasBim_Edicao.Travado`) e (d) ocultar → só sessão. **spec/ui 39** escrita (em
+> revisão): barra da vista sob a planta (zoom anterior/seguinte/%, giro, escala, camadas,
+> detalhe, penas, situação), girar a vista, ocultar/isolar, travar, ordem de desenho
+> (`BrasBim_Edicao.Ordem`), três botões de situação no grupo Edição. **Próximo:**
+> implementar a 39 por partes (travar no núcleo primeiro, depois barra + zoom, giro,
+> ocultar, ordem, situação), VB01–VB10.
 
 > **Antes (2026‑10‑29, fim da manhã):** o revisor pôs 3 prints de barras e do
 > painel lateral de outro programa em `feedback/prints/` (só como descrição de função).

@@ -107,7 +107,7 @@ como em `complemento_vistas_e_documentacao.md`, com as lacunas declaradas.
   próprias por padrão; os botões de situação, sem seleção, escolhem a situação dos
   próximos elementos.
 
-### Fase 1: barra de vista e organização rápida (spec/ui 39)
+### Fase 1: barra de vista e organização rápida (spec/ui 39, escrita em 2026‑10‑29, em revisão)
 1. **Barra da vista** (#41) sob a planta: zoom anterior/seguinte e % (#31), escala,
    combinação de camadas, detalhe, penas, situação e estilo de cotas. Cada seletor abre a
    mesma lista que o menu. Ela substitui o seletor de escala atual da barra de estado.
@@ -205,11 +205,10 @@ encaixar as specs 35/36 antes da Fase 5.
 (b) **Item 46:** os três botões são *existente*, *a demolir* e *novo*: escolhe‑se um
     elemento, aperta‑se um botão e ele passa a essa situação (o filtro de reforma).
     Entra na Fase 1 (item 6).
-(c) **Travar:** o revisor pediu recomendação. Recomendado: **vai para o IFC**, em
-    `Pset_BrasBim_Edicao.Travado`, para valer ao reabrir o arquivo e para a equipe.
-    Decidir na revisão da spec/ui 39.
-(d) **Ocultar selecionados:** o revisor pediu recomendação. Recomendado: **só da
-    sessão**, como a área de seleção. A vista salva continua guardando camadas e
-    combinação, que são o jeito durável de esconder. Decidir na revisão da spec/ui 39.
+(c) **Travar:** o revisor seguiu a recomendação: **vai para o IFC**, no Pset
+    `BrasBim_Edicao.Travado`, para valer ao reabrir o arquivo e para a equipe.
+(d) **Ocultar selecionados:** o revisor seguiu a recomendação: **só da sessão**, como a
+    área de seleção. A vista salva continua guardando camadas e combinação, que são o
+    jeito durável de esconder.
 (e) **Operações de sólidos:** entram **associativas** (o resultado se refaz quando o
     elemento operador muda).
