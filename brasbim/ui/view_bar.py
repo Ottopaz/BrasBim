@@ -9,6 +9,8 @@ os muda pelas mesmas funções do menu.
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon, QIntValidator
 from PySide6.QtWidgets import (
@@ -26,6 +28,7 @@ from brasbim.core import intervention, pens
 from brasbim.ui import icons, theme
 from brasbim.ui.plan_view import ZOOM_PERCENTS, PlanView
 from brasbim.ui.section_view import SectionView
+from brasbim.ui.tools import fmt
 
 DETAIL_LABEL = {"simple": "Simplificado", "layers": "Por camadas"}
 
@@ -95,7 +98,15 @@ class ViewBar(QFrame):
             layout.addWidget(widget)
         self.zoom_group = (self.prev, self.next, self.fit, self.zoom)
         layout.addWidget(_separator())
-        self.rotation_slot = layout.count()  # giro da vista entra aqui (§3)
+        # Giro da vista (§3): o botão mostra o ângulo; a lista define por dois cliques,
+        # digita ou volta a 0°.
+        self.rotation = _menu_button("view_rotate", "Girar a vista da planta (só a tela; "
+                                     "o modelo não muda)")
+        menu = self.rotation.menu()
+        menu.addAction("Definir por dois cliques", lambda: window.rotate_view(None))
+        menu.addAction("Digitar o ângulo…", self.ask_rotation)
+        menu.addAction("Voltar a 0°", lambda: window.rotate_view(0.0))
+        layout.addWidget(self.rotation)
         # Escala: o mesmo seletor que estava na barra de estado
         self.scale_icon = QLabel()
         self.scale_icon.setPixmap(icons.icon("scale").pixmap(16, 16))
@@ -125,7 +136,7 @@ class ViewBar(QFrame):
         self.pick_locked.setChecked(True)
         self.pick_locked.toggled.connect(window.set_pick_locked)
         layout.addWidget(self.pick_locked)
-        self.plan_only = (self.scale_icon, window.scale_combo, self.detail)
+        self.plan_only = (self.rotation, self.scale_icon, window.scale_combo, self.detail)
 
     # --- vista ------------------------------------------------------------------------
 
@@ -181,7 +192,18 @@ class ViewBar(QFrame):
         self.pick_locked.setChecked(self.window.ctx.pick_locked)
         self.refresh_zoom()
 
+    def ask_rotation(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        current = math.degrees(self.window.plan.rotation)
+        value, ok = QInputDialog.getDouble(self, "Girar a vista", "Ângulo (°):", current,
+                                           -360.0, 360.0, 2)
+        if ok:
+            self.window.rotate_view(value)
+
     def refresh_zoom(self) -> None:
+        degrees = math.degrees(self.window.plan.rotation)
+        self.rotation.setText(f"{fmt(round(degrees, 1) + 0.0)}°")
         view = self.view()
         if view is None:
             return

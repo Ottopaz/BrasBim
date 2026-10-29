@@ -4,6 +4,7 @@ mini-barra, ``spec/ui/03-barras-e-icones.md`` §2–§5)."""
 
 from __future__ import annotations
 
+import math
 import sys
 import time
 from datetime import datetime
@@ -640,6 +641,15 @@ class MainWindow(QMainWindow):
         self.view_bar.pick_locked.setChecked(bool(value))
         self.plan.update()
 
+    def rotate_view(self, degrees: float | None = None) -> None:
+        """Giro da vista da planta (spec/ui 39 §3): ``None`` pede os dois cliques."""
+        if degrees is None:
+            self.set_view("plan") if self.split else self.tabs.setCurrentWidget(self.plan)
+            self.activate_tool("view_rotate")
+            return
+        self.plan.set_rotation(math.radians(degrees))
+        self.view_bar.refresh()
+
     def use_combination(self, comb_id: str) -> None:
         """Combinação de camadas escolhida na barra da vista (spec/ui 18 §6)."""
         comb = display_layers.combination(self.session.doc, comb_id)
@@ -765,6 +775,8 @@ class MainWindow(QMainWindow):
             self.activate_tool("select")
             self.ctx.invalidate()
             self.scene.load(self.session.doc.ifc, self.session.doc)
+            self.plan.rotations.clear()  # o giro é da sessão (spec/ui 39 §3)
+            self.plan.rotation = 0.0
             self.plan.fit()
             self.view3d.fit()
             self._refresh_all()
@@ -785,6 +797,7 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "storey":
             self.ctx.invalidate()
+            self.plan.storey_changed()  # giro de cada pavimento (spec/ui 39 §3)
             self._refresh_all()
         elif event == "layers":  # exibição das camadas (spec/ui 18 §4)
             self.ctx.invalidate()
@@ -1061,6 +1074,7 @@ class MainWindow(QMainWindow):
             self.set_plan_detail(options["detail"])
             self.set_show_above(options["show_above"])
             self.set_situation_view(options["situation"], save=False)
+            self.plan.set_rotation(math.radians(options["rotation"]))  # spec/ui 39 §3
             stored = storeys_.stored_scale(storey)
             storeys_.set_scale_override(storey.GlobalId,
                                         None if state["scale"] == stored else state["scale"])

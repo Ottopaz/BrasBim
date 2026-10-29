@@ -45,7 +45,8 @@ PLAN_OPTIONS = {"detail": "simple", "show_above": True, "show_tags": True,
                 "show_tag_size": False, "show_structure_tags": True,
                 "show_object_tags": False, "show_space_numbers": False,
                 "show_weights": True, "show_view_symbols": True,
-                "situation": "project"}  # filtro de situação (spec/ui 31 §3)
+                "situation": "project",  # filtro de situação (spec/ui 31 §3)
+                "rotation": 0.0}  # giro da vista em graus (spec/ui 39 §3)
 CAMERA_KEYS = ("target", "distance", "yaw", "pitch", "aspect")
 WIDTH_3D = 160.0  # mm: largura padrão da vista 3D no papel (§5)
 

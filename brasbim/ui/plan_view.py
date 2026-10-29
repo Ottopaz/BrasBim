@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QWidget
 from brasbim.core import edit_state, pens
 from brasbim.core import storeys as storeys_
 from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
-from brasbim.core.snap import KIND_LABEL
+from brasbim.core.snap import KIND_LABEL, rotate
 from brasbim.ui import theme
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
@@ -225,8 +225,44 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
         self._init_tool_input()
-        self.rotation = 0.0  # giro da vista em radianos (spec/ui 39 §3)
+        self.rotations: dict[str, float] = {}  # giro de cada pavimento na janela (§3)
         self._init_frames()
+
+    @property
+    def rotation(self) -> float:
+        """Giro da vista em radianos (spec/ui 39 §3): a direção do modelo que fica na
+        horizontal da tela. Só a tela gira; o contexto passa o ângulo para a atração."""
+        return self.ctx.view_angle
+
+    @rotation.setter
+    def rotation(self, value: float) -> None:
+        value = math.remainder(float(value), 2 * math.pi)
+        if abs(value) < 1e-12:
+            value = 0.0
+        self.ctx.view_angle = value
+        storey = self.ctx.session.storey_id
+        if storey:
+            self.rotations[storey] = value
+
+    def set_rotation(self, angle: float) -> None:
+        """Gira a tela em torno do centro (definir por dois cliques, digitar, voltar a 0)."""
+        center = self.to_world(QPointF(self.width() / 2, self.height() / 2))
+        self.rotation = angle
+        self._center_on(center)
+        self.ctx.invalidate_grid()
+        self.update()
+        self.remember_frame()
+
+    def storey_changed(self) -> None:
+        """Pavimento ativo trocado: volta o giro guardado para ele (ou 0°)."""
+        angle = self.rotations.get(self.ctx.session.storey_id, 0.0)
+        if abs(angle - self.ctx.view_angle) > 1e-12:
+            self.set_rotation(angle)
+
+    def _center_on(self, p) -> None:
+        self.origin = QPointF(0, 0)
+        q = self.to_screen(p)
+        self.origin = QPointF(self.width() / 2 - q.x(), self.height() / 2 - q.y())
 
     def drawing_scale(self) -> int:
         return storeys_.scale(self.ctx.session.storey)
@@ -237,10 +273,33 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         return self.to_screen(p)
 
     def to_screen(self, p) -> QPointF:
-        return QPointF(self.origin.x() + p[0] * self.scale, self.origin.y() - p[1] * self.scale)
+        x, y = p[0], p[1]
+        if self.rotation:
+            c, s = math.cos(self.rotation), math.sin(self.rotation)
+            x, y = x * c + y * s, y * c - x * s
+        return QPointF(self.origin.x() + x * self.scale, self.origin.y() - y * self.scale)
 
     def to_world(self, q: QPointF) -> tuple[float, float]:
-        return ((q.x() - self.origin.x()) / self.scale, (self.origin.y() - q.y()) / self.scale)
+        x = (q.x() - self.origin.x()) / self.scale
+        y = (self.origin.y() - q.y()) / self.scale
+        if self.rotation:
+            c, s = math.cos(self.rotation), math.sin(self.rotation)
+            x, y = x * c - y * s, x * s + y * c
+        return (x, y)
+
+    def world_transform(self) -> QTransform:
+        """Do modelo para a tela (a mesma conta de ``to_screen``), para o ``QPainter``."""
+        k, a = self.scale, self.rotation
+        c, s = math.cos(a), math.sin(a)
+        return QTransform(k * c, k * s, k * s, -k * c, self.origin.x(), self.origin.y())
+
+    def reading_angle(self, degrees: float) -> tuple[float, bool]:
+        """Ângulo do texto na tela, de −90° a +90° (nunca de cabeça para baixo), e se
+        virou 180° para isso. O texto guardado não muda (spec/ui 39 §3)."""
+        a = (degrees - math.degrees(self.rotation) + 180.0) % 360.0 - 180.0
+        if a > 90.0 + 1e-9 or a <= -90.0 + 1e-9:
+            return (a - 180.0 if a > 0 else a + 180.0), True
+        return a, False
 
     def _draw_locked(self, painter: QPainter, tool) -> None:
         """Travado escolhido (spec/ui 39 §5): alças cinza e um cadeado no canto da
@@ -289,16 +348,21 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             self.scale = 60.0
             self.origin = QPointF(self.width() / 2, self.height() / 2)
         else:
-            x0, y0, x1, y1 = bounds
+            x0, y0, x1, y1 = self._view_box([(bounds[0], bounds[1]), (bounds[2], bounds[1]),
+                                             (bounds[2], bounds[3]), (bounds[0], bounds[3])])
             w, h = max(x1 - x0, 1.0), max(y1 - y0, 1.0)
             self.scale = min(max(min(self.width() / w, self.height() / h) * 0.85, _MIN_SCALE),
                              _MAX_SCALE)
-            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-            self.origin = QPointF(self.width() / 2 - cx * self.scale,
-                                  self.height() / 2 + cy * self.scale)
+            self._center_on(rotate(((x0 + x1) / 2, (y0 + y1) / 2), self.rotation))
         self._sync_tol()
         self.update()
         self.remember_frame()
+
+    def _view_box(self, pts) -> tuple[float, float, float, float]:
+        """Retângulo dos pontos nos eixos da vista (girada, spec/ui 39 §3)."""
+        q = [rotate(p, -self.rotation) for p in pts]
+        xs, ys = [p[0] for p in q], [p[1] for p in q]
+        return min(xs), min(ys), max(xs), max(ys)
 
     def frame_selection(self) -> bool:
         """Enquadra a seleção do pavimento ativo com margem (spec/ui 07 §4)."""
@@ -307,15 +371,12 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                for p in s.points]
         if not pts:
             return False
-        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        x0, y0, x1, y1 = self._view_box(pts)
         w = max(x1 - x0, 0.01) * (1 + 2 * _FRAME_MARGIN)
         h = max(y1 - y0, 0.01) * (1 + 2 * _FRAME_MARGIN)
         self.scale = min(max(min(self.width() / w, self.height() / h), _MIN_SCALE),
                          _FRAME_MAX_SCALE)
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        self.origin = QPointF(self.width() / 2 - cx * self.scale,
-                              self.height() / 2 + cy * self.scale)
+        self._center_on(rotate(((x0 + x1) / 2, (y0 + y1) / 2), self.rotation))
         self._sync_tol()
         self.update()
         self.remember_frame()
@@ -352,23 +413,25 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         fade = min(1.0, max(0.0, (minor * self.scale - 7) / 17))
         faint = QColor(C["grid"])
         faint.setAlphaF(fade)
-        x0, y1 = self.to_world(QPointF(0, 0))
-        x1, y0 = self.to_world(QPointF(self.width(), self.height()))
+        # A grade segue a tela (spec/ui 39 §3): linhas nos eixos da vista, em torno da
+        # origem do pavimento.
+        angle = self.rotation
+        corners = [rotate(self.to_world(QPointF(x, y)), -angle)
+                   for x in (0, self.width()) for y in (0, self.height())]
+        us, vs = [c[0] for c in corners], [c[1] for c in corners]
         ratio = round(major / minor)
         for axis in (0, 1):
-            lo, hi = (x0, x1) if axis == 0 else (y0, y1)
+            lo, hi = (min(us), max(us)) if axis == 0 else (min(vs), max(vs))
+            a, b = (min(vs), max(vs)) if axis == 0 else (min(us), max(us))
             k = math.floor(lo / minor)
             while k * minor <= hi:
                 is_major = k % ratio == 0
                 if is_major or fade > 0:
                     painter.setPen(QPen(C["grid_major"] if is_major else faint, 1))
                     v = k * minor
-                    if axis == 0:
-                        x = self.to_screen((v, 0)).x()
-                        painter.drawLine(QPointF(x, 0), QPointF(x, self.height()))
-                    else:
-                        y = self.to_screen((0, v)).y()
-                        painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
+                    ends = ((v, a), (v, b)) if axis == 0 else ((a, v), (b, v))
+                    painter.drawLine(self.to_screen(rotate(ends[0], angle)),
+                                     self.to_screen(rotate(ends[1], angle)))
                 k += 1
 
     def _px(self, weight: float) -> float:
@@ -544,9 +607,10 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         rect = path.boundingRect()
         corners = [rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()]
         anchor = self.to_screen((0.0, 0.0))
+        turn = math.degrees(getattr(self, "rotation", 0.0))  # vista girada (spec/ui 39)
         angles = [fill["angle"]] + ([fill["angle"] + 90.0] if pattern == "cross" else [])
         for degrees in angles:
-            a = -math.radians(degrees)  # y da tela para baixo
+            a = -math.radians(degrees - turn)  # y da tela para baixo
             d = QPointF(math.cos(a), math.sin(a))
             n = QPointF(-d.y(), d.x())
             ss = [QPointF.dotProduct(c - anchor, n) for c in corners]
@@ -590,7 +654,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                                 else QColor(self.pens.color("text"))))
             painter.save()
             painter.translate(q)
-            painter.rotate(-label.angle)  # y da tela para baixo
+            painter.rotate(-self.reading_angle(label.angle)[0])  # y da tela para baixo
             heights = [label.height] + [label.height * label.size_ratio] * (len(lines) - 1)
             fonts = [self._font(h) if label.height else QFont(self.font().family(), 9)
                      for h in heights]
@@ -648,8 +712,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
         selection = self.ctx.session.selection
         dashes = {"solid": Qt.SolidLine, "dashed": Qt.DashLine, "dashdot": Qt.DashDotLine}
-        world = QTransform(self.scale, 0.0, 0.0, -self.scale, self.origin.x(),
-                           self.origin.y())
+        world = self.world_transform()
         for owner, prims in self.ctx.plan.annotations:
             if owner in self.ctx.plan.views and not self.show_view_symbols:
                 continue
@@ -675,11 +738,15 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                 painter.save()
                 painter.setFont(font)
                 painter.translate(self.to_screen(text.at))
-                painter.rotate(-text.angle)
+                angle, flipped = self.reading_angle(text.angle)
+                painter.rotate(-angle)
                 metrics = painter.fontMetrics()
                 width, height = metrics.horizontalAdvance(text.text), metrics.height()
-                x = {"left": 0.0, "center": -width / 2, "right": -width}[text.halign]
-                y = -height if text.valign == "bottom" else -height / 2
+                halign = text.halign
+                if flipped:  # virado para ler: o texto ocupa o mesmo lugar do outro lado
+                    halign = {"left": "right", "right": "left"}.get(halign, halign)
+                x = {"left": 0.0, "center": -width / 2, "right": -width}[halign]
+                y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
                 painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
                                  text.text)
                 painter.restore()
@@ -941,7 +1008,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         at = event.position()
         world = self.to_world(at)
         self.scale = new
-        self.origin = QPointF(at.x() - world[0] * new, at.y() + world[1] * new)
+        q = self.to_screen(world)  # o ponto sob o cursor fica parado
+        self.origin += at - q
         self._sync_tol()
         self._zooming.start()
         self.update()

@@ -145,3 +145,30 @@ def test_vb03_zoom_por_cento(window):
     assert plan.zoom_percent() == pytest.approx(250)
     bar.set_zoom("abc")  # inválido: nada muda
     assert plan.zoom_percent() == pytest.approx(250)
+
+
+def test_vb04_girar_a_vista(window):
+    import math
+
+    from PySide6.QtCore import QPointF
+
+    plan = window.plan
+    plan.set_rotation(math.radians(30))
+    for p in ((0.0, 0.0), (3.2, -1.5), (-7.0, 4.0)):
+        assert plan.to_world(plan.to_screen(p)) == pytest.approx(p)
+    window.rotate_view(None)  # dois cliques: a direção fica na horizontal
+    tool = window.toolbox.active
+    window.ctx.input_view = plan
+    tool.press((0.0, 0.0), Mods(alt=True))
+    tool.press((1.0, 1.0), Mods(alt=True))
+    assert plan.rotation == pytest.approx(math.pi / 4)
+    a, b = plan.to_screen((0, 0)), plan.to_screen((1, 1))
+    assert a.y() == pytest.approx(b.y()) and b.x() > a.x()
+    q = window.ctx.snap((1.0, 0.9), Mods(shift=True), (0.0, 0.0))  # Shift segue a tela
+    assert q.point[0] == pytest.approx(q.point[1])
+    for angle in (0, 90, 135, 180, 270):  # texto nunca de cabeça para baixo
+        assert -90 < plan.reading_angle(angle)[0] <= 90
+    window.rotate_view(0.0)
+    assert plan.rotation == 0.0 and plan.to_screen((1, 0)).y() == pytest.approx(
+        plan.to_screen((0, 0)).y())
+    assert isinstance(plan.to_screen((0, 0)), QPointF)

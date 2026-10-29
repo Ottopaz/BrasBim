@@ -6,6 +6,7 @@ e a imagem da vista 3D para a prancha."""
 from __future__ import annotations
 
 import logging
+import math
 from types import SimpleNamespace
 
 import numpy as np
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from brasbim.core import display_layers, storeys
+from brasbim.core import display_layers, snap, storeys
 from brasbim.core.drawings import saved_views, views
 from brasbim.ui import theme
 
@@ -68,13 +69,15 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
         if storey is None:
             return None
         options = {"detail": window.ctx.detail, "show_above": window.ctx.show_above,
-                   "situation": doc.situation_view}  # spec/ui 31 §3
+                   "situation": doc.situation_view,  # spec/ui 31 §3
+                   "rotation": round(math.degrees(window.plan.rotation), 6)}  # spec/ui 39
         options.update({name: bool(getattr(window.plan, name)) for name in OPTION_ACTIONS})
         fields = {"storey": storey.GlobalId, "scale": storeys.scale(storey),
                   "layers": layers, "options": options, "pens": pen_table}
-        if crop:
-            a = window.plan.to_world(QPointF(0, widget.height()))
-            b = window.plan.to_world(QPointF(widget.width(), 0))
+        if crop:  # vista girada: o recorte fica nos eixos da vista (spec/ui 39 §3)
+            turn = window.plan.rotation
+            a = snap.rotate(window.plan.to_world(QPointF(0, widget.height())), -turn)
+            b = snap.rotate(window.plan.to_world(QPointF(widget.width(), 0)), -turn)
             fields["crop"] = [round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)]
         name = saved_views.suggest_name(doc, "plan", storey.Name or "", fields["scale"])
         return kind, fields, name

@@ -239,11 +239,18 @@ class PlanContext:
         # Chave Escolher travados (spec/ui 39 §5): desligada, o clique e a janela não pegam
         # os travados; a atração continua.
         self.pick_locked = True
+        # Giro da vista da planta (spec/ui 39 §3), em radianos: a grade, as guias, o Shift
+        # e as setas seguem a tela.
+        self.view_angle = 0.0
         self._index = None
 
     def invalidate(self) -> None:
         self._plan = self._walls = self._vertices = self._columns = None
         self._grid_points = self._index = None
+
+    def invalidate_grid(self) -> None:
+        """A grade girou com a vista (spec/ui 39 §3); o modelo não mudou."""
+        self.axis_lock = None
 
     @property
     def plan(self) -> plan.Plan:
@@ -327,19 +334,22 @@ class PlanContext:
         if lock is not None and math.dist(lock[1], origin) > 1e-9:
             lock = self.axis_lock = None  # o ponto anterior mudou: a trava caiu
         if mods.shift and origin is not None and lock is None:
-            return snap.Snap(snap.constrain(origin, p), "free")
+            return snap.Snap(snap.constrain(origin, p, base=self.view_angle), "free")
         if mods.alt or self.snap_off:
             found = snap.Snap(tuple(p), "free")
         else:
             found = snap.snap(self.walls, p, self.tol, self.grid,
                               list(extra) + self.grid_points, self.index, origin,
-                              self.snap_kinds)
+                              self.snap_kinds, self.view_angle)
             if lock is None and self.guides_on:
                 found = self._guide(p, found, origin)
         if lock is None:
             return found
         q = found.point
-        q = (q[0], origin[1]) if lock[0] == "x" else (origin[0], q[1])
+        a = self.view_angle + (0.0 if lock[0] == "x" else math.pi / 2)
+        u = (math.cos(a), math.sin(a))  # eixo da tela travado pela seta
+        t = (q[0] - origin[0]) * u[0] + (q[1] - origin[1]) * u[1]
+        q = (origin[0] + t * u[0], origin[1] + t * u[1])
         attracted = found.kind not in ("free", "grid")
         return snap.Snap(q, found.kind if attracted else "free", found.wall,
                          found.point if attracted else None)
@@ -347,7 +357,9 @@ class PlanContext:
     def _guide(self, p: Point, found: snap.Snap, origin: Point | None) -> snap.Snap:
         """Linhas-guia (spec/ui 37 §3): ponto atraído forte fica (e mostra as guias que
         passam por ele); senão, guia, cruzamento de guias ou de guia com aresta."""
-        lines = guides.guides_from(self.references, origin)
+        turn = math.degrees(self.view_angle)
+        lines = guides.guides_from(self.references, origin,
+                                   tuple((a + turn) % 180.0 for a in guides.ANGLES))
         if not lines:
             return found
         on_guide = guides.through(found.point, lines, self.tol * 0.02)
@@ -5411,13 +5423,59 @@ class AreaTool(Tool):
         return [Mark((*self.points, q), len(self.points) >= 2, "area")]
 
 
+class RotateViewTool(Tool):
+    """Girar a vista por dois cliques (spec/ui 39 §3): a direção do primeiro ao segundo
+    ponto fica na horizontal da tela. Atração e guias valem. Não muda o modelo."""
+
+    name, label = "view_rotate", "Girar a vista"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.start: Point | None = None
+
+    def hint(self):
+        if self.start is None:
+            return "Clique o primeiro ponto da direção que deve ficar na horizontal"
+        return "Clique o segundo ponto (Esc cancela)"
+
+    def cancel(self):
+        self.start = None
+        super().cancel()
+
+    def move(self, p, mods):
+        super().move(p, mods)
+        self.snapped = self.ctx.snap(p, mods, self.start)
+
+    def preview(self):
+        if self.start is None or self.snapped is None:
+            return []
+        return [Mark((self.start, self.snapped.point), False)]
+
+    def press(self, p, mods, button="left"):
+        if button != "left":
+            return
+        q = self.ctx.snap(p, mods, self.start).point
+        if self.start is None:
+            self.start = q
+            return
+        dx, dy = q[0] - self.start[0], q[1] - self.start[1]
+        if math.hypot(dx, dy) < 1e-9:
+            return
+        view = self.ctx.input_view
+        self.start = None
+        if view is not None and hasattr(view, "set_rotation"):
+            view.set_rotation(math.atan2(dy, dx))
+        self.finished = True
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
          GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
-         MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool)
+         MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool,
+         RotateViewTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",

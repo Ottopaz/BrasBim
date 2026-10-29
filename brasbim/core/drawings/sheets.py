@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 
 import ifcopenshell.api.root
 import ifcopenshell.api.spatial
@@ -261,10 +262,21 @@ def _view_bounds(doc: Document, item: dict):
         if state is None or state["kind"] == "3d":
             return None
         if state["kind"] == "plan":
+            turn = math.radians(saved_views.options(state)["rotation"])
             if state.get("crop"):
-                return tuple(state["crop"])
+                return tuple(state["crop"])  # girada: já nos eixos da vista
             drawn = saved_views.plan_of(doc, state)
-            return drawn.bounds() if drawn is not None else None
+            if drawn is None or not turn:
+                return drawn.bounds() if drawn is not None else None
+            from brasbim.core.snap import rotate
+
+            # Girada (spec/ui 39 §3): retângulo nos eixos da vista.
+            pts = [rotate(p, -turn) for s in drawn.shapes if s.role != "below"
+                   for p in s.points]
+            if not pts:
+                return None
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            return min(xs), min(ys), max(xs), max(ys)
         view = doc.find(state["view"])
         return _drawing_bounds(section.draw(doc, view, state["scale"])) if view else None
     if item["kind"] == "plan":

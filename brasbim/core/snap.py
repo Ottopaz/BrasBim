@@ -233,12 +233,27 @@ def wall_paths(doc: Document, storey) -> list[WallPath]:
     return sorted(out, key=lambda w: w.gid)
 
 
+def rotate(p: Point, angle: float) -> Point:
+    """``p`` girado de ``angle`` radianos em torno de (0, 0)."""
+    c, s = math.cos(angle), math.sin(angle)
+    return (p[0] * c - p[1] * s, p[0] * s + p[1] * c)
+
+
+def grid_point(p: Point, grid: float, angle: float = 0.0) -> Point:
+    """Nó da grade mais próximo; com a vista girada (spec/ui 39 §3), a grade gira junto,
+    em torno da origem do pavimento."""
+    q = rotate(p, -angle) if angle else p
+    q = (round(q[0] / grid) * grid, round(q[1] / grid) * grid)
+    return rotate(q, angle) if angle else q
+
+
 def snap(walls: list[WallPath], p: Point, tol: float, grid: float | None = 0.1,
          extra: list[Point] = (), index: SnapIndex | None = None,
-         origin: Point | None = None, kinds=None) -> Snap:
+         origin: Point | None = None, kinds=None, angle: float = 0.0) -> Snap:
     """Ponto atraído, por prioridade (spec/ui 23 §2.2): extremidades (e ``extra``) e
     interseções, meio, centro, perpendicular e tangente (a partir de ``origin``), na
-    parede ou na borda, grade. ``kinds``: tipos ligados (None = todos)."""
+    parede ou na borda, grade. ``kinds``: tipos ligados (None = todos). ``angle``: giro
+    da vista, que a grade segue."""
     on = set(KINDS if kinds is None else kinds)
     if "near" in on:
         on.add("path")
@@ -265,7 +280,7 @@ def snap(walls: list[WallPath], p: Point, tol: float, grid: float | None = 0.1,
         if best:
             return min(best, key=lambda c: (c[0], tier.index(c[1].kind)))[1]
     if grid and "grid" in on:
-        return Snap((round(p[0] / grid) * grid, round(p[1] / grid) * grid), "grid")
+        return Snap(grid_point(p, grid, angle), "grid")
     return Snap(tuple(p), "free")
 
 
@@ -417,12 +432,13 @@ def wall_at(walls: list[WallPath], p: Point, tol: float) -> WallHit | None:
     return min(found)[2] if found else None
 
 
-def constrain(origin: Point, p: Point, step_deg: float = 45.0) -> Point:
-    """Ponto na direção múltipla de ``step_deg`` mais próxima, à mesma distância (Shift)."""
+def constrain(origin: Point, p: Point, step_deg: float = 45.0, base: float = 0.0) -> Point:
+    """Ponto na direção múltipla de ``step_deg`` mais próxima, à mesma distância (Shift).
+    ``base``: giro da vista em radianos, de onde os múltiplos partem."""
     dx, dy = p[0] - origin[0], p[1] - origin[1]
     length = math.hypot(dx, dy)
     if length == 0:
         return p
     step = math.radians(step_deg)
-    angle = round(math.atan2(dy, dx) / step) * step
+    angle = round((math.atan2(dy, dx) - base) / step) * step + base
     return (origin[0] + length * math.cos(angle), origin[1] + length * math.sin(angle))

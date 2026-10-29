@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import pens
+from brasbim.core import pens, snap
 from brasbim.core import plan as plan_mod
 from brasbim.core.annotations.prims import DASH_PATTERNS
 from brasbim.core.document import OpError
@@ -73,6 +73,9 @@ class _PlanPainter:
     _draw_tags = PlanView._draw_tags
     _font = PlanView._font
     _line_px = PlanView._line_px
+    world_transform = PlanView.world_transform
+    reading_angle = PlanView.reading_angle
+    rotation = 0.0  # vista salva girada (spec/ui 39 §3)
 
     def __init__(self, session, plan, scale: float, origin: QPointF, unit: float):
         self.ctx = SimpleNamespace(plan=plan, session=SimpleNamespace(selection=set()))
@@ -99,6 +102,7 @@ class _SectionPainter:
     _line_px = SectionView._line_px
     _draw_region = PlanView._draw_region
     paint_drawing = SectionView.paint
+    rotation = 0.0
 
     def __init__(self, drawing, scale: float, origin: QPointF, unit: float):
         self.drawing, self.scale, self.origin, self.unit = drawing, scale, origin, unit
@@ -186,6 +190,12 @@ def _item_drawer(doc, item: dict, center: QPointF, px_per_mm: float, unit: float
             for name, value in saved_views.options(saved).items():
                 if name.startswith("show_") and name != "show_above":
                     setattr(painter, name, value)
+            turn = math.radians(saved_views.options(saved)["rotation"])
+            if turn:  # entra girada; o centro do retângulo (nos eixos da vista) no centro
+                painter.rotation = turn
+                painter.origin = QPointF(0, 0)
+                q = painter.to_screen(snap.rotate((cx, cy), turn))
+                painter.origin = QPointF(center.x() - q.x(), center.y() - q.y())
             return painter
         if saved is not None:
             drawer = _SectionPainter(section.draw(doc, doc.find(saved["view"]),
