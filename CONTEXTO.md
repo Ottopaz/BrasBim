@@ -23,7 +23,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > `pasta_exportar_dwg`), Exportar área (DWG), botão direito no Navegador (corte, vista
 > salva, prancha) > Exportar DWG; sem conversor pergunta Baixar / Gravar em DXF /
 > Cancelar (`ask_dwg_writer`). A exportação da área passou a centímetros e camadas do
-> BrasBim (AS07 ajustado). DG01–DG03 em `tests/test_exportar_dwg.py`. Conferido
+> BrasBim (AS07 ajustado). DG01–DG03 em `tests/test_exportar_dwg.py`; 837 testes. Conferido
 > renderizando o DXF da prancha e o DWG relido pelo `dwg2dxf`. **Falta (e):** abrir um
 > DWG num CAD comercial. **Próximo:** §3 sólidos (SO01–SO06), depois §4 perfil; as
 > respostas (f)–(k) definem detalhes deles.
