@@ -19,7 +19,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from brasbim.core import pens
+from brasbim.core import edit_state, pens
 from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
 from brasbim.core.snap import KIND_LABEL
 from brasbim.ui import theme
@@ -54,6 +54,7 @@ C = {
     "crossing": QColor(theme.OK),
     "label_bg": QColor(247, 248, 246, 225),
     "label": QColor(theme.INK),
+    "locked": QColor(theme.INK_FAINT),  # alças e cadeado do travado (spec/ui 39 §5)
 }
 
 
@@ -135,6 +136,29 @@ class PlanView(QWidget, ToolInput):
 
     def to_world(self, q: QPointF) -> tuple[float, float]:
         return ((q.x() - self.origin.x()) / self.scale, (self.origin.y() - q.y()) / self.scale)
+
+    def _draw_locked(self, painter: QPainter, tool) -> None:
+        """Travado escolhido (spec/ui 39 §5): alças cinza e um cadeado no canto da
+        seleção."""
+        doc = self.ctx.session.doc
+        locked = [g for g in self.ctx.session.selection if edit_state.is_locked(doc, g)]
+        if not locked:
+            return
+        r = HANDLE_PX
+        painter.setPen(QPen(C["locked"], 1.2))
+        painter.setBrush(QBrush(C["background"]))
+        for point in getattr(tool, "locked_handles", list)():
+            q = self.to_screen(point)
+            painter.drawRect(QRectF(q.x() - r, q.y() - r, 2 * r, 2 * r))
+        rect = self.selection_rect()
+        if rect is None:
+            return
+        x, y = rect[2] + 6, rect[1] - 16
+        painter.setBrush(QBrush(C["background"]))
+        painter.setPen(QPen(C["locked"], 1.3))
+        painter.drawRect(QRectF(x, y + 5, 9, 7))  # corpo
+        painter.setBrush(Qt.NoBrush)
+        painter.drawArc(QRectF(x + 1.5, y, 6, 10), 0, 180 * 16)  # alça
 
     def selection_rect(self) -> tuple[float, float, float, float] | None:
         """Retângulo da seleção na tela (x0, y0, x1, y1), ou None se não está na planta."""
@@ -645,6 +669,7 @@ class PlanView(QWidget, ToolInput):
             painter.setPen(QPen(C["select"], 1.2))
             painter.setBrush(QBrush(C["select"] if hot else C["background"]))
             painter.drawRect(QRectF(q.x() - r, q.y() - r, 2 * r, 2 * r))
+        self._draw_locked(painter, tool)
         for mark in self.ctx.axis_marks():
             painter.setPen(QPen(C["preview"], 1, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)

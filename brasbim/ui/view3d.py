@@ -18,7 +18,7 @@ import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from brasbim.core import snap, transform
+from brasbim.core import edit_state, snap, transform
 from brasbim.core.document import OpError
 from brasbim.ui import theme
 from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
@@ -354,6 +354,8 @@ class View3D(QOpenGLWidget, ToolInput):
 
     def handles(self) -> list[tuple[str, tuple[float, float, float]]]:
         doc = self.ctx.session.doc
+        if any(edit_state.is_locked(doc, g) for g in self.ctx.session.selection):
+            return []  # travado: sem alças (spec/ui 39 §5)
         try:
             element, wall = self.selected_filling()
             if element is not None and wall is not None:  # spec/ui 09 §4.2

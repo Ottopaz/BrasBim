@@ -35,7 +35,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention, municipal, pens, select_similar, snap
+from brasbim.core import (
+    display_layers,
+    edit_state,
+    intervention,
+    municipal,
+    pens,
+    select_similar,
+    snap,
+)
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import commands as ac
 from brasbim.core.delete import delete_elements
@@ -398,6 +406,10 @@ class MainWindow(QMainWindow):
         for code, text, _ in intervention.SITUATIONS:
             self._action(situation_menu, text,
                          lambda _=False, c=code: self.set_selection_situation(c))
+        edit_menu.addSeparator()  # spec/ui 39 §5
+        self._action(edit_menu, "Travar", lambda: self.lock_selection(True), "Ctrl+L")
+        self._action(edit_menu, "Destravar", lambda: self.lock_selection(False))
+        self._action(edit_menu, "Destravar tudo", self.unlock_all)
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar"), ("measure", "Medir"),
                           ("selection_area", "Área de seleção")):
@@ -830,6 +842,21 @@ class MainWindow(QMainWindow):
             return
         if session.run(lambda: intervention.set_situation(
                 session.doc, sorted(session.selection), code)):
+            self.properties.refresh()
+
+    def lock_selection(self, lock: bool) -> None:
+        """Editar > Travar / Destravar (spec/ui 39 §5): uma transação."""
+        session = self.session
+        if not session.selection:
+            session.message("selecione os elementos antes", "recusa")
+            return
+        command = edit_state.lock if lock else edit_state.unlock
+        if session.run(lambda: command(session.doc, sorted(session.selection))):
+            self.properties.refresh()
+
+    def unlock_all(self) -> None:
+        """Editar > Destravar tudo: o projeto todo."""
+        if self.session.run(lambda: edit_state.unlock_all(self.session.doc)):
             self.properties.refresh()
 
     def set_sheet_limits(self, show: bool, save: bool = True) -> None:
@@ -1878,6 +1905,9 @@ class MainWindow(QMainWindow):
 
             menu.exec(QCursor.pos())
             return
+        if key in ("lock", "unlock"):
+            self.lock_selection(key == "lock")
+            return
         if key in ("swap_type", "edit_object_type", "detach"):
             self._object_action(key)
             return
@@ -1899,6 +1929,12 @@ class MainWindow(QMainWindow):
             session.message("selecione os elementos antes", "recusa")
             return
         if key in ("move", "copy", "rotate", "mirror"):
+            if key != "copy":  # o travado recusa antes de começar (spec/ui 39 §5)
+                try:
+                    edit_state.ensure_unlocked(doc, sorted(session.selection))
+                except OpError as e:
+                    session.message(str(e), "recusa")
+                    return
             self.activate_tool(key)
             return
         if key in ("join", "unjoin", "swap"):
@@ -1932,7 +1968,23 @@ class MainWindow(QMainWindow):
             actions = [("Mostrar no 3D", self.show_in_3d),
                        ("Enquadrar a seleção", view.frame_selection)]
         return (actions + self._object_context(gid) + self._layer_actions(gid)
-                + self._team_context(gid) + area)
+                + self._lock_context(gid) + self._team_context(gid) + area)
+
+    def _lock_context(self, gid) -> list:
+        """Travar ou destravar o que está sob o cursor (com a seleção, se for dela)."""
+        session = self.session
+        ids = session.selection if gid in session.selection else {gid}
+        if session.doc.find(gid) is None or not edit_state.lockable(session.doc.find(gid)):
+            return []
+
+        def run(lock: bool) -> None:
+            command = edit_state.lock if lock else edit_state.unlock
+            if session.run(lambda: command(session.doc, sorted(ids))):
+                self.properties.refresh()
+
+        if all(edit_state.is_locked(session.doc, g) for g in ids):
+            return [("Destravar", lambda: run(False))]
+        return [("Travar", lambda: run(True))]
 
     def _team_context(self, gid) -> list:
         """Pedir liberação do que é de outra pessoa (spec/ui 33 §3)."""

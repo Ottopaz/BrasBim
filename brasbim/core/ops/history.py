@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from brasbim.core.document import Document
-from brasbim.core.ops.base import Op, apply_op, derive, invert_op
+from brasbim.core.ops.base import Op, apply_op, check_op, derive, invert_op
 
 
 @dataclass
@@ -39,6 +39,7 @@ def run(doc: Document, tx: Transaction) -> set[str]:
     doc.changed.clear()
     try:
         for op in tx.ops:
+            check_op(doc, op)
             dirty |= apply_op(doc, op)
             applied.append(op)
         derive(doc, dirty)

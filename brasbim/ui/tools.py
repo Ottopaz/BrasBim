@@ -15,7 +15,17 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from brasbim.core import edits, geom2d, guides, plan, selection_area, snap, storeys, transform
+from brasbim.core import (
+    edit_state,
+    edits,
+    geom2d,
+    guides,
+    plan,
+    selection_area,
+    snap,
+    storeys,
+    transform,
+)
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
@@ -899,14 +909,35 @@ class SelectTool(Tool):
                 (wall, "door_end", wall.frame.to_global((o["distance"] + o["width"], y)),
                  door.GlobalId)]
 
-    def _all_handles(self) -> list[tuple]:
-        """(dono, alça, ponto, porta) de todas as alças visíveis: paredes, portas e
+    def _every_handle(self) -> list[tuple]:
+        """(dono, alça, ponto, porta) de todas as alças da seleção: paredes, portas e
         janelas, pilares, vigas e lajes."""
         doc = self.session.doc
         grips = [(_Grip(g), which, q, None) for g in sorted(self.session.selection)
                  for which, q in _structure_handles(doc, g)]
         return [(w, which, q, None) for w in self._selected_walls()
                 for which, q in _handle_points(w)] + self._door_handles() + grips
+
+    def _all_handles(self) -> list[tuple]:
+        """As alças que se pegam: as dos travados ficam fora (spec/ui 39 §5)."""
+        doc = self.session.doc
+        return [h for h in self._every_handle()
+                if not edit_state.is_locked(doc, h[3] or h[0].gid)]
+
+    def locked_handles(self) -> list[Point]:
+        """Alças dos travados escolhidos: desenhadas em cinza, com o cadeado."""
+        doc = self.session.doc
+        return [q for w, _, q, door in self._every_handle()
+                if edit_state.is_locked(doc, door or w.gid)]
+
+    def _refuse_locked(self, gids) -> bool:
+        """A interface recusa antes de arrastar, com a mensagem do núcleo (§5)."""
+        try:
+            edit_state.ensure_unlocked(self.session.doc, gids)
+        except OpError as e:
+            self.session.message(str(e), "recusa")
+            return True
+        return False
 
     def _handle_at(self, p: Point) -> dict | None:
         found = [(math.dist(p, q), which in ("mid", "beam_mid") or which.startswith(
@@ -1214,6 +1245,10 @@ class SelectTool(Tool):
                 self._handle_update(p, mods)
             return
         if not d["active"] and not moved:
+            return
+        if not d["active"] and self._refuse_locked(
+                [d["door"]] if kind == "door" else sorted(self.session.selection)):
+            self.drag = None  # o travado não sai do lugar (spec/ui 39 §5)
             return
         d["active"] = True
         if kind == "door":
@@ -5430,7 +5465,10 @@ def selection_actions(doc, gids) -> list[str]:
             out.append("edit_object_type")
         if len(found_objects) == 1 and not free:
             out.append("detach")
-    out += ["select_similar", "situation", "delete"]  # spec/ui 23 §7, spec/ui 31 §2
+    out += ["select_similar", "situation"]  # spec/ui 23 §7, spec/ui 31 §2
+    locked = [e for e in elements if edit_state.is_locked(doc, e)]
+    out.append("unlock" if len(locked) == len(elements) else "lock")  # spec/ui 39 §5
+    out.append("delete")
     return out
 
 

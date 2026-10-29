@@ -36,6 +36,8 @@ class Document:
         # camadas) e o filtro de situação da vista, que não é operação.
         self.element_situations: dict | None = None
         self.situation_view = "project"
+        # Elementos travados (spec/ui 39 §5), montado do IFC na primeira consulta.
+        self.locked_elements: set[str] | None = None
 
     # --- criação e arquivo ---------------------------------------------------
 

@@ -286,7 +286,8 @@ def test_ui71_mostrar_na_planta(window):
                              # camada do elemento (spec/ui 18 §5)
                              "Ocultar a camada deste elemento",
                              "Bloquear a camada deste elemento",
-                             "Mostrar só a camada deste elemento"]
+                             "Mostrar só a camada deste elemento",
+                             "Travar"]  # spec/ui 39 §5
     actions["Mostrar na planta"]()
     QApplication.processEvents()
     assert s.storey.GlobalId == superior.GlobalId

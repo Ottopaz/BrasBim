@@ -55,6 +55,7 @@ _APPLY: dict[str, ApplyFn] = {}
 _INVERT: dict[str, InvertFn] = {}
 _DERIVE: list[DeriveFn] = []
 _DERIVE_LAST: list[DeriveFn] = []  # depois de todos os corpos refeitos (camadas)
+_CHECK: list[Callable[[Document, Op], None]] = []  # antes de cada operação (travados)
 
 # Módulos que registram handlers; importados sob demanda para evitar ciclos.
 HANDLER_MODULES = (
@@ -95,6 +96,7 @@ HANDLER_MODULES = (
     "brasbim.core.objects.rebuild",
     "brasbim.core.intervention",
     "brasbim.core.display_layers",
+    "brasbim.core.edit_state",
 )
 _loaded = False
 
@@ -146,6 +148,18 @@ def check_before(op: Op, current: dict) -> None:
 
 def register_derive(fn: DeriveFn, last: bool = False) -> None:
     (_DERIVE_LAST if last else _DERIVE).append(fn)
+
+
+def register_check(fn) -> None:
+    """``fn(doc, op)`` recusa a operação com ``OpError`` antes de aplicá-la (só nas
+    transações; o desfazer de uma transação que falhou não passa por aqui)."""
+    _CHECK.append(fn)
+
+
+def check_op(doc: Document, op: Op) -> None:
+    _ensure_loaded()
+    for fn in _CHECK:
+        fn(doc, op)
 
 
 def apply_op(doc: Document, op: Op) -> set[str]:

@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, geom2d, intervention
+from brasbim.core import display_layers, edit_state, geom2d, intervention
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -1226,6 +1226,10 @@ class PropertiesPanel(QScrollArea):
         self._combo("Situação", SITUATIONS, current.pop() if len(current) == 1 else None,
                     lambda v: self._run(lambda: intervention.set_situation(
                         doc, [e.GlobalId for e in elements], v)))
+        locked = [e for e in selection if edit_state.is_locked(doc, e)]
+        if locked:  # spec/ui 39 §5
+            self._read("Edição", "Travado" if len(locked) == len(selection)
+                       else f"{len(locked)} travados")
 
     def _sheet(self, sheet) -> None:
         """Prancha (spec/ui 15 §5)."""
