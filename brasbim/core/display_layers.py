@@ -680,7 +680,8 @@ def hidden_ids(doc: Document) -> set[str]:
     camada ou pelo filtro de situação da vista (spec/ui 31 §3)."""
     from brasbim.core import intervention
 
-    return _ids(doc, doc.display.hidden) | intervention.hidden_ids(doc)
+    extra = getattr(doc, "extra_hidden", None) or set()  # ocultos da janela (ui/39 §4)
+    return _ids(doc, doc.display.hidden) | intervention.hidden_ids(doc) | extra
 
 
 def filtering(doc: Document) -> bool:

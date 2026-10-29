@@ -283,6 +283,7 @@ def test_ui71_mostrar_na_planta(window):
     s.select([wall.GlobalId])
     actions = dict(window.context_actions(window.view3d, wall.GlobalId))
     assert list(actions) == ["Mostrar na planta", "Enquadrar a seleção",
+                             "Ocultar selecionados", "Isolar selecionados",  # spec/ui 39
                              # camada do elemento (spec/ui 18 §5)
                              "Ocultar a camada deste elemento",
                              "Bloquear a camada deste elemento",

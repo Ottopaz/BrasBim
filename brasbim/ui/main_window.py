@@ -438,6 +438,11 @@ class MainWindow(QMainWindow):
         self._action(view_menu, "Lado a lado", lambda: self.set_view("split"))
         view_menu.addSeparator()
         self._action(view_menu, "Enquadrar tudo", self.fit_all)
+        # Ocultar e isolar só na sessão (spec/ui 39 §4)
+        self._action(view_menu, "Ocultar selecionados", self.hide_selection, "Ctrl+H")
+        self._action(view_menu, "Isolar selecionados", self.isolate_selection,
+                     "Ctrl+Shift+H")
+        self._action(view_menu, "Mostrar tudo", self.show_all)
         self._action(view_menu, "3D da área", self.open_area_3d)  # spec/ui 38 §4
         standard = view_menu.addMenu("Vista 3D padrão")
         for key, (label, _, _) in STANDARD_VIEWS.items():
@@ -650,6 +655,66 @@ class MainWindow(QMainWindow):
         self.plan.set_rotation(math.radians(degrees))
         self.view_bar.refresh()
 
+    # --- ocultar, isolar e mostrar tudo (spec/ui 39 §4) -----------------------------------
+
+    def _with_parts(self, gids) -> set[str]:
+        """As águas da cobertura e as peças da escada saem junto com ela."""
+        from brasbim.core.structure import roofs, stairs
+
+        doc, out = self.session.doc, set(gids)
+        for gid in gids:
+            element = doc.find(gid)
+            if element is not None and element.is_a("IfcRoof"):
+                out |= {p.GlobalId for p in roofs.parts_of(element)}
+            if element is not None and stairs.is_stair(element):
+                out |= {p.GlobalId for p in stairs.parts_of(element)}
+        return out
+
+    def set_hidden(self, gids) -> None:
+        """Troca o conjunto de ocultos: planta, atração, escolha e 3D."""
+        self.ctx.hidden = self._with_parts(gids)
+        self.scene.extra_hidden = set(self.ctx.hidden)
+        self.scene.apply_layers()
+        self.ctx.invalidate()
+        if self.session.selection & self.ctx.hidden:
+            self.session.select(self.session.selection - self.ctx.hidden)
+        for view in self.area_views.values():
+            view.refresh()
+        self.view_bar.refresh()
+        self.plan.update()
+        self.view3d.update()
+
+    def hide_selection(self) -> None:
+        if not self.session.selection:
+            self.session.message("selecione os elementos antes", "recusa")
+            return
+        self.set_hidden(self.ctx.hidden | self.session.selection)
+
+    def isolate_selection(self) -> None:
+        """Oculta todo o resto do modelo e das anotações."""
+        session = self.session
+        if not session.selection:
+            session.message("selecione os elementos antes", "recusa")
+            return
+        keep = self._with_parts(session.selection)
+        everything = {e.GlobalId for cls in ("IfcElement", "IfcAnnotation", "IfcGrid",
+                                             "IfcSpace")
+                      for e in session.doc.ifc.by_type(cls)}
+        self.set_hidden(everything - keep)
+
+    def show_all(self) -> None:
+        if self.ctx.hidden:
+            self.set_hidden(set())
+
+    def _prune_hidden(self) -> None:
+        """Excluído sai da lista; desfazer a exclusão não o oculta de novo."""
+        doc = self.session.doc
+        alive = {g for g in self.ctx.hidden if doc.find(g) is not None}
+        if alive != self.ctx.hidden:
+            self.ctx.hidden = alive
+            self.scene.extra_hidden = set(alive)
+            self.view_bar.refresh()
+
     def use_combination(self, comb_id: str) -> None:
         """Combinação de camadas escolhida na barra da vista (spec/ui 18 §6)."""
         comb = display_layers.combination(self.session.doc, comb_id)
@@ -776,6 +841,8 @@ class MainWindow(QMainWindow):
             self.ctx.invalidate()
             self.scene.load(self.session.doc.ifc, self.session.doc)
             self.plan.rotations.clear()  # o giro é da sessão (spec/ui 39 §3)
+            self.ctx.hidden = set()  # os ocultos também (§4)
+            self.scene.extra_hidden = set()
             self.plan.rotation = 0.0
             self.plan.fit()
             self.view3d.fit()
@@ -784,6 +851,7 @@ class MainWindow(QMainWindow):
             for view in self.area_views.values():
                 view.refresh()  # refaz ao pintar, já com a cena do 3D principal nova
         if event == "model":
+            self._prune_hidden()
             self.ctx.invalidate()
             self._refresh_section_views()
             if self.session.last_tx is not None and any(
@@ -1966,6 +2034,9 @@ class MainWindow(QMainWindow):
         if key in ("lock", "unlock"):
             self.lock_selection(key == "lock")
             return
+        if key == "hide":
+            self.hide_selection()
+            return
         if key in ("swap_type", "edit_object_type", "detach"):
             self._object_action(key)
             return
@@ -2025,7 +2096,9 @@ class MainWindow(QMainWindow):
         else:
             actions = [("Mostrar no 3D", self.show_in_3d),
                        ("Enquadrar a seleção", view.frame_selection)]
-        return (actions + self._object_context(gid) + self._layer_actions(gid)
+        hide = [("Ocultar selecionados", self.hide_selection),
+                ("Isolar selecionados", self.isolate_selection)]
+        return (actions + hide + self._object_context(gid) + self._layer_actions(gid)
                 + self._lock_context(gid) + self._team_context(gid) + area)
 
     def _lock_context(self, gid) -> list:

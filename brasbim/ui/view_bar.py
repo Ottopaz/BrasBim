@@ -28,7 +28,6 @@ from brasbim.core import intervention, pens
 from brasbim.ui import icons, theme
 from brasbim.ui.plan_view import ZOOM_PERCENTS, PlanView
 from brasbim.ui.section_view import SectionView
-from brasbim.ui.tools import fmt
 
 DETAIL_LABEL = {"simple": "Simplificado", "layers": "Por camadas"}
 
@@ -91,6 +90,7 @@ class ViewBar(QFrame):
         for value in ZOOM_PERCENTS:
             self.zoom.addItem(f"{value}%", value)
         self.zoom.setMinimumContentsLength(5)
+        self.zoom.setMinimumWidth(self.zoom.fontMetrics().horizontalAdvance("4000%") + 30)
         self.zoom.activated.connect(lambda i: self.set_zoom(self.zoom.itemData(i)))
         self.zoom.lineEdit().returnPressed.connect(
             lambda: self.set_zoom(self.zoom.lineEdit().text()))
@@ -126,16 +126,27 @@ class ViewBar(QFrame):
         for widget in (self.layers, self.detail, self.pens, self.situation):
             layout.addWidget(widget)
         layout.addStretch(1)
+        # Só quando há: "N ocultos · Mostrar tudo" (§4)
+        self.hidden_label = QLabel()
+        self.show_all = _button("eye", "Mostrar os elementos ocultos nesta sessão",
+                                "Mostrar tudo")
+        self.show_all.clicked.connect(window.show_all)
+        layout.addWidget(self.hidden_label)
+        layout.addWidget(self.show_all)
         # À direita: chave Escolher travados (§5)
-        self.pick_locked = _button("lock", "Escolher travados: desligada, o clique e a "
+        self.pick_locked = _button("lock", "Escolher travados — desligada, o clique e a "
                                    "janela não pegam os elementos travados (a atração "
                                    "continua)", "Escolher travados")
         self.pick_locked.setCheckable(True)
+        self.pick_locked.setToolButtonStyle(Qt.ToolButtonIconOnly)  # o nome fica na dica
         # Marcada é o normal: o cadeado fica na cor do texto, sem a versão clara.
         self.pick_locked.setIcon(QIcon(icons.icon("lock").pixmap(16, QIcon.Normal, QIcon.Off)))
         self.pick_locked.setChecked(True)
         self.pick_locked.toggled.connect(window.set_pick_locked)
         layout.addWidget(self.pick_locked)
+        self.texted = (self.rotation, self.layers, self.detail, self.pens, self.situation,
+                       self.show_all)
+        self.tips = {b: b.toolTip() for b in self.texted}
         self.plan_only = (self.rotation, self.scale_icon, window.scale_combo, self.detail)
 
     # --- vista ------------------------------------------------------------------------
@@ -190,6 +201,13 @@ class ViewBar(QFrame):
         self.pens.setText(pens.table(pens.config(doc), self.window.window_pens)["name"])
         self.situation.setText(intervention.VIEW_LABEL[doc.situation_view])
         self.pick_locked.setChecked(self.window.ctx.pick_locked)
+        hidden = len(self.window.ctx.hidden)
+        self.hidden_label.setText(f"{hidden} oculto{'s' if hidden != 1 else ''} ·")
+        self.hidden_label.setVisible(bool(hidden))
+        self.show_all.setVisible(bool(hidden))
+        self.refresh_zoom()
+        self._fit_texts()
+        return
         self.refresh_zoom()
 
     def ask_rotation(self) -> None:
@@ -201,9 +219,22 @@ class ViewBar(QFrame):
         if ok:
             self.window.rotate_view(value)
 
+    def _fit_texts(self) -> None:
+        """Sem lugar para tudo, os botões mostram só o ícone; o valor vai para a dica."""
+        for button in self.texted:
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.setToolTip(f"{self.tips[button]}: {button.text()}")
+        if self.layout().sizeHint().width() > self.width():
+            for button in self.texted:
+                button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_texts()
+
     def refresh_zoom(self) -> None:
         degrees = math.degrees(self.window.plan.rotation)
-        self.rotation.setText(f"{fmt(round(degrees, 1) + 0.0)}°")
+        self.rotation.setText(f"{round(degrees, 1) + 0.0:.1f}°".replace(".", ","))
         view = self.view()
         if view is None:
             return

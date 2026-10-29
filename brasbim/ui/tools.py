@@ -242,6 +242,9 @@ class PlanContext:
         # Giro da vista da planta (spec/ui 39 §3), em radianos: a grade, as guias, o Shift
         # e as setas seguem a tela.
         self.view_angle = 0.0
+        # Ocultos da sessão (spec/ui 39 §4): não aparecem, não atraem, não são escolhidos
+        # nem esticados, só na planta da janela e no 3D.
+        self.hidden: set[str] = set()
         self._index = None
 
     def invalidate(self) -> None:
@@ -257,7 +260,7 @@ class PlanContext:
         if self._plan is None:
             storey = self.session.storey
             self._plan = (plan.storey_plan(self.session.doc, storey, detail=self.detail,
-                                           show_above=self.show_above)
+                                           show_above=self.show_above, hide=self.hidden)
                           if storey else plan.Plan())
             if not self.pick_locked:
                 self._plan.locked |= edit_state.locked_ids(self.session.doc)
@@ -267,7 +270,8 @@ class PlanContext:
     def walls(self) -> list[snap.WallPath]:
         if self._walls is None:
             storey = self.session.storey
-            self._walls = snap.wall_paths(self.session.doc, storey) if storey else []
+            self._walls = [w for w in snap.wall_paths(self.session.doc, storey)
+                           if w.gid not in self.hidden] if storey else []
         return self._walls
 
     @property
@@ -5361,7 +5365,8 @@ class AreaTool(Tool):
         doc, found = self.session.doc, {}
         for storey in doc.storeys():
             found.update(dict.fromkeys(selection_area.touched(
-                plan.storey_plan(doc, storey, show_below=False), area)))
+                plan.storey_plan(doc, storey, show_below=False, hide=self.ctx.hidden),
+                area)))
         return list(found)
 
     def _drop(self, q: Point) -> None:
@@ -5531,6 +5536,7 @@ def selection_actions(doc, gids) -> list[str]:
     out += ["select_similar", "situation"]  # spec/ui 23 §7, spec/ui 31 §2
     locked = [e for e in elements if edit_state.is_locked(doc, e)]
     out.append("unlock" if len(locked) == len(elements) else "lock")  # spec/ui 39 §5
+    out.append("hide")  # spec/ui 39 §4
     out.append("delete")
     return out
 

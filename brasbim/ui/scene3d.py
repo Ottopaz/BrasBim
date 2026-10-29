@@ -210,6 +210,7 @@ class Scene:
         self.meshes: dict[str, Mesh] = {}
         # Malhas das camadas ocultas (spec/ui 18 §4), guardadas para voltar sem tesselar.
         self._hidden: dict[str, Mesh] = {}
+        self.extra_hidden: set[str] = set()  # ocultos da janela (spec/ui 39 §4)
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
         self.tessellations = 0
         self._settings = ifcopenshell.geom.settings()
@@ -351,6 +352,7 @@ class Scene:
     def apply_layers(self) -> None:
         """Tira da cena as malhas das camadas ocultas e devolve as que voltaram a aparecer."""
         hidden = display_layers.hidden_ids(self.doc) if self.doc is not None else set()
+        hidden = hidden | self.extra_hidden
         for gid in [g for g in self.meshes if g in hidden]:
             self._hidden[gid] = self.meshes.pop(gid)
         for gid in [g for g in self._hidden if g not in hidden]:

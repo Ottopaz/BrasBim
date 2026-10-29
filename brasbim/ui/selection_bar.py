@@ -41,6 +41,8 @@ ACTIONS = {
                   "a construir, existente, a demolir, a regularizar… (projeto legal)"),
     "lock": ("lock", "Travar", "o elemento não pode ser editado; continua escolhível"),
     "unlock": ("unlock", "Destravar", "o elemento volta a poder ser editado"),
+    "hide": ("eye_off", "Ocultar",
+             "some da planta e do 3D só nesta sessão; Exibir > Mostrar tudo traz de volta"),
     "detach": ("detach", "Soltar da parede", "o objeto fica livre, no mesmo lugar, sem o vão"),
     "pick_curves": ("pick_curves", "Pegar linhas",
                     ("clique ou tecle Enter sobre as linhas do desenho para pô-las no terreno; "
@@ -70,7 +72,7 @@ class SelectionBar(QFrame):
         for key, (icon_name, name, usage) in ACTIONS.items():
             button = QToolButton(self)
             button.setIcon(icons.icon(icon_name))
-            button.setIconSize(QSize(20, 20))
+            button.setIconSize(QSize(18, 18))
             button.setAutoRaise(True)
             button.setToolTip(f"{name} — {usage}")
             button.clicked.connect(lambda _=False, k=key: self.run_action(k))

@@ -1051,16 +1051,20 @@ def _contained(storey, ifc_class: str, doc: Document) -> list:
 
 
 def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "simple",
-                show_above: bool = True) -> Plan:
+                show_above: bool = True, hide=frozenset()) -> Plan:
     """Planta do pavimento. ``detail``: ``simple`` ou ``layers`` (spec/ui 06 §2);
-    ``show_above``: paredes e vãos acima do plano em tracejado (§3.2)."""
+    ``show_above``: paredes e vãos acima do plano em tracejado (§3.2); ``hide``: elementos
+    ocultos só na janela (spec/ui 39 §4), que saem como os de camada oculta."""
     global _decomposition
     outer = _decomposition is None
     if outer:
         _decomposition = {}
+    previous = getattr(doc, "extra_hidden", None)
+    doc.extra_hidden = set(hide) if hide else previous
     try:
         return _storey_plan(doc, storey, show_below, detail, show_above)
     finally:
+        doc.extra_hidden = previous
         if outer:
             _decomposition = None
 

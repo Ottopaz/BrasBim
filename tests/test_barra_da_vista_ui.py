@@ -11,6 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from brasbim.core import edit_state
+from brasbim.core.delete import delete_elements
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui.tools import Mods, selection_actions
@@ -107,6 +108,7 @@ def test_vb01_seletores_da_barra(window):
     window.set_view_bar_visible(False)
     assert not bar.isVisible()
     window.set_view_bar_visible(True)
+    window.set_situation_view("project")  # a preferência fica gravada para os outros testes
 
 
 def test_vb02_zoom_anterior_e_seguinte(window):
@@ -172,3 +174,64 @@ def test_vb04_girar_a_vista(window):
     assert plan.rotation == 0.0 and plan.to_screen((1, 0)).y() == pytest.approx(
         plan.to_screen((0, 0)).y())
     assert isinstance(plan.to_screen((0, 0)), QPointF)
+
+
+def test_vb05_giro_na_vista_salva_e_na_prancha(window):
+    import math
+
+    from brasbim.core.drawings import saved_views as sv
+    from brasbim.core.drawings import sheets
+
+    s = window.session
+    _wall(window, (0, 0), (6, 0))
+    window.plan.set_rotation(math.radians(90))
+    gid = window.save_view(name="Térreo girado")
+    state = sv.read_state(s.doc.find(gid))
+    assert sv.options(state)["rotation"] == pytest.approx(90)
+    window.rotate_view(0.0)
+    assert window.open_saved_view(gid)
+    assert window.plan.rotation == pytest.approx(math.pi / 2)  # lida de volta
+    window.project.add_sheet({})
+    (sheet,) = sheets.all_sheets(s.doc)
+    tab = window.sheet_views[sheet.GlobalId]
+    tab.resize(900, 650)
+    tab.fit()
+    menu = tab.context_menu(tab.rect().center().toPointF(), None)
+    (sub,) = [a.menu() for a in menu.actions() if a.menu() is not None]
+    next(a for a in sub.actions() if a.text() == "Térreo girado").trigger()
+    (item,) = sheets.read_state(sheet)["views"]
+    w, h = sheets.view_size(s.doc, item)
+    assert h > 100 > w  # a parede de 6 m na horizontal entra em pé na prancha
+    tab.grab()
+
+
+def test_vb06_ocultar_isolar_mostrar(window):
+    s = window.session
+    a = _wall(window, (0, 0), (5, 0))
+    b = _wall(window, (0, 4), (5, 4))
+    undo_size = len(s.history.undo_stack)
+    s.select([a.GlobalId])
+    assert "hide" in selection_actions(s.doc, s.selection)
+    window.hide_selection()
+    ctx = window.ctx
+    assert not s.selection and a.GlobalId in ctx.hidden
+    assert a.GlobalId not in {sh.owner for sh in ctx.plan.shapes}  # não aparece
+    assert ctx.plan.pick((2.5, 0.0), 0.1) is None  # não é escolhido
+    assert ctx.snap((5.02, 0.03), Mods()).kind != "end"  # não atrai
+    assert a.GlobalId not in window.scene.meshes and b.GlobalId in window.scene.meshes
+    assert window.view_bar.hidden_label.text() == "1 oculto ·"
+    assert not window.view_bar.show_all.isHidden()
+    assert len(s.history.undo_stack) == undo_size  # nada no IFC nem no diário
+    window.show_all()
+    assert not ctx.hidden and a.GlobalId in window.scene.meshes
+    assert window.view_bar.show_all.isHidden()
+    s.select([b.GlobalId])
+    window.isolate_selection()
+    assert a.GlobalId in ctx.hidden and b.GlobalId not in ctx.hidden
+    window.show_all()
+    s.select([a.GlobalId])
+    window.hide_selection()
+    s.run(lambda: delete_elements(s.doc, [a.GlobalId])[0])
+    assert a.GlobalId not in ctx.hidden  # excluído sai da lista
+    window.undo()
+    assert s.doc.find(a.GlobalId) is not None and a.GlobalId not in ctx.hidden

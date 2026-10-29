@@ -164,7 +164,7 @@ def test_ui33_mini_barra(window):
     assert not bar.isHidden()
     assert bar.visible_actions() == ["move", "copy", "rotate", "mirror", "split",
                                      "auto_dimension", "select_similar", "situation",
-                                     "lock", "delete"]  # Cotar: spec/ui 13 §4.5; spec/ui 23 §7
+                                     "lock", "hide", "delete"]  # Cotar: spec/ui 13 §4.5; spec/ui 23 §7
     view = window.plan.rect()
     assert view.contains(QRect(bar.pos(), bar.size()))
     _, y0, _, y1 = window.plan.selection_rect()
@@ -175,7 +175,7 @@ def test_ui33_mini_barra(window):
     s.select([door])
     window.plan.repaint()
     assert bar.visible_actions() == ["move", "copy", "flip_opening", "flip_hinges",
-                                     "select_similar", "situation", "lock", "delete"]
+                                     "select_similar", "situation", "lock", "hide", "delete"]
     tool = window.toolbox.active  # durante um arrasto, a mini-barra some
     tool.press((3, 0.2), Mods())
     window.plan.repaint()
