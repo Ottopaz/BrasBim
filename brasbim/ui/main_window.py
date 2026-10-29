@@ -89,6 +89,7 @@ from brasbim.ui.types_dialog import (
     WindowTypesDialog,
 )
 from brasbim.ui.view3d import AreaView3D, View3D, storey_of
+from brasbim.ui.view_bar import ViewBar
 
 STATE_VERSION = 3  # disposição de painéis e barras; muda quando as barras mudam
 _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
@@ -97,6 +98,7 @@ _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
 SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
 SITUATION_VIEW_KEY = "situacao/vista"  # spec/ui 31 §3
+VIEW_BAR_KEY = "barras/barra_da_vista"  # spec/ui 39 §2
 
 
 def _settings() -> QSettings:
@@ -619,6 +621,34 @@ class MainWindow(QMainWindow):
         self.ctx.detail = detail
         self.ctx.invalidate()
         self.plan.update()
+        if hasattr(self, "view_bar"):
+            self.view_bar.refresh()
+
+    def set_view_bar_visible(self, visible: bool) -> None:
+        """Exibir > Barras > Barra da vista (spec/ui 39 §2)."""
+        self.view_bar_action.setChecked(bool(visible))
+        self.view_bar.setVisible(bool(visible))
+
+    def set_pick_locked(self, value: bool) -> None:
+        """Chave Escolher travados (spec/ui 39 §5): o que sai da escolha sai da seleção."""
+        self.ctx.pick_locked = bool(value)
+        self.ctx.invalidate()
+        if not value:
+            locked = edit_state.locked_ids(self.session.doc)
+            if self.session.selection & locked:
+                self.session.select(self.session.selection - locked)
+        self.view_bar.pick_locked.setChecked(bool(value))
+        self.plan.update()
+
+    def use_combination(self, comb_id: str) -> None:
+        """Combinação de camadas escolhida na barra da vista (spec/ui 18 §6)."""
+        comb = display_layers.combination(self.session.doc, comb_id)
+        if comb is not None:
+            self.session.set_display(display_layers.display_of(comb["states"]))
+
+    def show_layers(self) -> None:
+        self.layers_dock.show()
+        self.layers_dock.raise_()
 
     def set_show_above(self, value: bool) -> None:
         """Exibir > Elementos acima do plano de corte (spec/ui 06 §3.2)."""
@@ -651,7 +681,15 @@ class MainWindow(QMainWindow):
         for value in storeys_.SCALES:
             self.scale_combo.addItem(f"1:{value}", value)
         self.scale_combo.currentIndexChanged.connect(self._scale_chosen)
-        self.statusBar().addPermanentWidget(self.scale_combo)
+        # A escala fica na barra da vista (spec/ui 39 §2), sob a planta.
+        self.view_bar = ViewBar(self)
+        self.central.layout().insertWidget(2, self.view_bar)
+        self.view_bar_action = self._action(self.bars_menu, "Barra da vista",
+                                            self.set_view_bar_visible)
+        self.view_bar_action.setCheckable(True)
+        self.view_bar_action.setChecked(True)
+        self.plan.frame_changed.connect(self.view_bar.refresh_zoom)
+        self.tabs.currentChanged.connect(lambda _i: self.view_bar.refresh())
 
     def _restore(self) -> None:
         settings = _settings()
@@ -688,6 +726,8 @@ class MainWindow(QMainWindow):
         limits = settings.value(SHEET_LIMITS_KEY)
         if limits is not None:
             self.set_sheet_limits(str(limits).lower() == "true", save=False)
+        if str(settings.value(VIEW_BAR_KEY, True)).lower() == "false":
+            self.set_view_bar_visible(False)
         situation = settings.value(SITUATION_VIEW_KEY)
         if situation in self.situation_actions:
             self.set_situation_view(situation, save=False)
@@ -776,6 +816,7 @@ class MainWindow(QMainWindow):
         self.view3d.update()
         self._refresh_title()
         self._refresh_scale()
+        self.view_bar.refresh()
         undo = self.session.history.undo_stack
         redo = self.session.history.redo_stack
         self.undo_action.setEnabled(bool(undo))
@@ -833,6 +874,8 @@ class MainWindow(QMainWindow):
         if save:
             _settings().setValue(SITUATION_VIEW_KEY, view)
         self.session.set_situation_view(view)
+        if hasattr(self, "view_bar"):
+            self.view_bar.refresh()
 
     def set_selection_situation(self, code: str) -> None:
         """Editar > Situação e mini-barra Situação (spec/ui 31 §2)."""
@@ -1069,6 +1112,7 @@ class MainWindow(QMainWindow):
         view = self.section_views.get(gid)
         if view is None:
             view = SectionView(self.session, gid)
+            view.frame_changed.connect(self.view_bar.refresh_zoom)
             view.show_weights = self.weights_action.isChecked()
             self.section_views[gid] = view
             self.tabs.addTab(view, view.title)
@@ -2305,6 +2349,7 @@ class MainWindow(QMainWindow):
         settings.setValue("detalhe_planta", self.ctx.detail)
         settings.setValue("acima_do_corte", self.ctx.show_above)
         settings.setValue(VISIBLE_KEY, self.command_line_action.isChecked())
+        settings.setValue(VIEW_BAR_KEY, self.view_bar_action.isChecked())
         self.assistant.shutdown()
         self.session.close()
         event.accept()

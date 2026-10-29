@@ -240,6 +240,26 @@ ICONS = {
               'stroke-width="1"/>',
     "table": '<rect x="3.75" y="4.75" width="16.5" height="14.5"/>'
              '<path d="M3.75 9 H20.25 M3.75 13.5 H20.25 M10 9 V19.25" stroke-width="1"/>',
+    # barra da vista (spec/ui 39 §2): lupa com seta para trás e para a frente; enquadrar
+    # (cantos em volta de um retângulo); régua da escala; detalhe (parede com camadas);
+    # pena de desenho; giro da vista (folha inclinada com a seta de giro)
+    "zoom_prev": '<circle cx="10" cy="10" r="6.25"/><path d="M14.5 14.5 L20.5 20.5"/>'
+                 '<path d="M11.5 7.25 L8.75 10 L11.5 12.75" stroke-width="1.25"/>',
+    "zoom_next": '<circle cx="10" cy="10" r="6.25"/><path d="M14.5 14.5 L20.5 20.5"/>'
+                 '<path d="M8.5 7.25 L11.25 10 L8.5 12.75" stroke-width="1.25"/>',
+    "zoom_fit": '<path d="M3.75 8.5 V3.75 H8.5 M15.5 3.75 H20.25 V8.5 M20.25 15.5 V20.25 '
+                'H15.5 M8.5 20.25 H3.75 V15.5"/>'
+                '<rect x="8.25" y="9.25" width="7.5" height="5.5" stroke-width="1"/>',
+    "scale": '<rect x="2.75" y="8.75" width="18.5" height="6.5"/>'
+             '<path d="M6.5 9 V12 M10.25 9 V13 M14 9 V12 M17.75 9 V13" stroke-width="1"/>',
+    "detail": '<rect x="7.75" y="2.75" width="8.5" height="18.5"/>'
+              '<path d="M10.25 3 V21 M13.75 3 V21" stroke-width="1"/>',
+    "pens": '<path d="M5 19 L7 13.5 L15.5 5 L19 8.5 L10.5 17 Z"/>'
+            '<path d="M5 19 L8.75 15.25" stroke-width="1"/>'
+            '<path d="M13.5 7 L17 10.5" stroke-width="1"/>',
+    "view_rotate": '<path d="M8.4 6.6 L17.4 9.4 L15.6 17.4 L6.6 14.6 Z" stroke-width="1"/>'
+                   '<path d="M20.5 12 A8.5 8.5 0 1 1 15 4.1"/>'
+                   '<path d="M14.5 1.75 L16.5 4.4 L13.75 6.25"/>',
 }
 
 # Ferramentas de modelagem em isometria (spec/ui 34 §2): substituem os desenhos em planta.

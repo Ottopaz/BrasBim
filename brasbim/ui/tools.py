@@ -236,6 +236,9 @@ class PlanContext:
         self.accumulate = True
         self.hover: str | None = None  # elemento realçado sob o cursor
         self.area: selection_area.Area | None = None  # área de seleção (spec/ui 38 §2)
+        # Chave Escolher travados (spec/ui 39 §5): desligada, o clique e a janela não pegam
+        # os travados; a atração continua.
+        self.pick_locked = True
         self._index = None
 
     def invalidate(self) -> None:
@@ -249,6 +252,8 @@ class PlanContext:
             self._plan = (plan.storey_plan(self.session.doc, storey, detail=self.detail,
                                            show_above=self.show_above)
                           if storey else plan.Plan())
+            if not self.pick_locked:
+                self._plan.locked |= edit_state.locked_ids(self.session.doc)
         return self._plan
 
     @property

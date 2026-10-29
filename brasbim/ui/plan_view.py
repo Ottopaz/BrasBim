@@ -20,6 +20,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from brasbim.core import edit_state, pens
+from brasbim.core import storeys as storeys_
 from brasbim.core.plan import ABOVE_WEIGHT, VIEW_WEIGHT
 from brasbim.core.snap import KIND_LABEL
 from brasbim.ui import theme
@@ -88,7 +89,106 @@ def snap_marker(painter: QPainter, q: QPointF, kind: str, color) -> None:
     else:  # grade
         painter.drawEllipse(q, 1.5, 1.5)
 
-class PlanView(QWidget, ToolInput):
+FRAMES_MAX = 20  # enquadramentos guardados por aba (spec/ui 39 §2.1)
+FRAME_PAUSE_MS = 400  # zoom ou deslocamento parados por este tempo viram enquadramento
+ZOOM_PERCENTS = (25, 50, 100, 200, 400)
+
+
+class FrameHistory:
+    """Zoom anterior e seguinte e zoom em % (spec/ui 39 §2.1), para a planta e os cortes.
+
+    Quem usa tem ``scale`` (px por metro), ``origin``, ``rotation``, ``to_screen``,
+    ``to_world``, ``drawing_scale()`` (denominador da escala) e o sinal ``frame_changed``.
+    Um enquadramento é (escala da tela, centro x, centro y, giro). É estado da janela.
+    """
+
+    rotation = 0.0
+
+    def _init_frames(self) -> None:
+        self.frames: list[tuple] = []
+        self.frame_index = -1
+        self._noted = None
+        self._frame_timer = QTimer(self, singleShot=True, interval=FRAME_PAUSE_MS)
+        self._frame_timer.timeout.connect(self.remember_frame)
+
+    def current_frame(self) -> tuple:
+        cx, cy = self.to_world(QPointF(self.width() / 2, self.height() / 2))
+        return (round(self.scale, 6), round(cx, 6), round(cy, 6), round(self.rotation, 9))
+
+    def note_frame(self) -> None:
+        """Depois de cada desenho: se o enquadramento mudou, espera parar para guardar."""
+        frame = self.current_frame()
+        if frame != self._noted:
+            self._noted = frame
+            self._frame_timer.start()
+            self.frame_changed.emit()
+
+    def remember_frame(self) -> None:
+        """Guarda o enquadramento atual; um novo depois de voltar apaga os seguintes."""
+        self._frame_timer.stop()
+        frame = self._noted = self.current_frame()
+        if 0 <= self.frame_index < len(self.frames) and self.frames[self.frame_index] == frame:
+            return
+        del self.frames[self.frame_index + 1:]
+        self.frames.append(frame)
+        del self.frames[:-FRAMES_MAX]
+        self.frame_index = len(self.frames) - 1
+        self.frame_changed.emit()
+
+    def can_go(self, step: int) -> bool:
+        if self._frame_timer.isActive():  # o que está na tela ainda não foi guardado
+            return step < 0 and bool(self.frames)
+        return 0 <= self.frame_index + step < len(self.frames)
+
+    def go_frame(self, step: int) -> bool:
+        """Anterior (``-1``) ou seguinte (``+1``)."""
+        if self._frame_timer.isActive():
+            if step > 0:
+                return False
+            self.remember_frame()
+        index = self.frame_index + step
+        if not 0 <= index < len(self.frames):
+            return False
+        self.frame_index = index
+        self.apply_frame(self.frames[index])
+        return True
+
+    def apply_frame(self, frame) -> None:
+        scale, cx, cy, rotation = frame
+        self.scale, self.rotation = scale, rotation
+        self.origin = QPointF(0, 0)
+        q = self.to_screen((cx, cy))
+        self.origin = QPointF(self.width() / 2 - q.x(), self.height() / 2 - q.y())
+        self._noted = self.current_frame()
+        self._frame_timer.stop()
+        if hasattr(self, "_sync_tol"):
+            self._sync_tol()
+        self.update()
+        self.frame_changed.emit()
+
+    def paper_scale(self) -> float:
+        """Pixels por metro a 100%: o desenho do tamanho do papel na escala da vista,
+        pelos pontos por polegada do monitor."""
+        dpi = self.physicalDpiX() / max(self.devicePixelRatioF(), 1.0)
+        if not 40 <= dpi <= 600:  # monitor que não informa direito
+            dpi = self.logicalDpiX()
+        return dpi / 25.4 * 1000.0 / self.drawing_scale()
+
+    def zoom_percent(self) -> float:
+        return self.scale / self.paper_scale() * 100.0
+
+    def set_zoom_percent(self, percent: float) -> None:
+        """Zoom em %, com o centro da tela parado."""
+        if percent <= 0:
+            raise ValueError("zoom deve ser maior que zero")
+        cx, cy, rotation = self.current_frame()[1:]
+        scale = min(max(self.paper_scale() * percent / 100.0, _MIN_SCALE), _MAX_SCALE)
+        self.apply_frame((scale, cx, cy, rotation))
+        self.remember_frame()
+
+
+class PlanView(QWidget, ToolInput, FrameHistory):
+    frame_changed = Signal()  # zoom, deslocamento ou giro (barra da vista, spec/ui 39)
     cursor_moved = Signal(float, float)
     hint_changed = Signal(str)
     tool_finished = Signal()
@@ -125,6 +225,11 @@ class PlanView(QWidget, ToolInput):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMinimumSize(300, 200)
         self._init_tool_input()
+        self.rotation = 0.0  # giro da vista em radianos (spec/ui 39 §3)
+        self._init_frames()
+
+    def drawing_scale(self) -> int:
+        return storeys_.scale(self.ctx.session.storey)
 
     # --- coordenadas -----------------------------------------------------------------
 
@@ -193,6 +298,7 @@ class PlanView(QWidget, ToolInput):
                                   self.height() / 2 + cy * self.scale)
         self._sync_tol()
         self.update()
+        self.remember_frame()
 
     def frame_selection(self) -> bool:
         """Enquadra a seleção do pavimento ativo com margem (spec/ui 07 §4)."""
@@ -212,6 +318,7 @@ class PlanView(QWidget, ToolInput):
                               self.height() / 2 + cy * self.scale)
         self._sync_tol()
         self.update()
+        self.remember_frame()
         return True
 
     def showEvent(self, event):
@@ -733,6 +840,7 @@ class PlanView(QWidget, ToolInput):
         painter.end()
         if self.selection_bar is not None:
             self.selection_bar.place()
+        self.note_frame()
 
     # --- entrada ---------------------------------------------------------------------
 
@@ -754,6 +862,9 @@ class PlanView(QWidget, ToolInput):
         self.before_press()
         self.setFocus()
         self._take_input()
+        if event.button() in (Qt.BackButton, Qt.ForwardButton):  # spec/ui 39 §2.1
+            self.go_frame(-1 if event.button() == Qt.BackButton else 1)
+            return
         if event.button() == Qt.MiddleButton or (event.button() == Qt.LeftButton and self._space):
             self._pan = event.position()
             return

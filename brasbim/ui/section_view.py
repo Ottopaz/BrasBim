@@ -8,14 +8,14 @@ das regiões cortadas são os da planta.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from brasbim.core import pens
 from brasbim.core.document import OpError
 from brasbim.core.drawings import section, views
-from brasbim.ui.plan_view import C, PlanView
+from brasbim.ui.plan_view import C, FrameHistory, PlanView
 
 _MIN_SCALE, _MAX_SCALE = 2.0, 5000.0
 
@@ -29,7 +29,9 @@ def section_category(item) -> str:
     return "opening" if item.weight == section.OPENING_WEIGHT else "view"
 
 
-class SectionView(QWidget):
+class SectionView(QWidget, FrameHistory):
+    frame_changed = Signal()  # barra da vista (spec/ui 39 §2.1)
+
     def __init__(self, session, view_gid: str, parent=None):
         super().__init__(parent)
         self.session = session
@@ -45,6 +47,12 @@ class SectionView(QWidget):
         self._fitted = False
         self.setMinimumSize(300, 200)
         self.setFocusPolicy(Qt.StrongFocus)
+        self._init_frames()
+
+    def drawing_scale(self) -> int:
+        view = self.view
+        return self.scale_override or (views.read_state(view)["scale"] if view is not None
+                                       else 50)
 
     # --- dados ---------------------------------------------------------------------------
 
@@ -106,6 +114,7 @@ class SectionView(QWidget):
                               self.height() / 2 + cy * self.scale)
         self._fitted = True
         self.update()
+        self.remember_frame()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -136,6 +145,7 @@ class SectionView(QWidget):
         painter.fillRect(self.rect(), C["background"])
         self.paint(painter, self.session.selection)
         painter.end()
+        self.note_frame()
 
     def paint(self, painter: QPainter, selection=()) -> None:
         """O desenho (também usado na prancha e no PDF, spec/ui 15 §3)."""
@@ -191,6 +201,9 @@ class SectionView(QWidget):
 
     def mousePressEvent(self, event):
         self.setFocus()
+        if event.button() in (Qt.BackButton, Qt.ForwardButton):  # spec/ui 39 §2.1
+            self.go_frame(-1 if event.button() == Qt.BackButton else 1)
+            return
         if event.button() == Qt.MiddleButton:
             self._pan = event.position()
             return
