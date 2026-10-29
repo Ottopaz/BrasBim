@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Painéis Pavimentos e Navegador (``spec/ui/40-reticencias-paineis-e-orientacao-3d.md``
-§3 e §5, NV01–NV02). O resultado é conferido no modelo IFC."""
+§3 e §5, PN01–PN02). O resultado é conferido no modelo IFC."""
 
 import os
 
@@ -18,7 +18,7 @@ from brasbim.core.quantities import tables as tables_
 from brasbim.ui.project_panel import SECTIONS
 
 
-def test_nv01_paineis_pavimentos_e_navegador(window):
+def test_pn01_paineis_pavimentos_e_navegador(window):
     s = window.session
     docks = {d.objectName(): d for d in window.findChildren(QDockWidget)}
     assert "projeto" not in docks
@@ -51,7 +51,7 @@ def test_nv01_paineis_pavimentos_e_navegador(window):
     assert nav.title.text() == "Tabelas (0)"
 
 
-def test_nv02_criar_abre_a_secao(window):
+def test_pn02_criar_abre_a_secao(window):
     s = window.session
     nav = window.project
     sheet = nav.add_sheet({"title": "Plantas"})

@@ -91,9 +91,9 @@ pedido do revisor.
 - **RT01:** nenhum item de menu (barra e menus de contexto do painel), botão ou aba da
   janela e dos painéis tem "…"; listas, árvores e abas não cortam com reticências; o apelido
   gravado "menu:Exibir/Salvar vista…" vale para Exibir > Salvar vista.
-- **NV01:** existem os painéis Pavimentos e Navegador (e não Projeto); a tabela de
+- **PN01:** existem os painéis Pavimentos e Navegador (e não Projeto); a tabela de
   pavimentos ativa e cria pavimentos; o Navegador tem as seis seções na ordem do §3.2.
-- **NV02:** criar prancha, folha mestra e tabela abre a seção de cada uma, e o título dá a
+- **PN02:** criar prancha, folha mestra e tabela abre a seção de cada uma, e o título dá a
   quantidade.
 - **OR01:** (sem Qt) na vista de topo, o círculo +Z fica no centro e +X à direita; na
   isométrica, os três positivos ficam na frente dos negativos.

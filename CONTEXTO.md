@@ -4,9 +4,34 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (spec/ui 39 implementada; pedidos novos do revisor).*
+*Atualizado em 2026‑10‑29 (spec/ui 40 escrita e implementada: sem reticências, painéis Pavimentos e Navegador, orientação no 3D).*
 
-> **Onde paramos (2026‑10‑29, noite):** **spec/ui 39 implementada** nas 6 partes, VB01–VB10
+> **Onde paramos (2026‑10‑29, fim da noite):** os pedidos (a)–(c) do revisor viraram a
+> **spec/ui 40** (`spec/ui/40-reticencias-paineis-e-orientacao-3d.md`, em revisão), feita
+> na ordem pedida, um commit por parte; 829 testes. (b) **Sem reticências**: nenhum menu,
+> botão, aba, dica de campo ou mensagem de andamento tem "…"; botões "…" viraram ícone
+> (paleta, opções; ícones novos `add` e `options`). O Qt não corta com "…":
+> `theme.install_no_elide` (ligado na `MainWindow`) põe `ElideNone` em listas, árvores e
+> abas e dá o texto inteiro na dica; o painel estreito fica sem título
+> (`theme.fit_dock_title`, o nome em Exibir > Painéis não muda); a dica da linha de
+> comando encurta por palavras (`CommandLine._fit_prompt`, `prompt` continua inteiro).
+> Apelidos gravados com "…" no nome do menu valem (`load_aliases`). RT01 em
+> `tests/test_reticencias_ui.py`. (c) **Painéis**: `StoreysPanel` (Pavimentos,
+> `window.storeys`) em cima e o Navegador (`ProjectPanel`, ainda `window.project`, dock
+> `navegador`) embaixo, com seis seções numa fileira de ícones (`SECTIONS`,
+> `show_section`), título com a quantidade e ações em ícone; criar prancha/mestra/tabela
+> abre a seção. `STATE_VERSION` 4: a disposição gravada volta uma vez à padrão. PN01–PN02
+> em `tests/test_paineis_navegador.py`. (a) **Controle de orientação no 3D**: canto
+> superior direito (também no 3D da área); geometria sem Qt em `scene3d`
+> (`ORIENTATION_MARKS`, `orientation_marks`, `orientation_pick`, `current_mark`); clicar
+> olha daquela direção mantendo centro e distância, de novo dá a inversa; arrastar
+> orbita; nada vai para a ferramenta. Vista padrão nova "De baixo". OR01–OR03 em
+> `tests/test_orientacao_3d.py`. Captura do 3D só sai com `QT_QPA_PLATFORM=windows` e
+> `grabFramebuffer()` (sem tela não há OpenGL). **Próximo:** o revisor testa a 40;
+> depois spec 35 (Câmera primeiro) e 36, Fase 2 do plano das barras. Remontar a pasta do
+> pendrive.
+
+> **Antes (2026‑10‑29, noite):** **spec/ui 39 implementada** nas 6 partes, VB01–VB10
 > (`tests/test_barra_da_vista.py`, `tests/test_barra_da_vista_ui.py`); 819 testes. (1)
 > **Travar**: `core/edit_state.py` (Pset `BrasBim_Edicao`: `Travado`, `Ordem`, op
 > `edit_state.set`); `ops.history.run` chama `check_op` antes de cada operação
@@ -420,7 +445,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (808 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (829 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -457,6 +482,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
+| `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |
@@ -1141,6 +1167,11 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
+- **Teste instável VB09** (`tests/test_barra_da_vista.py::test_vb09_ordem_de_desenho`):
+  falha às vezes, também sem as mudanças da spec 40; o desempate por GlobalId (aleatório)
+  muda quem é "a seguinte". Fixar os GlobalIds no teste ou o desempate em `reorder`.
+- spec/ui 40: caixas de combinação (QComboBox) ainda podem cortar com "…" se estreitas;
+  o controle de orientação não anima a troca de vista (a pedido, depois).
 - **Pacotes 17–18 concluídos (2026‑10‑21)**, spec `spec/elementos/escada-terreno.md` em
   revisão: núcleo (`core/structure/stairs.py`, `railings.py`, `core/terrain.py`), planta,
   corte, excluir, transformações, ferramentas, barra Opções, painéis, ícones e 3D
