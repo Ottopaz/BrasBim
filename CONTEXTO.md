@@ -4,7 +4,22 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (linhas-guia, spec/ui 37; specs/ui 35 e 36 aprovadas).*
+*Atualizado em 2026‑10‑29 (área de seleção, spec/ui 38, núcleo; linhas-guia, spec/ui 37).*
+
+> **Onde paramos (2026‑10‑29, fim da noite):** o revisor aprovou as linhas-guia
+> ("ótimo") e pediu uma ferramenta como a "marquee" do Archicad. Lida a ajuda pública
+> (Graphisoft AC18–AC28, Autodesk) e escrita a **spec/ui 38**
+> (`spec/ui/38-area-de-selecao.md`, em revisão; pontos (a)–(c) no §10). Escolhas do
+> revisor: nome **Área de seleção**; primeira entrega com **Esticar**, **3D da área** e
+> **Exportar/imprimir a área**. **Feito:** núcleo do Esticar
+> (`core/selection_area.py`: `Area`, `contains`, `touched`, `stretch_fn`;
+> `transform.stretch_elements` reaproveita o caminho de Mover com uma função que só leva
+> os pontos de dentro; `geom2d.stretched` mantém o ângulo central do arco). Testes
+> AS01–AS04 (`tests/test_area_selecao.py`). **Próximo (nesta ordem):** §2 ferramenta na
+> interface (retângulo/polígono, este/todos os pavimentos, área fica na sessão no
+> `PlanContext`, mover a área, esticar arrastando um ponto dentro, ícone no grupo
+> Edição) com AS05; §4 3D da área em aba temporária com planos de corte (AS06); §5
+> exportar PDF/DXF e imprimir a área (AS07). Depois, spec 35 (Câmera primeiro) e 36.
 
 > **Onde paramos (2026‑10‑29, noite):** o revisor respondeu **"ok"** às specs 35 e 36
 > (todos os pontos (a)–(p) como propostos; status "aprovada") e pediu, antes delas, uma
@@ -350,6 +365,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/31-projeto-legal` | **em revisão**, por etapas (§8): **etapas 1, 2 e 3 feitas** (quadro de áreas: PL05, PL05b–e em `tests/test_quadro_de_areas.py` e `test_interface_quadro_de_areas.py`; situação; PL01–PL03 em `tests/test_projeto_legal.py` e `test_interface_projeto_legal.py`; perfil municipal: PL04, PL09–PL12 em `tests/test_perfil_municipal.py` e `test_interface_perfil_municipal.py`), etapas 4–5 a fazer (PL06–PL08); pontos §11 (a)–(r) |
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
+| `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |
 | `spec/ui/30-ajustes-curtos` | **em revisão**, implementada (PO21 em `tests/test_porta.py`, AJ02–AJ08 em `test_interface_ajustes.py`); pontos §12 |

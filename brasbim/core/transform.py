@@ -95,23 +95,24 @@ def _lone_target(doc: Document, door, fn, exclude: set[str]) -> tuple[str, float
     return hit.wall.gid, hit.along - o["width"] / 2, o
 
 
-def _wall_moves(doc: Document, walls, fn) -> tuple[list[Op], dict]:
+def _wall_moves(doc: Document, walls, fn, mapper=geom2d.mapped) -> tuple[list[Op], dict]:
     ops, changed = [], {}
     for wall in walls:
         state = read_wall(doc, wall)
-        path = geom2d.mapped(geom2d.path_from_dict(state["path"]), fn)
+        path = mapper(geom2d.path_from_dict(state["path"]), fn)
         ops.append(Op("wall.edit", wall.GlobalId, before={"path": state["path"]},
                       after={"path": path.to_dict()}))
         changed[wall.GlobalId] = {**state, "path": path.to_dict()}
     return ops, changed
 
 
-def _transform(doc: Document, gids, fn, label: str, lone_allowed: bool) -> Transaction:
+def _transform(doc: Document, gids, fn, label: str, lone_allowed: bool,
+               mapper=geom2d.mapped) -> Transaction:
     walls, lone = _split(doc, gids)
     if lone and not lone_allowed:
         raise OpError(f"gire a parede que contém a {door_cmd.kind(lone[0]).noun}")
     _check_follows(walls)
-    ops, changed = _wall_moves(doc, walls, fn)
+    ops, changed = _wall_moves(doc, walls, fn, mapper)
     moved = {w.GlobalId for w in walls}
     for door in lone:
         wall, distance, _ = _lone_target(doc, door, fn, moved)
@@ -762,6 +763,39 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda items: _misc_ops(doc, items, fn, mirror_axis=axis, copying=keep))
     return (intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids) if keep
             else tx)
+
+
+def stretch_elements(doc: Document, gids, area, vector) -> Transaction:
+    """Estica pela área de seleção (spec/ui 38 §3): pontas, vértices e pontos de inserção
+    dentro de ``area`` andam pelo vetor; os de fora ficam. O que está todo dentro anda
+    inteiro. Objeto preso à parede só acompanha a parede."""
+    from brasbim.core import selection_area
+    from brasbim.core.objects import elements as objects
+
+    fn = selection_area.stretch_fn(area, vector)
+    moving = _moving(doc, gids)
+
+    def core(others):
+        rest, structure, lone = _structure(doc, others)
+        _check_lone(doc, lone, fn)
+        ops = (_edit_ops(doc, structure, lambda e: _moved_state(doc, e, fn, 0.0))
+               + _opening_ops(doc, structure, fn, lone))
+        return _join(doc, "Esticar", rest, lambda: _transform(
+            doc, rest, fn, "Esticar", True, geom2d.stretched), ops)
+
+    def objects_ops(found):
+        free = [e for e in found if objects.read_state(doc, e)["host"] is None]
+        return _object_ops(doc, free, moving, "move", fn, vector)
+
+    tx = _with_objects("Esticar", doc, gids, lambda rest: _with_annotations(
+        "Esticar", doc, rest, core,
+        lambda annos: _anno_ops(doc, annos, fn, lambda a: a, False, moving)),
+        objects_ops, lambda found: _grid_ops(doc, found, fn),
+        lambda ids: _skylight_ops(doc, ids, fn), lambda items: _misc_ops(doc, items, fn))
+    ops = [o for o in tx.ops if o.before is None or o.before != o.after]  # sem as nulas
+    if not any(o.before != o.after for o in ops):
+        raise OpError("nada a esticar: nenhum ponto dentro da área")
+    return Transaction("Esticar", ops)
 
 
 def _hosted_copies(doc: Document, tx: Transaction, gids, vector) -> Transaction:

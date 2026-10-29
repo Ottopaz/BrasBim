@@ -550,6 +550,17 @@ def mapped(path: Path, fn) -> Path:
     return ArcPath(start, end, path.radius, path.ccw, path.large)
 
 
+def stretched(path: Path, fn) -> Path:
+    """Caminho com as pontas levadas por ``fn`` (que pode mover só uma delas): o arco
+    mantém o ângulo central e o sentido (spec/ui 38 §3)."""
+    start, end = fn(path.start), fn(path.end)
+    if isinstance(path, LinePath):
+        return LinePath(start, end)
+    chord = math.dist(path.start, path.end)
+    scale = math.dist(start, end) / chord if chord > 1e-12 else 1.0
+    return ArcPath(start, end, path.radius * scale, path.ccw, path.large)
+
+
 def translation(v: Point):
     return lambda p: (p[0] + v[0], p[1] + v[1])
 

@@ -979,6 +979,26 @@ Conhecimento geral (CG): projeção isométrica. Pedido e print do revisor
 - CG: projeção de ponto em reta, interseção de retas.
 - Nada de `_restrito/`. "Linhas-guia" e "ponto de referência" são termos comuns em pt‑BR.
 
+### `spec/ui/38-area-de-selecao.md`
+*Interação — área de seleção (esticar, 3D da área, exportar e imprimir a área)*; data 2026-10-29; situação em revisão (implementação por etapas: §3 núcleo feito; §2, §4, §5 a fazer).
+
+- Ajuda pública Graphisoft (lida em 2026‑10‑29): Marquee Area (AC19,
+  help.graphisoft.com/AC/19/INT/AC19Help/02_Interaction/02_Interaction-42.htm); Marquee
+  Area Definition: Single Story or All Stories (AC18, …/AC18Help/02_Interaction/
+  02_Interaction-47.htm); Show/View Marquee Area in 3D (AC18, …/02_Interaction-50.htm);
+  Stretching with the Marquee Tool (AC20, …/AC20Help/02_Interaction/02_Interaction-88.htm);
+  Copy/Paste Marquee Area (AC28, …/_AC28_Help/030_Interaction/030_Interaction-36.htm).
+  Retirado: área retangular ou poligonal que não seleciona elementos; um pavimento ou
+  todos; esticar pontos dentro e mover o que está todo dentro; arcos mantêm o ângulo
+  central; 3D só do que toca a área; salvar o pedaço como PDF/DWG.
+- Ajuda pública Autodesk: AutoCAD 2025 STRETCH por janela de cruzamento (objetos
+  inteiros dentro se movem, os cortados esticam); Revit 2024/2025 Crop Region e Section
+  Box (recorte da vista e caixa de corte 3D).
+- Pesquisa: `research_notes/Pesquisa Archicad Revit AutoCAD/interface_e_interacao.md` §3
+  (Selection Box do Revit sobrescreve o 3D padrão: aqui, aba temporária) e
+  `archicad_modelagem.md` (área "grossa" para esticar em todos os pavimentos).
+- Nada de `_restrito/`. "Área de seleção" e "Esticar" são termos comuns em pt‑BR.
+
 ## Parte B: pesquisa de 2026‑10‑21 (Archicad, Revit, AutoCAD)
 
 Fontes públicas acessadas em 2026‑10‑21 por 15 frentes de pesquisa, só na web, sem
