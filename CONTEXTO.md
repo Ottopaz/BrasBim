@@ -4,9 +4,27 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (ícones isométricos; spec/ui 34).*
+*Atualizado em 2026‑10‑29 (pesquisa complementar; specs/ui 35 e 36).*
 
-> **Onde paramos (2026‑10‑29, depois):** começou o pedido de **layout e UX**. Spec
+> **Onde paramos (2026‑10‑29, fim do dia):** feita a **pesquisa complementar** da spec/ui 34
+> §4 em fontes públicas (help Archicad AC25–AC30, help Autodesk Revit/AutoCAD 2023–2026,
+> fórum Graphisoft), registrada em
+> `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_vistas_e_documentacao.md`
+> (com lacunas declaradas). Escritas duas specs, **em revisão**:
+> **`spec/ui/35-elevacao-interna-detalhe-folha-camera.md`** (Vistas: elevação interna por
+> ambiente, com grupo de vistas e letras; detalhe **vivo** com "Congelar em linhas";
+> folha de trabalho 2D; câmera por olho e alvo; anotações que pertencem a uma vista,
+> agregadas por ela no IFC; pontos (a)–(h)) e
+> **`spec/ui/36-polilinha-ponto-figura-desenho.md`** (Documentação: polilinha com arcos
+> por `bulges` e `IfcArcIndex`; **Ponto de apoio** no lugar de "hotspot", `ASSUMEDPOINT`;
+> figura dentro do IFC por `IfcBlobTexture`, com "Calibrar pela medida"; ferramenta
+> Desenho com número e título na prancha, e marcadores mostrando "nº / prancha"; pontos
+> (i)–(p)). Achado: o Qt PDF vem no pacote `PySide6_Pdf`, que a pasta do pendrive ainda não
+> leva. **Próximo:** o revisor revisa as specs 35 e 36; depois implementar na ordem
+> proposta (35: Câmera → Elevação interna → Folha → Detalhe; 36: Ponto de apoio →
+> Polilinha → Figura → Desenho).
+
+> **Antes (2026‑10‑29, depois):** começou o pedido de **layout e UX**. Spec
 > **`spec/ui/34-barra-de-ferramentas.md`** (em revisão). **Feito (§2):** ícones
 > isométricos da modelagem, desenhados sobre prévias aprovadas pelo revisor (porta = folha
 > fechada com maçaneta, "opção A"; janela/vão = parede de 4 linhas; cobertura = 2 águas em

@@ -3,7 +3,7 @@ documento: Barra de ferramentas — ícones isométricos, grupos e ferramentas d
 requisito: pedido do revisor de 2026-10-29 (feedback/prints/barra de ferramentas.png, só como descrição de função)
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-10-29
-status: em revisão; §2 e §3 feitos, §4 a fazer
+status: em revisão; §2 e §3 feitos, §4 especificado nas specs/ui 35 e 36
 revisor: OTTO
 ---
 
@@ -55,11 +55,14 @@ fazem, para fazer do nosso jeito e melhor.
   Hachura, Linha (em cadeia), Círculo, Arco, Curva, Norte e Alteração. Faltam Polilinha
   com arcos, Hotspot, Figura (imagem) e Desenho (pôr desenho na prancha como
   ferramenta).
-- A pesquisa clean‑room não cobre esses temas (lacunas declaradas em
+- A pesquisa clean‑room não cobria esses temas (lacunas em
   `research_notes/.../archicad_documentacao_colaboracao.md`, linha 50;
-  `revit_documentacao_colaboracao.md`, linha 55; `autocad.md`, linhas 132–135): antes da
-  spec de cada ferramenta, fazer a pesquisa complementar dirigida em fontes públicas e
-  registrar numa nota nova em `research_notes/`.
+  `revit_documentacao_colaboracao.md`, linha 55; `autocad.md`, linhas 132–135). **Feita a
+  pesquisa complementar** (2026‑10‑29):
+  `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_vistas_e_documentacao.md`.
+- **Specs (em revisão):** `spec/ui/35-elevacao-interna-detalhe-folha-camera.md` (Vistas) e
+  `spec/ui/36-polilinha-ponto-figura-desenho.md` (Documentação; "Hotspot" passa a se
+  chamar **Ponto de apoio**).
 
 ## 5. Fontes
 Conhecimento geral (CG): projeção isométrica. Pedido e print do revisor
