@@ -104,7 +104,7 @@ class ViewBar(QFrame):
                                      "o modelo não muda)")
         menu = self.rotation.menu()
         menu.addAction("Definir por dois cliques", lambda: window.rotate_view(None))
-        menu.addAction("Digitar o ângulo…", self.ask_rotation)
+        menu.addAction("Digitar o ângulo", self.ask_rotation)
         menu.addAction("Voltar a 0°", lambda: window.rotate_view(0.0))
         layout.addWidget(self.rotation)
         # Escala: o mesmo seletor que estava na barra de estado
@@ -255,4 +255,4 @@ class ViewBar(QFrame):
             action.setChecked(current is not None and current["id"] == comb["id"])
             action.triggered.connect(lambda _=False, c=comb["id"]: self.window.use_combination(c))
         menu.addSeparator()
-        menu.addAction("Camadas…", self.window.show_layers)
+        menu.addAction("Camadas", self.window.show_layers)

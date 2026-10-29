@@ -184,7 +184,7 @@ class ObjectEditor(QDialog):
         self.apply_button = QPushButton("Aplicar ao projeto")
         self.apply_button.setDefault(True)
         self.apply_button.clicked.connect(self.apply)
-        self.save_button = QPushButton("Gravar na biblioteca…")
+        self.save_button = QPushButton("Gravar na biblioteca")
         self.save_button.clicked.connect(self.save_to_library)
         close = QPushButton("Fechar")
         close.clicked.connect(self.reject)

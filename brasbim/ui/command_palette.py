@@ -86,7 +86,7 @@ class CommandPalette(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         self.field = QLineEdit(self)
-        self.field.setPlaceholderText("Buscar comando ou ferramenta…")
+        self.field.setPlaceholderText("Buscar comando ou ferramenta")
         self.field.installEventFilter(self)
         self.field.textChanged.connect(self._filter)
         self.list = QListWidget(self)

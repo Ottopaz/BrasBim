@@ -11,8 +11,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPalette, QPixmap
-from PySide6.QtWidgets import QApplication, QStyleFactory
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QDockWidget,
+    QStyleFactory,
+    QTabBar,
+    QToolTip,
+)
 
 FONT_DIR = Path(__file__).parent / "fonts"
 LOGO_DIR = Path(__file__).parent / "logo"  # gerada por scripts/gerar_logo.py
@@ -42,6 +50,10 @@ OK = "#2F7D4A"
 GRID = "#EAE7EA"
 GRID_MAJOR = "#D8D3D8"
 VIEW3D_BACKGROUND = "#EBE8EB"
+# Eixos do controle de orientação do 3D (spec/ui 40 §4): leste, norte e para cima
+AXIS_X = "#C4473F"
+AXIS_Y = "#5E9A3A"
+AXIS_Z = "#3C6FB8"
 
 
 def rgbf(color: str) -> tuple[float, float, float]:
@@ -196,3 +208,60 @@ def apply(app: QApplication) -> None:
     app.setFont(base)
     app.setPalette(palette())
     app.setStyleSheet(STYLE)
+    install_no_elide(app)
+
+
+class _NoElide(QObject):
+    """Sem reticências do Qt (spec/ui 40 §2): listas, árvores e tabelas cortam o texto seco
+    e dão o texto inteiro na dica; as abas não encurtam o título (aparecem as setas); o
+    painel estreito fica sem título (só os botões), em vez de "Ferr…"."""
+
+    def eventFilter(self, obj, event):
+        kind = event.type()
+        if kind == QEvent.Polish:
+            if isinstance(obj, QAbstractItemView):
+                obj.setTextElideMode(Qt.ElideNone)
+            elif isinstance(obj, QTabBar):
+                obj.setElideMode(Qt.ElideNone)
+        elif kind == QEvent.Resize and isinstance(obj, QDockWidget):
+            fit_dock_title(obj)
+        elif kind == QEvent.ToolTip and isinstance(obj.parent(), QAbstractItemView)                 and obj is obj.parent().viewport():
+            return self._full_text(obj.parent(), event)
+        return False
+
+    @staticmethod
+    def _full_text(view, event) -> bool:
+        index = view.indexAt(event.pos())
+        text = index.data(Qt.DisplayRole) if index.isValid() else None
+        if not isinstance(text, str) or not text or index.data(Qt.ToolTipRole):
+            return False
+        rect = view.visualRect(index)
+        icon_room = view.iconSize().width() + 8 if index.data(Qt.DecorationRole) else 0
+        if view.fontMetrics().horizontalAdvance(text) + icon_room + 8 <= rect.width():
+            return False
+        QToolTip.showText(event.globalPos(), text, view)
+        return True
+
+
+DOCK_TITLE_ROOM = 64  # botões de soltar e fechar e as margens do título do painel
+
+
+def fit_dock_title(dock: QDockWidget) -> None:
+    """Título do painel só se couber inteiro; o nome em Exibir > Painéis não muda."""
+    full = dock.property("titulo_inteiro")
+    if full is None:
+        full = dock.windowTitle()
+        dock.setProperty("titulo_inteiro", full)
+    fits = dock.fontMetrics().horizontalAdvance(full) <= dock.width() - DOCK_TITLE_ROOM
+    title = full if fits else ""
+    if dock.windowTitle() != title:
+        dock.setWindowTitle(title)
+        dock.toggleViewAction().setText(full)
+        dock.setToolTip("" if fits else full)
+
+
+def install_no_elide(app: QApplication) -> None:
+    """Liga o ``_NoElide`` no aplicativo (uma vez só)."""
+    if getattr(app, "_no_elide", None) is None:
+        app._no_elide = _NoElide(app)
+        app.installEventFilter(app._no_elide)

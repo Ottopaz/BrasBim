@@ -496,8 +496,8 @@ class SheetView(QWidget):
             chosen = sorted(self.selected)
             items = self.items
             if len(chosen) == 1 and sheets.is_3d(doc, items[index]):
-                menu.addAction("Largura no papel…", lambda: self.ask_width(index))
-            menu.addAction("Moldura…", lambda: self.ask_frame(chosen))
+                menu.addAction("Largura no papel", lambda: self.ask_width(index))
+            menu.addAction("Moldura", lambda: self.ask_frame(chosen))
             fit = menu.addAction("Ajustar o limite ao desenho",
                                  lambda: self.reset_limits(chosen))
             fit.setEnabled(any(items[i].get("limit") for i in chosen))

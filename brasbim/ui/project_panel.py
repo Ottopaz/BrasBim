@@ -132,13 +132,13 @@ class ProjectPanel(QWidget):
         self.masters.itemDoubleClicked.connect(
             lambda item: self.open_master and self.open_master(item.data(Qt.UserRole)))
         self.open_master = None
-        self.new_master_button = QPushButton("Nova…")
+        self.new_master_button = QPushButton("Nova")
         self.new_master_button.setMenu(self._new_master_menu())
         self.duplicate_master_button = QPushButton("Duplicar")
         self.duplicate_master_button.clicked.connect(self.duplicate_master)
         self.delete_master_button = QPushButton("Excluir")
         self.delete_master_button.clicked.connect(self.delete_master)
-        self.new_sheet_button = QPushButton("Nova prancha…")
+        self.new_sheet_button = QPushButton("Nova prancha")
         self.new_sheet_button.clicked.connect(lambda: self.add_sheet())
         self.delete_sheet_button = QPushButton("Excluir prancha")
         self.delete_sheet_button.clicked.connect(self.delete_sheet)
@@ -150,7 +150,7 @@ class ProjectPanel(QWidget):
         self.tables.itemClicked.connect(
             lambda item: self.session.select([item.data(Qt.UserRole)]))
         self.open_table = None
-        self.new_table_button = QPushButton("Nova tabela…")
+        self.new_table_button = QPushButton("Nova tabela")
         self.new_table_button.setMenu(self._templates_menu())
         self.delete_table_button = QPushButton("Excluir tabela")
         self.delete_table_button.clicked.connect(self.delete_table)
@@ -168,7 +168,7 @@ class ProjectPanel(QWidget):
         self.objects_button.clicked.connect(
             lambda: self._objects_menu().exec(self.objects_button.mapToGlobal(
                 self.objects_button.rect().bottomLeft())))
-        self.library_button = QPushButton("Biblioteca…")
+        self.library_button = QPushButton("Biblioteca")
         self.library_button.clicked.connect(lambda: self.open_library and self.open_library())
         self.open_library = None  # postos pela janela principal
         self.use_object_type = None
@@ -475,25 +475,25 @@ class ProjectPanel(QWidget):
 
         add("Inserir", lambda: self.use_object_type and self.use_object_type(type_gid),
             has_type)
-        add("Editar tipo…", lambda: self.edit_object_type and self.edit_object_type(type_gid),
+        add("Editar tipo", lambda: self.edit_object_type and self.edit_object_type(type_gid),
             has_type)
         add("Duplicar tipo", lambda: self.session.run(
             lambda: oc.duplicate_type(doc, type_gid)), has_type)
-        add("Renomear tipo…", lambda: self._rename_type(type_gid), has_type)
+        add("Renomear tipo", lambda: self._rename_type(type_gid), has_type)
         add("Selecionar ocorrências", lambda: self.session.select(
             [e.GlobalId for e in oc.occurrences(doc, type_gid)]), has_type)
-        add("Substituir tipo…", lambda: self._replace_type(type_gid), has_type)
+        add("Substituir tipo", lambda: self._replace_type(type_gid), has_type)
         add("Excluir tipo", lambda: self._delete_type(type_gid), has_type)
         menu.addSeparator()
-        add("Editar objeto…", lambda: self.edit_object and self.edit_object(object_id),
+        add("Editar objeto", lambda: self.edit_object and self.edit_object(object_id),
             has_def and self.edit_object)
-        add("Novo objeto…", lambda: self.new_object and self.new_object(object_id),
+        add("Novo objeto", lambda: self.new_object and self.new_object(object_id),
             self.new_object)
         updates = library.updates(doc, self.library_index) if self.library_index else {}
         add("Atualizar da biblioteca", lambda: self.session.run(
             lambda: library.update_from(doc, updates[object_id])),
             has_def and object_id in updates)
-        add("Gravar na biblioteca…", lambda: self.save_to_library and self.save_to_library(
+        add("Gravar na biblioteca", lambda: self.save_to_library and self.save_to_library(
             object_id), has_def and self.save_to_library)
         add("Excluir objeto", lambda: self._delete_definition(object_id), has_def)
         return menu
@@ -621,7 +621,7 @@ class ProjectPanel(QWidget):
         menu.addAction("Abrir", lambda: self.open_saved_view and self.open_saved_view(gid))
         menu.addAction("Atualizar com a janela",
                        lambda: self.update_saved_view and self.update_saved_view(gid))
-        menu.addAction("Renomear…", lambda: self.rename_saved_view(gid))
+        menu.addAction("Renomear", lambda: self.rename_saved_view(gid))
         sub = menu.addMenu("Pôr na prancha")
         for sheet in sheets_.all_sheets(doc):
             state = sheets_.read_state(sheet)

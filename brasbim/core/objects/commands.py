@@ -455,7 +455,7 @@ def apply_definition(doc: Document, object_id: str | None, definition: dict,
                         defn, {**defaults, **occ_values}, "occurrence"), occ["mirror"])
                     del built
                 except OpError as err:
-                    problems.append(f"{e.Name or element_type.Name} ({e.GlobalId[:6]}…): "
+                    problems.append(f"{e.Name or element_type.Name} ({e.GlobalId}): "
                                     f"{err}")
                     continue
                 if occ_values != occ["values"]:

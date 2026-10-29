@@ -165,9 +165,9 @@ def test_ui77_painel_do_topo(window):
 
     shape = _field(window, "Forma do topo", QComboBox)
     shape.setCurrentIndex(shape.findData("free"))
-    _set(window, "Pontos (distância altura; …)", "0 2,5; 1,5 3; 6 2,9")
+    _set(window, "Pontos (distância altura; distância altura)", "0 2,5; 1,5 3; 6 2,9")
     assert cmd.read_state(s.doc, south)["top_profile"] == [[0, 2.5], [1.5, 3.0], [6, 2.9]]
-    _set(window, "Pontos (distância altura; …)", "0 2,5; 7 3")  # não chega ao fim: recusa
+    _set(window, "Pontos (distância altura; distância altura)", "0 2,5; 7 3")  # não chega ao fim: recusa
     assert cmd.read_state(s.doc, south)["top_shape"] == "free"
     assert "início ao fim" in _messages(window)
 

@@ -562,7 +562,7 @@ class MasterEditor(QWidget):
         delete.setToolTip("Apagar o que está selecionado (Delete)")
         delete.clicked.connect(self.delete_selected)
         self.bar.addWidget(delete)
-        self.bar.addAction("Papel e margens…", self.edit_paper)
+        self.bar.addAction("Papel e margens", self.edit_paper)
         self.position = QLabel()
         self.position.setStyleSheet(f"color: {theme.INK_SOFT}; padding: 0 8px;")
         self.bar.addWidget(self.position)

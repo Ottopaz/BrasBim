@@ -193,6 +193,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, session: Session):
         super().__init__()
+        theme.install_no_elide(QApplication.instance())  # sem "…" do Qt (spec/ui 40 §2)
         self.session = session
         self.ctx = PlanContext(session)
         self.section_views: dict[str, SectionView] = {}  # abas de corte e fachada
@@ -366,18 +367,18 @@ class MainWindow(QMainWindow):
         bar = self.menuBar()
         file_menu = bar.addMenu("&Arquivo")
         self._action(file_menu, "Novo", self.new_project, "Ctrl+N")
-        self._action(file_menu, "Abrir…", self.open_project, "Ctrl+O")
+        self._action(file_menu, "Abrir", self.open_project, "Ctrl+O")
         self._action(file_menu, "Salvar", self.save_project, "Ctrl+S")
-        self._action(file_menu, "Salvar como…", self.save_project_as, "Ctrl+Shift+S")
+        self._action(file_menu, "Salvar como", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
-        self._action(file_menu, "Importar desenho (DXF, DWG)…", lambda: self.import_drawing())
-        self._action(file_menu, "Exportar PDF…", lambda: self.export_pdf(), "Ctrl+P")
-        self._action(file_menu, "Exportar tabela…", lambda: self.export_table())
+        self._action(file_menu, "Importar desenho (DXF, DWG)", lambda: self.import_drawing())
+        self._action(file_menu, "Exportar PDF", lambda: self.export_pdf(), "Ctrl+P")
+        self._action(file_menu, "Exportar tabela", lambda: self.export_table())
         # Pedaço da planta pela área de seleção (spec/ui 38 §5)
-        self._action(file_menu, "Exportar área (PDF)…", lambda: self.export_area("pdf"))
-        self._action(file_menu, "Exportar área (DXF)…", lambda: self.export_area("dxf"))
-        self._action(file_menu, "Imprimir área…", lambda: self.print_area())
-        self._action(file_menu, "Dados do projeto…", self.edit_project_info)
+        self._action(file_menu, "Exportar área (PDF)", lambda: self.export_area("pdf"))
+        self._action(file_menu, "Exportar área (DXF)", lambda: self.export_area("dxf"))
+        self._action(file_menu, "Imprimir área", lambda: self.print_area())
+        self._action(file_menu, "Dados do projeto", self.edit_project_info)
         file_menu.addSeparator()
         backup_menu = file_menu.addMenu("Salvamento automático")  # spec/ui 21 §2
         group = QActionGroup(self)
@@ -436,8 +437,8 @@ class MainWindow(QMainWindow):
             self.select_mode_actions[value] = action
         self.select_mode_actions[True].setChecked(True)
         edit_menu.addSeparator()
-        self._action(edit_menu, "Paleta de comandos…", self.open_palette, "Ctrl+K")
-        self._action(edit_menu, "Apelidos da linha de comando…", self.edit_aliases)
+        self._action(edit_menu, "Paleta de comandos", self.open_palette, "Ctrl+K")
+        self._action(edit_menu, "Apelidos da linha de comando", self.edit_aliases)
         view_menu = bar.addMenu("E&xibir")
         self._action(view_menu, "Planta", lambda: self.set_view("plan"))
         self._action(view_menu, "3D", lambda: self.set_view("3d"))
@@ -455,7 +456,7 @@ class MainWindow(QMainWindow):
             if key == "iso_sw":
                 standard.addSeparator()
             self._action(standard, label, lambda _=False, k=key: self.standard_view(k))
-        self._action(view_menu, "Salvar vista…", lambda: self.save_view(), "Ctrl+Alt+S")
+        self._action(view_menu, "Salvar vista", lambda: self.save_view(), "Ctrl+Alt+S")
         self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
@@ -546,25 +547,25 @@ class MainWindow(QMainWindow):
             self.situation_actions[key] = action
         self.situation_actions[intervention.DEFAULT_VIEW].setChecked(True)
         project_menu = bar.addMenu("&Projeto")
-        self._action(project_menu, "Tipos de parede…", lambda: self.edit_type("IfcWallType"))
-        self._action(project_menu, "Tipos de porta…", lambda: self.edit_type("IfcDoorType"))
-        self._action(project_menu, "Tipos de janela…",
+        self._action(project_menu, "Tipos de parede", lambda: self.edit_type("IfcWallType"))
+        self._action(project_menu, "Tipos de porta", lambda: self.edit_type("IfcDoorType"))
+        self._action(project_menu, "Tipos de janela",
                      lambda: self.edit_type("IfcWindowType"))
-        self._action(project_menu, "Tipos de pilar…", lambda: self.edit_type("IfcColumnType"))
-        self._action(project_menu, "Tipos de viga…", lambda: self.edit_type("IfcBeamType"))
-        self._action(project_menu, "Tipos de laje…", lambda: self.edit_type("IfcSlabType"))
-        self._action(project_menu, "Materiais…", lambda: self.edit_materials())
-        self._action(project_menu, "Tabelas de penas…", lambda: self.edit_pens())
-        self._action(project_menu, "Perfil municipal…", lambda: self.edit_municipal())
+        self._action(project_menu, "Tipos de pilar", lambda: self.edit_type("IfcColumnType"))
+        self._action(project_menu, "Tipos de viga", lambda: self.edit_type("IfcBeamType"))
+        self._action(project_menu, "Tipos de laje", lambda: self.edit_type("IfcSlabType"))
+        self._action(project_menu, "Materiais", lambda: self.edit_materials())
+        self._action(project_menu, "Tabelas de penas", lambda: self.edit_pens())
+        self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
-        self._action(project_menu, "Novo objeto…", lambda: self.new_object())
-        self._action(project_menu, "Pastas da biblioteca…", self.edit_library_folders)
+        self._action(project_menu, "Novo objeto", lambda: self.new_object())
+        self._action(project_menu, "Pastas da biblioteca", self.edit_library_folders)
         team_menu = bar.addMenu("E&quipe")  # projeto compartilhado (spec/ui 33 §4)
         # lambda: o triggered passa "checked", que tomaria o lugar de name/choose
-        self._action(team_menu, "Compartilhar este projeto na rede…",
+        self._action(team_menu, "Compartilhar este projeto na rede",
                      lambda: self.share_project())
-        self._action(team_menu, "Entrar num projeto da rede…", lambda: self.join_project())
+        self._action(team_menu, "Entrar num projeto da rede", lambda: self.join_project())
         team_menu.addSeparator()
         self.team_actions = [
             self._action(team_menu, "Pedir liberação da seleção",
@@ -581,7 +582,7 @@ class MainWindow(QMainWindow):
         self.leave_action = self._action(team_menu, "Sair do projeto compartilhado",
                                          self.leave_shared)
         help_menu = bar.addMenu("A&juda")
-        self._action(help_menu, "Registrar observação…", self.register_note)
+        self._action(help_menu, "Registrar observação", self.register_note)
         self._action(help_menu, "Sobre", self.about)
 
         self.tools_bar = ToolsBar(self)
@@ -1063,7 +1064,7 @@ class MainWindow(QMainWindow):
             action.setChecked(table["id"] == current)
             action.triggered.connect(lambda _=False, t=table["id"]: self.use_pen_table(t))
         self.pens_menu.addSeparator()
-        self.pens_menu.addAction("Editar tabelas…", lambda: self.edit_pens())
+        self.pens_menu.addAction("Editar tabelas", lambda: self.edit_pens())
 
     def use_pen_table(self, table_id: str) -> bool:
         """Exibir > Tabela de penas: a tabela passa a ser a do projeto (e da janela)."""
@@ -1592,7 +1593,7 @@ class MainWindow(QMainWindow):
                 action.triggered.connect(lambda _=False, g=gid: session.run(
                     lambda: oc.change_type(doc, [e.GlobalId for e in found], g)))
             menu.addSeparator()
-            menu.addAction("Mais na biblioteca…", self.show_library)
+            menu.addAction("Mais na biblioteca", self.show_library)
             menu.exec(QCursor.pos())
 
     def save_object_to_library(self, object_id: str, path: str | None = None) -> str | None:
@@ -1609,7 +1610,7 @@ class MainWindow(QMainWindow):
             folders = user_folders()
             if not folders:
                 self.session.message("acrescente uma pasta sua em Projeto > Pastas da "
-                                     "biblioteca… para gravar objetos", "recusa")
+                                     "biblioteca para gravar objetos", "recusa")
                 self.edit_library_folders()
                 folders = user_folders()
                 if not folders:
@@ -1742,7 +1743,7 @@ class MainWindow(QMainWindow):
         self.team_dock.show()
         ips = ", ".join(f"{ip}:{server.port}" for ip in local_addresses()) or "—"
         self._team_info = (f"O projeto está compartilhado.\n\nNos outros computadores: "
-                           f"Equipe > Entrar num projeto da rede…\nEle aparece na lista; "
+                           f"Equipe > Entrar num projeto da rede\nEle aparece na lista; "
                            f"se não aparecer, digite o endereço:\n\n"
                            f"    {server.host}:{server.port}\n    {ips}\n\n"
                            "Se o Windows perguntar, permita o acesso em Redes privadas.")
@@ -2129,8 +2130,8 @@ class MainWindow(QMainWindow):
     def context_actions(self, view, gid) -> list[tuple[str, object]]:
         """Itens do menu do botão direito na vista, sobre ``gid`` (ou no vazio)."""
         area = ([("3D da área", self.open_area_3d),  # spec/ui 38 §4 e §5
-                 ("Exportar área (PDF)…", lambda: self.export_area("pdf")),
-                 ("Exportar área (DXF)…", lambda: self.export_area("dxf"))]
+                 ("Exportar área (PDF)", lambda: self.export_area("pdf")),
+                 ("Exportar área (DXF)", lambda: self.export_area("dxf"))]
                 if view is self.plan and self.ctx.area is not None else [])
         if not gid:
             if isinstance(view, View3D):
@@ -2193,10 +2194,10 @@ class MainWindow(QMainWindow):
         if not objects.is_object(element):
             return []
         state = objects.read_state(doc, element)
-        out = [("Editar tipo…", lambda: self.edit_object_type(state["type"]))]
+        out = [("Editar tipo", lambda: self.edit_object_type(state["type"]))]
         if self.properties.edit_object is not None:
             object_id = ot.read(doc.get(state["type"]))["definition"]["object_id"]
-            out.append(("Editar objeto…", lambda: self.properties.edit_object(object_id)))
+            out.append(("Editar objeto", lambda: self.properties.edit_object(object_id)))
         if state["host"] is not None:
             out.append(("Soltar da parede", lambda: self.session.run(
                 lambda: oc.detach(doc, element))))
@@ -2349,7 +2350,7 @@ class MainWindow(QMainWindow):
         from brasbim.core.imports import dxf, libredwg
 
         for attempt in (1, 2):
-            self.statusBar().showMessage(f"Lendo {Path(path).name}…")
+            self.statusBar().showMessage(f"Lendo {Path(path).name}")
             QApplication.setOverrideCursor(Qt.WaitCursor)
             try:
                 return dxf.read(path)
@@ -2364,7 +2365,7 @@ class MainWindow(QMainWindow):
             if attempt == 2 or not libredwg.supported() or not self.confirm_download():
                 self._drawing_error(str(error))
                 return None
-            self.statusBar().showMessage("Baixando o conversor de DWG (LibreDWG)…")
+            self.statusBar().showMessage("Baixando o conversor de DWG (LibreDWG)")
             QApplication.setOverrideCursor(Qt.WaitCursor)
             try:
                 libredwg.install()

@@ -47,6 +47,8 @@ from brasbim.ui.tools import fmt
 
 SHORT_GROUP = 6  # grupos de opções com até tantas escolhas viram links lado a lado (§5)
 PLACEHOLDER = "comando, apelido ou x;y"
+FIELD_TIP = ("Digite um comando, um apelido (PD = Parede), uma opção, um número ou um "
+             "ponto: x;y ou @dx;dy")
 ALIASES_KEY = "linha_comando/apelidos"
 VISIBLE_KEY = "linha_comando/visivel"
 
@@ -57,7 +59,11 @@ def load_aliases(settings) -> dict[str, str]:
         changes = json.loads(settings.value(ALIASES_KEY, "") or "{}")
     except (TypeError, ValueError):
         changes = {}
-    return merge_aliases(changes if isinstance(changes, dict) else {})
+    if not isinstance(changes, dict):
+        changes = {}
+    # menus gravados com "…" antes da spec/ui 40 §2 ("menu:Exibir/Salvar vista…")
+    changes = {key.replace("…", ""): value for key, value in changes.items()}
+    return merge_aliases(changes)
 
 
 def save_aliases(settings, aliases: dict[str, str]) -> None:
@@ -119,9 +125,9 @@ class CommandLine(QFrame):
         self.field = QLineEdit()
         self.field.setObjectName("linha_comando_campo")
         # a dica da ferramenta é o texto-fantasma do campo (some ao digitar)
+        self._prompt = PLACEHOLDER
         self.field.setPlaceholderText(PLACEHOLDER)
-        self.field.setToolTip("Digite um comando, um apelido (PD = Parede), uma opção, um "
-                              "número ou um ponto: x;y ou @dx;dy")
+        self.field.setToolTip(FIELD_TIP)
         self.field.setMinimumWidth(160)
         self.field.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.field.installEventFilter(self)
@@ -145,12 +151,28 @@ class CommandLine(QFrame):
     # --- dica e opções (§5) -----------------------------------------------------------
 
     def set_prompt(self, text: str) -> None:
-        self.field.setPlaceholderText(f"{text}   ·   {PLACEHOLDER}" if text else PLACEHOLDER)
+        self._prompt = f"{text}   ·   {PLACEHOLDER}" if text else PLACEHOLDER
+        self._fit_prompt()
 
     @property
     def prompt(self) -> str:
-        """Dica mostrada no campo vazio."""
-        return self.field.placeholderText()
+        """Dica mostrada no campo vazio (inteira, mesmo quando não cabe)."""
+        return self._prompt
+
+    def _fit_prompt(self) -> None:
+        """O Qt corta o texto-fantasma com "…" (spec/ui 40 §2): sem lugar, sai o final
+        "comando, apelido ou x;y" e depois as últimas palavras; a dica inteira fica na dica
+        do campo."""
+        room = self.field.width() - 16
+        metrics = self.field.fontMetrics()
+        text = self._prompt
+        if metrics.horizontalAdvance(text) > room:
+            text = text.removesuffix(f"   ·   {PLACEHOLDER}")
+        while metrics.horizontalAdvance(text) > room and " " in text:
+            text = text.rsplit(" ", 1)[0].rstrip(",.;:")
+        self.field.setPlaceholderText(text)
+        self.field.setToolTip(f"{self._prompt}\n\n{FIELD_TIP}" if text != self._prompt
+                              else FIELD_TIP)
 
     def refresh_tool(self) -> None:
         """Dica e opções da ferramenta ativa (lidas da barra Opções)."""
@@ -332,6 +354,8 @@ class CommandLine(QFrame):
             view.press_escape()
 
     def eventFilter(self, obj, event):
+        if obj is self.field and event.type() == QEvent.Resize:
+            self._fit_prompt()
         if obj is self.field and event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_Escape:

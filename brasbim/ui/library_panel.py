@@ -104,7 +104,7 @@ class FoldersDialog(QDialog):
         self.list.addItems(user_folders())
         layout.addWidget(self.list)
         row = QHBoxLayout()
-        add, remove = QPushButton("Acrescentar…"), QPushButton("Tirar")
+        add, remove = QPushButton("Acrescentar"), QPushButton("Tirar")
         add.clicked.connect(self._add)
         remove.clicked.connect(lambda: self.list.takeItem(self.list.currentRow()))
         row.addWidget(add)
@@ -180,7 +180,7 @@ class LibraryPanel(QWidget):
             self.mode_buttons[mode] = b
         folders = QToolButton()
         folders.setIcon(icon("folder"))
-        folders.setToolTip("Pastas da biblioteca…")
+        folders.setToolTip("Pastas da biblioteca")
         folders.clicked.connect(self.edit_folders)
         top.addWidget(folders)
         layout.addLayout(top)

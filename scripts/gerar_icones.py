@@ -92,6 +92,13 @@ ICONS = {
              '<rect x="14.25" y="9.25" width="7" height="5.5"/>'
              '<path d="M12 4 V20" stroke-dasharray="2 2"/>',
     "delete": '<path d="M5.5 5.5 L18.5 18.5 M18.5 5.5 L5.5 18.5"/>',
+    # acrescentar: sinal de mais (spec/ui 40 §3)
+    "add": '<path d="M12 4.5 V19.5 M4.5 12 H19.5"/>',
+    # ações de um item (spec/ui 40 §2): três traços com um marcador, no lugar de "…"
+    "options": '<path d="M4 6.75 H20 M4 12 H20 M4 17.25 H20"/>'
+               '<circle cx="15" cy="6.75" r="1.75" fill="currentColor"/>'
+               '<circle cx="9" cy="12" r="1.75" fill="currentColor"/>'
+               '<circle cx="13" cy="17.25" r="1.75" fill="currentColor"/>',
     "flip_opening": '<path d="M3 12 H21" stroke-width="2.5"/>'
                     '<path d="M12 4 V9 M12 15 V20"/>'
                     '<path d="M9.5 6.5 L12 4 L14.5 6.5 M9.5 17.5 L12 20 L14.5 17.5"/>',

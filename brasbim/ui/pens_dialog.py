@@ -58,7 +58,7 @@ class PensDialog(QDialog):
         self.tables.currentIndexChanged.connect(self._table_chosen)
         top.addWidget(self.tables, 1)
         for text, slot in (("Nova", self.new_table), ("Duplicar", self.duplicate_table),
-                           ("Renomear…", self.rename_table), ("Excluir", self.delete_table)):
+                           ("Renomear", self.rename_table), ("Excluir", self.delete_table)):
             button = QPushButton(text)
             button.clicked.connect(lambda _=False, f=slot: f())
             top.addWidget(button)

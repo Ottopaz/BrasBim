@@ -134,11 +134,11 @@ def test_vs07_por_na_prancha(window):
     tab.grab()
     assert tab.rects[1].width() / tab.zoom == pytest.approx(160, abs=0.5)
     menu = tab.context_menu(tab.rects[1].center(), 1)
-    assert "Largura no papel…" in [a.text() for a in menu.actions()]
+    assert "Largura no papel" in [a.text() for a in menu.actions()]
     # pelo painel: Pôr na prancha ▸ e Excluir
     menu = window.project.saved_menu(gid)
     texts = [a.text() for a in menu.actions()]
-    assert texts[:3] == ["Abrir", "Atualizar com a janela", "Renomear…"]
+    assert texts[:3] == ["Abrir", "Atualizar com a janela", "Renomear"]
     window.project.rename_saved_view(gid, "Planta do térreo")
     assert sv.read_state(s.doc.get(gid))["name"] == "Planta do térreo"
     s.run(lambda: sv.delete_saved_view(s.doc, gid))

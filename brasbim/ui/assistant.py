@@ -176,6 +176,16 @@ class ClaudeCode:
         return args
 
 
+def _short(text: str, size: int = 40) -> str:
+    """Começo do pedido para o nome do passo de desfazer: corta numa palavra, sem "…"
+    (spec/ui 40 §2)."""
+    text = " ".join(text.split())
+    if len(text) <= size:
+        return text
+    cut = text[:size].rsplit(" ", 1)[0]
+    return cut.rstrip(",.;:")
+
+
 def tool_label(name: str) -> str:
     """Nome da ferramenta MCP (``mcp__brasbim__create_walls``) → ``create_walls``."""
     return name.split("__")[-1]
@@ -334,7 +344,7 @@ class AssistantPanel(QWidget):
         self.process = process
         self.send_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.status.setText("Trabalhando…")
+        self.status.setText("Trabalhando")
         process.start()
         process.write(message.encode("utf-8"))
         process.closeWriteChannel()
@@ -369,7 +379,7 @@ class AssistantPanel(QWidget):
                 self._add(f"A IA não conectou ao BrasBim ({servers[mcp.SERVER_NAME]}).", "erro")
             model = event.get("model")
             if model:
-                self.status.setText(f"Trabalhando… ({model})")
+                self.status.setText(f"Trabalhando ({model})")
         elif kind == "assistant":
             for block in (event.get("message") or {}).get("content", []):
                 if block.get("type") == "text" and block.get("text", "").strip():
@@ -411,7 +421,7 @@ class AssistantPanel(QWidget):
         """As transações do pedido viram um passo de desfazer (se nada entrou no meio)."""
         n, stack = len(self._ours), self.session.history.undo_stack
         if n and stack[-n:] == self._ours:
-            label = f"Assistente: {self._prompt[:40]}{'…' if len(self._prompt) > 40 else ''}"
+            label = f"Assistente: {_short(self._prompt)}"
             if n > 1:
                 self.session.history.squash(n, label)
             else:

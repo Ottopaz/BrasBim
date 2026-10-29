@@ -896,7 +896,7 @@ def set_type(ctx: Context, args: dict) -> dict:
     ids = _existing(ctx, args["ids"])
     classes = {next((c for c in _TYPE_CLASS if doc.get(g).is_a(c)), None) for g in ids}
     if None in classes or len(classes) != 1:
-        raise OpError("troque o tipo de uma classe por vez (só paredes, só portas, …)")
+        raise OpError("troque o tipo de uma classe por vez (só paredes ou só portas, por exemplo)")
     cls = classes.pop()
     type_class, noun = _TYPE_CLASS[cls]
     where = {"IfcSlab": _floor, "IfcRoof": _roof_type}.get(cls)

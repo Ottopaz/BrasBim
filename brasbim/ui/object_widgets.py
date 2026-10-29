@@ -54,7 +54,7 @@ class _Popup(QFrame):
         self.tree.setIndentation(12)
         self.tree.setMinimumSize(320, 360)
         layout.addWidget(self.tree)
-        more = QPushButton("Mais na biblioteca…")
+        more = QPushButton("Mais na biblioteca")
         more.clicked.connect(lambda: self._pick("library"))
         layout.addWidget(more)
         resolve = resolver_for(doc)
@@ -137,7 +137,7 @@ class TypePicker(QToolButton):
     def _show(self) -> None:
         t = self.doc.find(self.current) if self.current else None
         if t is None or not ot.is_object_type(t):
-            self.setText("Escolher objeto…")
+            self.setText("Escolher objeto")
             self.setIcon(object_preview.QIcon())
             return
         state = ot.read(t)

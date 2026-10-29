@@ -611,7 +611,7 @@ class PropertiesPanel(QScrollArea):
                     return
                 commit(found)
 
-            self._text("Pontos (distância altura; …)", _points_text(profile), points)
+            self._text("Pontos (distância altura; distância altura)", _points_text(profile), points)
 
     # --- vários elementos (0.2 §9) ---------------------------------------------------------
 
@@ -1302,7 +1302,7 @@ class PropertiesPanel(QScrollArea):
         if self.open_sheet is not None:
             buttons.append(("Abrir a prancha", lambda: self.open_sheet(sheet.GlobalId)))
         if self.edit_project_info is not None:
-            buttons.append(("Dados do projeto…", self.edit_project_info))
+            buttons.append(("Dados do projeto", self.edit_project_info))
         if buttons:
             self._buttons(*buttons)
 
@@ -1605,7 +1605,7 @@ class PropertiesPanel(QScrollArea):
 
     def _edit_type_button(self, ifc_class: str, gid: str) -> None:
         if self.edit_type is not None:
-            self._buttons(("Editar tipo…", lambda: self.edit_type(ifc_class, gid)))
+            self._buttons(("Editar tipo", lambda: self.edit_type(ifc_class, gid)))
 
     def _skylight(self, window) -> None:
         """Claraboia (spec/ui 20 §4)."""
@@ -1782,7 +1782,7 @@ class PropertiesPanel(QScrollArea):
         self._number("Altura (m)", state["height"], lambda v: edit(height=v))
         self._number("Base (m)", state["base"], lambda v: edit(base=v))
         self._number("Montantes a cada (m)", state["spacing"], lambda v: edit(spacing=v))
-        self._points_field("Pontos (x y; …)", state["points"], 2, lambda v: edit(points=v))
+        self._points_field("Pontos (x y; x y)", state["points"], 2, lambda v: edit(points=v))
         length = sum(math.dist(a, b) for a, b in zip(state["points"], state["points"][1:],
                                                        strict=False))
         self._read("Comprimento", f"{fmt(length)} m")
@@ -1812,7 +1812,7 @@ class PropertiesPanel(QScrollArea):
             self._read("Curvas de nível", f"{len(curves)}" + (
                 f" ({pending} sem cota)" if pending else ""))
         if state["points"] or not state["boundary"]:
-            self._points_field("Pontos (x y z; …)", state["points"], 3,
+            self._points_field("Pontos (x y z; x y z)", state["points"], 3,
                                lambda v: edit(points=v))
         verts, _ = terrain.surface(state)
         zs = [q[2] for q in verts]
@@ -1874,9 +1874,9 @@ class PropertiesPanel(QScrollArea):
         types = [(t.Name, t.GlobalId) for t in oc.compatible_types(doc, element)]
         self._combo("Tipo", types, state["type"],
                     lambda v: self._run(lambda: oc.change_type(doc, [element.GlobalId], v)))
-        buttons = [("Editar tipo…", lambda: self.edit_object_type(element_type.GlobalId))]
+        buttons = [("Editar tipo", lambda: self.edit_object_type(element_type.GlobalId))]
         if self.edit_object is not None:
-            buttons.append(("Editar objeto…", lambda: self.edit_object(defn["object_id"])))
+            buttons.append(("Editar objeto", lambda: self.edit_object(defn["object_id"])))
         self._buttons(*buttons)
         self._section("Posição")
         host = state["host"]
@@ -1920,7 +1920,7 @@ class PropertiesPanel(QScrollArea):
             shown = QLabel(ow.value_text(p, type_values.get(fm.key(p["name"]))))
             shown.setStyleSheet(f"color: {theme.INK_SOFT}")
             shown.setToolTip(f"Do tipo {element_type.Name}: mudar vale para as {users} "
-                             "ocorrência(s); use Editar tipo…" + (
+                             "ocorrência(s); use Editar tipo" + (
                                  f"\nCalculado: = {p['formula']}" if p.get("formula") else ""))
             self._add(ow.label(p), shown)
         self._section("Identificação")

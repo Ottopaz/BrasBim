@@ -368,6 +368,6 @@ class Client:
         if self._resyncing:
             return
         self._resyncing = True
-        self._emit("message", {"text": "Atualizando o projeto inteiro do servidor…",
+        self._emit("message", {"text": "Atualizando o projeto inteiro do servidor",
                                "level": "aviso"})
         self._send({"t": "snapshot"})

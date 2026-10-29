@@ -70,7 +70,7 @@ def test_pl04_dialogo_do_perfil(window):
     assert municipal.read(s.doc) is None
     assert storeys.stored_scale(s.storey) == storeys.DEFAULT_SCALE
     assert window.ctx.plan.colors[walls[1].GlobalId] == iv.GENERIC_COLORS["A_CONSTRUIR"]
-    assert any(a.text() == "Perfil municipal…" for m in window.menuBar().actions()
+    assert any(a.text() == "Perfil municipal" for m in window.menuBar().actions()
                for a in m.menu().actions())
 
 

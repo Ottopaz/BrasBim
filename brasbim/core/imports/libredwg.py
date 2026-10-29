@@ -91,7 +91,7 @@ def install(folder: Path | None = None, data: bytes | None = None) -> str:
     digest = hashlib.sha256(data).hexdigest()
     if digest != SHA256:
         raise RuntimeError("o pacote do LibreDWG baixado não confere com o esperado "
-                           f"(SHA-256 {digest[:12]}…); nada foi instalado")
+                           f"(SHA-256 {digest}); nada foi instalado")
     with zipfile.ZipFile(io.BytesIO(data)) as package:
         names = {Path(n).name: n for n in package.namelist()}
         missing = [n for n in FILES if n not in names]

@@ -74,7 +74,7 @@ class TeamPanel(QWidget):
         self.release_button.setEnabled(client is not None and bool(client.mine()))
         if client is None:
             self.status.setText("Projeto não compartilhado. Use Equipe > Compartilhar este "
-                                "projeto na rede… ou Entrar num projeto da rede…")
+                                "projeto na rede ou Entrar num projeto da rede")
         else:
             role = "compartilhado por você" if s.server is not None \
                 else f"de {client.host}"
