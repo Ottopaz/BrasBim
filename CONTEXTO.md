@@ -4,7 +4,10 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (spec/ui 41 §2 implementada: exportar DWG/DXF).*
+*Atualizado em 2026‑10‑29 (spec/ui 42 implementada: limpeza da janela).*
+
+> **Limpeza da janela (2026‑10‑29, noite):** pedido do revisor no print `feedback/prints/barras.png`.
+> spec/ui 42, em revisão e implementada: faixa de título própria nos painéis (`ui/docks.py`: encaixado só o nome; solto, o botão de fechar), coluna de ferramentas sem barra de rolagem, barra da vista espalhada pela largura, campo da linha de comando até o Histórico quando não há opções e balão da última mensagem acima da barra da vista (`ui/balloon.py`). Testes LJ01–LJ07 em `tests/test_interface_limpeza.py`. Depois, segue o §3 da spec/ui 41 (sólidos).
 
 > **Onde paramos (2026‑10‑29, DWG feito):** respostas do revisor ao §6 da spec/ui 41:
 > (a) vistas em **centímetros**, (b) prancha no papel com blocos, (c) cor verdadeira,
@@ -520,6 +523,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/32-navegacao-e-abas` | **em revisão**, implementada (NV01–NV03 em `tests/test_interface_navegacao.py`); pontos §6 |
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
+| `spec/ui/42-limpeza-da-janela` | **em revisão**, implementada (LJ01–LJ07 em `tests/test_interface_limpeza.py`) |
 | `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** ((a)–(d) respondidos); §3 sólidos e §4 perfil a fazer ((e)–(k) em aberto) |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |

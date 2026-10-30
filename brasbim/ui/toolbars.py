@@ -34,6 +34,7 @@ from brasbim.core.fillings import params
 from brasbim.core.structure import profiles, roofs
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
+from brasbim.ui.docks import plain_title
 from brasbim.ui.tools import (
     AreaTool,
     BeamTool,
@@ -349,6 +350,7 @@ class ToolsBar(QDockWidget):
         self.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable
                          | QDockWidget.DockWidgetClosable)
+        plain_title(self)  # spec/ui 42 §1
         self.group = QActionGroup(self)
         self.actions_by_tool: dict[str, QAction] = {}
         self.buttons: dict[QAction, QToolButton] = {}
@@ -393,6 +395,7 @@ class ToolsBar(QDockWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # rola pela roda (spec/ui 42 §2)
         scroll.setWidget(body)
         self.setWidget(scroll)
         self.setMinimumWidth(self.button_size + 14)

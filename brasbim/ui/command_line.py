@@ -122,6 +122,7 @@ class CommandLine(QFrame):
         self.options_label.setTextFormat(Qt.RichText)
         self.options_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.options_label.linkActivated.connect(self.follow)
+        self.options_label.hide()  # aparece quando a ferramenta tem opções
         self.field = QLineEdit()
         self.field.setObjectName("linha_comando_campo")
         # a dica da ferramenta é o texto-fantasma do campo (some ao digitar)
@@ -201,6 +202,8 @@ class CommandLine(QFrame):
                              f"{escape(text)}&nbsp;▾</a>")
         sep = f'&nbsp;&nbsp;<span style="color: {theme.INK_SOFT}">·</span>&nbsp;&nbsp;'
         self.options_label.setText(sep.join(parts))
+        # sem opções, o campo vai até o Histórico (spec/ui 42 §3)
+        self.options_label.setVisible(bool(parts))
 
     def follow(self, href: str) -> None:
         """Link do rótulo das opções: escolhe, ou abre a lista longa num menu."""

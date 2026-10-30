@@ -57,6 +57,7 @@ from brasbim.core.ops import Transaction
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
 from brasbim.ui.assistant import AssistantPanel
+from brasbim.ui.balloon import MessageBalloon
 from brasbim.ui.command_line import (
     VISIBLE_KEY,
     AliasesDialog,
@@ -64,6 +65,7 @@ from brasbim.ui.command_line import (
     load_aliases,
     save_aliases,
 )
+from brasbim.ui.docks import plain_title
 from brasbim.ui.layers_panel import LayersPanel
 from brasbim.ui.library_panel import FoldersDialog, LibraryPanel, make_index, set_user_folders
 from brasbim.ui.master_editor import MasterEditor
@@ -282,6 +284,7 @@ class MainWindow(QMainWindow):
         dock = QDockWidget(title, self)
         dock.setObjectName(name)
         dock.setWidget(widget)
+        plain_title(dock)  # sem os botões de soltar e fechar quando encaixado (spec/ui 42 §1)
         self.addDockWidget(area, dock)
         return dock
 
@@ -814,6 +817,10 @@ class MainWindow(QMainWindow):
         # A escala fica na barra da vista (spec/ui 39 §2), sob a planta.
         self.view_bar = ViewBar(self)
         self.central.layout().insertWidget(2, self.view_bar)
+        # Balão da última mensagem, acima da barra da vista (spec/ui 42 §4)
+        self.balloon = MessageBalloon(
+            self.central,
+            lambda: self.view_bar if self.view_bar.isVisible() else self.command_line)
         self.view_bar_action = self._action(self.bars_menu, "Barra da vista",
                                             self.set_view_bar_visible)
         self.view_bar_action.setCheckable(True)
@@ -1958,6 +1965,8 @@ class MainWindow(QMainWindow):
             self.messages.addItem(item)
         self.messages.scrollToBottom()
         last = self.session.messages[-1] if self.session.messages else None
+        if last and hasattr(self, "balloon"):
+            self.balloon.show_message(last["text"], last["level"])
         if last and last["level"] == "recusa":
             self.statusBar().showMessage(last["text"], 6000)
 

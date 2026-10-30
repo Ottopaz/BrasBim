@@ -51,13 +51,6 @@ def _menu_button(icon: str, tip: str) -> QToolButton:
     return button
 
 
-def _separator() -> QFrame:
-    line = QFrame()
-    line.setFrameShape(QFrame.VLine)
-    line.setObjectName("divisoria")
-    return line
-
-
 class ViewBar(QFrame):
     def __init__(self, window):
         super().__init__()
@@ -69,8 +62,7 @@ class ViewBar(QFrame):
             f"#barra_da_vista {{ background:{theme.FRAME}; border-top:1px solid {theme.RULE}; }}"
             f"#barra_da_vista QToolButton {{ color:{theme.INK_SOFT}; padding:1px 4px; }}"
             f"#barra_da_vista QToolButton:checked {{ background:{theme.ACCENT_SOFT};"
-            f" color:{theme.ACCENT}; border:1px solid {theme.RULE}; border-radius:3px; }}"
-            f"#barra_da_vista QFrame#divisoria {{ color:{theme.RULE}; }}")
+            f" color:{theme.ACCENT}; border:1px solid {theme.RULE}; border-radius:3px; }}")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 1, 4, 1)
         layout.setSpacing(2)
@@ -97,7 +89,8 @@ class ViewBar(QFrame):
         for widget in (self.prev, self.next, self.fit, self.zoom):
             layout.addWidget(widget)
         self.zoom_group = (self.prev, self.next, self.fit, self.zoom)
-        layout.addWidget(_separator())
+        # Os grupos se espalham pela largura da vista, com o mesmo vão entre eles (spec/ui 42 §3)
+        layout.addStretch(1)
         # Giro da vista (§3): o botão mostra o ângulo; a lista define por dois cliques,
         # digita ou volta a 0°.
         self.rotation = _menu_button("view_rotate", "Girar a vista da planta (só a tela; "
@@ -107,12 +100,14 @@ class ViewBar(QFrame):
         menu.addAction("Digitar o ângulo", self.ask_rotation)
         menu.addAction("Voltar a 0°", lambda: window.rotate_view(0.0))
         layout.addWidget(self.rotation)
+        layout.addStretch(1)
         # Escala: o mesmo seletor que estava na barra de estado
         self.scale_icon = QLabel()
         self.scale_icon.setPixmap(icons.icon("scale").pixmap(16, 16))
         self.scale_icon.setToolTip(window.scale_combo.toolTip())
         layout.addWidget(self.scale_icon)
         layout.addWidget(window.scale_combo)
+        layout.addStretch(1)
         self.layers = _menu_button("layers_all", "Combinação de camadas")
         self.layers.menu().aboutToShow.connect(self._fill_layers)
         self.detail = _menu_button("detail", "Detalhe da planta")
@@ -125,7 +120,7 @@ class ViewBar(QFrame):
             self.situation.menu().addAction(action)
         for widget in (self.layers, self.detail, self.pens, self.situation):
             layout.addWidget(widget)
-        layout.addStretch(1)
+            layout.addStretch(1)
         # Só quando há: "N ocultos · Mostrar tudo" (§4)
         self.hidden_label = QLabel()
         self.show_all = _button("eye", "Mostrar os elementos ocultos nesta sessão",

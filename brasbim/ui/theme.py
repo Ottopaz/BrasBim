@@ -243,7 +243,8 @@ class _NoElide(QObject):
         return True
 
 
-DOCK_TITLE_ROOM = 64  # botões de soltar e fechar e as margens do título do painel
+DOCK_TITLE_ROOM = 24  # margens do título do painel encaixado (spec/ui 42 §1)
+DOCK_CLOSE_ROOM = 22  # o botão de fechar, só no painel solto
 
 
 def fit_dock_title(dock: QDockWidget) -> None:
@@ -252,7 +253,8 @@ def fit_dock_title(dock: QDockWidget) -> None:
     if full is None:
         full = dock.windowTitle()
         dock.setProperty("titulo_inteiro", full)
-    fits = dock.fontMetrics().horizontalAdvance(full) <= dock.width() - DOCK_TITLE_ROOM
+    room = DOCK_TITLE_ROOM + (DOCK_CLOSE_ROOM if dock.isFloating() else 0)
+    fits = dock.fontMetrics().horizontalAdvance(full) <= dock.width() - room
     title = full if fits else ""
     if dock.windowTitle() != title:
         dock.setWindowTitle(title)
