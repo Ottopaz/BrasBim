@@ -34,6 +34,7 @@ from brasbim.core import (
 from brasbim.core.document import OpError
 from brasbim.core.objects import elements as objects
 from brasbim.core.structure import roofs, stairs
+from brasbim.core.structure import types as st_types
 from brasbim.core.walls import rebuild
 from brasbim.core.walls.wall import read_state as read_wall
 
@@ -296,8 +297,11 @@ class Scene:
             styled = _styled_mesh(entity, g, tri, verts[edges], color)
             if styled is not None:
                 return styled
-        layered = (self._split(entity, tri) if entity.is_a("IfcWall")
-                   else _slab_layers(entity, tri) if entity.is_a("IfcSlab") else None)
+        layered = ((_wall_profile_layers(self.doc, entity, tri) or self._split(entity, tri))
+                   if entity.is_a("IfcWall")
+                   else _slab_layers(entity, tri) if entity.is_a("IfcSlab")
+                   else _profile_layers(entity, tri)
+                   if entity.is_a("IfcColumn") or entity.is_a("IfcBeam") else None)
         if layered is None:
             return Mesh(tri, _shaded(tri, color), verts[edges], color)
         names = {m.Name: m for m in self.doc.ifc.by_type("IfcMaterial")}
@@ -449,6 +453,74 @@ def _clip_z(poly: list, z: float, keep_above: bool) -> list:
             t = (z - p[2]) / (q[2] - p[2])
             out.append(p + t * (q - p))
     return out
+
+
+def _profile_layers(element, tri: np.ndarray) -> dict | None:
+    """Pilar ou viga de perfil do projeto (spec/ui 41 §4): triângulos por material da
+    parte. Nas coordenadas locais da peça, x e y são as do desenho do perfil; cada
+    triângulo vai para a parte mais perto do seu centro. ``None`` fora do perfil."""
+    element_type = ifcopenshell.util.element.get_type(element)
+    if element_type is None or st_types.profile_def_of(element_type) is None:
+        return None
+    try:
+        parts = st_types.section(element_type)["parts"]
+    except (OpError, KeyError):
+        return None
+    if len({p["material"] for p in parts}) < 2 or element.ObjectPlacement is None:
+        return None
+    m = ifcopenshell.util.placement.get_local_placement(element.ObjectPlacement)
+    flat = tri.reshape(-1, 3, 3).astype(np.float64)
+    centers = flat.mean(axis=1)
+    local = (np.c_[centers, np.ones(len(centers))] @ np.linalg.inv(m).T)[:, :2]
+    return _nearest_parts(parts, local, flat)
+
+
+def _nearest_parts(parts: list[dict], points: np.ndarray, tri: np.ndarray) -> dict | None:
+    """Triângulos agrupados pelo material da parte mais perto de cada ponto (no plano da
+    seção)."""
+    import shapely
+
+    polygons = [shapely.Polygon(p["outline"], p.get("holes") or []) for p in parts]
+    pts = shapely.points(points)
+    nearest = np.argmin(np.stack([shapely.distance(poly, pts) for poly in polygons]), axis=0)
+    out: dict = {}
+    for i, part in enumerate(parts):
+        chosen = tri[nearest == i]
+        if len(chosen):
+            name = part["material"]
+            out[name] = np.concatenate([out[name], chosen]) if name in out else chosen
+    return out or None
+
+
+def _wall_profile_layers(doc, wall, tri: np.ndarray) -> dict | None:
+    """Parede de perfil do projeto (spec/ui 41 §4): triângulos por material da parte. No
+    sistema local da parede, a seção é (afastamento do eixo, altura)."""
+    from brasbim.core import geom2d
+    from brasbim.core.walls import types as wall_types
+
+    if doc is None or wall.ObjectPlacement is None:
+        return None
+    try:
+        state = read_wall(doc, wall)
+        if wall_types.profile_of(doc.get(state["type"], "IfcWallType")) is None:
+            return None
+        parts = rebuild.profile_parts(doc, state, rebuild.height(doc, state))
+    except (OpError, KeyError, ValueError):
+        return None
+    if len({p["material"] for p in parts}) < 2:
+        return None
+    m = ifcopenshell.util.placement.get_local_placement(wall.ObjectPlacement)
+    flat = tri.reshape(-1, 3, 3).astype(np.float64)
+    centers = flat.mean(axis=1)
+    local = (np.c_[centers, np.ones(len(centers))] @ np.linalg.inv(m).T)[:, :3]
+    path = geom2d.path_from_dict(state["path"])
+    if isinstance(path, geom2d.LinePath):
+        offset = local[:, 1]
+    else:  # arco: raio da paralela = R − y (anti-horário) ou R + y (horário)
+        cy = path.local_center()[1]
+        r = np.hypot(local[:, 0], local[:, 1] - cy)
+        offset = path.radius - r if path.ccw else r - path.radius
+    return _nearest_parts(parts, np.c_[offset, local[:, 2]], flat)
 
 
 def _slab_layers(slab, tri: np.ndarray) -> dict | None:

@@ -4,6 +4,13 @@
 - ``IfcMaterialLayerSetUsage`` (sentido e afastamento, spec §3.2)
 - Representação ``Body`` (spec §2.2, §6.1), com o recorte das junções (spec §6.2)
 - ``Qto_WallBaseQuantities`` (spec §8)
+
+Parede de perfil do projeto (spec/ui 41 §4): o corpo é a interseção do prisma da planta
+(com junções, topo e recortes) com a varredura do perfil ao longo do eixo (extrusão
+deitada na reta; revolução em torno do centro no arco). A origem do desenho fica na linha
+de referência, na base; o +x do desenho, à esquerda de quem anda pelo caminho (camadas
+invertidas: espelhado). Com linha de esticar na altura, o topo do perfil acompanha a
+altura da parede; sem ela, a altura é a do desenho.
 """
 
 from __future__ import annotations
@@ -13,7 +20,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, props
+from brasbim.core import geom2d, profile_defs, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
 from brasbim.core.walls import connections, joins, openings, params, top
@@ -92,19 +99,60 @@ def _top_cut(doc: Document, x0: float, x1: float, a, b, y0: float, y1: float):
         ifc.createIfcAxis2Placement3D(_point3(doc, (0.0, 0.0, 0.0)), None, None), boundary)
 
 
+def _sweep(doc: Document, parts: list[dict], path: geom2d.Path) -> list:
+    """Cada parte do perfil varrida ao longo do eixo, nas coordenadas locais da parede (sem
+    limite nas pontas: o prisma da planta corta). Uma por parte: o motor geométrico não
+    gira perfil composto."""
+    ifc = doc.ifc
+    areas = [profile_defs.write_part_profile(ifc, part) for part in parts]
+    if isinstance(path, geom2d.LinePath):
+        margin = path.length + 10.0
+        position = ifc.createIfcAxis2Placement3D(
+            _point3(doc, (-margin, 0.0, 0.0)), ifc.createIfcDirection((1.0, 0.0, 0.0)),
+            ifc.createIfcDirection((0.0, 1.0, 0.0)))
+        up = ifc.createIfcDirection((0.0, 0.0, 1.0))
+        return [ifc.createIfcExtrudedAreaSolid(area, position, up, path.length + 2 * margin)
+                for area in areas]
+    # Arco: o +x do desenho é o y local e o centro fica em (0, ±R); a revolução é em
+    # torno da vertical que passa pelo centro. Começa ``extra`` antes do início e vai até
+    # ``extra`` depois do fim (folga para os cantos); a volta inteira sai vazia.
+    sign = 1.0 if path.ccw else -1.0
+    cy = path.local_center()[1]
+    extra = min(max(0.2, 2.0 / path.radius), (2 * math.pi - path.sweep) / 2 - 1e-3)
+    back = -sign * extra
+    c, s = math.cos(back), math.sin(back)
+    start = (s * cy, cy - c * cy)  # o início girado de ``back`` em torno do centro
+    position = ifc.createIfcAxis2Placement3D(
+        _point3(doc, (start[0], start[1], 0.0)), ifc.createIfcDirection((c, s, 0.0)),
+        ifc.createIfcDirection((-s, c, 0.0)))
+    # Eixo para cima no arco anti-horário (para baixo no horário): a revolução anda para a
+    # frente do caminho. Conferido no motor geométrico num projeto com unidades; num
+    # arquivo solto, sem unidades, o mesmo sólido gira ao contrário.
+    axis = ifc.createIfcAxis1Placement(_point3(doc, (cy, 0.0, 0.0)),
+                                       ifc.createIfcDirection((0.0, sign, 0.0)))
+    return [ifc.createIfcRevolvedAreaSolid(area, position, axis, path.sweep + 2 * extra)
+            for area in areas]
+
+
 def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
-             profile=None, tilt: float = 0.0, cut=None) -> None:
+             profile=None, tilt: float = 0.0, cut=None, sweep=None) -> None:
     """Corpo: extrusão da planta (vertical, ou inclinada na parede tombada) e, com topo
     inclinado, recorte por um semiespaço limitado por trecho (spec/ui 08 §4.2, §5.2).
-    ``cut`` = (referencial, recortes, prisma) dos recortes por prioridade (spec/ui 12 §2)."""
+    ``cut`` = (referencial, recortes, prisma) dos recortes por prioridade (spec/ui 12 §2).
+    ``sweep`` = (sólidos das partes varridas, cota de baixo, cota de cima) da parede de
+    perfil: o prisma vai de uma cota à outra e o corpo tem um item por parte, a interseção
+    do prisma com a parte varrida."""
     ifc = doc.ifc
     area = ifc.createIfcArbitraryClosedProfileDef("AREA", None, _indexed_curve(doc, segments))
     t = math.radians(tilt)
+    z0, depth = 0.0, float(height) / math.cos(t)
+    if sweep is not None:
+        z0, depth = sweep[1] - 0.1, sweep[2] - sweep[1] + 0.2
     solid = ifc.createIfcExtrudedAreaSolid(
         area,
-        ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0)), None, None),
+        ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, z0)), None, None),
         ifc.createIfcDirection((0.0, math.sin(t), math.cos(t)) if tilt else (0.0, 0.0, 1.0)),
-        float(height) / math.cos(t),
+        depth,
     )
     kind = "SweptSolid"
     if profile:
@@ -124,7 +172,11 @@ def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
         frame, found, own = cut
         solid = cuts.clipped(ifc, solid, frame, found, own)
         kind = "Clipping"
-    rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, [solid])
+    items = [solid]
+    if sweep is not None:  # por último: o recorte (Clipping) só aceita sólido simples
+        items = [ifc.createIfcBooleanResult("INTERSECTION", solid, part) for part in sweep[0]]
+        kind = "CSG"
+    rep = ifc.createIfcShapeRepresentation(doc.body_context, "Body", kind, items)
     props.replace_representation(doc, wall, "Body", rep)
 
 
@@ -135,8 +187,20 @@ def elevation(doc: Document, storey_id: str) -> float:
     return float(doc.get(storey_id, "IfcBuildingStorey").Elevation or 0.0)
 
 
+def _definition(doc: Document, state: dict) -> tuple[dict, dict] | None:
+    """(perfil do tipo ``{"id", "b"}``, estado do perfil do projeto), ou ``None``."""
+    found = wall_types.profile_of(doc.get(state["type"], "IfcWallType"))
+    if found is None:
+        return None
+    return found, profile_defs.state(doc, found["id"])
+
+
 def height(doc: Document, state: dict) -> float:
-    """Altura da parede; com topo inclinado, a maior altura do perfil (spec/ui 08 §4.2)."""
+    """Altura da parede; com topo inclinado, a maior altura do perfil (spec/ui 08 §4.2).
+    Parede de perfil que não estica na altura: o topo do desenho."""
+    found = _definition(doc, state)
+    if found is not None and found[1].get("stretch_y") is None:
+        return profile_defs.bounds(found[1]["parts"])[3]
     if state.get("top_profile"):
         return top.highest(state["top_profile"])
     if state["top_mode"] == "fixed":
@@ -151,9 +215,31 @@ def widening(state: dict) -> float:
     return 1.0 / math.cos(math.radians(state.get("tilt") or 0.0))
 
 
+def profile_parts(doc: Document, state: dict, h: float) -> list[dict]:
+    """Partes do perfil da parede, esticadas na altura ``h`` e espelhadas com as camadas
+    invertidas (coordenadas: x = y local, y = altura acima da base)."""
+    found, definition = _definition(doc, state)
+    _, y0, _, y1 = profile_defs.bounds(definition["parts"])
+    total = (h - y0) if definition.get("stretch_y") is not None else (y1 - y0)
+    parts = profile_defs.stretched(definition, found["b"], total)
+    if state["flip_layers"]:
+        def mirror(ring):
+            return [[-x, y] for x, y in reversed(ring)]
+
+        parts = [{**p, "outline": mirror(p["outline"]),
+                  "holes": [mirror(r) for r in p.get("holes") or []]} for p in parts]
+    return parts
+
+
 def band(doc: Document, state: dict) -> joins.Band:
-    """Faixa da parede na base (alargada na parede tombada)."""
-    thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
+    """Faixa da parede na base (alargada na parede tombada). Parede de perfil: a largura
+    do desenho, a partir da linha de referência."""
+    wall_type = doc.get(state["type"], "IfcWallType")
+    if wall_types.profile_of(wall_type) is not None:
+        x0, _, x1, _ = profile_defs.bounds(wall_types.profile_parts(wall_type))
+        ymin, ymax = (-x1, -x0) if state["flip_layers"] else (x0, x1)
+        return joins.Band(geom2d.path_from_dict(state["path"]), ymin, ymax)
+    thickness = wall_types.thickness(wall_type)
     sense, offset = params.layer_usage(state["ref_line"], state["flip_layers"], thickness)
     k = widening(state)
     ymin, ymax = params.band(sense, offset, thickness)
@@ -228,7 +314,12 @@ def rebuild_wall(doc: Document, wall) -> None:
 
     tilt = float(state["tilt"])
     sense, offset = params.layer_usage(state["ref_line"], state["flip_layers"], thickness)
-    if not tilt:
+    parts = profile_parts(doc, state, h) if wall_types.profile_of(wall_type) else None
+    from brasbim.core.walls.wall import _assign_type  # evita import circular
+
+    # O tipo pode ter trocado de camadas para perfil (ou o contrário).
+    _assign_type(doc, wall, wall_type, bool(tilt))
+    if parts is None and not tilt:
         usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
         usage.LayerSetDirection = "AXIS2"
         usage.DirectionSense = sense
@@ -251,7 +342,11 @@ def rebuild_wall(doc: Document, wall) -> None:
         storey = doc.get(state["storey"], "IfcBuildingStorey")
         z = float(storey.Elevation or 0.0) + state["base_offset"]
         cut = (cuts.Frame(doc.ifc, own.frame.origin, own.frame.angle, z), found, prism)
-    set_body(doc, wall, segments, h, top_profile, tilt, cut)
+    sweep = None
+    if parts is not None:
+        _, y0, _, y1 = profile_defs.bounds(parts)
+        sweep = (_sweep(doc, parts, path), y0, y1)
+    set_body(doc, wall, segments, h, top_profile, tilt, cut, sweep)
     cuts.sync_relations(doc, wall, found)
     openings.refresh(doc, wall, own, h, top_profile)
     cut = openings.deductions(wall, own, h, segments)
@@ -262,7 +357,9 @@ def rebuild_wall(doc: Document, wall) -> None:
     k = widening(state)
     length = path.centerline_length((own.ymin + own.ymax) / 2)
     footprint = geom2d.area(segments)
-    if top_profile:
+    if parts is not None:  # volume pela seção do perfil (sem descontar as pontas)
+        side, net_volume = length * h, profile_defs.area(parts) * length
+    elif top_profile:
         side = top.side_area(top_profile, 0.0, length)
         net_volume = top.volume(geom2d.polygon(segments), top_profile)
     else:
@@ -281,7 +378,8 @@ def rebuild_wall(doc: Document, wall) -> None:
             "NetFootprintArea": footprint - cut["footprint"],
             "GrossSideArea": side * k,
             "NetSideArea": side * k - cut["side"],
-            "GrossVolume": side * thickness * k,
+            "GrossVolume": (profile_defs.area(parts) * length if parts is not None
+                            else side * thickness * k),
             "NetVolume": net_volume - cut["volume"],
         },
     )

@@ -4,7 +4,29 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑30 (perfil complexo, etapa 1: editor + viga + pilar).*
+*Atualizado em 2026‑10‑30 (perfil complexo, etapa 2: parede de perfil).*
+
+> **Perfil complexo, etapa 2 (2026‑10‑30, noite):** fechadas as pendências da etapa 1 (3D
+> por material da parte em pilar e viga, `scene3d._profile_layers`; planta do pilar com
+> uma região por parte, `columns.part_outlines`) e feita a **parede de perfil**. Tipo de
+> parede com `profile = {"id", "b"}` e `layers` vazio (`walls/types.py`: conjunto de
+> perfis no tipo, Pset `BrasBim_Perfil` com `PerfilId`/`Largura`; a parede associa o
+> conjunto direto, sem uso; trocar camadas ↔ perfil refaz o conjunto). Corpo
+> (`walls/rebuild.py`): um item por parte = interseção do prisma da planta (junções, topo,
+> recortes) com a parte varrida — extrusão deitada na reta, `IfcRevolvedAreaSolid` em
+> torno do centro no arco (o motor não gira perfil composto; a volta inteira sai vazia;
+> **o sentido da revolução muda entre arquivo solto e projeto com unidades**: conferido no
+> projeto, eixo = +sinal do arco). Origem do desenho na linha de referência, +x à
+> esquerda, camadas invertidas espelham; com linha de esticar na altura o topo acompanha a
+> parede, sem ela a altura é a do desenho; parede de perfil não tomba. Planta: "camadas"
+> virtuais = corte do perfil no plano de corte (`layers._profile_layers`), e o resto
+> (junções por prioridade, hachuras) segue igual. 3D por parte em (afastamento, altura),
+> também no arco. Janela de tipos de parede: Estrutura Camadas | Perfil do projeto;
+> "Parede" em Serve para. Testes PC03, PC05 (`tests/test_parede_perfil.py`, 4 arcos nos
+> dois sentidos) e de interface. **Falta:** cortes/fachadas usam as faixas verticais do
+> plano de corte (capa mais larga sai errada no corte); a planta não mostra em projeção a
+> parte acima do corte mais larga que o corte; vãos usam a faixa inteira (como escolhido).
+> **Próximo:** etapa (3) borda de laje/cobertura e caminho livre.
 
 > **Perfil complexo, etapa 1 (2026‑10‑30, depois):** o revisor aceitou (e)–(n) da spec/ui
 > 41 (DWG validado num CAD; perfil num atributo do projeto usado em vários contextos, §4.1).

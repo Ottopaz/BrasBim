@@ -206,8 +206,11 @@ def remove_parts(doc: Document, profile_set) -> list:
 def drop_profiles(doc: Document, profiles) -> None:
     """Apaga os perfis (e as curvas deles) que ninguém mais usa."""
     for profile in profiles:
-        if profile.id() and not doc.ifc.get_total_inverses(profile):
-            ifcopenshell.util.element.remove_deep2(doc.ifc, profile)
+        try:
+            if profile.id() and not doc.ifc.get_total_inverses(profile):
+                ifcopenshell.util.element.remove_deep2(doc.ifc, profile)
+        except RuntimeError:
+            continue  # já saiu junto com o perfil composto que o usava
 
 
 def _pset_values(entity) -> dict:
@@ -316,9 +319,12 @@ def _edit(doc: Document, op: Op) -> set[str]:
         drop_profiles(doc, remove_parts(doc, profile_set))
         write_parts(doc, profile_set, current["parts"], current["name"])
     _write_pset(doc, profile_set, op.id, current)
+    from brasbim.core.walls import types as wall_types
+
     dirty = set()
     for element_type in users(doc, op.id):
-        st_types.refresh_profile_def(doc, element_type, current)
+        module = wall_types if element_type.is_a("IfcWallType") else st_types
+        module.refresh_profile_def(doc, element_type, current)
         dirty.add(element_type.GlobalId)
     return dirty
 

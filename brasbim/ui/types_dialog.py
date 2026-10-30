@@ -358,7 +358,25 @@ class WallTypesDialog(_PlanStyleDialog):
         if state["predefined_type"] not in [v for _, v in uses]:
             uses.append((state["predefined_type"], state["predefined_type"]))
         self.use = self._combo("Uso", uses, state["predefined_type"])
-        self.form.addRow(QLabel("Camadas, da face esquerda para a direita:"))
+        # Camadas ou perfil do projeto (spec/ui 41 §4): a escolha só aparece se houver
+        # perfil marcado para parede.
+        doc = self.session.doc
+        self.available = [(s.Name, profile_defs.id_of(s))
+                          for s in profile_defs.for_use(doc, "wall")]
+        profile = state["profile"]
+        if profile and profile["id"] not in {i for _, i in self.available}:
+            self.available.append((profile_defs.state(doc, profile["id"])["name"],
+                                   profile["id"]))
+        self.structure = self._combo(
+            "Estrutura", [("Camadas", "layers"), ("Perfil do projeto", "profile")],
+            "profile" if profile else "layers")
+        self.profile = self._combo("Perfil", self.available, profile["id"] if profile else None)
+        self.profile_b = self._line("Espessura",
+                                    exact(profile["b"]) if profile else "")
+        self.structure.currentIndexChanged.connect(self._structure_changed)
+        self.profile.currentIndexChanged.connect(self._profile_changed)
+        self.layers_label = QLabel("Camadas, da face esquerda para a direita:")
+        self.form.addRow(self.layers_label)
         self.layers = QTableWidget(0, 5)
         self.layers.setHorizontalHeaderLabels(["Material", "Espessura", "Função", "Prioridade",
                                                ""])
@@ -379,12 +397,50 @@ class WallTypesDialog(_PlanStyleDialog):
         holder.setLayout(row)
         row.setContentsMargins(0, 0, 0, 0)
         self.form.addRow(holder)
+        self.layer_buttons = holder
         self.total = QLabel()
         self.form.addRow("Espessura total", self.total)
         for layer in state["layers"]:
             self._append_layer(layer)
         self._update_total()
         self._plan_style_editor(wall_type)
+        self._show_structure()
+
+    def _is_profile(self) -> bool:
+        return self.structure.currentData() == "profile"
+
+    def _show_structure(self) -> None:
+        profile = self._is_profile()
+        if not self.available:  # sem perfil para parede: nem a escolha aparece
+            self.structure.setVisible(False)
+            self.form.labelForField(self.structure).setVisible(False)
+        definition = (profile_defs.state(self.session.doc, self.profile.currentData())
+                      if profile and self.profile.currentData() else None)
+        stretch = definition is not None and definition.get("stretch_x") is not None
+        for widget, visible in ((self.profile, profile), (self.profile_b, profile)):
+            widget.setVisible(visible)
+            self.form.labelForField(widget).setVisible(visible)
+        self.profile_b.setReadOnly(not stretch)
+        self.profile_b.setToolTip("" if stretch else "o perfil não estica na largura")
+        for widget in (self.layers_label, self.layers, self.layer_buttons):
+            widget.setVisible(not profile)
+        self.total.setVisible(not profile)
+        self.form.labelForField(self.total).setVisible(not profile)
+
+    def _nominal_width(self) -> None:
+        def_id = self.profile.currentData()
+        if def_id:
+            width = profile_defs.nominal(profile_defs.state(self.session.doc, def_id))[0]
+            self.profile_b.setText(exact(round(width, 6)))
+
+    def _structure_changed(self, *_args) -> None:
+        if self._is_profile() and not self.profile_b.text().strip():
+            self._nominal_width()
+        self._show_structure()
+
+    def _profile_changed(self, *_args) -> None:
+        self._nominal_width()
+        self._show_structure()
 
     def _append_layer(self, layer: dict, at: int | None = None) -> None:
         self.layers.blockSignals(True)
@@ -482,8 +538,16 @@ class WallTypesDialog(_PlanStyleDialog):
         self.touched()
 
     def changes(self) -> dict:
-        new = {"name": self.name.text().strip(), "predefined_type": self.use.currentData(),
-               "layers": self.read_layers()}
+        new = {"name": self.name.text().strip(), "predefined_type": self.use.currentData()}
+        if self._is_profile():
+            if not self.profile.currentData():
+                raise ValueError("escolha o perfil")
+            new["profile"] = {"id": self.profile.currentData(),
+                              "b": parse_number(self.profile_b.text())}
+            new["layers"] = []
+        else:
+            new["profile"] = None
+            new["layers"] = self.read_layers()
         style, old = self.read_plan_style(), self.state["plan_style"]
         if style != {**wall_types.DEFAULT_PLAN_STYLE, **(old or {})}:
             new["plan_style"] = style
@@ -508,7 +572,8 @@ class WallTypesDialog(_PlanStyleDialog):
         names = {t.Name for t in self.types()}
         return cmd.create_wall_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
                                     state["layers"], state["predefined_type"],
-                                    state["object_type"], state["plan_style"])
+                                    state["object_type"], state["plan_style"],
+                                    profile=state["profile"])
 
     def delete_transaction(self, gid):
         return cmd.delete_wall_type(self.session.doc, gid)
