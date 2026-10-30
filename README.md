@@ -120,6 +120,11 @@ públicas ([`cleanroom/FONTES.md`](cleanroom/FONTES.md)) e commits assinados com
 
 Descrição completa do projeto: [`divulgacao/BRASBIM.md`](divulgacao/BRASBIM.md).
 
+## Criador
+
+O BrasBim foi criado e é mantido por **Otávio Paz**, com a colaboração dos
+contribuidores do projeto.
+
 ## Licença
 
 Núcleo sob **LGPL‑3.0‑or‑later** ([`COPYING.LESSER`](COPYING.LESSER)), aplicativo sob

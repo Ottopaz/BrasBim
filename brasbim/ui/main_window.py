@@ -2630,8 +2630,9 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("Sobre o BrasBim")
         box.setIconPixmap(theme.logo(150))
         box.setText(f"<b>BrasBim {feedback.version()}</b>")
-        box.setInformativeText("Software BIM open source e IFC-nativo.<br>Aplicativo "
-                               "GPL-3.0-or-later; núcleo LGPL-3.0-or-later.")
+        box.setInformativeText("Software BIM open source e IFC-nativo.<br>Criado por "
+                               "Otávio Paz.<br>Aplicativo GPL-3.0-or-later; núcleo "
+                               "LGPL-3.0-or-later.")
         box.exec()
 
     def closeEvent(self, event):
