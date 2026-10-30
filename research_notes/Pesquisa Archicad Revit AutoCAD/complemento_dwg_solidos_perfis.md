@@ -145,6 +145,49 @@
   Archicad); cada elemento guarda a seção resolvida (largura e altura nominais); o IFC
   `IfcDerivedProfileDef` só faz transformação afim, não serve para estirar por faixas.
 
+### Rodada 2 (2026‑10‑30): perfil em vários contextos
+Pedido do revisor: "perfil complexo é fazer uma seção e poder aplicar em vários
+contextos, laje, pilar, viga…; estude a ferramenta do Archicad". Páginas oficiais abertas
+(AC18, AC24, AC28); fórum só pelo resumo do buscador ("conferir").
+- **Onde se aplica:** parede, pilar, viga, peças de guarda‑corpo e objetos de biblioteca
+  que tenham a opção de perfil (ex.: componentes de pele de vidro e escada). Cada perfil
+  marca para quais ferramentas serve, e a lista de cada ferramenta só mostra esses. **Laje e
+  cobertura não aparecem** em nenhuma página. —
+  [Apply Profile to Element AC28](https://help.graphisoft.com/AC/28/INT/_AC28_Help/040_ElementsVB/040_ElementsVB-56.htm);
+  [Profile Manager Dialog Box AC21](https://help.graphisoft.com/AC/21/INT/AC21Help/Appendix_Settings/Appendix_Settings-67.htm) (via resultado de busca)
+- **Forma:** a seção é extrudada perpendicular ao plano do desenho; o perfil salvo é um
+  atributo compartilhado da ferramenta, e também se pode aplicar um perfil só a um
+  elemento sem salvá‑lo. —
+  [About Complex Profile Elements AC18](https://help.graphisoft.com/AC/18/INT/AC18Help/03_1_Elements_Virtual_Building/03_1_Elements_Virtual_Building-35.htm)
+- **Origem:** na parede, a origem do editor é a linha de referência; na viga e no pilar, o
+  eixo. O pilar de perfil perde a escolha dos 9 pontos de inserção (a âncora é a origem).
+  Na viga de perfil, a altura se refere ao centro do perfil. — Profile Manager AC22,
+  Column/Beam Tool Settings AC18/AC20 (via resultado de busca)
+- **Esticar:** chaves de largura e altura; linhas de esticar marcam o que muda; por padrão
+  coincidem com largura e altura nominais; arrastar no modelo estica. Só parede, viga e
+  pilar. —
+  [Stretch Modifiers AC28](https://help.graphisoft.com/AC/28/INT/_AC28_Help/025_Attributes/025_Attributes-63.htm)
+- **Deslocamentos nomeados:** cotas que movem arestas por elemento (ancoradas em nó da
+  hachura, ponto fixo ou duas arestas), editáveis na ficha e graficamente em planta, corte e
+  3D, e que entram em etiquetas e tabelas. Só parede, viga e pilar. Fórum: arestas das
+  duas faces de uma camada têm de estar na mesma cota para a camada acompanhar. —
+  [Offset Modifiers AC24](https://help.graphisoft.com/AC/24/INT/_AC24_Help/040_ElementsVB/040_ElementsVB-65.htm);
+  [Create New Offset Modifier AC24](https://help.graphisoft.com/AC/24/INT/_AC24_Help/040_ElementsVB/040_ElementsVB-66.htm)
+- **Vãos em parede de perfil:** uma "linha de referência do vão" no perfil diz onde portas
+  e janelas assentam; sem ela, o vão usa a caixa envolvente do perfil. Reclamação
+  recorrente: janela em posição diferente na planta e no 3D quando as camadas têm alturas
+  diferentes (conferir). — fórum Graphisoft, "Window appears offset from Complex Profile
+  wall", "Complex profile Opening Reference Line problem" (via resultado de busca)
+- **O que falta lá (pedido antigo):** perfil em borda de laje e de cobertura (testeira,
+  rufo, pingadeira, borda espessada do radier). Contornos: viga de perfil ao longo da
+  borda (girada ou inclinada) + recorte por sólidos, ou laje grossa recortada (conferir). —
+  fórum Graphisoft, "Applying complex profile to slab?", "roof edge/slab edge" (Wishes),
+  "Residential: Fascia Trim Modeling" (via resultado de busca)
+- **Para o BrasBim:** perfil como atributo do projeto com "serve para"; contextos parede,
+  viga, pilar, guarda‑corpo **e** borda de laje/cobertura e caminho livre, que atendem o
+  pedido antigo; linha de referência do vão no perfil (decide o ponto (i) junto). Vira a
+  spec/ui 41 §4.1.
+
 ## Lacunas
 - Abrir o DWG R2000 do LibreDWG num CAD comercial e num visualizador grátis.
 - Uso de material da `IfcWall` em 4.3 (página oficial) e o que outros leitores IFC fazem
