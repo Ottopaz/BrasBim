@@ -19,7 +19,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import props
+from brasbim.core import profile_defs, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
 from brasbim.core.structure import beams, columns, cuts, profiles, roofs, slab_openings, slabs
@@ -197,10 +197,9 @@ def derive(doc: Document, dirty: set[str]) -> None:
             wall_rebuild.rebuild_wall(doc, element)
         else:
             _REBUILD[element.is_a()](doc, element)
-    while doc.orphan_profiles:
-        profile = doc.orphan_profiles.pop()
-        if profile.id() and not doc.ifc.get_total_inverses(profile):
-            doc.ifc.remove(profile)
+    # Perfis trocados nos tipos; o composto do perfil do projeto leva as partes junto.
+    orphans, doc.orphan_profiles[:] = list(doc.orphan_profiles), []
+    profile_defs.drop_profiles(doc, orphans)
 
 
 register_derive(derive)

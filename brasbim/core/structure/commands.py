@@ -20,7 +20,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import guid
+from brasbim.core import guid, profile_defs
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import Op, Transaction
 from brasbim.core.ops.base import same_value
@@ -76,9 +76,11 @@ def create_column_type(doc: Document, name: str, section: dict, material: str = 
 
 
 def create_beam_type(doc: Document, name: str, b: float, h: float, material: str = "Concreto",
-                     plan_style: dict | None = None) -> Transaction:
+                     plan_style: dict | None = None, section: dict | None = None) -> Transaction:
+    """Tipo de viga retangular b × h, ou com ``section`` (ex.: perfil do projeto)."""
     data = {"name": name, "predefined_type": "BEAM",
-            "section": {"shape": "rect", "b": float(b), "h": float(h)},
+            "section": dict(section) if section is not None
+            else {"shape": "rect", "b": float(b), "h": float(h)},
             "material": material, "plan_style": plan_style}
     return Transaction("Criar tipo de viga", [Op("beam_type.create", guid.new(), data=data)])
 
@@ -158,6 +160,9 @@ _PROFILE_TYPES = {"column": ("IfcColumnType", "Pilar", st_types.COLUMN),
 def section_name(prefix: str, section: dict) -> str:
     """"Pilar 25×60", "Pilar Ø35", "Viga 14×40" (dimensões em centímetros)."""
     word = _PROFILE_TYPES[prefix][1]
+    if section.get("shape") == profiles.CUSTOM:
+        cm = profiles.label({"shape": "rect", "b": section["b"], "h": section["h"]})
+        return f"{word} {section.get('name') or 'perfil'} {cm.replace(' × ', '×')}"
     return f"{word} {profiles.label(section).replace(' × ', '×').replace('Ø ', 'Ø')}"
 
 
@@ -165,14 +170,17 @@ def section_type(doc: Document, prefix: str, section: dict, base=None) -> tuple[
     """(GlobalId do tipo com esta seção, operações para criá-lo se faltar). Material e
     representação na planta vêm de ``base`` (o tipo atual), senão Concreto e o padrão."""
     type_class, _, kind = _PROFILE_TYPES[prefix]
-    section = {k: (v if k == "shape" else float(v)) for k, v in section.items()}
+    section = {k: (v if k in ("shape", "profile") else float(v))
+               for k, v in st_types.stored_section(section).items()}
     try:
         profiles.validate(section, kind.shapes)
     except (ValueError, KeyError) as e:
         raise OpError(str(e)) from e
+    custom = section["shape"] == profiles.CUSTOM
     base = doc.find(gid(base)) if base is not None else None
     base_state = st_types.read_profile_type(base) if base is not None else None
-    material = base_state["material"] if base_state else "Concreto"
+    material = None if custom else (base_state["material"] if base_state
+                                     and base_state["material"] else "Concreto")
     plan_style = base_state["plan_style"] if base_state else None
     found = []
     for t in sorted(doc.ifc.by_type(type_class), key=lambda t: t.GlobalId):
@@ -183,7 +191,9 @@ def section_type(doc: Document, prefix: str, section: dict, base=None) -> tuple[
         if (same_value(state["section"], section) and state["material"] == material
                 and state["plan_style"] == plan_style):
             found.append(t)
-    name = section_name(prefix, section)
+    label = dict(section, name=profile_defs.state(doc, section["profile"])["name"]) \
+        if custom else section
+    name = section_name(prefix, label)
     if found:  # o de nome padrão primeiro (o da biblioteca)
         return min(found, key=lambda t: (t.Name != name, t.Name or "")).GlobalId, []
     names = {t.Name for t in doc.ifc.by_type(type_class)}
