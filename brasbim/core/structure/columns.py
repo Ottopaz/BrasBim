@@ -111,6 +111,17 @@ def outline(doc: Document, state: dict, sec: dict | None = None) -> list[tuple[f
             for x, y in profiles.outline(sec)]
 
 
+def part_outlines(doc: Document, state: dict) -> list[tuple[str, list]]:
+    """Pilar de perfil do projeto: (material, contorno no pavimento) de cada parte."""
+    sec = section(doc, state)
+    a = math.radians(state["angle"])
+    c, s = math.cos(a), math.sin(a)
+    x0, y0 = state["point"]
+    return [(part["material"], [(x0 + c * x - s * y, y0 + s * x + c * y)
+                                for x, y in part["outline"]])
+            for part in sec.get("parts") or []]
+
+
 def center(doc: Document, state: dict) -> tuple[float, float]:
     """Centro da seção no pavimento."""
     cx, cy = profiles.insertion(section(doc, state), state["cardinal"])

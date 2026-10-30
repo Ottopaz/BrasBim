@@ -833,6 +833,8 @@ class _Element:
 
     def cut_shape(self) -> Rings:
         return self.cut_rings if self.cut_rings is not None else [list(self.ring)]
+    # Pilar de perfil do projeto (spec/ui 41 §4): (contorno, fundo) de cada parte.
+    parts: list[tuple[list[Point], dict]] | None = None
 
 
 def _material_fill(doc: Document, element_type) -> dict:
@@ -882,8 +884,13 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
         if kind == "column":
             ring = columns.outline(doc, state)
             z0 = state["base_offset"]
+            parts = None
+            if (st_types.profile_def_of(element_type) is not None
+                    and wall_types.read_plan_style(element_type) is None):
+                parts = [(outline, {**materials.style(doc, name)["cut"], "source": "material"})
+                         for name, outline in columns.part_outlines(doc, state)]
             return _Element(element, kind, ring, [ring], (z0, z0 + columns.height(doc, state)),
-                            _material_fill(doc, element_type), CUT_WEIGHT)
+                            _material_fill(doc, element_type), CUT_WEIGHT, parts)
         if kind == "beam":
             ring = beams.outline(doc, state)
             z1 = beams.top_z(doc, state)
@@ -1020,7 +1027,18 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         if z0 < cut < z1 and e.cut_rings is not None:
             ring = e.cut_rings
         if z0 < cut < z1:
-            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
+            if e.parts:  # uma região por parte, cada uma com o corte do seu material
+                for outline, fill in e.parts:
+                    rings = [list(outline)]
+                    if e.cut_rings is not None:  # pilar de perfil recortado por sólido
+                        rings = clip.intersection(rings, e.cut_rings)
+                        if not rings:
+                            continue
+                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch))
+                    plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR,
+                                           tint=tint))
+            else:
+                plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
             plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))
         elif e.kind == "slab" and z1 <= cut and e.fill["pattern"] != "none":
             plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))

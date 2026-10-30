@@ -54,10 +54,43 @@ class LayerRegion:
     rings: Rings
 
 
+_PART_PRIORITY = {"core": 50, "finish": 10}
+
+
+def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
+    """Parede de perfil (spec/ui 41 §4): as "camadas" são o corte do perfil no plano de
+    corte da planta, um trecho por parte cruzada. ``None`` se o plano não corta a parede."""
+    from shapely.geometry import LineString, Polygon
+
+    from brasbim.core import profile_defs, storeys
+
+    h = rebuild.height(doc, state)
+    parts = rebuild.profile_parts(doc, state, h)
+    z = storeys.cut_height(doc.get(state["storey"], "IfcBuildingStorey")) - state["base_offset"]
+    x0, y0, x1, y1 = profile_defs.bounds(parts)
+    if not y0 < z < y1:
+        return None
+    line = LineString([(x0 - 1.0, z), (x1 + 1.0, z)])
+    out = []
+    for part in parts:
+        found = Polygon(part["outline"], part.get("holes") or []).intersection(line)
+        pieces = getattr(found, "geoms", [found])
+        for piece in pieces:
+            if piece.is_empty or piece.length < 1e-9:
+                continue
+            xs = [c[0] for c in piece.coords]
+            out.append(Layer(len(out), part["material"], _PART_PRIORITY[part["role"]],
+                             min(xs), max(xs)))
+    return out or None
+
+
 def wall_layers(doc: Document, state: dict) -> list[Layer] | None:
     """Camadas da parede na ordem do conjunto, ou ``None`` sem ``IfcMaterialLayerSet``."""
     try:
-        lset = wall_types.layer_set(doc.get(state["type"], "IfcWallType"))
+        wall_type = doc.get(state["type"], "IfcWallType")
+        if wall_types.profile_of(wall_type) is not None:
+            return _profile_layers(doc, state)
+        lset = wall_types.layer_set(wall_type)
     except OpError:
         return None
     items = list(lset.MaterialLayers or [])

@@ -125,6 +125,7 @@ def read_state(doc: Document, wall) -> dict:
 # --- gravação ----------------------------------------------------------------
 
 TILT_WITH_OPENINGS = "parede tombada ainda não aceita aberturas"
+TILT_WITH_PROFILE = "parede de perfil não tomba"
 _PROFILE_PROPS = ("PerfilTopoPosicoes", "PerfilTopoAlturas")
 
 
@@ -156,8 +157,19 @@ def _assign_type(doc: Document, wall, wall_type, tilted: bool = False) -> None:
             doc.ifc, related_objects=[wall], relating_type=wall_type
         )
         guid.stamp(rel, wall_type.GlobalId, "types")
-    lset = wall_types.layer_set(wall_type)
     usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
+    if wall_types.profile_of(wall_type) is not None:
+        # Parede de perfil (spec/ui 41 §4): o conjunto de perfis do tipo, sem uso.
+        pset = wall_types.profile_set(wall_type)
+        if usage != pset:
+            if usage is not None:
+                ifcopenshell.api.material.unassign_material(doc.ifc, products=[wall])
+            doc.ifc.create_entity("IfcRelAssociatesMaterial", GlobalId=guid.new(),
+                                  RelatedObjects=[wall], RelatingMaterial=pset)
+        rel = next(r for r in wall.HasAssociations if r.is_a("IfcRelAssociatesMaterial"))
+        guid.stamp(rel, wall.GlobalId, "material")
+        return
+    lset = wall_types.layer_set(wall_type)
     if tilted:
         wanted = usage is not None and usage == lset
     else:
@@ -203,6 +215,8 @@ def write_state(doc: Document, wall, state: dict) -> None:
     if tilted and wall.HasOpenings:
         raise OpError(TILT_WITH_OPENINGS)
     wall_type = doc.get(state["type"], "IfcWallType")
+    if tilted and wall_types.profile_of(wall_type) is not None:
+        raise OpError(TILT_WITH_PROFILE)
     storey = doc.get(state["storey"], "IfcBuildingStorey")
     if state["top_mode"] == "storey":
         doc.get(state["top_storey"], "IfcBuildingStorey")

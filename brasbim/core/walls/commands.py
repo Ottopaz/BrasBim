@@ -454,11 +454,16 @@ def detach_filling(doc: Document, element) -> Transaction:
 
 def create_wall_type(doc: Document, name: str, layers: list[dict], predefined_type="SOLIDWALL",
                      object_type: str | None = None,
-                     plan_style: dict | None = None) -> Transaction:
+                     plan_style: dict | None = None,
+                     profile: dict | None = None) -> Transaction:
+    """Tipo com ``layers``, ou de perfil do projeto (``profile`` = ``{"id", "b"}``,
+    ``layers`` vazio; spec/ui 41 §4)."""
     data = {"name": name, "predefined_type": predefined_type, "object_type": object_type,
             "layers": layers}
     if plan_style is not None:
         data["plan_style"] = plan_style
+    if profile is not None:
+        data["profile"] = {"id": profile["id"], "b": float(profile["b"])}
     return Transaction("Criar tipo de parede", [Op("wall_type.create", guid.new(), data=data)])
 
 

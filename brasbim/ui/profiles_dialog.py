@@ -44,7 +44,7 @@ from brasbim.ui.tools import fmt, fmt_exact, parse_number
 
 # Usos que já têm ferramenta (spec/ui 41 §4.1, ordem do ponto (n)); os outros entram
 # nas próximas etapas.
-AVAILABLE_USES = ("beam", "column")
+AVAILABLE_USES = ("wall", "beam", "column")
 ROLE_LABEL = {"core": "Núcleo", "finish": "Acabamento"}
 GRID = 0.01  # m
 PICK_PX = 8

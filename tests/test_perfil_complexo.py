@@ -5,7 +5,7 @@ import ifcopenshell.util.element as ue
 import pytest
 from estrutura import bounds, check_history, created, qto, valid
 
-from brasbim.core import plan, profile_defs
+from brasbim.core import materials, plan, profile_defs
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops import History, Transaction
 from brasbim.core.structure import columns, profiles
@@ -173,3 +173,15 @@ def test_pc_diario_reaplicado_noutro_documento(model):
         history.commit(Transaction.from_dict(tx.to_dict()))
     assert profile_defs.find(other, def_id) is not None
     assert profiles.CUSTOM == st_types.section(other.ifc.by_type("IfcBeamType")[-1])["shape"]
+
+
+def test_pc05b_planta_por_parte(model):
+    """Pilar de perfil cortado: uma região por parte, com o corte do material dela."""
+    def_id = new_profile(model)
+    c = column(model, def_id)
+    p = plan.storey_plan(model.doc, model.terreo)
+    regions = [r for r in p.regions if r.key == c.GlobalId]
+    assert len(regions) == 2
+    concrete = materials.style(model.doc, "Concreto")["cut"]["pattern"]
+    plaster = materials.style(model.doc, "Reboco")["cut"]["pattern"]
+    assert sorted(r.fill["pattern"] for r in regions) == sorted([concrete, plaster])

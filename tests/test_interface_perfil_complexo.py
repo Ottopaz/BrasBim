@@ -64,7 +64,7 @@ def test_pc06_editor_de_perfis(window):
     dialog.add()  # Novo: retângulo 0,20 × 0,40 com a origem no meio do topo
     (definition,) = profile_defs.all_defs(s.doc)
     assert dialog.current == profile_defs.id_of(definition)
-    assert profile_defs.read_state(definition)["uses"] == ["beam", "column"]
+    assert profile_defs.read_state(definition)["uses"] == ["wall", "beam", "column"]
     # retângulo por cliques na área de desenho: dois cantos, com atração à grade
     canvas = dialog.canvas
     canvas.set_mode("rect")
@@ -146,3 +146,53 @@ def test_pc06_tipos_com_perfil(window):
         assert st_types.profile_def_of(copy) == def_id
         dialog.close()
     assert len(profile_defs.users(s.doc, def_id)) == 4
+
+
+def test_pc06_3d_por_material(window):
+    """No 3D, cada parte do perfil com a cor do seu material."""
+    from brasbim.core.structure import commands as sc
+    from brasbim.ui.scene3d import Scene
+
+    s = window.session
+    state = dict(TEE, parts=[dict(TEE["parts"][0]),
+                             dict(TEE["parts"][1], material="Bloco cerâmico")])
+    def_id = _profile(window, state)
+    section = {"shape": "custom", "profile": def_id, "b": 0.6, "h": 0.5}
+    s.run(lambda: sc.create_beam(s.doc, None, s.storey, (0, 0), (4, 0), section=section))
+    beam = max(s.doc.ifc.by_type("IfcBeam"), key=lambda e: e.id())
+    scene = Scene()
+    scene.load(s.doc.ifc, s.doc)
+    mesh = scene.meshes[beam.GlobalId]
+    assert set(mesh.parts) == {"Concreto", "Bloco cerâmico"}
+    assert len(mesh.vertices) == sum(len(t) * 3 for t in mesh.parts.values())
+
+
+def test_pc06_tipo_de_parede_com_perfil(window):
+    """Janela de tipos de parede: Estrutura > Perfil do projeto; a parede refaz e o 3D
+    pinta cada parte com o seu material."""
+    from test_parede_perfil import muro
+
+    from brasbim.core.walls import commands as wc
+    from brasbim.core.walls import types as wall_types
+    from brasbim.ui.scene3d import Scene
+    from brasbim.ui.types_dialog import WallTypesDialog
+
+    s = window.session
+    def_id = _profile(window, muro())
+    t = window.toolbox.tools["wall"].options.type
+    s.run(lambda: wc.create_wall(s.doc, t, s.storey, (0, 0), (5, 0)))
+    wall = max(s.doc.ifc.by_type("IfcWall"), key=lambda e: e.id())
+    dialog = WallTypesDialog(s, window, select=t)
+    assert dialog.structure.isVisibleTo(dialog)
+    dialog.structure.setCurrentIndex(dialog.structure.findData("profile"))
+    assert dialog.profile.currentData() == def_id
+    assert dialog.profile_b.text() == "0,20" and dialog.profile_b.isReadOnly()
+    assert not dialog.layers.isVisibleTo(dialog)
+    assert dialog.apply()
+    assert wall_types.profile_of(s.doc.get(t)) == {"id": def_id, "b": 0.2}
+    scene = Scene()
+    scene.load(s.doc.ifc, s.doc)
+    assert set(scene.meshes[wall.GlobalId].parts) == {"Bloco cerâmico", "Concreto"}
+    s.history.undo()  # volta às camadas
+    assert wall_types.profile_of(s.doc.get(t)) is None
+    dialog.close()
