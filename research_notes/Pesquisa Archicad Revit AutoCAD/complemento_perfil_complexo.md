@@ -317,7 +317,7 @@ material não somem**, e arestas com a linha desligada ficam como estão. —
    `IfcOpeningElement` atravessando o `IfcWall` inteiro (§11).
 8. **Linhas:** uma pena de contorno e uma de separador para o perfil. Por aresta, desligar
    a linha de corte. **Diferente do Archicad:** a linha entre duas partes do mesmo material
-   some (proposta, ponto (l)).
+   some (proposta, ponto (o) da spec/ui 41).
 9. **Planta:** cortar de verdade no plano de corte (fatia do perfil, com a hachura de cada
    parte) e projetar o resto, como já está na spec. Isso já é melhor que o Archicad, que
    não tem a vista simbólica. A vista simbólica (a seção no plano de corte trocada por um

@@ -17,7 +17,7 @@ complexo).*
 > - o uso em parede, viga e pilar, com aberturas e junções;
 > - a planta (o Archicad não tem vista simbólica), a captura, os quantitativos e o IFC.
 >
-> O §12 lista 14 decisões; a spec/ui 41 §4 foi refinada e ganhou os pontos (l) e (m).
+> O §12 lista 14 decisões; a spec/ui 41 §4 foi refinada e ganhou os pontos (o) e (p) (eram (l) e (m), renomeados ao juntar com a etapa 1).
 > Próximo: implementar o perfil, núcleo e IFC primeiro (PC01, PC02, PC04).
 
 > **Unidades do projeto (2026‑11‑04, pedido do revisor):** pesquisa

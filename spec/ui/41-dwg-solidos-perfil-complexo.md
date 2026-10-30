@@ -146,7 +146,7 @@ tem tamanho fixo.
 - medida nominal editável na ficha só com faixa; a total, só leitura;
 - linha opcional de **referência das aberturas** (sem ela, o envolvente);
 - uma pena de contorno e uma de separador, e a linha de corte pode ser desligada por
-  aresta; a linha entre partes do mesmo material some (ponto (l));
+  aresta; a linha entre partes do mesmo material some (ponto (o));
 - **Criar perfil a partir da seleção** (parede de camadas, viga e pilar retangular ou
   circular viram partes);
 - sem perfil avulso guardado só no elemento: todo perfil tem nome;
@@ -179,6 +179,41 @@ faixa); PC03 parede reta e curva com perfil (volume por material na tabela); PC0
 pilar com perfil; PC05 planta da parede de perfil no plano de corte; PC06 editor de
 perfis na interface.
 
+### 4.1 Um perfil, vários contextos (pedido do revisor, 2026‑10‑30)
+O perfil é um **atributo do projeto**: desenhado uma vez, usado por quantos elementos
+quiser; editar o perfil refaz todos. Cada perfil marca **para que serve** (caixas:
+parede, viga, pilar, guarda‑corpo, borda de laje/cobertura, caminho livre), e a lista de
+cada ferramenta só mostra os perfis marcados para ela. O desenho é sempre o mesmo; o que
+muda é **por onde ele corre**:
+
+| Contexto | Por onde a seção corre | Onde fica a origem do desenho | IFC |
+|---|---|---|---|
+| **Parede** (reta, arco) | ao longo do eixo, em pé (x do desenho = espessura, y = altura) | na linha de referência, na base | `IfcWall` + `IfcMaterialProfileSet` no tipo |
+| **Viga** | ao longo do eixo | no eixo da viga | `IfcBeam` + `IfcMaterialProfileSetUsage` |
+| **Pilar** | na vertical, da base ao topo | no ponto de inserção | `IfcColumn` + `IfcMaterialProfileSetUsage` |
+| **Guarda‑corpo** | corrimão e travessa ao longo do caminho; montante na vertical | no caminho | `IfcRailing` (peças `IfcMember`) |
+| **Borda de laje ou de cobertura** (novo) | ao longo do contorno, em todos os lados ou nos lados escolhidos, com esquadria nos cantos | na aresta do contorno, na face de cima | elemento ligado à laje (`IfcSlab` com `PredefinedType` `NOTDEFINED` ou `IfcMember`, ponto (m)), agregado a ela |
+| **Caminho livre** (novo) | ao longo de uma linha/polilinha desenhada, em qualquer pavimento | na linha | `IfcBuildingElementProxy` ou a classe escolhida |
+
+**Borda de laje/cobertura** cobre o que a pesquisa mostra como pedido antigo dos
+usuários de outro programa, em que a seção desenhada **não** se aplica a laje nem a
+cobertura e o caminho é usar uma viga de perfil ao longo da borda mais um recorte de
+sólido: testeira e rufo de telhado, pingadeira de laje, viga de borda de radier,
+platibanda com capa, beiral com acabamento. **Caminho livre** atende bancada, floreira,
+moldura e calha.
+
+Laje com seção desenhada no corpo inteiro (laje nervurada, telha ondulada) fica de fora
+nesta entrega, ponto (l).
+
+As faixas de esticar valem para parede, viga e pilar (largura e altura nominais na ficha).
+Na borda e no caminho livre, o perfil tem tamanho fixo na primeira entrega.
+
+**Teste:** PC07 o mesmo perfil numa viga, num pilar e numa parede: as três formas vêm do
+mesmo `IfcMaterialProfileSet`, e editar o perfil refaz as três; PC08 borda numa laje
+retangular em dois lados: forma com esquadria, volume certo, acompanha a laje ao mover o
+contorno; PC09 caminho livre numa polilinha com arco; PC10 a lista da ferramenta só
+mostra os perfis marcados para ela.
+
 ## 5. Ordem e tamanho
 1. §2 DWG/DXF: 1 sessão (o desenho já existe).
 2. §3 sólidos: 2 sessões (núcleo e IFC; interface e planta).
@@ -186,10 +221,17 @@ perfis na interface.
 
 ## 6. Pontos para o revisor
 **Respostas (2026‑10‑29):** (a) **centímetros**; (b) papel + blocos; (c) cor verdadeira;
-(d) DWG 2000 serve. **(2026‑11‑01):** (f) Somar fica de fora; (g) apagar o operador
-desfaz o recorte com aviso (as duas como propostas). **(2026‑11‑04):** perfil complexo
-em **parede, viga e pilar** por enquanto (o escopo do §4). (e), (h)–(k) em aberto; sem
-outra resposta, valem as propostas.
+(d) DWG 2000 serve. **(2026‑10‑30):** (e) o revisor abriu o DWG gerado num CAD: ok;
+(f)–(k) como propostos (sem Somar; apagar o operador devolve a forma com aviso; perfil
+só no tipo se o IFC pedir; vãos cortam a seção inteira; primeira entrega só com faixas
+de esticar; frisos depois). Pedido novo sobre o perfil: o mesmo perfil deve servir a
+vários contextos (laje, pilar, viga e outros), cada um levando a forma desenhada; ver
+§4.1 e os pontos (l)–(n). **(2026‑10‑30, depois):** (l)–(n) como propostos (laje pela
+borda; borda como peça própria agregada à laje; ordem editor + viga + pilar → parede →
+borda e caminho livre → guarda‑corpo).
+**(2026‑11‑04):** perfil complexo
+em **parede, viga e pilar** por enquanto (o escopo do §4). (o) e (p) em aberto; sem outra
+resposta, valem as propostas.
 
 - (a) DWG: unidade da vista em **metros** (proposta), centímetros ou milímetros?
 - (b) DWG: prancha no espaço do papel com os desenhos como blocos (proposta), ou já
@@ -208,9 +250,16 @@ outra resposta, valem as propostas.
   nomeados por parte (como "espessura do reboco") ficam para depois?
 - (k) Frisos ao longo da parede (rodapé, moldura, pingadeira como objeto à parte, à moda
   dos frisos do Revit) ficam para depois do perfil?
-- (l) Linha entre duas partes do **mesmo material** na planta e no corte: apagar
+- (l) Laje: o perfil entra na **borda** (proposta). Laje com a seção desenhada no corpo
+  inteiro (nervurada, telha), também agora ou depois?
+- (m) Borda de laje/cobertura no IFC: **peça própria agregada à laje** (proposta; o
+  engenheiro vê a viga de borda separada e o quantitativo sai por peça) ou forma somada à
+  própria laje?
+- (n) Ordem de entrega do perfil: (1) editor + viga + pilar, (2) parede, (3) borda de
+  laje/cobertura e caminho livre, (4) guarda‑corpo (proposta)?
+- (o) Linha entre duas partes do **mesmo material** na planta e no corte: apagar
   (proposta; o Archicad mantém) ou manter?
-- (m) No IFC, a forma por parte num só `IfcWall` (proposta), em vez de exportar as partes
+- (p) No IFC, a forma por parte num só `IfcWall` (proposta), em vez de exportar as partes
   como `IfcBuildingElementPart` como o Archicad faz como opção? O fórum relata janelas
   sumindo e partes soltas no Revit com as partes.
 
@@ -220,3 +269,5 @@ com as URLs da Graphisoft, Autodesk, GNU LibreDWG, ODA, OSArch e buildingSMART);
 `complemento_perfil_complexo.md` (estudo a fundo do perfil, ajuda AC18–AC29 e fórum);
 `archicad_modelagem.md` (SEO, perfis complexos, laje e cobertura);
 `revit_modelagem_familias.md` (frisos e rebaixos); `autocad.md` (DWG/DWF no Brasil).
+§4.1: mesma nota, §3 "Rodada 2" (ajuda Graphisoft AC18/AC21/AC22/AC24/AC28 sobre
+aplicar perfil, esticar, deslocamentos e origem; fórum sobre borda de laje e vãos).
