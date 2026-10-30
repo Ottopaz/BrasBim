@@ -398,9 +398,6 @@ def edit_doors(doc: Document, door_list, hinges: str | None = None, **changes) -
                     for d in door_list])
 
 
-edit_windows = edit_doors
-
-
 def flip_each(doc: Document, door_list, flip) -> Transaction:
     """``flip_hinges`` ou ``flip_opening`` em cada esquadria, numa transação só."""
     door_list = list(door_list)

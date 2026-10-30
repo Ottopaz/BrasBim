@@ -111,11 +111,6 @@ def parts_of(roof) -> list:
     return [doc_parts[g] for g in state.get("parts", []) if g in doc_parts]
 
 
-def all_roofs(doc: Document) -> list:
-    return sorted((r for r in doc.ifc.by_type("IfcRoof") if is_roof(r)),
-                  key=lambda r: r.GlobalId)
-
-
 # --- geometria ---------------------------------------------------------------------------
 
 

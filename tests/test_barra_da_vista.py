@@ -100,17 +100,18 @@ def test_vb09_ordem_de_desenho(model):
     orders = dict(_items(model, [a, b, c]))
     assert orders[a] < min(orders[b], orders[c])
 
-    # Um passo à frente: troca com a seguinte que se sobrepõe (aqui todas).
+    # Um passo à frente: troca com a seguinte que se sobrepõe (aqui só b). Com todas
+    # sobrepostas, b e c empatam e o desempate por GlobalId (aleatório) decidia o teste.
+    only_b = lambda g, h: h == b
     model.commit(edit_state.reorder(model.doc, _items(model, [a, b, c]), [a], "forward",
-                                    overlaps=lambda g, h: True))
+                                    overlaps=only_b))
     orders = dict(_items(model, [a, b, c]))
-    ranked = sorted(orders, key=lambda g: (orders[g], g))
-    assert ranked.index(a) == 1
+    assert orders[b] < orders[a] <= orders[c]
 
     model.commit(edit_state.reorder(model.doc, _items(model, [a, b, c]), [a], "backward",
-                                    overlaps=lambda g, h: True))
+                                    overlaps=only_b))
     orders = dict(_items(model, [a, b, c]))
-    assert sorted(orders, key=lambda g: (orders[g], g)).index(a) == 0
+    assert orders[a] < min(orders[b], orders[c])
 
     model.commit(edit_state.reorder(model.doc, _items(model, [a, b, c]), [a], "default"))
     assert _pset(model.doc.get(a)) is None

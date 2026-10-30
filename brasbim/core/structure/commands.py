@@ -339,12 +339,6 @@ def create_roof_over_walls(doc: Document, slab_type, storey, point=None,
     return create_roof(doc, slab_type, storey, outline, **options)
 
 
-def create_roof_rectangle(doc: Document, slab_type, storey, corner, opposite, **options):
-    (x0, x1), (y0, y1) = sorted((corner[0], opposite[0])), sorted((corner[1], opposite[1]))
-    return create_roof(doc, slab_type, storey, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
-                       **options)
-
-
 # --- edição ----------------------------------------------------------------------------
 
 

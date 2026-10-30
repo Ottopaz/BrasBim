@@ -202,8 +202,6 @@ class ViewBar(QFrame):
         self.show_all.setVisible(bool(hidden))
         self.refresh_zoom()
         self._fit_texts()
-        return
-        self.refresh_zoom()
 
     def ask_rotation(self) -> None:
         from PySide6.QtWidgets import QInputDialog

@@ -124,17 +124,6 @@ class Index:
     def find(self, object_id: str) -> list[Entry]:
         return [e for e in self.entries() if e.object_id == object_id]
 
-    def folder_of(self, entry: Entry) -> str:
-        """Subcategoria (pasta) do arquivo, relativa à pasta da biblioteca."""
-        path = Path(entry.file)
-        for folder in self.folders:
-            try:
-                rel = path.parent.relative_to(Path(folder))
-            except ValueError:
-                continue
-            return "" if str(rel) == "." else str(rel).replace("\\", "/")
-        return ""
-
 
 def updates(doc: Document, index: Index) -> dict[str, Entry]:
     """Definições do projeto com versão mais nova na biblioteca: ``object_id`` → entrada."""

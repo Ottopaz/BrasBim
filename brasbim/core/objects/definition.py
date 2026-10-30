@@ -242,16 +242,6 @@ def editable(p: dict) -> bool:
 # --- validação -------------------------------------------------------------------------
 
 
-def _field_text(value) -> str | None:
-    """Texto da fórmula de um campo, ou ``None`` se for número (ou vazio)."""
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _types(defn: dict) -> dict[str, str]:
     return {fm.key(p["name"]): KINDS[p["kind"]] for p in defn["params"]
             if p["kind"] in KINDS}

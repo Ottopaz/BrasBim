@@ -167,11 +167,6 @@ class SnapIndex:
     def circles_near(self, p: Point, r: float) -> list[CircleRef]:
         return [c for c in self.circles if abs(math.dist(p, c.center) - c.radius) <= r]
 
-    def add_polyline(self, points, closed: bool, owner: str) -> None:
-        """Acrescenta uma polilinha (antes de consultar; refaz as tabelas)."""
-        segs, corners = polyline_parts(points, closed, owner)
-        self.__init__(self.segments + segs, self.circles, self.corners + corners, self.bulk)
-
 
 def _cell(q: Point) -> tuple[int, int]:
     return math.floor(q[0] / _CELL), math.floor(q[1] / _CELL)

@@ -456,11 +456,6 @@ def values_of(doc: Document, element) -> dict:
     return resolve(doc, state)[2].values
 
 
-def label_of(defn: dict, name: str) -> str:
-    p = od.param(defn, name)
-    return p["label"] if p else name
-
-
 def key(name: str) -> str:
     return fm.key(name)
 

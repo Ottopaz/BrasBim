@@ -69,11 +69,4 @@ def derive(doc: Document, dirty: set[str]) -> None:
         base.rebuild(doc, element)
 
 
-def annotations_of(storey) -> list:
-    """Anotações e ambientes do pavimento, em ordem de GlobalId."""
-    return sorted((e for e in ifcopenshell.util.element.get_decomposition(storey)
-                   if e.is_a("IfcAnnotation") or e.is_a("IfcSpace")),
-                  key=lambda e: e.GlobalId)
-
-
 register_derive(derive)

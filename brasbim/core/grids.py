@@ -80,10 +80,6 @@ def spacings(axes: list[dict]) -> list[float]:
     return [b - a for a, b in itertools.pairwise(offs)]
 
 
-def is_grid(entity) -> bool:
-    return entity is not None and entity.is_a("IfcGrid")
-
-
 def all_grids(doc: Document) -> list:
     return sorted(doc.ifc.by_type("IfcGrid"), key=lambda g: g.GlobalId)
 

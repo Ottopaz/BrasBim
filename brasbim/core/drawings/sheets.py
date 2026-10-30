@@ -563,10 +563,6 @@ def set_item_width(doc: Document, sheet, index: int, width: float) -> Transactio
     return tx
 
 
-def remove_from_sheet(doc: Document, sheet, index: int) -> Transaction:
-    return remove_many_from_sheet(doc, sheet, [index])
-
-
 def remove_many_from_sheet(doc: Document, sheet, indices) -> Transaction:
     """Tira da prancha os desenhos ``indices`` numa transação (spec/ui 29 §2)."""
     sheet = doc.get(sheet if isinstance(sheet, str) else sheet.GlobalId, "IfcAnnotation")

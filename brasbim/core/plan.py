@@ -63,7 +63,6 @@ from brasbim.core.walls.wall import read_state as read_wall
 
 log = logging.getLogger(__name__)
 
-DETAILS = ("simple", "layers")  # Exibir > Detalhe da planta (spec/ui 06 §2)
 _ARC_STEPS = 16
 
 
@@ -195,7 +194,6 @@ class Plan:
             if near:
                 return min(near)[1]
         return None
-
 
     def in_rect(self, a: Point, b: Point, crossing: bool = False) -> list[str]:
         """Elementos do pavimento na janela de cantos ``a`` e ``b`` (spec/ui 02 §3.1):

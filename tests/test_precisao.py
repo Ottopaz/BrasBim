@@ -121,6 +121,11 @@ def _points(element):
     return [tuple(q) for q in base.read_state(element)["points"]]
 
 
+def _flat(points):
+    """Pontos em lista plana: o ``pytest.approx`` não aceita listas de pares."""
+    return [c for q in points for c in q]
+
+
 def _lines(model):
     return [e for e in model.doc.ifc.by_type("IfcAnnotation")
             if base.kind_of(e) is drafting.LINE]
@@ -150,7 +155,7 @@ def test_pr08_deslocar_paralela(model):
     # linha 2D (para dentro do canto), círculo e contorno de laje
     line(model, (0, 10), (4, 10), (4, 14))
     model.commit(edits.offset_element(model.doc, _lines(model)[0], 1.0, (2, 12)))
-    assert _points(_lines(model)[-1]) == pytest.approx([(0, 11), (3, 11), (3, 14)])
+    assert _flat(_points(_lines(model)[-1])) == pytest.approx([0, 11, 3, 11, 3, 14])
     c = make(model, "circle2d", center=[20, 0], radius=1.0)
     model.commit(edits.offset_element(model.doc, c, 0.25, (22, 0), copy=False))
     assert base.read_state(c)["radius"] == pytest.approx(1.25)
@@ -160,9 +165,9 @@ def test_pr08_deslocar_paralela(model):
                                 [(30, 0), (34, 0), (34, 4), (30, 4)]))
     (slab,) = model.doc.ifc.by_type("IfcSlab")
     model.commit(edits.offset_element(model.doc, slab, 0.5, (35, 2)))
-    outlines = [sorted(map(tuple, slabs.read_state(model.doc, s)["outline"]))
+    outlines = [_flat(sorted(map(tuple, slabs.read_state(model.doc, s)["outline"])))
                 for s in model.doc.ifc.by_type("IfcSlab")]
-    assert pytest.approx([(29.5, -0.5), (29.5, 4.5), (34.5, -0.5), (34.5, 4.5)]) in outlines
+    assert pytest.approx([29.5, -0.5, 29.5, 4.5, 34.5, -0.5, 34.5, 4.5]) in outlines
     assert valid(model.doc.ifc)
 
 
@@ -175,7 +180,7 @@ def test_pr09_aparar_e_estender_linhas(model):
     assert pieces == [[(0, 0), (3, 0)], [(6, 0), (10, 0)]]
     # a sobra além do cruzamento
     model.commit(edits.trim_extend(model.doc, left, (3, 0.8), index(model)))
-    assert _points(left) == pytest.approx([(3, -1), (3, 0)])
+    assert _flat(_points(left)) == pytest.approx([3, -1, 3, 0])
     loose = line(model, (0, 5), (2, 5))
     line(model, (8, 3), (8, 7))
     model.commit(edits.trim_extend(model.doc, loose, (1.8, 5), index(model)))

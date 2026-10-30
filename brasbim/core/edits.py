@@ -119,8 +119,6 @@ def distance_to(points, closed: bool, cursor: Point) -> float:
 
 # --- deslocar paralela (§4) ------------------------------------------------------------------
 
-OFFSETTABLE = ("wall", "line2d", "circle2d", "arc2d", "slab", "space", "hatch")
-
 
 def kind_of(doc: Document, element) -> str | None:
     """Categoria do elemento para as edições deste módulo, ou None."""
@@ -511,4 +509,3 @@ def _fillet_lines(doc, l1, p1, l2, p2, radius) -> Transaction:
         style = {"weight": states[0]["weight"], "dash": states[0]["dash"]}
         ops += ac.create_annotation(doc, "arc2d", _storey_of(doc, l1), **arc, **style).ops
     return Transaction("Concordar linhas", ops)
-
