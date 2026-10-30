@@ -4,7 +4,28 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑30 (revisão geral antes do instalador).*
+*Atualizado em 2026‑10‑30 (perfil complexo, etapa 1: editor + viga + pilar).*
+
+> **Perfil complexo, etapa 1 (2026‑10‑30, depois):** o revisor aceitou (e)–(n) da spec/ui
+> 41 (DWG validado num CAD; perfil num atributo do projeto usado em vários contextos, §4.1).
+> Feito a etapa (1) do ponto (n): **perfis do projeto** em `core/profile_defs.py`
+> (`IfcMaterialProfileSet` sem dono, uma `IfcMaterialProfile` por parte com
+> `Category` LoadBearing/Finish, Pset `BrasBim_Perfil` em `IfcMaterialProperties`:
+> `Identificador`, `Usos`, `EsticarX/Y`; ops `profile_def.create/edit/delete`, id = o
+> Identificador; editar refaz os tipos que usam, via `st_types.refresh_profile_def`).
+> **Viga e pilar** aceitam `section = {"shape": "custom", "profile", "b", "h"}`: o tipo
+> grava as partes esticadas e o `CompositeProfile` do conjunto (o corpo extruda ele, sem
+> mudar o `rebuild`), Pset `BrasBim_Perfil` do tipo (`PerfilId`, `Largura`, `Altura`). A
+> origem do desenho é o ponto de inserção (o `CardinalPoint` não desloca). `profiles.extent`
+> substituiu as contas com `b`/`h` (faces da viga, faixa de altura na planta e nos
+> recortes). Interface: **Projeto > Perfis** (`ui/profiles_dialog.py`: área de desenho com
+> grade de 1 cm, retângulo e polígono por cliques ou por medidas, partes com material e
+> papel, linhas de esticar), "Perfil" na Seção da barra Opções de Pilar e Viga (b/h só onde
+> estica, sem Inserção/linha de referência) e "Perfil do projeto" na janela de tipos.
+> Testes PC01, PC02, PC04, PC06, PC07, PC10 (`tests/test_perfil_complexo.py`,
+> `test_interface_perfil_complexo.py`). Conferido em print (editor, barra, 3D).
+> **Falta nesta etapa:** o 3D pinta a peça de uma cor só (não por parte); a planta usa a
+> hachura do 1º material. **Próximo:** etapa (2) parede de perfil (PC03, PC05).
 
 > **Revisão geral (2026‑10‑30):** o revisor quer um instalador `.exe` (depois, um site);
 > antes, pediu revisão do código e pente fino das ferramentas. Relatório:
@@ -534,7 +555,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/35-elevacao-interna-detalhe-folha-camera`, `36-polilinha-ponto-figura-desenho` | aprovadas ("ok" do revisor em 2026‑10‑29, pontos como propostos); a implementar |
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
 | `spec/ui/42-limpeza-da-janela` | **em revisão**, implementada (LJ01–LJ07 em `tests/test_interface_limpeza.py`) |
-| `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** ((a)–(d) respondidos); §3 sólidos e §4 perfil a fazer ((e)–(k) em aberto) |
+| `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** e validado num CAD; (a)–(n) respondidos; §4 perfil: **etapa 1 feita** (editor + viga + pilar; PC01, PC02, PC04, PC06, PC07, PC10), etapas 2–4 a fazer; §3 sólidos a fazer |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |

@@ -74,6 +74,7 @@ from brasbim.ui.municipal_dialog import MunicipalDialog
 from brasbim.ui.paper import SheetView, export_pdf
 from brasbim.ui.pens_dialog import PensDialog
 from brasbim.ui.plan_view import PlanView
+from brasbim.ui.profiles_dialog import ProfilesDialog
 from brasbim.ui.project_panel import ProjectPanel, StoreysPanel
 from brasbim.ui.properties import PropertiesPanel
 from brasbim.ui.scene3d import STANDARD_VIEWS, Scene
@@ -568,6 +569,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de viga", lambda: self.edit_type("IfcBeamType"))
         self._action(project_menu, "Tipos de laje", lambda: self.edit_type("IfcSlabType"))
         self._action(project_menu, "Materiais", lambda: self.edit_materials())
+        self._action(project_menu, "Perfis", lambda: self.edit_profiles())
         self._action(project_menu, "Tabelas de penas", lambda: self.edit_pens())
         self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
         project_menu.addSeparator()
@@ -2197,6 +2199,12 @@ class MainWindow(QMainWindow):
         self.toolbox.check_types()
         self.options_bar.refresh()
         self.properties.refresh()
+        self.plan.update()
+
+    def edit_profiles(self, def_id: str | None = None) -> None:
+        """Projeto > Perfis (spec/ui 41 §4), aberto no perfil ``def_id``."""
+        self.toolbox.active.cancel()
+        ProfilesDialog(self.session, self, select=def_id).exec()
         self.plan.update()
 
     def edit_materials(self, name: str | None = None) -> None:

@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention
+from brasbim.core import display_layers, intervention, profile_defs
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
@@ -958,24 +958,64 @@ class OptionsBar(QToolBar):
         self._label(label)
         self._number(getattr(holder, key), commit, tip)
 
-    def _column(self, tool) -> None:
-        self._label("Seção")
+    def _profile_choice(self, holder, use: str, shapes, tip: str) -> bool:
+        """Forma da seção e, com "Perfil", o perfil do projeto e as medidas que esticam
+        (spec/ui 41 §4). Devolve se a seção é de perfil."""
+        doc = self.window_.session.doc
+        available = [(s.Name, profile_defs.id_of(s))
+                     for s in profile_defs.for_use(doc, use)]
+        if holder.shape == profiles.CUSTOM and holder.profile not in {i for _, i in available}:
+            holder.shape = "rect"  # o perfil foi excluído ou deixou de servir
+        items = list(shapes) + ([("Perfil", profiles.CUSTOM)] if available else [])
 
         def set_shape(value):
-            tool.shape = value
-            self.show_for(tool)
+            if value == profiles.CUSTOM:
+                holder.use_profile(holder.profile if holder.profile in {i for _, i in available}
+                                   else available[0][1])
+            else:
+                holder.shape = value
+            self.show_for(self.tool)
 
-        self._combo(SECTIONS, tool.shape, set_shape, "Forma da seção do próximo pilar")
+        if len(items) > 1:
+            self._label("Seção")
+            self._combo(items, holder.shape, set_shape, tip)
+        if holder.shape != profiles.CUSTOM:
+            return False
+
+        def set_profile(def_id):
+            holder.use_profile(def_id)
+            self.show_for(self.tool)
+
+        self._combo(available, holder.profile, set_profile, "Perfil do projeto")
+        edit = make_action(self, "edit_type", "Editar perfil", "abre o perfil em Projeto > Perfis")
+        edit.triggered.connect(lambda: self._edit_profile(holder.profile))
+        self.addAction(edit)
+        state = profile_defs.state(doc, holder.profile)
+        if state.get("stretch_x") is not None:
+            self._size(holder, "b", "b", "Largura do perfil esticado (m)")
+        if state.get("stretch_y") is not None:
+            self._size(holder, "h", "h", "Altura do perfil esticado (m)")
+        return True
+
+    def _edit_profile(self, def_id: str | None) -> None:
+        self.window_.edit_profiles(def_id)
+        self.show_for(self.tool)
+
+    def _column(self, tool) -> None:
+        custom = self._profile_choice(tool, "column", SECTIONS,
+                                      "Forma da seção do próximo pilar")
         if tool.shape == "circle":
             self._size(tool, "d", "Ø", "Diâmetro do pilar (m)")
-        else:
+        elif not custom:
             self._size(tool, "b", "b", "Largura do pilar, ao longo do ângulo (m)")
             self._size(tool, "h", "h", "Profundidade do pilar (m)")
         self.addSeparator()
-        self._label("Inserção")
-        circle = tool.shape == "circle"
-        self.addWidget(InsertionPicker(tool.insertion, lambda v: setattr(tool, "insertion", v),
-                                       center_only=circle))
+        if not custom:  # no perfil, o ponto de inserção é a origem do desenho
+            self._label("Inserção")
+            circle = tool.shape == "circle"
+            self.addWidget(InsertionPicker(tool.insertion,
+                                           lambda v: setattr(tool, "insertion", v),
+                                           center_only=circle))
         self._label("Ângulo")
         self.angle_field = self._number(tool.angle, lambda v: setattr(tool, "angle", v),
                                         "Ângulo do pilar (graus, anti-horário)")
@@ -1057,10 +1097,13 @@ class OptionsBar(QToolBar):
 
     def _beam(self, tool) -> None:
         options = tool.options
-        self._size(options, "b", "b", "Largura da viga (m)")
-        self._size(options, "h", "h", "Altura da viga (m)")
-        self.addSeparator()
-        self._choices(REF_LINES, options.ref_line, lambda v: setattr(options, "ref_line", v))
+        if not self._profile_choice(options, "beam", SECTIONS[:1],
+                                    "Forma da seção da próxima viga"):
+            self._size(options, "b", "b", "Largura da viga (m)")
+            self._size(options, "h", "h", "Altura da viga (m)")
+            self.addSeparator()
+            self._choices(REF_LINES, options.ref_line,
+                          lambda v: setattr(options, "ref_line", v))
         self.addSeparator()
         self._label("Topo")
 

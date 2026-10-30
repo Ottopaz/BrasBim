@@ -27,7 +27,7 @@ import ifcopenshell.util.element
 from brasbim.core import guid, props
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
-from brasbim.core.structure import common
+from brasbim.core.structure import common, profiles
 from brasbim.core.structure import types as st_types
 
 PSET = "BrasBim_Viga"
@@ -116,9 +116,14 @@ def section(doc: Document, state: dict) -> dict:
 def faces(doc: Document, state: dict, sec: dict | None = None) -> tuple[float, float]:
     """(y da face direita, y da face esquerda) em relação à linha desenhada, com y para a
     esquerda de quem anda do início para o fim."""
-    b = (sec or section(doc, state))["b"]
-    return {"axis": (-b / 2, b / 2), "left_face": (-b, 0.0),
-            "right_face": (0.0, b)}[state["ref_line"]]
+    x0, x1, _, _ = profiles.extent(sec or section(doc, state), CARDINAL[state["ref_line"]])
+    return x0, x1
+
+
+def z_range(doc: Document, state: dict, sec: dict | None = None) -> tuple[float, float]:
+    """(fundo, topo) da seção em relação à cota do eixo (o topo da viga retangular)."""
+    _, _, y0, y1 = profiles.extent(sec or section(doc, state), CARDINAL[state["ref_line"]])
+    return y0, y1
 
 
 def outline(doc: Document, state: dict, sec: dict | None = None) -> list[tuple[float, float]]:

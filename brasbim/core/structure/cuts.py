@@ -92,8 +92,8 @@ def piece(doc: Document, element) -> Piece | None:
                          z0 + columns.height(doc, state))
         if element.is_a("IfcBeam"):
             z1 = z + beams.top_z(doc, state)
-            return Piece(element, beams.outline(doc, state),
-                         z1 - beams.section(doc, state)["h"], z1)
+            low, high = beams.z_range(doc, state)
+            return Piece(element, beams.outline(doc, state), z1 + low, z1 + high)
         z1 = z + state["top_offset"]
         return Piece(element, [tuple(p) for p in state["outline"]],
                      z1 - slabs.thickness(doc, state), z1)

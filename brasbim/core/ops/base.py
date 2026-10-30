@@ -69,6 +69,7 @@ HANDLER_MODULES = (
     "brasbim.core.fillings.window_types",
     "brasbim.core.fillings.doors",
     "brasbim.core.fillings.rebuild",
+    "brasbim.core.profile_defs",
     "brasbim.core.structure.types",
     "brasbim.core.structure.columns",
     "brasbim.core.structure.beams",

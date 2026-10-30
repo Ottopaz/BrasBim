@@ -21,6 +21,7 @@ from brasbim.core import (
     geom2d,
     guides,
     plan,
+    profile_defs,
     selection_area,
     snap,
     storeys,
@@ -1731,6 +1732,17 @@ def _base_section(session: Session, ifc_class: str) -> dict:
             else {"shape": "rect", "b": 0.14, "h": 0.40})
 
 
+def use_profile(holder, def_id: str | None) -> None:
+    """Pilar ou viga com perfil do projeto (``def_id``) ou de volta ao retângulo; b e h
+    começam na medida do desenho do perfil."""
+    if def_id is None:
+        holder.shape = "rect"
+        return
+    state = profile_defs.state(holder.session.doc, def_id)
+    holder.shape, holder.profile = profiles.CUSTOM, def_id
+    holder.b, holder.h = profile_defs.nominal(state)
+
+
 def _top_options(tool, fixed_key: str) -> dict:
     """Topo ligado ao pavimento de cima (com deslocamento) ou fixo (spec/ui 10 §3)."""
     if tool.top == "fixed":
@@ -1755,6 +1767,7 @@ class ColumnTool(Tool):
         self.shape = base["shape"]
         self.b, self.h = base.get("b", 0.20), base.get("h", 0.40)
         self.d = base.get("d", 0.30)
+        self.profile = base.get("profile")  # perfil do projeto (spec/ui 41 §4)
         self.insertion = (1, 1)  # quadradinho de 9 pontos: (coluna, linha), centro
         self.angle = 0.0
         self.base_offset = 0.0
@@ -1766,11 +1779,17 @@ class ColumnTool(Tool):
     def section(self) -> dict:
         if self.shape == "circle":
             return {"shape": "circle", "d": self.d}
+        if self.shape == profiles.CUSTOM:
+            return {"shape": profiles.CUSTOM, "profile": self.profile, "b": self.b, "h": self.h}
         return {"shape": "rect", "b": self.b, "h": self.h}
+
+    def use_profile(self, def_id: str | None) -> None:
+        """Escolhe o perfil do projeto; b e h voltam à medida do desenho."""
+        use_profile(self, def_id)
 
     @property
     def cardinal(self) -> int:
-        if self.shape == "circle":
+        if self.shape in ("circle", profiles.CUSTOM):
             return 5
         return profiles.PLAN_CARDINAL[self.insertion]
 
@@ -1822,8 +1841,9 @@ class ColumnTool(Tool):
             return None
         state = {"point": list(self.point), "cardinal": self.cardinal, "angle": self.angle}
         try:
-            return columns.outline(self.session.doc, state, self.section())
-        except (KeyError, ValueError):
+            section = st_types.resolve_section(self.session.doc, self.section())
+            return columns.outline(self.session.doc, state, section)
+        except (KeyError, ValueError, OpError):
             return None
 
     def press(self, p, mods, button="left"):
@@ -1857,23 +1877,34 @@ class _BeamOptions:
     def __init__(self, session: Session):
         self.type = _first_type(session, self.type_class)
         base = _base_section(session, self.type_class)
+        self.session = session
+        self.shape = base["shape"]
         self.b, self.h = base["b"], base["h"]
+        self.profile = base.get("profile")  # perfil do projeto (spec/ui 41 §4)
         self.ref_line = "axis"
         self.top = "storey"
         self.top_offset = 0.0
         self.top_elevation = structure_common.DEFAULT_TOP
 
     def section(self) -> dict:
+        if self.shape == profiles.CUSTOM:
+            return {"shape": profiles.CUSTOM, "profile": self.profile, "b": self.b, "h": self.h}
         return {"shape": "rect", "b": self.b, "h": self.h}
+
+    def use_profile(self, def_id: str | None) -> None:
+        use_profile(self, def_id)
 
     def command_options(self) -> dict:
         return {"ref_line": self.ref_line, "section": self.section(),
                 **_top_options(self, "top_elevation")}
 
     def band(self, doc) -> tuple[float, float]:
-        b = self.b
-        return {"axis": (-b / 2, b / 2), "left_face": (-b, 0.0),
-                "right_face": (0.0, b)}[self.ref_line]
+        try:
+            section = st_types.resolve_section(doc, self.section())
+            return beams.faces(doc, {"ref_line": self.ref_line}, section)
+        except (KeyError, ValueError, OpError):
+            b = self.b
+            return -b / 2, b / 2
 
 
 class BeamTool(WallTool):

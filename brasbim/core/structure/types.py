@@ -14,6 +14,13 @@ Gravação: ``IfcMaterialProfileSet`` com um ``IfcMaterialProfile`` (material + 
 perfil é a mesma entidade nos corpos de todas as ocorrências (pilar.md §2.2). Mudar as
 dimensões altera o perfil no lugar; mudar a forma troca o perfil.
 
+Com perfil do projeto (``section`` = ``{"shape": "custom", "profile": id, "b", "h"}``,
+spec/ui 41 §4): uma ``IfcMaterialProfile`` por parte, já esticada para ``b`` × ``h``, e o
+``CompositeProfile`` do conjunto juntando as partes (é ele que os corpos extrudam). O
+material de cada parte vem do perfil (``material`` do tipo fica ``None``). Pset
+``BrasBim_Perfil`` do tipo: ``PerfilId``, ``Largura``, ``Altura``. Editar o perfil refaz
+o tipo (``refresh_profile_def``).
+
 Estado de um tipo de laje::
 
     {"name": "Laje maciça 10 cm", "predefined_type": "FLOOR",
@@ -30,10 +37,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import ifcopenshell.api.material
+import ifcopenshell.api.pset
 import ifcopenshell.api.root
 import ifcopenshell.util.element
 
-from brasbim.core import guid
+from brasbim.core import guid, profile_defs
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 from brasbim.core.structure import profiles
@@ -51,9 +59,11 @@ class ProfileKind:
     plural: str
 
 
-COLUMN = ProfileKind("column", "IfcColumnType", "IfcColumn", ("COLUMN",), profiles.SHAPES,
-                     "pilar", "pilares")
-BEAM = ProfileKind("beam", "IfcBeamType", "IfcBeam", ("BEAM",), ("rect",), "viga", "vigas")
+COLUMN = ProfileKind("column", "IfcColumnType", "IfcColumn", ("COLUMN",),
+                     (*profiles.SHAPES, profiles.CUSTOM), "pilar", "pilares")
+BEAM = ProfileKind("beam", "IfcBeamType", "IfcBeam", ("BEAM",), ("rect", profiles.CUSTOM),
+                   "viga", "vigas")
+TYPE_PSET = "BrasBim_Perfil"  # tipo com perfil do projeto
 
 SLAB_TYPES = ("FLOOR", "BASESLAB", "ROOF")  # ROOF: peças da cobertura (cobertura.md §3.2)
 
@@ -80,11 +90,39 @@ def material_profile(element_type):
 
 
 def profile(element_type):
-    """``IfcProfileDef`` do tipo (compartilhado pelos corpos das ocorrências)."""
+    """``IfcProfileDef`` do tipo (compartilhado pelos corpos das ocorrências): o
+    ``CompositeProfile`` quando o tipo usa um perfil do projeto."""
+    pset = profile_set(element_type)
+    if pset.CompositeProfile is not None:
+        return pset.CompositeProfile
     return material_profile(element_type).Profile
 
 
+def _type_pset(element_type) -> dict:
+    return ifcopenshell.util.element.get_pset(element_type, TYPE_PSET,
+                                              should_inherit=False) or {}
+
+
+def profile_def_of(element_type) -> str | None:
+    """Id do perfil do projeto usado pelo tipo, ou ``None``."""
+    return _type_pset(element_type).get("PerfilId")
+
+
+def _custom(section_: dict) -> bool:
+    return section_.get("shape") == profiles.CUSTOM
+
+
 def section(element_type) -> dict:
+    """Seção do tipo; a do perfil do projeto vem com ``name`` e ``parts``."""
+    def_id = profile_def_of(element_type)
+    if def_id is not None:
+        values = _type_pset(element_type)
+        pset = profile_set(element_type)
+        name = (pset.CompositeProfile.ProfileName if pset.CompositeProfile is not None
+                else None) or element_type.Name
+        return {"shape": profiles.CUSTOM, "profile": def_id,
+                "b": float(values["Largura"]), "h": float(values["Altura"]),
+                "name": name, "parts": profile_defs.read_parts(pset.MaterialProfiles)}
     found = profiles.read(profile(element_type))
     if found is None:
         raise OpError(f"tipo {element_type.GlobalId}: perfil {profile(element_type).is_a()} "
@@ -92,24 +130,108 @@ def section(element_type) -> dict:
     return found
 
 
+def resolve_section(doc: Document, section_: dict) -> dict:
+    """A seção com ``name`` e ``parts`` (esticadas) quando é de um perfil do projeto;
+    para prévias das ferramentas, antes de o tipo existir."""
+    if not _custom(section_):
+        return section_
+    definition = profile_defs.state(doc, section_["profile"])
+    return {**stored_section(section_), "name": definition["name"],
+            "parts": profile_defs.stretched(definition, section_["b"], section_["h"])}
+
+
+def stored_section(section_: dict) -> dict:
+    """A seção como as operações guardam (sem as partes resolvidas)."""
+    if _custom(section_):
+        return {k: section_[k] for k in ("shape", "profile", "b", "h")}
+    return section_
+
+
 def read_profile_type(element_type) -> dict:
-    mp = material_profile(element_type)
+    sec = section(element_type)
+    if _custom(sec):
+        material = None
+    else:
+        mp = material_profile(element_type)
+        material = mp.Material.Name if mp.Material else None
     return {"name": element_type.Name, "predefined_type": element_type.PredefinedType,
-            "section": section(element_type),
-            "material": mp.Material.Name if mp.Material else None,
+            "section": stored_section(sec), "material": material,
             "plan_style": wall_types.read_plan_style(element_type)}
 
 
-def _validate_profile_type(k: ProfileKind, state: dict) -> None:
+def _validate_profile_type(k: ProfileKind, state: dict, doc: Document | None = None) -> None:
     if state["predefined_type"] not in k.predefined_types:
         raise OpError(f"PredefinedType inválido: {state['predefined_type']!r}")
-    if not state.get("material"):
-        raise OpError("o tipo precisa de um material")
     try:
         profiles.validate(state["section"], k.shapes)
     except (ValueError, KeyError) as e:
         raise OpError(str(e)) from e
+    if _custom(state["section"]):
+        if doc is not None:
+            definition = profile_defs.state(doc, state["section"]["profile"])
+            if k.prefix not in definition["uses"]:
+                raise OpError(f"o perfil {definition['name']!r} não serve para {k.plural}")
+            profile_defs.stretched(definition, state["section"]["b"], state["section"]["h"])
+    elif not state.get("material"):
+        raise OpError("o tipo precisa de um material")
     wall_types.validate_plan_style(state.get("plan_style"))
+
+
+def _write_custom(doc: Document, element_type, pset, section_: dict,
+                  definition: dict | None = None) -> None:
+    """Partes esticadas, ``CompositeProfile`` e Pset do tipo com perfil do projeto."""
+    definition = definition or profile_defs.state(doc, section_["profile"])
+    parts = profile_defs.stretched(definition, section_["b"], section_["h"])
+    made = profile_defs.write_parts(doc, pset, parts, definition["name"])
+    pset.CompositeProfile = doc.ifc.createIfcCompositeProfileDef(
+        "AREA", definition["name"], made, None)
+    found = ifcopenshell.util.element.get_pset(element_type, TYPE_PSET, should_inherit=False)
+    if found is None:
+        entity = ifcopenshell.api.pset.add_pset(doc.ifc, product=element_type, name=TYPE_PSET)
+        guid.stamp(entity, element_type.GlobalId, "perfil")
+    else:
+        entity = doc.ifc.by_id(found["id"])
+    ifcopenshell.api.pset.edit_pset(doc.ifc, pset=entity, properties={
+        "PerfilId": section_["profile"], "Largura": float(section_["b"]),
+        "Altura": float(section_["h"])})
+
+
+def _clear_section(doc: Document, element_type, pset) -> None:
+    """Tira as partes e o perfil composto do conjunto; os corpos ainda apontam para eles:
+    ``rebuild`` refaz as ocorrências e apaga o que sobrar sem uso."""
+    old = profile_defs.remove_parts(doc, pset)
+    if pset.CompositeProfile is not None:
+        old.insert(0, pset.CompositeProfile)
+        pset.CompositeProfile = None
+    doc.orphan_profiles.extend(old)
+    found = ifcopenshell.util.element.get_pset(element_type, TYPE_PSET, should_inherit=False)
+    if found is not None:
+        ifcopenshell.api.pset.remove_pset(doc.ifc, product=element_type,
+                                          pset=doc.ifc.by_id(found["id"]))
+
+
+def _write_section(doc: Document, element_type, pset, state: dict) -> None:
+    if _custom(state["section"]):
+        _write_custom(doc, element_type, pset, state["section"])
+    else:
+        ifcopenshell.api.material.add_profile(
+            doc.ifc, profile_set=pset,
+            material=wall_types.material_named(doc, state["material"]),
+            profile=profiles.create(doc.ifc, state["section"], state["name"]))
+
+
+def refresh_profile_def(doc: Document, element_type, definition: dict) -> None:
+    """Refaz as partes do tipo depois que o perfil do projeto mudou. Se o perfil deixou
+    de esticar numa direção, o tipo volta à medida do desenho."""
+    values = _type_pset(element_type)
+    w0, h0 = profile_defs.nominal(definition)
+    b = float(values["Largura"]) if definition.get("stretch_x") is not None else w0
+    h = float(values["Altura"]) if definition.get("stretch_y") is not None else h0
+    def_id = values["PerfilId"]
+    pset = profile_set(element_type)
+    _clear_section(doc, element_type, pset)
+    _write_custom(doc, element_type, pset,
+                  {"shape": profiles.CUSTOM, "profile": def_id, "b": b, "h": h}, definition)
 
 
 def _profile_create(k: ProfileKind):
@@ -117,19 +239,16 @@ def _profile_create(k: ProfileKind):
         if doc.find(op.id) is not None:
             raise OpError(f"GlobalId {op.id} já existe")
         state = op.data
-        _validate_profile_type(k, state)
+        _validate_profile_type(k, state, doc)
         element_type = ifcopenshell.api.root.create_entity(
             doc.ifc, ifc_class=k.type_class, predefined_type=state["predefined_type"],
             name=state["name"])
         element_type.GlobalId = op.id
         pset = ifcopenshell.api.material.add_material_set(
             doc.ifc, name=state["name"], set_type="IfcMaterialProfileSet")
-        ifcopenshell.api.material.add_profile(
-            doc.ifc, profile_set=pset,
-            material=wall_types.material_named(doc, state["material"]),
-            profile=profiles.create(doc.ifc, state["section"], state["name"]))
         rel = ifcopenshell.api.material.assign_material(
             doc.ifc, products=[element_type], type="IfcMaterialProfileSet", material=pset)
+        _write_section(doc, element_type, pset, state)
         guid.stamp(rel, op.id, "material")
         wall_types.write_plan_style(doc, element_type, state.get("plan_style"))
         return {op.id}
@@ -144,11 +263,11 @@ def _profile_delete(k: ProfileKind):
             raise OpError(f"o tipo está em uso por {k.plural}")
         pset = profile_set(element_type)
         old = [mp.Profile for mp in pset.MaterialProfiles or []]
+        if pset.CompositeProfile is not None:
+            old.insert(0, pset.CompositeProfile)
         ifcopenshell.api.root.remove_product(doc.ifc, product=element_type)
         ifcopenshell.api.material.remove_material_set(doc.ifc, material=pset)
-        for p in old:
-            if p is not None and not doc.ifc.get_total_inverses(p):
-                doc.ifc.remove(p)
+        profile_defs.drop_profiles(doc, [p for p in old if p is not None])
         return {op.id}
 
     return apply
@@ -160,22 +279,28 @@ def _profile_edit(k: ProfileKind):
         state = read_profile_type(element_type)
         check_before(op, state)
         after = op.after or {}
+        was_custom = _custom(state["section"])
         state.update(after)
-        _validate_profile_type(k, state)
+        _validate_profile_type(k, state, doc)
         element_type.Name = state["name"]
         element_type.PredefinedType = state["predefined_type"]
         pset = profile_set(element_type)
         pset.Name = state["name"]
-        mp = material_profile(element_type)
-        mp.Profile.ProfileName = state["name"]
-        if "material" in after:
-            mp.Material = wall_types.material_named(doc, state["material"])
-        if "section" in after and not profiles.update(mp.Profile, state["section"]):
-            old = mp.Profile
-            mp.Profile = profiles.create(doc.ifc, state["section"], state["name"])
-            # Os corpos ainda apontam para o perfil antigo; ``rebuild`` refaz as
-            # ocorrências e apaga o perfil que sobrar sem uso.
-            doc.orphan_profiles.append(old)
+        if was_custom or _custom(state["section"]):
+            if "section" in after or "material" in after:
+                _clear_section(doc, element_type, pset)
+                _write_section(doc, element_type, pset, state)
+        else:
+            mp = material_profile(element_type)
+            mp.Profile.ProfileName = state["name"]
+            if "material" in after:
+                mp.Material = wall_types.material_named(doc, state["material"])
+            if "section" in after and not profiles.update(mp.Profile, state["section"]):
+                old = mp.Profile
+                mp.Profile = profiles.create(doc.ifc, state["section"], state["name"])
+                # Os corpos ainda apontam para o perfil antigo; ``rebuild`` refaz as
+                # ocorrências e apaga o perfil que sobrar sem uso.
+                doc.orphan_profiles.append(old)
         if "plan_style" in after:
             wall_types.write_plan_style(doc, element_type, state["plan_style"])
         return {op.id}

@@ -874,9 +874,9 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
         if kind == "beam":
             ring = beams.outline(doc, state)
             z1 = beams.top_z(doc, state)
+            low, high = beams.z_range(doc, state)
             faces = [[ring[0], ring[1]], [ring[3], ring[2]]]
-            return _Element(element, kind, ring, faces,
-                            (z1 - beams.section(doc, state)["h"], z1),
+            return _Element(element, kind, ring, faces, (z1 + low, z1 + high),
                             _material_fill(doc, element_type), CUT_WEIGHT)
         ring = [tuple(p) for p in state["outline"]]
         z1 = state["top_offset"]

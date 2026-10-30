@@ -14,7 +14,7 @@ import copy
 
 import ifcopenshell.util.element
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QColorDialog,
@@ -37,13 +37,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import materials, plan
+from brasbim.core import materials, plan, profile_defs
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params, window_types
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import profiles
+from brasbim.core.structure import types as st_types
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
@@ -864,9 +865,10 @@ PLAN_SOURCES = [("Padrão", "default"), ("Própria", "own")]
 class SectionPreview(QWidget):
     """Desenho da seção cotado (spec/ui 10 §5)."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, doc=None):
         super().__init__(parent)
         self.section: dict | None = None
+        self.doc = doc  # cores dos materiais das partes do perfil do projeto
         self.setMinimumSize(200, 150)
 
     def show_section(self, section: dict | None) -> None:
@@ -886,7 +888,21 @@ class SectionPreview(QWidget):
         cx, cy = self.width() / 2, self.height() / 2 - 8
         rect = QRectF(cx - w * k / 2, cy - h * k / 2, w * k, h * k)
         painter.setPen(QPen(QColor(theme.INK), 1.5))
-        if section["shape"] == "circle":
+        if section["shape"] == profiles.CUSTOM:
+            x0, y0, _, _ = profile_defs.bounds(section["parts"])
+
+            def at(p):
+                return QPointF(rect.left() + (p[0] - x0) * k, rect.bottom() - (p[1] - y0) * k)
+
+            for part in section["parts"]:
+                painter.setBrush(QColor(materials.style(self.doc, part["material"])["color"])
+                                 if self.doc is not None else Qt.NoBrush)
+                painter.drawPolygon(QPolygonF([at(p) for p in part["outline"]]))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawText(QRectF(0, rect.bottom() + 6, self.width(), 20), Qt.AlignCenter,
+                             f"{section.get('name', '')}  {fmt(section['b'])} × "
+                             f"{fmt(section['h'])}")
+        elif section["shape"] == "circle":
             painter.drawEllipse(rect)
             text = f"Ø {fmt(section['d'])}"
             painter.drawText(QRectF(0, rect.bottom() + 6, self.width(), 20), Qt.AlignCenter,
@@ -942,6 +958,7 @@ class _StructureTypesDialog(_PlanStyleDialog):
         holder = QWidget()
         holder.setLayout(row)
         self.form.addRow("Material", holder)
+        self.material_row = holder
         return field
 
     def _edit_material(self, name: str) -> None:
@@ -984,52 +1001,99 @@ class _StructureTypesDialog(_PlanStyleDialog):
 
 class _ProfileTypesDialog(_StructureTypesDialog):
     shapes = SECTIONS
+    use = ""  # uso do perfil do projeto: column / beam
 
     def build_editor(self, element_type) -> None:
         state = sc.read_type(element_type)
         self.state = state
         self.name = self._line("Nome", state["name"] or "")
         section = state["section"]
-        self.shape = self._combo("Seção", self.shapes, section["shape"])
+        doc = self.session.doc
+        self.available = [(s.Name, profile_defs.id_of(s))
+                          for s in profile_defs.for_use(doc, self.use)]
+        custom = section["shape"] == profiles.CUSTOM
+        if custom and section["profile"] not in {i for _, i in self.available}:
+            self.available.append((st_types.section(element_type).get("name", "perfil"),
+                                   section["profile"]))
+        shapes = list(self.shapes) + ([("Perfil do projeto", profiles.CUSTOM)]
+                                      if self.available else [])
+        self.shape = self._combo("Seção", shapes, section["shape"])
+        self.profile = self._combo("Perfil", self.available,
+                                   section.get("profile") if custom else None)
         self.b = self._line("b (largura)", exact(section.get("b", section.get("d", 0.2))))
         self.h = self._line("h (altura)", exact(section.get("h", section.get("d", 0.4))))
         self.d = self._line("Diâmetro", exact(section.get("d", section.get("b", 0.3))))
-        self.material = self._material(state["material"] or "")
-        self.preview = SectionPreview()
+        self.material = self._material(state["material"] or "Concreto")
+        self.preview = SectionPreview(doc=doc)
         self.form.addRow(self.preview)
         for field in (self.b, self.h, self.d):
             field.textEdited.connect(self._redraw)
-        self.shape.currentIndexChanged.connect(self._redraw)
+        self.shape.currentIndexChanged.connect(self._shape_changed)
+        self.profile.currentIndexChanged.connect(self._profile_changed)
         self._plan_source(element_type)
         self._redraw()
 
+    def _definition(self) -> dict | None:
+        def_id = self.profile.currentData()
+        return profile_defs.state(self.session.doc, def_id) if def_id else None
+
+    def _nominal(self) -> None:
+        """b e h na medida do desenho do perfil escolhido."""
+        definition = self._definition()
+        if definition is not None:
+            w, h = profile_defs.nominal(definition)
+            self.b.setText(exact(round(w, 6)))
+            self.h.setText(exact(round(h, 6)))
+
+    def _shape_changed(self, *_args) -> None:
+        if self.shape.currentData() == profiles.CUSTOM:
+            self._nominal()
+        self._redraw()
+
+    def _profile_changed(self, *_args) -> None:
+        self._nominal()
+        self._redraw()
+
     def read_section(self) -> dict:
-        if self.shape.currentData() == "circle":
+        shape = self.shape.currentData()
+        if shape == "circle":
             return {"shape": "circle", "d": parse_number(self.d.text())}
+        if shape == profiles.CUSTOM:
+            return {"shape": profiles.CUSTOM, "profile": self.profile.currentData(),
+                    "b": parse_number(self.b.text()), "h": parse_number(self.h.text())}
         return {"shape": "rect", "b": parse_number(self.b.text()),
                 "h": parse_number(self.h.text())}
 
     def _redraw(self, *_args) -> None:
-        circle = self.shape.currentData() == "circle"
-        for field, visible in ((self.b, not circle), (self.h, not circle), (self.d, circle)):
+        shape = self.shape.currentData()
+        circle, custom = shape == "circle", shape == profiles.CUSTOM
+        definition = self._definition() if custom else None
+        stretch_b = not custom or (definition or {}).get("stretch_x") is not None
+        stretch_h = not custom or (definition or {}).get("stretch_y") is not None
+        for field, visible in ((self.b, not circle and stretch_b),
+                               (self.h, not circle and stretch_h), (self.d, circle),
+                               (self.profile, custom), (self.material_row, not custom)):
             field.setVisible(visible)
             self.form.labelForField(field).setVisible(visible)
         try:
-            section = self.read_section()
-            profiles.validate(section)
-        except (ValueError, KeyError):
+            section = st_types.resolve_section(self.session.doc, self.read_section())
+            profiles.validate(section, (*profiles.SHAPES, profiles.CUSTOM))
+        except (ValueError, KeyError, OpError):
             section = None
         self.preview.show_section(section)
 
     def changes(self) -> dict:
         section = self.read_section()
+        custom = section["shape"] == profiles.CUSTOM
         try:
-            profiles.validate(section)
-        except ValueError as e:
+            profiles.validate(section, (*profiles.SHAPES, profiles.CUSTOM))
+            if custom:
+                st_types.resolve_section(self.session.doc, section)
+        except (ValueError, OpError) as e:
             raise ValueError(str(e)) from e
         new = {"name": self._unique_name(self.name.text().strip()), "section": section,
-               "material": self.material.text().strip()}
-        if not new["material"]:
+               "material": None if custom else self.material.text().strip()}
+        if not custom and not new["material"]:
             raise ValueError("material vazio")
         out = {k: v for k, v in new.items() if v != self.state[k]}
         return {**out, **self.plan_changes()}
@@ -1039,6 +1103,7 @@ class ColumnTypesDialog(_ProfileTypesDialog):
     ifc_class = "IfcColumnType"
     title = "Tipos de pilar"
     noun = "pilares"
+    use = "column"
 
     def new_transaction(self):
         names = {t.Name for t in self.types()}
@@ -1058,6 +1123,7 @@ class BeamTypesDialog(_ProfileTypesDialog):
     title = "Tipos de viga"
     noun = "vigas"
     shapes = SECTIONS[:1]
+    use = "beam"
 
     def new_transaction(self):
         names = {t.Name for t in self.types()}
@@ -1070,7 +1136,7 @@ class BeamTypesDialog(_ProfileTypesDialog):
         section = state["section"]
         return sc.create_beam_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
                                    section["b"], section["h"], state["material"],
-                                   state["plan_style"])
+                                   state["plan_style"], section=section)
 
 
 class SlabTypesDialog(_StructureTypesDialog):
