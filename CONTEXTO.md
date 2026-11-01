@@ -7,6 +7,13 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 *Atualizado em 2026‑11‑01 (estilos do 3D feitos; laje com alças no 3D; quadro das
 operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisão).*
 
+> **3D em raio-X corrigido (2026‑11‑01):** a causa das "arestas invisíveis" era o QPainter
+> do controle de orientação (spec/ui 40 §4), que deixa o teste de profundidade desligado
+> no fim do quadro; ele só era ligado no `initializeGL`, então do 2º quadro em diante faces
+> e arestas de trás apareciam através das da frente. `view3d._reset_state()` refaz o
+> estado no começo de cada `draw_scene` (teste E3D05). Conferido com a vista real
+> (`grabFramebuffer`, três quadros seguidos). A imagem da prancha não sofria disso.
+
 > **Desempenho (2026‑11‑01):** `scripts/simular_usuario.py` simula uma pessoa (3
 > pavimentos, portas, janelas, lajes, cobertura, móveis, árvores, desfazer, 3D, salvar) e
 > cronometra cada ação (tempos.csv + perfil). Correções feitas pelo perfil, sem mudar

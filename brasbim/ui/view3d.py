@@ -91,6 +91,7 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
     conforme o estilo do 3D (spec/ui 43 §2): a vista na tela e a imagem da vista 3D salva
     na prancha (spec/ui 25 §5)."""
     style = style or view_styles.get(None)
+    _reset_state()
     GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
     GL.glMatrixMode(GL.GL_PROJECTION)
     GL.glLoadMatrixd(camera.projection(aspect).T.flatten())
@@ -117,6 +118,26 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
     GL.glDisableClientState(GL.GL_COLOR_ARRAY)
     _paint_edges(scene, camera, selected, style, related)
     GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+
+
+def _reset_state() -> None:
+    """Estado do OpenGL de cada quadro. O QPainter que pinta o controle de orientação
+    sobre a vista deixa o teste de profundidade desligado (e mexe em mistura, recorte e
+    cor de fundo): sem refazer o estado aqui, do segundo quadro em diante as faces e as
+    arestas de trás apareciam através das da frente."""
+    GL.glClearColor(*_BACKGROUND, 1.0)
+    GL.glEnable(GL.GL_DEPTH_TEST)
+    GL.glDepthFunc(GL.GL_LESS)
+    GL.glDepthMask(GL.GL_TRUE)
+    GL.glEnable(GL.GL_POLYGON_OFFSET_FILL)
+    GL.glPolygonOffset(1.0, 1.0)
+    for cap in (GL.GL_BLEND, GL.GL_CULL_FACE, GL.GL_SCISSOR_TEST, GL.GL_STENCIL_TEST,
+                GL.GL_TEXTURE_2D, GL.GL_LIGHTING, GL.GL_ALPHA_TEST):
+        GL.glDisable(cap)
+    GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+    GL.glUseProgram(0)
+    GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+    GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
 
 
 def face_colors(mesh, style: dict) -> np.ndarray:

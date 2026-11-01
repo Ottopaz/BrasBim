@@ -116,7 +116,10 @@ O revisor pediu as vistas do 3D "urgentemente": o §2 entrou antes do §3.
   estilo fica na preferência; a vista 3D salva grava `options.style` e a imagem da prancha
   o usa; o 3D da área herda o estilo. A janela do 3D passou a pedir profundidade de 24
   bits e 4 amostras: com 16 bits (padrão de algumas placas) as arestas de trás das peças
-  finas vazavam pelas faces — provável origem das "arestas invisíveis".
+  finas vazavam pelas faces. **Causa real das "arestas invisíveis" (achada depois, no
+  mesmo dia):** o QPainter do controle de orientação desliga o teste de profundidade ao
+  fim de cada quadro, e ele só era ligado ao criar a janela; agora `draw_scene` refaz o
+  estado a cada quadro (teste E3D05).
   Testes E3D01–E3D03 (`tests/test_estilos_3d.py`).
 - **Falta do §2:** estilos do usuário (diálogo e Pset `BrasBim_Estilos3D`, E3D04).
 - **Junto (pedido do mesmo dia):** alças da laje no 3D — vértices, meio dos lados, centro

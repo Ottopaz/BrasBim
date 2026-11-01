@@ -187,3 +187,32 @@ def test_laje_alcas_so_com_selecionar(window):
     window.activate_tool("move")
     s.select([gid])
     assert view.handles() == []  # só com Selecionar
+
+
+def test_e3d05_cada_quadro_religa_a_profundidade(monkeypatch):
+    """O QPainter do controle de orientação desliga o teste de profundidade ao fim de cada
+    quadro; ``draw_scene`` tem de religá-lo antes de pintar (senão, do segundo quadro em
+    diante, as linhas e faces de trás aparecem através das da frente)."""
+    calls = []
+
+    class Name(str):
+        def __or__(self, other):  # GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT
+            return Name(f"{self}|{other}")
+
+    class FakeGL:
+        def __getattr__(self, name):
+            if name.startswith("GL_"):
+                return Name(name)
+            return lambda *a: calls.append((name, a))
+
+    monkeypatch.setattr(view3d, "GL", FakeGL())
+    tri = _box().astype(np.float32)
+    mesh = Mesh(tri, np.ones_like(tri), np.zeros((0, 3), np.float32), (1, 1, 1))
+    scene = type("S", (), {"meshes": {"a": mesh}})()
+    from brasbim.ui.scene3d import Camera
+
+    view3d.draw_scene(scene, Camera(), 1.5)
+    first_draw = next(i for i, c in enumerate(calls) if c[0] == "glDrawArrays")
+    assert ("glEnable", ("GL_DEPTH_TEST",)) in calls[:first_draw]
+    assert ("glDepthMask", ("GL_TRUE",)) in calls[:first_draw]
+    assert ("glDisable", ("GL_BLEND",)) in calls[:first_draw]
