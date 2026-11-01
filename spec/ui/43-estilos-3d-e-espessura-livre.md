@@ -123,8 +123,8 @@ O revisor pediu as vistas do 3D "urgentemente": o §2 entrou antes do §3.
   Testes E3D01–E3D03 (`tests/test_estilos_3d.py`).
 - **Falta do §2:** estilos do usuário (diálogo e Pset `BrasBim_Estilos3D`, E3D04).
 - **Junto (pedido do mesmo dia):** alças da laje no 3D — vértices, meio dos lados, centro
-  (mover livre) e setas X e Y (mover só naquele eixo, com a distância no quadro de
-  medidas).
+  (mover livre), setas X e Y (mover só naquele eixo, com a distância no quadro de
+  medidas) e seta Z (sobe e desce a laje: deslocamento do topo).
 
 ## 5. Pontos para o revisor
 - (a) As "arestas invisíveis" que incomodam são as **emendas** das faces (faixas nas

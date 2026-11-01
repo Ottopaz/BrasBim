@@ -136,11 +136,12 @@ def test_laje_alcas_no_3d_mover_em_x(window):
     gid, view = _slab(window)
     s.select([gid])
     kinds = [k for k, _ in view.handles()]
-    assert kinds[-3:] == ["slab_move", "slab_x", "slab_y"]
+    assert kinds[-4:] == ["slab_move", "slab_x", "slab_y", "slab_z"]
     assert {f"slab_v{i}" for i in range(4)} <= set(kinds)
     handles = dict(view.handles())
     z = handles["slab_move"][2]
-    assert z == pytest.approx(max(p[2] for p in handles.values()))  # na face de cima
+    assert z == pytest.approx(handles["slab_v0"][2])  # na face de cima
+    assert handles["slab_z"][2] > z  # a seta Z aponta para cima
     # seta X: o arrasto puxa também em y, mas a laje anda só em x
     x = handles["slab_x"]
     _drag3d(view, x, (x[0] + 1.0, x[1] + 0.7, z))
@@ -216,3 +217,31 @@ def test_e3d05_cada_quadro_religa_a_profundidade(monkeypatch):
     assert ("glEnable", ("GL_DEPTH_TEST",)) in calls[:first_draw]
     assert ("glDepthMask", ("GL_TRUE",)) in calls[:first_draw]
     assert ("glDisable", ("GL_BLEND",)) in calls[:first_draw]
+
+
+def test_laje_seta_z_sobe_e_desce(window):
+    s = window.session
+    gid, view = _slab(window)
+    s.select([gid])
+    before = sc.read_state(s.doc, s.doc.get(gid))["top_offset"]
+    z = dict(view.handles())["slab_z"]
+    _drag3d(view, z, (z[0], z[1], z[2] + 0.5))
+    after = sc.read_state(s.doc, s.doc.get(gid))["top_offset"]
+    assert after - before == pytest.approx(0.5, abs=0.03)
+    assert _outline(s, gid)[0] == pytest.approx((0.0, 0.0))  # não andou no plano
+    mesh = view.scene.meshes[gid]
+    assert float(mesh.vertices[:, 2].max()) == pytest.approx(
+        s.storey.Elevation + after, abs=1e-3)
+    # clique e valor digitado: o deslocamento do topo
+    s.select([gid])
+    z = dict(view.handles())["slab_z"]
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, _screen(view, z))
+    tool = window.toolbox.active
+    assert [f.label for f in tool.fields()] == ["Deslocamento do topo"]
+    QTest.keyClicks(view, "-")  # a primeira tecla abre o campo; as outras vão nele
+    QTest.keyClicks(view.numeric, "0,2")
+    QTest.keyClick(view.numeric, Qt.Key_Return)
+    assert sc.read_state(s.doc, s.doc.get(gid))["top_offset"] == pytest.approx(-0.2)
+    assert tool.drag3d is None
+    window.undo()
+    assert sc.read_state(s.doc, s.doc.get(gid))["top_offset"] == pytest.approx(after)

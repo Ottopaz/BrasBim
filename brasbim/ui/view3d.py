@@ -655,7 +655,8 @@ class View3D(QOpenGLWidget, ToolInput):
             self.handle_at(self.mouse_pos) if self.mouse_pos is not None else None)
         handles = self.handles()
         found = dict(handles)
-        axis_color = {"slab_x": theme.rgbf(theme.AXIS_X), "slab_y": theme.rgbf(theme.AXIS_Y)}
+        axis_color = {"slab_x": theme.rgbf(theme.AXIS_X), "slab_y": theme.rgbf(theme.AXIS_Y),
+                      "slab_z": theme.rgbf(theme.AXIS_Z)}
         if "slab_move" in found and h is None:  # setas X e Y da laje
             GL.glLineWidth(2.0)
             for kind, color in axis_color.items():

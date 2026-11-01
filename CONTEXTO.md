@@ -37,7 +37,8 @@ operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisã
 > (`saved_views.VIEW3D_OPTIONS`) e imagem da prancha pelo estilo gravado
 > (`saved_views_ui.style_of`). A janela do 3D pede profundidade 24 bits e 4 amostras.
 > **Laje no 3D:** `handles3d.SlabHandle3D` / `slab_handles` — vértices, meio dos lados,
-> centro (mover livre) e setas X/Y (só naquele eixo; Distância no quadro). **Quadro das
+> centro (mover livre), setas X/Y (só naquele eixo; Distância no quadro) e seta Z (sobe e
+> desce: muda o `top_offset`; "Deslocamento do topo" no quadro, aceita negativo). **Quadro das
 > operações de sólidos** (`ui/solid_badge.py`): elemento com recorte selecionado sozinho
 > mostra junto dele o ícone da operação e "Recortado por X · subtrair"/"Recorta Y · …";
 > clicar seleciona o outro; os outros ficam tracejados em laranja na planta e tingidos no
