@@ -4,7 +4,19 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑01 (spec/ui 41 §3 implementada: operações de sólidos).*
+*Atualizado em 2026‑11‑01 (spec/ui 43 em revisão: estilos do 3D e espessura livre).*
+
+> **Pedidos novos (2026‑11‑01, depois dos sólidos):** o revisor não gosta do 3D mostrando
+> "arestas invisíveis" e quer outras apresentações (sem essas linhas, modelo todo branco),
+> estudando as do Archicad; e quer editar a espessura da parede e da laje com qualquer
+> valor, mantendo os tipos. Não entendeu a operação de sólidos (explicada na conversa).
+> Feito: pesquisa `research_notes/.../complemento_estilos_3d.md` e **spec/ui 43**
+> (`spec/ui/43-estilos-3d-e-espessura-livre.md`, em revisão): estilos com nome (faces,
+> luz, arestas "contorno"/todas/nenhuma), seis de fábrica (Colorido, Colorido sem linhas,
+> Maquete branca, Maquete branca sem linhas, Desenho, Arame); espessura livre por
+> **variante do tipo** (camada estrutural estica; Pset `BrasBim_Variante`). Pontos (a)–(f)
+> no §5. **Próximo:** respostas e implementar, espessura primeiro. O §4 da spec 41 (perfil
+> complexo) fica depois.
 
 > **Onde paramos (2026‑11‑01):** o revisor respondeu (f) Somar fica de fora e (g) apagar
 > o operador desfaz o recorte com aviso (registrado no §6 da spec/ui 41). **Núcleo do §3
