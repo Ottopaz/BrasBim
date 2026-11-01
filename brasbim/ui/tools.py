@@ -39,7 +39,16 @@ from brasbim.core.objects import elements as objects
 from brasbim.core.objects import formula, hosting
 from brasbim.core.objects import plan as object_plan
 from brasbim.core.objects import types as object_types
-from brasbim.core.structure import beams, columns, profiles, roofs, rooms, slab_openings, slabs
+from brasbim.core.structure import (
+    beams,
+    columns,
+    profiles,
+    roofs,
+    rooms,
+    slab_openings,
+    slabs,
+    solids,
+)
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.structure import types as st_types
@@ -5473,6 +5482,100 @@ class RotateViewTool(Tool):
         self.finished = True
 
 
+# --- Recortar por elemento (spec/ui 41 §3) ---------------------------------------------
+
+
+class SolidCutTool(Tool):
+    """Com os alvos selecionados, clica-se nos operadores; Enter (ou botão direito) aplica.
+    Sem seleção, primeiro clica nos alvos e Enter passa aos operadores. A operação fica na
+    barra Opções."""
+
+    name, label = "solid_cut", "Recortar por elemento"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.operation = solids.SUBTRACT
+        self.targets: list[str] = []
+        self.operators: list[str] = []
+        self.picking_targets = False
+
+    def _start(self) -> None:
+        doc = self.session.doc
+        chosen = [g for g in sorted(self.session.selection)
+                  if solids.can_be_target(doc, doc.find(g))]
+        self.targets, self.operators = chosen, []
+        self.picking_targets = not chosen
+
+    def hint(self):
+        if not self.targets and not self.picking_targets:
+            self._start()
+        if self.picking_targets:
+            return ("Clique as paredes, pilares, vigas ou lajes a recortar; Enter passa ao "
+                    "elemento que recorta")
+        return (f"Clique o elemento que recorta ({solids.LABELS[self.operation]}); Enter "
+                "ou botão direito aplica; Esc cancela")
+
+    def _pick(self, p):
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        roof = roofs.roof_of(element) if element is not None else None
+        return roof or element
+
+    def press(self, p, mods, button="left"):
+        if not self.targets and not self.picking_targets:
+            self._start()
+        if button != "left":
+            if button == "right":
+                self.key("enter")
+            return
+        element = self._pick(p)
+        if element is None:
+            return
+        gid = element.GlobalId
+        if self.picking_targets:
+            if not solids.can_be_target(self.session.doc, element):
+                self.session.message("só parede, pilar, viga e laje do BrasBim são "
+                                     "recortados", "recusa")
+            elif gid not in self.targets:
+                self.targets.append(gid)
+            return
+        if gid in self.targets:
+            self.session.message("clique um elemento diferente do recortado", "recusa")
+        elif not solids.can_be_operator(element):
+            self.session.message("esse elemento não tem corpo para recortar", "recusa")
+        elif gid not in self.operators:
+            self.operators.append(gid)
+
+    def key(self, key):
+        if key != "enter":
+            return False
+        if self.picking_targets:
+            if self.targets:
+                self.picking_targets = False
+            return True
+        if not self.operators:
+            return bool(self.targets)
+        doc = self.session.doc
+        targets = [doc.get(g) for g in self.targets]
+        operators = [doc.get(g) for g in self.operators]
+        operation = self.operation
+        if self.session.run(lambda: solids.cut_elements(doc, targets, operators, operation)):
+            self.session.select(self.targets)
+            self.finished = True
+        self.targets, self.operators, self.picking_targets = [], [], False
+        return True
+
+    def cancel(self):
+        busy = bool(self.targets or self.operators)
+        self.targets, self.operators, self.picking_targets = [], [], False
+        return busy
+
+    def preview(self):
+        chosen = set(self.targets) | set(self.operators)
+        return [Mark(s.points, s.closed) for s in self.ctx.plan.shapes if s.owner in chosen]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
@@ -5480,7 +5583,7 @@ TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool,
-         RotateViewTool)
+         RotateViewTool, SolidCutTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",

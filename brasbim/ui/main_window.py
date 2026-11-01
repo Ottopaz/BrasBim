@@ -54,6 +54,7 @@ from brasbim.core.drawings import saved_views
 from brasbim.core.drawings import sheets as sheets_
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
+from brasbim.core.structure import solids
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
 from brasbim.ui.assistant import AssistantPanel
@@ -434,8 +435,10 @@ class MainWindow(QMainWindow):
             self._action(order_menu, text, lambda _=False, m=mode: self.draw_order(m))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar"), ("measure", "Medir"),
-                          ("selection_area", "Área de seleção")):
+                          ("selection_area", "Área de seleção"),
+                          ("solid_cut", "Recortar por elemento")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        self._action(edit_menu, "Tirar recortes", self.remove_solid_cuts)
         self._action(edit_menu, "Remover área de seleção", self.remove_selection_area)
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
         group = QActionGroup(self)
@@ -2308,13 +2311,27 @@ class MainWindow(QMainWindow):
         hide = [("Ocultar selecionados", self.hide_selection),
                 ("Isolar selecionados", self.isolate_selection)]
         return (actions + hide + self._object_context(gid) + self._layer_actions(gid)
-                + self._order_context(gid) + self._lock_context(gid)
+                + self._order_context(gid) + self._solid_context(gid) + self._lock_context(gid)
                 + self._team_context(gid) + area)
 
     def _order_context(self, gid) -> list:
         if edit_state.annotation_order(self.session.doc.find(gid)) is None:
             return []
         return [(text, lambda m=mode: self.draw_order(m)) for mode, text in DRAW_ORDER]
+
+    def _solid_context(self, gid) -> list:
+        """Tirar recortes por elemento do que está sob o cursor (spec/ui 41 §3)."""
+        element = self.session.doc.find(gid)
+        if element is None or not solids.relations_of(element):
+            return []
+        return [("Tirar recortes", lambda: self.remove_solid_cuts(gid))]
+
+    def remove_solid_cuts(self, gid=None) -> None:
+        session = self.session
+        ids = session.selection if gid is None or gid in session.selection else {gid}
+        elements = [e for e in (session.doc.find(g) for g in sorted(ids)) if e is not None]
+        if session.run(lambda: solids.remove_cuts(session.doc, elements)):
+            self.properties.refresh()
 
     def _lock_context(self, gid) -> list:
         """Travar ou destravar o que está sob o cursor (com a seleção, se for dela)."""

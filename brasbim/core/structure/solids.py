@@ -209,6 +209,27 @@ def remove_for_deleted(doc: Document, gids) -> list[Op]:
     return ops
 
 
+def cut_elements(doc: Document, targets, operators, operation: str):
+    """Transação "Recortar por elemento" (ferramenta e assistente)."""
+    from brasbim.core.ops.history import Transaction
+
+    return Transaction("Recortar por elemento", add_ops(doc, targets, operators, operation))
+
+
+def remove_cuts(doc: Document, elements):
+    """Transação "Tirar recortes": os que os elementos sofrem; o operador sem recorte
+    próprio tira os que ele faz."""
+    from brasbim.core.ops.history import Transaction
+
+    rels: dict[str, object] = {}
+    for element in elements:
+        found = cut_by(element) or cutting(element)
+        rels.update({r.GlobalId: r for r in found})
+    if not rels:
+        raise OpError("nada recortado por elemento na seleção")
+    return Transaction("Tirar recortes", remove_ops(doc, [rels[g] for g in sorted(rels)]))
+
+
 # --- operações -------------------------------------------------------------------------
 
 
@@ -411,6 +432,62 @@ def apply(doc: Document, target) -> None:
         if values.get("NetVolume") is not None and name.endswith("BaseQuantities"):
             props.write_qto(doc, target, name, {"NetVolume": values["NetVolume"] - removed})
             break
+
+
+# --- planta ----------------------------------------------------------------------------
+
+
+def section(element, storey, cut: float):
+    """Seção do corpo recortado no plano de corte (``cut`` acima do pavimento), em
+    coordenadas do pavimento, como anéis (furos no sentido horário); ``None`` se o elemento
+    não é alvo de operação de sólido ou o corpo não foi lido."""
+    from shapely.geometry import LineString, Polygon
+    from shapely.ops import polygonize, unary_union
+
+    if not cut_by(element):
+        return None
+    settings = ifcopenshell.geom.settings()
+    settings.set("use-world-coords", True)
+    try:
+        shape = props.body_shape(settings, element)
+    except RuntimeError:
+        return None
+    verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
+    faces = np.array(shape.geometry.faces, dtype=int).reshape(-1, 3)
+    if not len(faces):
+        return []
+    verts = _to_local(_inverse(storey), verts)
+    d = verts[:, 2] - (cut + 1e-7)  # fora dos vértices: plano exatamente numa aresta
+    lines = []
+    for tri in faces:
+        pts = []
+        for i, j in ((0, 1), (1, 2), (2, 0)):
+            a, b = tri[i], tri[j]
+            if (d[a] < 0) != (d[b] < 0):
+                t = d[a] / (d[a] - d[b])
+                p = verts[a] + t * (verts[b] - verts[a])
+                pts.append((round(float(p[0]), 7), round(float(p[1]), 7)))
+        if len(pts) == 2 and pts[0] != pts[1]:
+            lines.append(LineString(pts))
+    if not lines:
+        return []
+    polygons = list(polygonize(unary_union(lines)))
+    # Polígonos encaixados (furo dentro da peça): pares e ímpares pela contagem.
+    region = None
+    for poly in sorted(polygons, key=lambda q: -q.area):
+        region = poly if region is None else region.symmetric_difference(poly)
+    if region is None or region.is_empty:
+        return []
+    out = []
+    for poly in getattr(region, "geoms", [region]):
+        if not isinstance(poly, Polygon) or poly.area < _MIN_AREA:
+            continue
+        ring = list(poly.exterior.coords)[:-1]
+        out.append(ring if clip.signed_area(ring) > 0 else ring[::-1])
+        for hole in poly.interiors:
+            h = list(hole.coords)[:-1]
+            out.append(h if clip.signed_area(h) < 0 else h[::-1])
+    return out
 
 
 # --- derivação -------------------------------------------------------------------------

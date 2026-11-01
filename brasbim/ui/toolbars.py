@@ -31,7 +31,7 @@ from brasbim.core import display_layers, intervention
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
-from brasbim.core.structure import profiles, roofs
+from brasbim.core.structure import profiles, roofs, solids
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.docks import plain_title
@@ -57,6 +57,7 @@ from brasbim.ui.tools import (
     SkylightTool,
     SlabOpeningTool,
     SlabTool,
+    SolidCutTool,
     SpaceTool,
     SplineTool,
     StairTool,
@@ -148,6 +149,9 @@ EDIT_TOOLS = [
      "elemento")),
     ("selection_area", "selection_area", "Área de seleção",
      ("marque uma área; arraste um vértice dentro dela para esticar; Esc remove a área")),
+    ("solid_cut", "solid_cut", "Recortar por elemento",
+     ("com os elementos a recortar selecionados, clique o que recorta; Enter aplica; "
+      "operação na barra de opções")),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -664,6 +668,16 @@ class OptionsBar(QToolBar):
                             "a área vale em todos os pavimentos (tracejado grosso)")],
                           tool.all_storeys, lambda v: (tool.set_all_storeys(v),
                                                        self.window_.plan.update()))
+        elif isinstance(tool, SolidCutTool):  # spec/ui 41 §3
+            self._choices([(solids.SUBTRACT, "solid_subtract", "Subtrair",
+                            "tira do elemento o volume do que recorta"),
+                           (solids.UP, "solid_up", "Subtrair para cima",
+                            "tira o que recorta e tudo acima dele (cobertura aparando parede)"),
+                           (solids.DOWN, "solid_down", "Subtrair para baixo",
+                            "tira o que recorta e tudo abaixo dele"),
+                           (solids.INTERSECT, "solid_intersect", "Interseção",
+                            "fica só a parte dentro do que recorta")],
+                          tool.operation, lambda v: setattr(tool, "operation", v))
         elif isinstance(tool, FilletTool):  # spec/ui 23 §6
             self._label("Raio")
             self._number(tool.radius, lambda v: setattr(tool, "radius", v),

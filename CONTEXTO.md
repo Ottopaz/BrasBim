@@ -4,7 +4,7 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑01 (spec/ui 41 §3, núcleo das operações de sólidos).*
+*Atualizado em 2026‑11‑01 (spec/ui 41 §3 implementada: operações de sólidos).*
 
 > **Onde paramos (2026‑11‑01):** o revisor respondeu (f) Somar fica de fora e (g) apagar
 > o operador desfaz o recorte com aviso (registrado no §6 da spec/ui 41). **Núcleo do §3
@@ -21,10 +21,17 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > (`Clipping`), subtrair/intersectar o corpo do operador como `IfcTriangulatedFaceSet`
 > (`CSG`); `NetVolume` desconta o volume medido. Excluir (`delete.delete_elements`) tira
 > antes as relações (o desfazer devolve; a do operador avisa). Testes SO01–SO05 em
-> `tests/test_solidos.py`; 853 testes. **Falta:** SO06 (ferramenta Recortar por
-> elemento, ficha "Recortado por"/"Recorta", botão direito "Tirar recortes", planta pela
-> seção da forma resultante); copiar alvo + operador juntos levar o recorte (hoje a
-> cópia nunca leva). Achado: `test_vb09_ordem_de_desenho` falha às vezes (desempate por
+> `tests/test_solidos.py`. **Interface (SO06) feita:** ferramenta `SolidCutTool`
+> ("Recortar por elemento", grupo Edição e menu Editar; com a seleção clica os
+> operadores, sem seleção clica os alvos antes; Enter ou botão direito aplica; operação na
+> barra Opções; ícones `solid_*`), ficha com "Recortado por"/"Recorta" e botão Tirar,
+> Editar > Tirar recortes e o mesmo no botão direito (`solids.remove_cuts`). Planta: o
+> alvo cortado pelo plano é desenhado pela seção do corpo resultante
+> (`solids.section`, fatia da malha + shapely), que recorta as peças da parede e o
+> contorno de pilar/viga/laje (`_Element.cut_rings`). SO06 em
+> `tests/test_interface_solidos.py`; 855 testes. **Falta:** copiar alvo + operador juntos
+> levar o recorte (hoje a cópia nunca leva); teste no aplicativo pelo revisor. **Próximo:**
+> §4 perfil complexo (PC01–PC06), que espera (h)–(k). Achado: `test_vb09_ordem_de_desenho` falha às vezes (desempate por
 > GlobalId aleatório), sem relação com isto.
 
 

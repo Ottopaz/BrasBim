@@ -472,8 +472,18 @@ def _cut_wall(doc: Document, wall, cut: float, show_above: bool) -> _Cut | None:
                 emit("wall_view", [[(x0, y), (x1, y)] for y in (band.ymin, band.ymax)],
                      closed=False)
         pieces = clip.difference(pieces, holes)
+    glob = [[frame.to_global(p) for p in r] for r in pieces]
+    # Recortada por elemento (spec/ui 41 §3): só o que a seção da forma resultante cobre.
+    from brasbim.core.structure import solids
+
+    section = solids.section(wall, ifcopenshell.util.element.get_container(wall), cut)         if glob else None
+    if section is not None:
+        glob = clip.intersection(glob, section) if section else []
+        out.shapes += [Shape(gid, "wall", tuple(r), True, style) for r in glob]
+        out.pieces = glob
+        return out
     emit("wall", pieces)
-    out.pieces = [[frame.to_global(p) for p in r] for r in pieces]
+    out.pieces = glob
     return out
 
 
@@ -822,6 +832,10 @@ class _Element:
     z: tuple[float, float]  # cotas do fundo e do topo, a partir do pavimento
     fill: dict
     edge_weight: float
+    cut_rings: Rings | None = None  # seção da forma recortada por elemento (spec/ui 41 §3)
+
+    def cut_shape(self) -> Rings:
+        return self.cut_rings if self.cut_rings is not None else [list(self.ring)]
 
 
 def _material_fill(doc: Document, element_type) -> dict:
@@ -905,14 +919,17 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
                          for x in _contained(storey, cls, doc)) if e is not None]
     shapes: list[Shape] = []
     cut_columns: Rings = []
+    from brasbim.core.structure import solids
+
     for e in found:
         gid = e.element.GlobalId
         z0, z1 = e.z
         closed = e.kind != "beam"
         if z0 < cut < z1:
-            shapes.append(Shape(gid, e.kind, tuple(e.ring), True))
+            e.cut_rings = solids.section(e.element, storey, cut)
+            shapes += [Shape(gid, e.kind, tuple(r), True) for r in e.cut_shape()]
             if e.kind == "column":
-                cut_columns.append(list(e.ring))
+                cut_columns += e.cut_shape()
             continue
         if z1 <= cut:
             role = f"{e.kind}_view"
@@ -1003,6 +1020,8 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         tint = plan.colors.get(e.element.GlobalId)
         hatch = plan.hatches.get(e.element.GlobalId)
+        if z0 < cut < z1 and e.cut_rings is not None:
+            ring = e.cut_rings
         if z0 < cut < z1:
             plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
             plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))

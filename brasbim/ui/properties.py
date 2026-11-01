@@ -50,9 +50,19 @@ from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.objects import elements as objects
+from brasbim.core.ops import Transaction
 from brasbim.core.ops.history import combine
 from brasbim.core.quantities import legal_areas, tables
-from brasbim.core.structure import beams, columns, profiles, roofs, skylights, slab_openings, slabs
+from brasbim.core.structure import (
+    beams,
+    columns,
+    profiles,
+    roofs,
+    skylights,
+    slab_openings,
+    slabs,
+    solids,
+)
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
@@ -312,6 +322,8 @@ class PropertiesPanel(QScrollArea):
             self._tool_options()
         if active is None and selection:
             self._layer_field(selection)
+        if active is None and len(selection) == 1:
+            self._solid_field(selection[0])
         self.lying = self.wants_lying()
         if self.lying:
             self._render_lying()
@@ -1230,6 +1242,30 @@ class PropertiesPanel(QScrollArea):
         if locked:  # spec/ui 39 §5
             self._read("Edição", "Travado" if len(locked) == len(selection)
                        else f"{len(locked)} travados")
+
+    def _solid_field(self, element) -> None:
+        """Recortado por / Recorta (spec/ui 41 §3), cada um com o botão de tirar."""
+        doc = self.session.doc
+        for title, rels in (("Recortado por", solids.cut_by(element)),
+                            ("Recorta", solids.cutting(element))):
+            rels = [r for r in rels if r.RelatingElement and r.RelatedElement]
+            if not rels:
+                continue
+            self._section(title)
+            for rel in rels:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                text = QLabel(solids.describe(rel, element))
+                text.setStyleSheet(f"color: {theme.INK}")
+                row.addWidget(text, 1)
+                button = QPushButton("Tirar")
+                button.setToolTip("Tira este recorte; a forma volta a ser a de antes")
+                button.clicked.connect(lambda _=False, r=rel: self._run(
+                    lambda: Transaction("Tirar recorte", solids.remove_ops(doc, [r]))))
+                row.addWidget(button)
+                holder = QWidget()
+                holder.setLayout(row)
+                self._add(holder)
 
     def _sheet(self, sheet) -> None:
         """Prancha (spec/ui 15 §5)."""
