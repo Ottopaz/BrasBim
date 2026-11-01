@@ -54,6 +54,7 @@ VIEW3D_BACKGROUND = "#EBE8EB"
 AXIS_X = "#C4473F"
 AXIS_Y = "#5E9A3A"
 AXIS_Z = "#3C6FB8"
+SOLID_PARTNER = "#C9771E"  # elementos em operação de sólidos com o selecionado
 
 
 def rgbf(color: str) -> tuple[float, float, float]:

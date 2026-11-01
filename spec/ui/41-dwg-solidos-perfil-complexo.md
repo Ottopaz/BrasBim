@@ -68,6 +68,12 @@ vários, Enter termina). Sem seleção, primeiro clica nos alvos. Na ficha do al
 operador, **Recorta**. Botão direito: "Tirar recortes". Um operador pode ficar numa camada
 escondida e continua cortando (como no Archicad).
 
+**Ao selecionar (pedido de 2026‑11‑01):** com um elemento que recorta ou é recortado
+selecionado sozinho, aparece junto dele um quadro com uma linha por operação: o ícone da
+operação e "Recortado por Parede 2 · subtrair" (ou "Recorta …"); clicar na linha seleciona
+o outro. Os outros elementos ficam destacados (tracejado laranja na planta, tinta laranja
+no 3D). Teste SO07.
+
 **No IFC:**
 - A relação: `IfcRelInterferesElements` com `RelatingElement` = alvo, `RelatedElement` =
   operador, `ImpliedOrder` = verdadeiro, `InterferenceType` = `SUBTRACT`,

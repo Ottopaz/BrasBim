@@ -4,7 +4,25 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑01 (spec/ui 43 em revisão: estilos do 3D e espessura livre).*
+*Atualizado em 2026‑11‑01 (estilos do 3D feitos; laje com alças no 3D; quadro das
+operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisão).*
+
+> **Feito depois (2026‑11‑01, pedido "corrija as vistas urgentemente no 3D"):** spec/ui 43
+> **§2 implementado** sem esperar as respostas (a)–(c): `brasbim/core/view_styles.py`
+> (seis estilos de fábrica), `scene3d.feature_edges`/`silhouette_edges` (contorno: arestas
+> > 20°, bordas e silhuetas pelo olho; cache na `Mesh.cache`), `view3d.draw_scene(...,
+> style=, related=)`; Exibir > Estilo do 3D e botão na barra da vista (só com o 3D à
+> vista), preferência `3d/estilo`, vista 3D salva com `options.style`
+> (`saved_views.VIEW3D_OPTIONS`) e imagem da prancha pelo estilo gravado
+> (`saved_views_ui.style_of`). A janela do 3D pede profundidade 24 bits e 4 amostras.
+> **Laje no 3D:** `handles3d.SlabHandle3D` / `slab_handles` — vértices, meio dos lados,
+> centro (mover livre) e setas X/Y (só naquele eixo; Distância no quadro). **Quadro das
+> operações de sólidos** (`ui/solid_badge.py`): elemento com recorte selecionado sozinho
+> mostra junto dele o ícone da operação e "Recortado por X · subtrair"/"Recorta Y · …";
+> clicar seleciona o outro; os outros ficam tracejados em laranja na planta e tingidos no
+> 3D (`solids.partners`, `theme.SOLID_PARTNER`). Testes `tests/test_estilos_3d.py`
+> (E3D01–E3D03 e laje) e SO07. **Falta:** estilos do usuário (E3D04), sombras, espessura
+> livre (§3, aguarda (d)–(f)).
 
 > **Pedidos novos (2026‑11‑01, depois dos sólidos):** o revisor não gosta do 3D mostrando
 > "arestas invisíveis" e quer outras apresentações (sem essas linhas, modelo todo branco),

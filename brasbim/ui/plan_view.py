@@ -208,6 +208,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         self._zooming = QTimer(self, singleShot=True, interval=ZOOM_PAUSE_MS)
         self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
+        self.solid_badge = None  # quadro das operações de sólidos, posto pela janela
         self.show_tags = True  # etiquetas de porta (spec/ui 05 §5)
         self.show_reservations = True  # contorno do que outra pessoa reservou (spec/ui 33)
         self.show_tag_size = False
@@ -774,6 +775,20 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                     painter.drawPath(path)
                 painter.restore()
 
+    def _draw_solid_partners(self, painter: QPainter) -> None:
+        """Elementos em operação de sólidos com o selecionado: contorno tracejado."""
+        from brasbim.ui.solid_badge import partner_ids
+
+        gids = partner_ids(self)
+        if not gids:
+            return
+        pen = QPen(QColor(theme.SOLID_PARTNER), 2.0 * self.unit, Qt.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        for shape in self.ctx.plan.shapes:
+            if shape.owner in gids:
+                painter.drawPath(self._path(shape.points, shape.closed))
+
     def _draw_reservations(self, painter: QPainter) -> None:
         """Elementos reservados por outra pessoa: contorno na cor dela (spec/ui 33 §3)."""
         session = self.ctx.session
@@ -901,12 +916,15 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         self._draw_annotations(painter)
         self._draw_tags(painter)
         self._draw_reservations(painter)
+        self._draw_solid_partners(painter)
         self._draw_hover(painter)
         self._draw_area(painter)
         self._draw_tool(painter)
         painter.end()
         if self.selection_bar is not None:
             self.selection_bar.place()
+        if self.solid_badge is not None:
+            self.solid_badge.place()
         self.note_frame()
 
     # --- entrada ---------------------------------------------------------------------

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import display_layers as dl
-from brasbim.core import intervention, pens
+from brasbim.core import intervention, pens, view_styles
 from brasbim.ui import icons, theme
 from brasbim.ui.plan_view import ZOOM_PERCENTS, PlanView
 from brasbim.ui.section_view import SectionView
@@ -118,6 +118,11 @@ class ViewBar(QFrame):
         self.situation = _menu_button("situation", "Situação na vista (projeto legal)")
         for action in window.situation_actions.values():
             self.situation.menu().addAction(action)
+        self.style3d = _menu_button("style3d", "Estilo do 3D")  # spec/ui 43 §2.3
+        for action in window.style3d_actions.values():
+            self.style3d.menu().addAction(action)
+        layout.addWidget(self.style3d)
+        layout.addStretch(1)
         for widget in (self.layers, self.detail, self.pens, self.situation):
             layout.addWidget(widget)
             layout.addStretch(1)
@@ -139,8 +144,8 @@ class ViewBar(QFrame):
         self.pick_locked.setChecked(True)
         self.pick_locked.toggled.connect(window.set_pick_locked)
         layout.addWidget(self.pick_locked)
-        self.texted = (self.rotation, self.layers, self.detail, self.pens, self.situation,
-                       self.show_all)
+        self.texted = (self.rotation, self.style3d, self.layers, self.detail, self.pens,
+                       self.situation, self.show_all)
         self.tips = {b: b.toolTip() for b in self.texted}
         self.plan_only = (self.rotation, self.scale_icon, window.scale_combo, self.detail)
 
@@ -188,6 +193,8 @@ class ViewBar(QFrame):
             widget.setVisible(view is not None)
         for widget in self.plan_only:
             widget.setVisible(plan)
+        self.style3d.setVisible(self.window.showing_3d())
+        self.style3d.setText(view_styles.name_of(self.window.view3d.style_id))
         doc = self.window.session.doc
         comb = dl.matching_combination(doc, self.window.session.display)
         self.layers.setVisible(dl.read_config(doc) is not None)

@@ -102,3 +102,35 @@ def test_so06_sem_selecao_clica_os_alvos_antes(window):
     tool.press((2.5, 0.6), Mods())
     tool.key("enter")
     assert solids.cut_by(a)[0].InterferenceType == "INTERSECT"
+
+
+def test_so07_quadro_e_destaque_ao_selecionar(window, app):
+    """Selecionado um elemento com recorte: o quadro junto dele mostra a operação (ícone e
+    o outro elemento) e o outro fica destacado na planta e no 3D (pedido de 2026-11-01)."""
+    from brasbim.ui.solid_badge import OPERATION_ICON, partner_ids
+
+    s = window.session
+    a, b = _walls(window)
+    s.run(lambda: solids.cut_elements(s.doc, [a], [b], solids.SUBTRACT))
+    badge = window.plan.solid_badge
+    s.select([a.GlobalId])
+    window.plan.repaint()
+    app.processEvents()
+    assert badge.isVisible()
+    name_b = b.Name or "Wall"
+    assert badge.texts() == [f"Recortado por {name_b} · subtrair"]
+    assert partner_ids(window.plan) == {b.GlobalId}
+    assert OPERATION_ICON[solids.SUBTRACT] in icons.names()
+    window.set_view("split")
+    app.processEvents()
+    assert partner_ids(window.view3d) == {b.GlobalId}
+    # clicar na linha seleciona o outro; o quadro passa a mostrar o lado dele
+    badge.rows[0].click()
+    assert s.selection == {b.GlobalId}
+    window.plan.repaint()
+    app.processEvents()
+    assert badge.texts() == [f"Recorta {a.Name or 'Wall'} · subtrair"]
+    # sem recorte, ou com outra ferramenta, nada aparece
+    s.select([])
+    window.plan.repaint()
+    assert not badge.isVisible() and partner_ids(window.plan) == set()

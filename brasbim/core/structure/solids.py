@@ -114,6 +114,21 @@ def rel_id(target_id: str, operator_id: str) -> str:
     return guid.derived(target_id, f"solid/{operator_id}")
 
 
+def partners(element) -> list[tuple[str, str, str, str]]:
+    """Elementos em operação com ``element``: (papel, GlobalId do outro, nome do outro,
+    operação), com papel ``"cut_by"`` (o outro recorta este) ou ``"cuts"`` (este recorta
+    o outro). Para o destaque na tela quando ele é selecionado."""
+    out = []
+    for role, rels, side in (("cut_by", cut_by(element), "RelatedElement"),
+                             ("cuts", cutting(element), "RelatingElement")):
+        for rel in rels:
+            other = getattr(rel, side)
+            if other is not None:
+                out.append((role, other.GlobalId, other.Name or other.is_a()[3:],
+                            rel.InterferenceType))
+    return out
+
+
 def describe(rel, element) -> str:
     """'Cobertura 1 · subtrair para cima': o outro elemento e a operação."""
     other = rel.RelatedElement if rel.RelatingElement == element else rel.RelatingElement

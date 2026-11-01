@@ -19,10 +19,17 @@ from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QToolTip
 
-from brasbim.core import edit_state, snap, transform
+from brasbim.core import edit_state, snap, transform, view_styles
 from brasbim.core.document import OpError
 from brasbim.ui import theme
-from brasbim.ui.handles3d import FillingHandle3D, WallHandle3D, filling_handles, wall_handles
+from brasbim.ui.handles3d import (
+    FillingHandle3D,
+    SlabHandle3D,
+    WallHandle3D,
+    filling_handles,
+    slab_handles,
+    wall_handles,
+)
 from brasbim.ui.measure_box import ToolInput
 from brasbim.ui.scene3d import (
     ORIENTATION_MARKS,
@@ -30,11 +37,15 @@ from brasbim.ui.scene3d import (
     Scene,
     affine_of,
     area_scene,
+    contour_of,
     current_mark,
+    flat_colors,
+    light_of,
     opposite_mark,
     orientation_marks,
     orientation_pick,
     ray_plane,
+    silhouette_edges,
     transformed,
 )
 from brasbim.ui.selection_bar import ZOOM_PAUSE_MS
@@ -54,6 +65,8 @@ _BACKGROUND = theme.rgbf(theme.VIEW3D_BACKGROUND)
 _MARK_COLOR = {"invalid": theme.rgbf(theme.ERROR), "guide": theme.rgbf("#A9739B"),
                "reference": theme.rgbf(theme.ACCENT)}
 _PREVIEW = theme.rgbf(theme.ACCENT)
+_GLASS_GRAY = (0.82, 0.85, 0.87)
+_RELATED = np.array(theme.rgbf(theme.SOLID_PARTNER), dtype=np.float32)
 CLICK_PX = 4  # o clique só vale se o cursor andar menos que isto (§3.1)
 HANDLE_PX = 8  # raio de captura das alças na tela (spec/ui 08 §3)
 SNAP_PX = 10
@@ -72,9 +85,12 @@ def display_layers_locked(doc) -> set[str]:
 
 
 def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset(),
-               hover: str | None = None) -> None:
-    """Pinta as malhas (com os vidros por último) e as arestas no contexto OpenGL atual:
-    a vista na tela e a imagem da vista 3D salva na prancha (spec/ui 25 §5)."""
+               hover: str | None = None, style: dict | None = None,
+               related=frozenset()) -> None:
+    """Pinta as malhas (com os vidros por último) e as arestas no contexto OpenGL atual,
+    conforme o estilo do 3D (spec/ui 43 §2): a vista na tela e a imagem da vista 3D salva
+    na prancha (spec/ui 25 §5)."""
+    style = style or view_styles.get(None)
     GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
     GL.glMatrixMode(GL.GL_PROJECTION)
     GL.glLoadMatrixd(camera.projection(aspect).T.flatten())
@@ -82,27 +98,68 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
     GL.glLoadMatrixd(camera.view().T.flatten())
     GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
     GL.glEnableClientState(GL.GL_COLOR_ARRAY)
-    for gid, mesh in scene.meshes.items():
-        colors = mesh.colors
-        if gid in selected:
-            colors = (colors * 0.4 + _SELECT * 0.6).astype(np.float32)
-        elif gid == hover:  # destaque sob o cursor (spec/ui 28 §3)
-            colors = (colors * 0.75 + _SELECT * 0.25).astype(np.float32)
-        GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
-        GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
-        GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
-    _paint_glass(scene, selected)
+    faces = style["faces"]
+    if faces != "none":
+        for gid, mesh in scene.meshes.items():
+            if not len(mesh.vertices):
+                continue
+            colors = face_colors(mesh, style)
+            if gid in selected:
+                colors = (colors * 0.4 + _SELECT * 0.6).astype(np.float32)
+            elif gid in related:  # em operação de sólidos com o selecionado
+                colors = (colors * 0.45 + _RELATED * 0.55).astype(np.float32)
+            elif gid == hover:  # destaque sob o cursor (spec/ui 28 §3)
+                colors = (colors * 0.75 + _SELECT * 0.25).astype(np.float32)
+            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
+            GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
+        _paint_glass(scene, selected, style)
     GL.glDisableClientState(GL.GL_COLOR_ARRAY)
-    GL.glColor3f(0.25, 0.25, 0.25)
-    for mesh in scene.meshes.values():
-        if len(mesh.edges):
-            GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.edges)
-            GL.glDrawArrays(GL.GL_LINES, 0, len(mesh.edges))
+    _paint_edges(scene, camera, selected, style, related)
     GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
 
 
-def _paint_glass(scene: Scene, selected) -> None:
-    """Vidros translúcidos, depois das peças opacas (spec/ui 09 §7)."""
+def face_colors(mesh, style: dict) -> np.ndarray:
+    """Cores das faces da malha no estilo (material, cor única ou fundo; luz ou chapado)."""
+    faces = style["faces"]
+    if faces == "material":
+        return mesh.colors if style["light"] else flat_colors(mesh)
+    rgb = np.array(_BACKGROUND if faces == "background"
+                   else view_styles.rgb(style["face_color"]), dtype=np.float32)
+    if faces == "single" and style["light"]:
+        return np.clip(np.outer(light_of(mesh), rgb), 0, 1).astype(np.float32)
+    return np.broadcast_to(rgb, (len(mesh.vertices), 3)).astype(np.float32)
+
+
+def _paint_edges(scene: Scene, camera: Camera, selected, style: dict,
+                 related=frozenset()) -> None:
+    """Arestas: o contorno (vivas, bordas e silhuetas pelo olho), todas ou nenhuma."""
+    kind = style["edges"]
+    if kind == "none":
+        return
+    GL.glLineWidth(float(style["edge_width"]))
+    eye = camera.eye()
+    ink = view_styles.rgb(style["edge_color"])
+    for gid, mesh in scene.meshes.items():
+        hard, smooth, normals = contour_of(mesh)
+        if kind == "all":  # as do IfcOpenShell (sem silhueta nas curvas) e as silhuetas
+            hard = mesh.edges if len(mesh.edges) else hard
+        rim = silhouette_edges(smooth, normals, eye)
+        lines = np.concatenate([hard, rim]) if len(rim) else hard
+        if not len(lines):
+            continue
+        color = ink
+        if style["faces"] == "none":  # sem faces, o destaque vai na linha
+            color = _SELECT if gid in selected else _RELATED if gid in related else ink
+        GL.glColor3f(*color)
+        GL.glVertexPointer(3, GL.GL_FLOAT, 0, lines)
+        GL.glDrawArrays(GL.GL_LINES, 0, len(lines))
+    GL.glLineWidth(1.0)
+
+
+def _paint_glass(scene: Scene, selected, style: dict) -> None:
+    """Vidros translúcidos, depois das peças opacas (spec/ui 09 §7); fora do estilo
+    colorido, cinza-claro."""
     glass = [(gid, m) for gid, m in scene.meshes.items() if m.glass is not None]
     if not glass:
         return
@@ -111,6 +168,9 @@ def _paint_glass(scene: Scene, selected) -> None:
     GL.glDepthMask(GL.GL_FALSE)
     for gid, mesh in glass:
         colors = mesh.glass_colors
+        if style["faces"] != "material":
+            colors = colors.copy()
+            colors[:, :3] = _GLASS_GRAY
         if gid in selected:
             colors = colors.copy()
             colors[:, :3] = colors[:, :3] * 0.4 + _SELECT * 0.6
@@ -155,11 +215,19 @@ class View3D(QOpenGLWidget, ToolInput):
         self.ctx = toolbox.ctx
         self.camera = Camera()
         self.selection_bar = None  # mini-barra (spec/ui 03 §5), posta pela janela
+        self.solid_badge = None  # quadro das operações de sólidos, posto pela janela
         self._press: tuple[str, QPointF] | None = None  # botão e posição do clique
         self._drag: tuple[str, QPointF] | None = None  # órbita ou deslocamento
         self._zooming = QTimer(self, singleShot=True, interval=ZOOM_PAUSE_MS)
         self._zooming.timeout.connect(self.update)  # a mini-barra volta ao parar o zoom
         self.failed = GL is None
+        self.style_id = view_styles.DEFAULT  # estilo do 3D (spec/ui 43 §2)
+        # Profundidade de 24 bits pedida: com 16 (o padrão de algumas placas) as arestas de
+        # trás das peças finas (laje, parede) vazavam pelas faces. Bordas suavizadas.
+        fmt = self.format()
+        fmt.setDepthBufferSize(24)
+        fmt.setSamples(4)
+        self.setFormat(fmt)
         self.window_start: QPointF | None = None  # janela por dois cliques (spec/ui 28 §3)
         self.mouse_pos: QPointF | None = None
         self.orientation_hover: str | None = None  # marca sob o cursor (spec/ui 40 §4)
@@ -336,8 +404,10 @@ class View3D(QOpenGLWidget, ToolInput):
             return
         selected = self.selection
         hover = self.ctx.hover if self.ctx.hover not in selected else None
+        from brasbim.ui.solid_badge import partner_ids
+
         draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected,
-                   hover)
+                   hover, view_styles.get(self.style_id), partner_ids(self))
         GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
         self._paint_tool()
         self._paint_handles()
@@ -349,6 +419,8 @@ class View3D(QOpenGLWidget, ToolInput):
             # Mover um widget filho durante a pintura do OpenGL deixa cópias dele na tela:
             # a mini-barra é posta depois que a pintura termina.
             QTimer.singleShot(0, self.selection_bar, self.selection_bar.place)
+        if self.solid_badge is not None:
+            QTimer.singleShot(0, self.solid_badge, self.solid_badge.place)
 
     @property
     def navigating(self) -> bool:
@@ -429,11 +501,38 @@ class View3D(QOpenGLWidget, ToolInput):
                  else snap.wall_paths(doc, storey))
         return element, next((w for w in walls if w.gid == host.GlobalId), None)
 
+    def selected_slab(self) -> tuple[str, float, float] | None:
+        """(laje selecionada sozinha, cota de cima, cota de baixo) com Selecionar: só a
+        laje desenhada no BrasBim (não a água da cobertura, o patamar ou a importada)."""
+        tool, selection = self.toolbox.active, self.selection
+        if tool.name != "select" or len(selection) != 1:
+            return None
+        gid = next(iter(selection))
+        element = self.ctx.session.doc.find(gid)
+        mesh = self.scene.meshes.get(gid)
+        if element is None or mesh is None or not element.is_a("IfcSlab")                 or not len(mesh.vertices):
+            return None
+        from brasbim.core.structure import commands as sc
+        from brasbim.core.structure import roofs, stairs
+
+        if roofs.is_part(element) or stairs.stair_of(element) is not None:
+            return None
+        try:
+            if sc.read_state(self.ctx.session.doc, element)["foreign"] is not None:
+                return None
+        except (OpError, KeyError, ValueError):
+            return None
+        z = mesh.vertices[:, 2]
+        return gid, float(z.max()), float(z.min())
+
     def handles(self) -> list[tuple[str, tuple[float, float, float]]]:
         doc = self.ctx.session.doc
         if any(edit_state.is_locked(doc, g) for g in self.ctx.session.selection):
             return []  # travado: sem alças (spec/ui 39 §5)
         try:
+            slab = self.selected_slab()
+            if slab is not None:
+                return slab_handles(doc, slab[0], slab[1])
             element, wall = self.selected_filling()
             if element is not None and wall is not None:  # spec/ui 09 §4.2
                 return filling_handles(doc, wall, element)
@@ -455,8 +554,11 @@ class View3D(QOpenGLWidget, ToolInput):
 
     def _start_handle(self, kind: str) -> None:
         tool = self.toolbox.active
+        slab = self.selected_slab()
         element, wall = self.selected_filling()
-        if element is not None and wall is not None:
+        if slab is not None:
+            tool.drag3d = SlabHandle3D(self.ctx, *slab[:1], kind, slab[1], slab[2])
+        elif element is not None and wall is not None:
             tool.drag3d = FillingHandle3D(self.ctx, wall, element, kind)
         else:
             tool.drag3d = WallHandle3D(self.ctx, self.selected_wall(), kind)
@@ -475,7 +577,9 @@ class View3D(QOpenGLWidget, ToolInput):
                 return
             self.ctx.tol = SNAP_PX * self.camera.pixel_size(hit, self.height())
             p = (float(hit[0]), float(hit[1]))
-            if h.kind == "face":
+            if isinstance(h, SlabHandle3D):
+                p = h.snap_point(p, mods)
+            elif h.kind == "face":
                 p = self.ctx.snap(p, Mods(alt=mods.alt)).point
             elif h.kind != "tilt":
                 fixed = h.wall.path.end if h.kind == "start" else h.wall.path.start
@@ -519,10 +623,24 @@ class View3D(QOpenGLWidget, ToolInput):
             GL.glLineWidth(1.0)
         hot = h.kind if h is not None else (
             self.handle_at(self.mouse_pos) if self.mouse_pos is not None else None)
+        handles = self.handles()
+        found = dict(handles)
+        axis_color = {"slab_x": theme.rgbf(theme.AXIS_X), "slab_y": theme.rgbf(theme.AXIS_Y)}
+        if "slab_move" in found and h is None:  # setas X e Y da laje
+            GL.glLineWidth(2.0)
+            for kind, color in axis_color.items():
+                GL.glColor3f(*color)
+                pts = np.array([found["slab_move"], found[kind]], dtype=np.float32)
+                GL.glVertexPointer(3, GL.GL_FLOAT, 0, pts)
+                GL.glDrawArrays(GL.GL_LINES, 0, 2)
+            GL.glLineWidth(1.0)
         for size, cold, filled in ((11, _PREVIEW, _PREVIEW), (7, (1.0, 1.0, 1.0), _PREVIEW)):
             GL.glPointSize(size)
-            for kind, point in self.handles():
-                GL.glColor3f(*(filled if kind == hot else cold))
+            for kind, point in handles:
+                if size == 11 and kind in axis_color:
+                    GL.glColor3f(*axis_color[kind])
+                else:
+                    GL.glColor3f(*(filled if kind == hot else cold))
                 pts = np.array([point], dtype=np.float32)
                 GL.glVertexPointer(3, GL.GL_FLOAT, 0, pts)
                 GL.glDrawArrays(GL.GL_POINTS, 0, 1)

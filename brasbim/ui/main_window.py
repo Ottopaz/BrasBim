@@ -44,6 +44,7 @@ from brasbim.core import (
     pens,
     select_similar,
     snap,
+    view_styles,
 )
 from brasbim.core import plan as plan_mod
 from brasbim.core import storeys as storeys_
@@ -81,6 +82,7 @@ from brasbim.ui.scene3d import STANDARD_VIEWS, Scene
 from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
+from brasbim.ui.solid_badge import SolidBadge
 from brasbim.ui.table_view import TableView
 from brasbim.ui.team_panel import JoinDialog, TeamPanel
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
@@ -103,6 +105,7 @@ _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
 SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
 SITUATION_VIEW_KEY = "situacao/vista"  # spec/ui 31 §3
+STYLE3D_KEY = "3d/estilo"  # spec/ui 43 §2.3
 VIEW_BAR_KEY = "barras/barra_da_vista"  # spec/ui 39 §2
 DRAW_ORDER = (("front", "Trazer para a frente"), ("back", "Mandar para trás"),
               ("forward", "Um passo à frente"), ("backward", "Um passo atrás"),
@@ -252,6 +255,7 @@ class MainWindow(QMainWindow):
         view.context_requested.connect(
             lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
         view.selection_bar = SelectionBar(view, self.run_selection_action)
+        view.solid_badge = SolidBadge(view, lambda gid: self.session.select([gid]))
 
     # --- montagem --------------------------------------------------------------------
 
@@ -471,6 +475,16 @@ class MainWindow(QMainWindow):
             if key == "iso_sw":
                 standard.addSeparator()
             self._action(standard, label, lambda _=False, k=key: self.standard_view(k))
+        style_menu = view_menu.addMenu("Estilo do 3D")  # spec/ui 43 §2
+        group = QActionGroup(self)
+        self.style3d_actions = {}
+        for style in view_styles.FACTORY:
+            action = self._action(style_menu, style["name"],
+                                  lambda _=False, k=style["id"]: self.set_style3d(k))
+            action.setCheckable(True)
+            group.addAction(action)
+            self.style3d_actions[style["id"]] = action
+        self.style3d_actions[view_styles.DEFAULT].setChecked(True)
         self._action(view_menu, "Salvar vista", lambda: self.save_view(), "Ctrl+Alt+S")
         self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
@@ -868,6 +882,9 @@ class MainWindow(QMainWindow):
             self.set_sheet_limits(str(limits).lower() == "true", save=False)
         if str(settings.value(VIEW_BAR_KEY, True)).lower() == "false":
             self.set_view_bar_visible(False)
+        style = settings.value(STYLE3D_KEY)
+        if style in self.style3d_actions:
+            self.set_style3d(style, save=False)
         situation = settings.value(SITUATION_VIEW_KEY)
         if situation in self.situation_actions:
             self.set_situation_view(situation, save=False)
@@ -1014,6 +1031,23 @@ class MainWindow(QMainWindow):
             _settings().setValue(SELECT_MODE_KEY, bool(accumulate))
         self._set_hint(self.toolbox.active.hint())
         self.plan.update()
+
+    def showing_3d(self) -> bool:
+        """Há uma vista 3D à vista: lado a lado ou uma aba 3D à frente."""
+        return self.split or isinstance(self.tabs.currentWidget(), View3D)
+
+    def set_style3d(self, style_id: str, save: bool = True) -> None:
+        """Exibir > Estilo do 3D e a barra da vista (spec/ui 43 §2.3): vale para o 3D e o
+        3D da área; o último usado fica na preferência do usuário."""
+        style_id = view_styles.get(style_id)["id"]
+        self.style3d_actions[style_id].setChecked(True)
+        if save:
+            _settings().setValue(STYLE3D_KEY, style_id)
+        for view in [self.view3d, *self.findChildren(View3D)]:
+            view.style_id = style_id
+            view.update()
+        if hasattr(self, "view_bar"):
+            self.view_bar.refresh()
 
     def set_situation_view(self, view: str, save: bool = True) -> None:
         """Exibir > Situação na vista (spec/ui 31 §3): preferência, não vai para o IFC."""
@@ -1229,6 +1263,9 @@ class MainWindow(QMainWindow):
             camera.target = np.array(cam["target"], dtype=float)
             camera.distance, camera.yaw, camera.pitch = (cam["distance"], cam["yaw"],
                                                          cam["pitch"])
+            style = (state.get("options") or {}).get("style")
+            if style:  # spec/ui 43 §2.3
+                self.set_style3d(style)
             if not self.split:
                 self.set_view("3d")
             self.view3d.update()
@@ -1286,6 +1323,7 @@ class MainWindow(QMainWindow):
         view = self.area_views.get("area")
         if view is None:
             view = AreaView3D(self.scene, self.toolbox)
+            view.style_id = self.view3d.style_id
             self._hook_view(view)
             self.area_views["area"] = view
             self.tabs.addTab(view, view.title)
@@ -2168,6 +2206,7 @@ class MainWindow(QMainWindow):
                 half = max(self.splitter.width() // 2, 1)
                 self.splitter.setSizes([half, half])
                 self.split = True
+                self.view_bar.refresh()
             return
         if self.split:
             self._add_fixed_tabs()
@@ -2175,6 +2214,7 @@ class MainWindow(QMainWindow):
             self.tabs.show()
             self.split = False
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
+        self.view_bar.refresh()
 
     def standard_view(self, name: str) -> None:
         """Vista 3D padrão; com a planta à frente, passa para o 3D."""

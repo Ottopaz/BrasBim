@@ -3,7 +3,7 @@ documento: Estilos de apresentação do 3D e espessura livre de parede e laje
 requisito: RF-VIS (vista 3D), RF-ELE (modelagem); pedidos do revisor em 2026-11-01
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-11-01
-status: em revisão
+status: §2 aprovado e implementado em parte (2026-11-01); §3 em revisão
 revisor: OTTO
 ---
 
@@ -107,6 +107,21 @@ barra Opções); desfazer/refazer e diário em todos.
 ## 4. Ordem
 1. Espessura livre (§3): uma sessão. 2. Estilos do 3D (§2): uma sessão. 3. Sombras (§2.4)
 depois.
+
+## 4a. Andamento (2026‑11‑01)
+O revisor pediu as vistas do 3D "urgentemente": o §2 entrou antes do §3.
+- **Feito:** os seis estilos de fábrica (`brasbim/core/view_styles.py`); contorno com
+  arestas vivas (> 20°), bordas e silhuetas calculadas pelo olho a cada quadro; escolha
+  em Exibir > Estilo do 3D e no botão da barra da vista (só com o 3D à vista); o último
+  estilo fica na preferência; a vista 3D salva grava `options.style` e a imagem da prancha
+  o usa; o 3D da área herda o estilo. A janela do 3D passou a pedir profundidade de 24
+  bits e 4 amostras: com 16 bits (padrão de algumas placas) as arestas de trás das peças
+  finas vazavam pelas faces — provável origem das "arestas invisíveis".
+  Testes E3D01–E3D03 (`tests/test_estilos_3d.py`).
+- **Falta do §2:** estilos do usuário (diálogo e Pset `BrasBim_Estilos3D`, E3D04).
+- **Junto (pedido do mesmo dia):** alças da laje no 3D — vértices, meio dos lados, centro
+  (mover livre) e setas X e Y (mover só naquele eixo, com a distância no quadro de
+  medidas).
 
 ## 5. Pontos para o revisor
 - (a) As "arestas invisíveis" que incomodam são as **emendas** das faces (faixas nas
