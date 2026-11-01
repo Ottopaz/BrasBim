@@ -243,7 +243,14 @@ class View3D(QOpenGLWidget, ToolInput):
     def selection(self) -> set[str]:
         return self.ctx.session.selection
 
+    _fit_pending = False
+
     def fit(self) -> None:
+        if not self.isVisible() and getattr(self.scene, "pending", False):
+            # 3D fechado com a cena por refazer: enquadra ao aparecer, sem triangular agora
+            self._fit_pending = True
+            return
+        self._fit_pending = False
         bounds = self.scene.bounds()
         if bounds is not None:
             self.camera.frame(*bounds)
@@ -402,6 +409,8 @@ class View3D(QOpenGLWidget, ToolInput):
     def paintGL(self):
         if self.failed:
             return
+        if self._fit_pending:
+            self.fit()
         selected = self.selection
         hover = self.ctx.hover if self.ctx.hover not in selected else None
         from brasbim.ui.solid_badge import partner_ids

@@ -17,6 +17,7 @@ e ``evaluate`` o valor.
 
 from __future__ import annotations
 
+import functools
 import math
 
 from brasbim.core.document import OpError
@@ -213,7 +214,7 @@ class _Parser:
                 low, high = _FUNCTIONS[k]
                 if len(args) < low or (high is not None and len(args) > high):
                     raise FormulaError(f"número de argumentos errado em {value}()")
-                return ("call", _ALIASES.get(k, k), args)
+                return ("call", _ALIASES.get(k, k), tuple(args))
             if k in _LITERALS:
                 return ("bool", _LITERALS[k])
             if k in _FALSE_WORDS:
@@ -232,6 +233,13 @@ def parse(text: str):
     text = text.removeprefix("=")
     if not text.strip():
         raise FormulaError("fórmula vazia")
+    return _parse_text(text)
+
+
+@functools.lru_cache(maxsize=8192)
+def _parse_text(text: str):
+    """A árvore é feita só de tuplas (imutável): a mesma fórmula, lida de novo a cada
+    objeto refeito, sai daqui sem passar pelo analisador."""
     return _Parser(text).parse()
 
 

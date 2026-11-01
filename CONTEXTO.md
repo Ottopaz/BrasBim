@@ -7,6 +7,20 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 *Atualizado em 2026‑11‑01 (estilos do 3D feitos; laje com alças no 3D; quadro das
 operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisão).*
 
+> **Desempenho (2026‑11‑01):** `scripts/simular_usuario.py` simula uma pessoa (3
+> pavimentos, portas, janelas, lajes, cobertura, móveis, árvores, desfazer, 3D, salvar) e
+> cronometra cada ação (tempos.csv + perfil). Correções feitas pelo perfil, sem mudar
+> comportamento: painel Projeto só refaz a árvore de objetos quando tipos/contagens mudam
+> (`_objects_signature`); `formula.parse` guardado por texto (árvore só de tuplas);
+> `types.definition_from_text` guarda a definição normalizada por texto (cópia por
+> `json.loads`); `elements.build` guarda o `Built` por (tipo, valores, espelho); a cena 3D
+> adia triangular (`Scene.defer_update`/`defer_load`, feito na 1ª leitura de `meshes`;
+> `View3D.fit` adiado se escondido); altura do título dos painéis guardada. Resultado:
+> janela 719→367 ms, porta 556→287, laje 935→480, Enter da parede 496→244, mover 1,7→0,9 s,
+> trocar de pavimento 219→65; suíte 291→244 s. **Próximos gargalos:** carregar o 3D
+> (~17 ms por elemento no `create_shape`; usar o iterador do IfcOpenShell em vários
+> núcleos), desfazer (~0,5–0,7 s), derivação das junções a cada edição.
+
 > **Feito depois (2026‑11‑01, pedido "corrija as vistas urgentemente no 3D"):** spec/ui 43
 > **§2 implementado** sem esperar as respostas (a)–(c): `brasbim/core/view_styles.py`
 > (seis estilos de fábrica), `scene3d.feature_edges`/`silhouette_edges` (contorno: arestas

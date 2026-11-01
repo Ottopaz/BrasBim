@@ -60,7 +60,21 @@ def definition_of(element_type) -> dict:
     values = ifcopenshell.util.element.get_pset(element_type, PSET, should_inherit=False)
     if not values:
         raise OpError(f"{element_type.GlobalId} não é tipo de objeto paramétrico")
-    return od.normalized(json.loads(values["Definicao"]))
+    return definition_from_text(values["Definicao"])
+
+
+_NORMALIZED: dict[str, str] = {}  # texto gravado → definição completa, em JSON
+
+
+def definition_from_text(text: str) -> dict:
+    """Definição completa (``od.normalized``) a partir do texto do Pset. A conta é feita
+    uma vez por texto; cada chamada recebe uma cópia nova (pode ser alterada à vontade)."""
+    cached = _NORMALIZED.get(text)
+    if cached is None:
+        if len(_NORMALIZED) > 4096:
+            _NORMALIZED.clear()
+        cached = _NORMALIZED[text] = json.dumps(od.normalized(json.loads(text)))
+    return json.loads(cached)
 
 
 def types_of_definition(doc: Document, object_id: str) -> list:
@@ -99,7 +113,7 @@ def read(element_type) -> dict:
     if not values:
         raise OpError(f"{element_type.GlobalId} não é tipo de objeto paramétrico")
     return {"name": element_type.Name,
-            "definition": od.normalized(json.loads(values["Definicao"])),
+            "definition": definition_from_text(values["Definicao"]),
             "values": json.loads(values.get("Valores") or "{}"),
             "defaults": json.loads(values.get("Padroes") or "{}"),
             "library": _read_library(element_type)}

@@ -921,7 +921,7 @@ class MainWindow(QMainWindow):
             self._refresh_section_views(reset=True)
             self.activate_tool("select")
             self.ctx.invalidate()
-            self.scene.load(self.session.doc.ifc, self.session.doc)
+            self.scene.defer_load(self.session.doc.ifc, self.session.doc)
             self.plan.rotations.clear()  # o giro é da sessão (spec/ui 39 §3)
             self.ctx.hidden = set()  # os ocultos também (§4)
             self.scene.extra_hidden = set()
@@ -938,9 +938,9 @@ class MainWindow(QMainWindow):
             self._refresh_section_views()
             if self.session.last_tx is not None and any(
                     op.op == "material.edit" for op in self.session.last_tx.ops):
-                self.scene.load(self.session.doc.ifc, self.session.doc)  # cores novas
+                self.scene.defer_load(self.session.doc.ifc, self.session.doc)  # cores novas
             else:
-                self.scene.update(self.session.doc.ifc, self.session.last_changed)
+                self.scene.defer_update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
             if tool.cursor is not None and tool.name in ("door", "window", "split", "column"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo

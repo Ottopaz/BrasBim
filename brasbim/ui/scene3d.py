@@ -303,14 +303,57 @@ class Scene:
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
-        self.meshes: dict[str, Mesh] = {}
+        self._meshes: dict[str, Mesh] = {}
+        # Pedidos adiados (``defer_update``/``defer_load``): feitos na primeira leitura de
+        # ``meshes``, isto é, quando alguém (a vista 3D na tela, a imagem da prancha, a
+        # escolha por raio) precisa das malhas. Com o 3D fechado, editar não triangula.
+        self._pending: set[str] = set()
+        self._pending_load = None  # (ifc, doc)
+        self._pending_ifc = None
         # Malhas das camadas ocultas (spec/ui 18 §4), guardadas para voltar sem tesselar.
         self._hidden: dict[str, Mesh] = {}
         self.extra_hidden: set[str] = set()  # ocultos da janela (spec/ui 39 §4)
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
-        self.tessellations = 0
+        self._tessellations = 0
         self._settings = ifcopenshell.geom.settings()
         self._settings.set("use-world-coords", True)
+
+    @property
+    def meshes(self) -> dict[str, Mesh]:
+        self._flush()
+        return self._meshes
+
+    @property
+    def tessellations(self) -> int:
+        """Triangulações feitas até agora (com os pedidos adiados já feitos)."""
+        self._flush()
+        return self._tessellations
+
+    @property
+    def pending(self) -> bool:
+        return bool(self._pending) or self._pending_load is not None
+
+    def _flush(self) -> None:
+        if self._pending_load is not None:
+            (ifc, doc), self._pending_load = self._pending_load, None
+            self._pending = set()
+            self.load(ifc, doc)
+        elif self._pending:
+            changed, self._pending = self._pending, set()
+            self.update(self._pending_ifc, changed)
+
+    def defer_load(self, ifc, doc=None) -> None:
+        """Como ``load``, feito só quando as malhas forem lidas."""
+        self._pending_load = (ifc, doc)
+        self._pending = set()
+
+    def defer_update(self, ifc, changed) -> None:
+        """Como ``update``, feito só quando as malhas forem lidas (junta os pedidos)."""
+        if self._pending_load is not None:
+            self._pending_load = (ifc, self._pending_load[1])
+            return
+        self._pending_ifc = ifc
+        self._pending |= set(changed)
 
     def _wanted(self, entity) -> bool:
         if entity is None:
@@ -371,7 +414,7 @@ class Scene:
         return self._single(entity)
 
     def _single(self, entity) -> Mesh | None:
-        self.tessellations += 1
+        self._tessellations += 1
         try:
             shape = props.body_shape(self._settings, entity)
         except RuntimeError as e:
@@ -432,6 +475,7 @@ class Scene:
         return self._layers[storey.GlobalId]
 
     def load(self, ifc, doc=None) -> None:
+        self._pending_load, self._pending = None, set()  # a carga cobre o que esperava
         if doc is not None:
             self.doc = doc
         self._layers.clear()

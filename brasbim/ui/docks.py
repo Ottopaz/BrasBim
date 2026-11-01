@@ -8,7 +8,7 @@ alterna, como antes; o painel fechado volta por Exibir > Painéis.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtWidgets import (
     QDockWidget,
     QHBoxLayout,
@@ -53,15 +53,27 @@ class DockTitle(QWidget):
     def _floating(self, floating: bool) -> None:
         self.close_button.setVisible(bool(floating))
 
+    _height: int | None = None
+
+    def _title_height(self) -> int:
+        """A mesma altura com e sem o botão: o painel não pula ao soltar. Guardada: o Qt
+        pede o tamanho dezenas de milhares de vezes; muda só com a fonte ou o estilo."""
+        if self._height is None:
+            margins = self.layout().contentsMargins()
+            self._height = max(self.label.sizeHint().height(),
+                               self.close_button.sizeHint().height())                 + margins.top() + margins.bottom()
+        return self._height
+
+    def changeEvent(self, event):
+        if event.type() in (QEvent.FontChange, QEvent.StyleChange):
+            self._height = None
+        super().changeEvent(event)
+
     def sizeHint(self) -> QSize:
-        # A mesma altura com e sem o botão: o painel não pula ao soltar.
-        hint = super().sizeHint()
-        margins = self.layout().contentsMargins()
-        height = max(self.label.sizeHint().height(), self.close_button.sizeHint().height())
-        return QSize(hint.width(), height + margins.top() + margins.bottom())
+        return QSize(super().sizeHint().width(), self._title_height())
 
     def minimumSizeHint(self) -> QSize:
-        return QSize(0, self.sizeHint().height())
+        return QSize(0, self._title_height())
 
 
 def plain_title(dock: QDockWidget) -> DockTitle:
