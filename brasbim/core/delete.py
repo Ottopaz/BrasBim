@@ -87,6 +87,12 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
             ops += ac.delete_ops(doc, element)
         elif sc.is_structure(element) or slab_openings.is_slab_opening(element):
             add(sc.delete_ops(doc, element))  # a laje já leva as aberturas dela
+    # Operações de sólidos dos excluídos saem antes, para o desfazer devolvê-las; a do
+    # operador avisa que o alvo voltou à forma de antes (spec/ui 41 §3).
+    from brasbim.core.structure import solids
+
+    gone = {e.GlobalId for e in entities} | {op.id for op in ops if op.op.endswith(".delete")}
+    ops = solids.remove_for_deleted(doc, gone) + ops
     label = "Excluir"
     if len(entities) == 1 and door_list:
         label = f"Excluir {fc.kind(door_list[0]).noun}"

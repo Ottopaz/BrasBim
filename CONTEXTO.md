@@ -4,7 +4,29 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑29 (spec/ui 42 implementada: limpeza da janela).*
+*Atualizado em 2026‑11‑01 (spec/ui 41 §3, núcleo das operações de sólidos).*
+
+> **Onde paramos (2026‑11‑01):** o revisor respondeu (f) Somar fica de fora e (g) apagar
+> o operador desfaz o recorte com aviso (registrado no §6 da spec/ui 41). **Núcleo do §3
+> feito** em `brasbim/core/structure/solids.py`: `IfcRelInterferesElements` (alvo =
+> Relating, operador = Related, `ImpliedOrder`, tipo SUBTRACT/SUBTRACT_UP/SUBTRACT_DOWN/
+> INTERSECT; os recortes por prioridade continuam com o tipo `Recorte`, e
+> `cuts.sync_relations` só mexe nesses). Ops `solid.add`/`solid.remove` (`add_ops`,
+> `remove_ops`, `remove_for_deleted`; recusa par repetido, ciclo, alvo de outra origem ou
+> água de cobertura). Alvos: parede, pilar, viga, laje; operador: qualquer elemento com
+> corpo ou cobertura (pelas águas). Derivação nova em duas pontas (`register_derive(...,
+> first=True)` em `ops/base.py`): `expand` põe na lista suja o alvo de um operador que
+> mudou; `derive` (última, antes de camadas e situação) embrulha o `Body` refeito: para
+> cima/baixo um `IfcPolygonalBoundedHalfSpace` por face de baixo/cima do operador
+> (`Clipping`), subtrair/intersectar o corpo do operador como `IfcTriangulatedFaceSet`
+> (`CSG`); `NetVolume` desconta o volume medido. Excluir (`delete.delete_elements`) tira
+> antes as relações (o desfazer devolve; a do operador avisa). Testes SO01–SO05 em
+> `tests/test_solidos.py`; 853 testes. **Falta:** SO06 (ferramenta Recortar por
+> elemento, ficha "Recortado por"/"Recorta", botão direito "Tirar recortes", planta pela
+> seção da forma resultante); copiar alvo + operador juntos levar o recorte (hoje a
+> cópia nunca leva). Achado: `test_vb09_ordem_de_desenho` falha às vezes (desempate por
+> GlobalId aleatório), sem relação com isto.
+
 
 > **Limpeza da janela (2026‑10‑29, noite):** pedido do revisor no print `feedback/prints/barras.png`.
 > spec/ui 42, em revisão e implementada: faixa de título própria nos painéis (`ui/docks.py`: encaixado só o nome; solto, o botão de fechar), coluna de ferramentas sem barra de rolagem, barra da vista espalhada pela largura, campo da linha de comando até o Histórico quando não há opções e balão da última mensagem acima da barra da vista (`ui/balloon.py`). Testes LJ01–LJ07 em `tests/test_interface_limpeza.py`. Depois, segue o §3 da spec/ui 41 (sólidos).
