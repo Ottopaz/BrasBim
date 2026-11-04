@@ -6,7 +6,22 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 
 *Atualizado em 2026‑11‑04 (unidades do projeto — spec/ui 44, etapa 1 —; espessura livre;
 janela de operações de sólidos; Área de seleção ao lado do Selecionar; estudo do perfil
-complexo).*
+complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
+
+> **Perfil complexo junto da linha de 11‑04 (2026‑11‑04):** as etapas 1 e 2 do perfil
+> (viga, pilar e parede; notas de 2026‑10‑30 mais abaixo) estavam só em `origin/main`,
+> que divergiu do `main` local em `29725b3`. Trazidas por *cherry-pick* (spec, etapa 1,
+> etapa 2) para o ramo `worktree-perfil-complexo`, sobre o `main` local. Os pontos da
+> spec/ui 41 do estudo de 11‑04 viraram **(o)** e **(p)** (as letras (l)–(n) já eram das
+> respostas de 10‑30). Ajustes da junção: espessura livre recusa a parede de perfil
+> (`type_variants.is_profile`; sobra da barra Opções é ignorada; o campo some da ficha;
+> PC11); pilar de perfil recortado por sólido recorta cada parte na planta
+> (`plan._structure_regions`); editor de perfis na unidade de trabalho (cm/mm). **Ficaram
+> de fora** (só em `origin/main`): `d9296c5` (autoria) e `c498e83` (revisão geral antes do
+> instalador); juntar os dois ramos antes de publicar `main`. Próximo do perfil: o que o
+> estudo de 11‑04 acrescenta e ainda falta (referência das aberturas, criar perfil a
+> partir da seleção, giro/espelhar em viga e pilar, linha entre partes do mesmo material)
+> e a etapa (3) borda de laje/cobertura e caminho livre.
 
 > **Perfil complexo, estudo a fundo (2026‑11‑04, pedido do revisor):**
 > `research_notes/.../complemento_perfil_complexo.md`, a partir da ajuda AC18–AC29 e de
@@ -18,7 +33,7 @@ complexo).*
 > - a planta (o Archicad não tem vista simbólica), a captura, os quantitativos e o IFC.
 >
 > O §12 lista 14 decisões; a spec/ui 41 §4 foi refinada e ganhou os pontos (o) e (p) (eram (l) e (m), renomeados ao juntar com a etapa 1).
-> Próximo: implementar o perfil, núcleo e IFC primeiro (PC01, PC02, PC04).
+> Próximo: as etapas 1 e 2 já existiam (ver a nota acima); falta o que o §12 acrescenta.
 
 > **Unidades do projeto (2026‑11‑04, pedido do revisor):** pesquisa
 > `research_notes/.../complemento_unidades.md` (Archicad: unidades de trabalho, cotas por
@@ -64,7 +79,7 @@ complexo).*
 > seleção, Limpar; clicar seleciona), operação por ícones, Aplicar e Tirar entre eles
 > (`solids.remove_between`). SO08. **Área de seleção** foi para o topo da barra
 > Ferramentas, ao lado do Selecionar (`toolbars.TOP_TOOLS`). **Perfil complexo** (spec/ui
-> 41 §4) ainda **não existe**: espera (h)–(k). **Falta da 43:** estilos do usuário (E3D04,
+> 41 §4): etapas 1 e 2 vieram de `origin/main` (nota no topo). **Falta da 43:** estilos do usuário (E3D04,
 > agora só preferência) e sombras.
 
 > **3D em raio-X corrigido (2026‑11‑01):** a causa das "arestas invisíveis" era o QPainter
@@ -145,8 +160,6 @@ complexo).*
 > levar o recorte (hoje a cópia nunca leva); teste no aplicativo pelo revisor. **Próximo:**
 > §4 perfil complexo (PC01–PC06), que espera (h)–(k). Achado: `test_vb09_ordem_de_desenho` falha às vezes (desempate por
 > GlobalId aleatório), sem relação com isto.
-*Atualizado em 2026‑10‑30 (perfil complexo, etapa 1: editor + viga + pilar).*
-*Atualizado em 2026‑10‑30 (perfil complexo, etapa 2: parede de perfil).*
 
 > **Perfil complexo, etapa 2 (2026‑10‑30, noite):** fechadas as pendências da etapa 1 (3D
 > por material da parte em pilar e viga, `scene3d._profile_layers`; planta do pilar com

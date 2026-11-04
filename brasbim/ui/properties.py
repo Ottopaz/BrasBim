@@ -563,7 +563,7 @@ class PropertiesPanel(QScrollArea):
         self._combo("Tipo", self._types("IfcWallType"), state["type"],
                     lambda v: edit(type=v))
         self._edit_type_button("IfcWallType", state["type"])
-        if not foreign and state["type"]:
+        if not foreign and state["type"] and not type_variants.is_profile(doc.get(state["type"])):
             self._thickness_field([wall], [wall_types.thickness(doc.get(state["type"]))])
         self._combo("Linha de referência", REF_LINES, state["ref_line"],
                     lambda v: edit(ref_line=v))
@@ -684,7 +684,7 @@ class PropertiesPanel(QScrollArea):
 
         self._combo("Tipo", self._types("IfcWallType"), _common(s["type"] for s in states),
                     lambda v: edit(type=v))
-        if all(s["type"] for s in states):
+        if all(s["type"] and not type_variants.is_profile(doc.get(s["type"])) for s in states):
             self._thickness_field(walls, [wall_types.thickness(doc.get(s["type"]))
                                           for s in states])
         self._combo("Linha de referência", REF_LINES, _common(s["ref_line"] for s in states),

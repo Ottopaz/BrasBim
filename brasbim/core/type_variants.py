@@ -52,7 +52,19 @@ def _kind(element_type) -> _Kind:
     raise OpError("só parede e laje têm espessura livre")
 
 
+def is_profile(element_type) -> bool:
+    """Tipo de parede de perfil do projeto (spec/ui 41 §4): a largura vem do perfil, não
+    há camada para esticar, então não tem espessura livre."""
+    from brasbim.core.walls import types as wall_types
+
+    return element_type.is_a("IfcWallType") and wall_types.profile_of(element_type) is not None
+
+
 def type_thickness(element_type) -> float:
+    if is_profile(element_type):
+        from brasbim.core.walls import types as wall_types
+
+        return wall_types.thickness(element_type)
     return sum(float(x.LayerThickness) for x in _kind(element_type).layer_set(
         element_type).MaterialLayers)
 
@@ -178,6 +190,8 @@ def ensure_type(doc: Document, type_id: str, thickness: float | None):
     k = _kind(origin)
     if abs(type_thickness(origin) - thickness) < _TOL:
         return origin.GlobalId, Transaction("Espessura", [])
+    if is_profile(origin):
+        raise OpError("parede de perfil: a espessura vem do perfil (mude a largura no tipo)")
     for v in variants_of(doc, origin):
         if abs(read(v)["thickness"] - thickness) < _TOL:
             return v.GlobalId, Transaction("Espessura", [])
@@ -193,6 +207,8 @@ def create_with(doc: Document, type_id: str, thickness: float | None, build):
     se precisar, entra na mesma transação (barra Opções, spec/ui 43 §3.1)."""
     from brasbim.core.ops.history import Transaction, combine
 
+    if thickness is not None and is_profile(doc.get(type_id)):
+        thickness = None  # sobra da barra Opções: a parede de perfil tem a largura do perfil
     target, pre = ensure_type(doc, type_id, thickness)
     if not pre.ops:
         return build(target)
@@ -295,8 +311,8 @@ def derive(doc: Document, dirty: set[str]) -> None:
     for gid in sorted(dirty):
         origin = doc.find(gid)
         if origin is None or not (origin.is_a("IfcWallType") or origin.is_a("IfcSlabType")) \
-                or is_variant(origin):
-            continue
+                or is_variant(origin) or is_profile(origin):
+            continue  # origem que virou perfil: as variantes ficam com as camadas que têm
         for variant in variants_of(doc, origin):
             k = _kind(variant)
             try:

@@ -145,3 +145,25 @@ def test_pc03_arco_cobre_o_caminho_todo(model, through):
     side = lo[0] if through[0] < 0 else hi[0]
     assert abs(side) == pytest.approx(abs(through[0]) + 0.10, abs=0.05)
     assert hi[2] == pytest.approx(2.8, abs=1e-6)
+
+
+def test_pc11_parede_de_perfil_sem_espessura_livre(model):
+    """A espessura livre (spec/ui 43 §3) estica uma camada; a parede de perfil não tem
+    camada: a largura vem do perfil. Recusa na ficha; sobra da barra Opções é ignorada."""
+    from brasbim.core import type_variants
+
+    _, t = profile_type(model)
+    assert type_variants.is_profile(t)
+    assert type_variants.type_thickness(t) == pytest.approx(0.20)
+    w = wall_of(model, t)
+    with pytest.raises(OpError, match="perfil"):
+        type_variants.set_thickness(model.doc, [w], 0.30)
+    # o mesmo valor do tipo não pede variante
+    assert not type_variants.set_thickness(model.doc, [w], 0.20).ops
+    tx = model.commit(type_variants.create_with(
+        model.doc, t.GlobalId, 0.30,
+        lambda gid: wc.create_wall(model.doc, model.doc.get(gid), model.terreo, (0, 2), (4, 2))))
+    w2 = model.doc.get(tx.ops[0].id)
+    assert ue.get_type(w2) == t
+    assert not type_variants.variants_of(model.doc, t)
+    assert valid(model.doc.ifc)

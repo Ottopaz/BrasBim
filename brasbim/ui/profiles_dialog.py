@@ -37,10 +37,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import materials, profile_defs
+from brasbim.core import materials, profile_defs, units
 from brasbim.core.document import OpError
 from brasbim.ui import icons, theme
-from brasbim.ui.tools import fmt, fmt_exact, parse_number
+from brasbim.ui.tools import fmt, fmt_len, parse_len
 
 # Usos que já têm ferramenta (spec/ui 41 §4.1, ordem do ponto (n)); os outros entram
 # nas próximas etapas.
@@ -206,7 +206,7 @@ class ProfileCanvas(QWidget):
             painter.drawRect(QRectF(c.x() - 3, c.y() - 3, 6, 6))
             painter.setPen(QPen(QColor(theme.INK_SOFT), 1))
             painter.drawText(QPointF(c.x() + 8, c.y() - 8),
-                             f"{fmt(self.cursor[0])} ; {fmt(self.cursor[1])}")
+                             f"{fmt_len(self.cursor[0])} ; {fmt_len(self.cursor[1])}")
         painter.end()
 
     # --- mouse e teclado --------------------------------------------------------------
@@ -390,7 +390,7 @@ class ProfilesDialog(QDialog):
         exact = QHBoxLayout()
         self.rect_fields = []
         for label in ("x", "y", "Largura", "Altura"):
-            exact.addWidget(QLabel(label))
+            exact.addWidget(QLabel(f"{label} ({units.work_symbol()})"))
             field = QLineEdit()
             field.setMaximumWidth(70)
             exact.addWidget(field)
@@ -517,7 +517,8 @@ class ProfilesDialog(QDialog):
         for key in ("stretch_x", "stretch_y"):
             value = state.get(key) if state else None
             self.stretch_boxes[key].setChecked(value is not None)
-            self.stretch_fields[key].setText(fmt_exact(value) if value is not None else "")
+            self.stretch_fields[key].setText(fmt_len(value, exact=True) if value is not None
+                                             else "")
         self.canvas.show_state(state)
         self._fill_parts()
         self._loading = False
@@ -549,9 +550,9 @@ class ProfilesDialog(QDialog):
         if on and not field.text().strip() and self.state["parts"]:
             x0, y0, x1, y1 = profile_defs.bounds(self.state["parts"])
             middle = (x0 + x1) / 2 if key == "stretch_x" else (y0 + y1) / 2
-            field.setText(fmt_exact(round(middle, 3)))
+            field.setText(fmt_len(round(middle, 3), exact=True))
         try:
-            self.state[key] = parse_number(field.text()) if on else None
+            self.state[key] = parse_len(field.text()) if on else None
         except ValueError:
             self.state[key] = None
         self.canvas.update()
@@ -616,7 +617,7 @@ class ProfilesDialog(QDialog):
 
     def add_exact_rect(self) -> None:
         try:
-            x, y, w, h = (parse_number(f.text()) for f in self.rect_fields)
+            x, y, w, h = (parse_len(f.text()) for f in self.rect_fields)
         except ValueError:
             self.session.message("retângulo: preencha x, y, largura e altura", "recusa")
             return
@@ -633,7 +634,8 @@ class ProfilesDialog(QDialog):
             return
         w, h = profile_defs.nominal(state)
         area = profile_defs.area(state["parts"])
-        self.size_label.setText(f"Largura {fmt(w)} m · Altura {fmt(h)} m · "
+        unit = units.work_symbol()  # medidas na unidade de trabalho (spec/ui 44 §2a)
+        self.size_label.setText(f"Largura {fmt_len(w)} {unit} · Altura {fmt_len(h)} {unit} · "
                                 f"Área {fmt(area)} m²")
         try:
             profile_defs.validate(state)

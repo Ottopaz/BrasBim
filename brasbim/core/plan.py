@@ -890,7 +890,7 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
                 parts = [(outline, {**materials.style(doc, name)["cut"], "source": "material"})
                          for name, outline in columns.part_outlines(doc, state)]
             return _Element(element, kind, ring, [ring], (z0, z0 + columns.height(doc, state)),
-                            _material_fill(doc, element_type), CUT_WEIGHT, parts)
+                            _material_fill(doc, element_type), CUT_WEIGHT, parts=parts)
         if kind == "beam":
             ring = beams.outline(doc, state)
             z1 = beams.top_z(doc, state)
