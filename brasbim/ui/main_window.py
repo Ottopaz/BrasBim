@@ -603,6 +603,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Materiais", lambda: self.edit_materials())
         self._action(project_menu, "Tabelas de penas", lambda: self.edit_pens())
         self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
+        self._action(project_menu, "Unidades do projeto", lambda: self.edit_units())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto", lambda: self.new_object())
@@ -1162,6 +1163,17 @@ class MainWindow(QMainWindow):
         done = self.session.run(lambda: pens.edit_config(doc, new))
         self._refresh_all()
         return done
+
+    def edit_units(self, apply=None) -> bool:
+        """Projeto > Unidades do projeto e barra da vista (spec/ui 44); ``apply`` recebe a
+        janela antes de mostrá-la (testes)."""
+        from brasbim.ui.units_dialog import UnitsDialog
+
+        dialog = UnitsDialog(self.session, self)
+        if apply is not None:
+            apply(dialog)
+            return dialog.result() == UnitsDialog.Accepted
+        return dialog.exec() == UnitsDialog.Accepted
 
     def edit_municipal(self, apply=None) -> bool:
         """Projeto > Perfil municipal… (spec/ui 31 §4); ``apply`` recebe o quadro antes de

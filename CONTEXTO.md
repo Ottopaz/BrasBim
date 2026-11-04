@@ -4,8 +4,25 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑04 (espessura livre feita; janela de operações de sólidos; Área de
-seleção ao lado do Selecionar).*
+*Atualizado em 2026‑11‑04 (unidades do projeto — spec/ui 44, etapa 1 —; espessura livre;
+janela de operações de sólidos; Área de seleção ao lado do Selecionar).*
+
+> **Unidades do projeto (2026‑11‑04, pedido do revisor):** pesquisa
+> `research_notes/.../complemento_unidades.md` (Archicad: unidades de trabalho, cotas por
+> tipo, unidades de cálculo — três lugares separados) e **spec/ui 44**
+> (`spec/ui/44-unidades-do-projeto.md`, em revisão; pontos (a)–(e) no §6). **Etapa 1
+> feita:** `brasbim/core/units.py` — sete tipos de medida (cota linear, raio, ângulo,
+> nível, elevação, esquadrias, área), cada um com unidade (m/cm/mm; m²/cm²; graus
+> decimais ou g/m/s), casas 0–4, mostrar a unidade e ocultar zeros finais; Pset
+> `BrasBim_Unidades` (`Config` JSON) no `IfcProject`, op `units.set`; padrão = o texto de
+> antes. Aplicado em `dimensions`, `drawing2d` (raio/ângulo), `drafting.level_text`,
+> `drawings/section` (níveis), `plan.door_label` e área dos ambientes; chave
+> `units.key` no cache das anotações. Interface: botão **Unidades** na barra da vista
+> ("m · 2 casas", padrões prontos m/cm/mm que mudam linear, raio e esquadria) e
+> Projeto > Unidades do projeto (`ui/units_dialog.py`, tabela com exemplo ao lado).
+> A barra da vista passa a só ícones quando o vão entre grupos fica < 24 px
+> (`view_bar.MIN_GAP`). Testes UN01–UN05. **Etapa 2 (spec §4):** unidade de trabalho
+> (digitar nos campos), tabelas, padrões com nome por vista, precisão extra.
 
 > **Onde paramos (2026‑11‑04):** o revisor confirmou o 3D ("ótimo e adequado") e respondeu
 > a spec/ui 43 §5: (b) seis estilos servem, (c) estilos do usuário **só na preferência**,
@@ -590,7 +607,7 @@ seleção ao lado do Selecionar).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (876 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (881 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

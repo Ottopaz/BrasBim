@@ -50,6 +50,7 @@ from brasbim.core import (
     materials,
     props,
     storeys,
+    units,
 )
 from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
@@ -754,10 +755,6 @@ def door_shapes(doc: Document, door, storey, cut_z: float | None = None) -> list
 LABEL_GAP = 0.30  # etiqueta a 0,30 m da face, do lado oposto ao da folha (spec/ui 05 §5)
 
 
-def _fmt(v: float) -> str:
-    return f"{v:.2f}".replace(".", ",")
-
-
 def door_label(doc: Document, door, storey) -> Label | None:
     if door.ObjectPlacement is None or not door.OverallWidth:
         return None
@@ -775,9 +772,9 @@ def door_label(doc: Document, door, storey) -> Label | None:
         except OpError:
             pass
     at = _door_to_storey(door, storey)((float(door.OverallWidth) / 2, -LABEL_GAP))
-    size = f"{_fmt(width)} × {_fmt(height)}"
+    size = f"{units.length(doc, 'opening', width)} × {units.length(doc, 'opening', height)}"
     if door.is_a("IfcWindow") and sill is not None:
-        size += f" / {_fmt(sill)}"  # peitoril (spec/ui 09 §6.3)
+        size += f" / {units.length(doc, 'opening', sill)}"  # peitoril (spec/ui 09 §6.3)
     return Label(door.GlobalId, at, str(code), size)
 
 
@@ -1379,7 +1376,7 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             area = q.get("NetFloorArea", spaces.area(state["outline"]))
             plan.labels.append(Label(
                 e.GlobalId, spaces.label_point(state), state["name"] or "",
-                f"{area:.2f}".replace(".", ",") + " m²", "space", 0.0,
+                units.area(doc, area), "space", 0.0,
                 storeys.paper(storey, SPACE_NAME_MM), SPACE_AREA_MM / SPACE_NAME_MM,
                 state["number"] or ""))
         elif e.is_a("IfcAnnotation") and base.kind_of(e) is not None:

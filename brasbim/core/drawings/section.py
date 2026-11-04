@@ -21,8 +21,7 @@ import ifcopenshell.geom
 import ifcopenshell.util.element
 import numpy as np
 
-from brasbim.core import clip, display_layers, intervention, materials, props
-from brasbim.core.annotations.drafting import signed
+from brasbim.core import clip, display_layers, intervention, materials, props, units
 from brasbim.core.annotations.prims import Text
 from brasbim.core.document import Document, OpError
 from brasbim.core.drawings import views
@@ -412,7 +411,7 @@ def _annotate(doc: Document, state: dict, out: Drawing) -> None:
                               weight=0.18))
         out.items.append(Item("line", ((x - s, top), (x + s * 9, top)), weight=0.18))
         out.texts.append(Text((x + s * 0.7, top + s * 0.15),
-                              f"{signed(z)}  {storey.Name or ''}".strip(), 2.5 * k, 0.0,
+                              f"{units.length(doc, 'elevation', z, signed=True)}  {storey.Name or ''}".strip(), 2.5 * k, 0.0,
                               "left", "bottom"))
     title = (f"CORTE {state['letter']}" if state["kind"] == "section" and state["letter"]
              else (state["name"] or "").upper())
