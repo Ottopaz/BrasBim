@@ -5,7 +5,20 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 `tools/`).
 
 *Atualizado em 2026‑11‑04 (unidades do projeto — spec/ui 44, etapa 1 —; espessura livre;
-janela de operações de sólidos; Área de seleção ao lado do Selecionar).*
+janela de operações de sólidos; Área de seleção ao lado do Selecionar; estudo do perfil
+complexo).*
+
+> **Perfil complexo, estudo a fundo (2026‑11‑04, pedido do revisor):**
+> `research_notes/.../complemento_perfil_complexo.md`, a partir da ajuda AC18–AC29 e de
+> resumos do fórum (o fórum bloqueia a leitura automática). Cobre:
+> - o editor, as partes e o papel de cada uma;
+> - a origem, a medida nominal e a total;
+> - esticar e os deslocamentos nomeados;
+> - o uso em parede, viga e pilar, com aberturas e junções;
+> - a planta (o Archicad não tem vista simbólica), a captura, os quantitativos e o IFC.
+>
+> O §12 lista 14 decisões; a spec/ui 41 §4 foi refinada e ganhou os pontos (l) e (m).
+> Próximo: implementar o perfil, núcleo e IFC primeiro (PC01, PC02, PC04).
 
 > **Unidades do projeto (2026‑11‑04, pedido do revisor):** pesquisa
 > `research_notes/.../complemento_unidades.md` (Archicad: unidades de trabalho, cotas por

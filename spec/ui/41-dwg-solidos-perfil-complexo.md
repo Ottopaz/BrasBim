@@ -136,6 +136,22 @@ pilar) e as **faixas de esticar** (uma horizontal e uma vertical, opcionais): o 
 além da linha anda quando a largura ou a altura do elemento mudam. Sem faixa, o perfil
 tem tamanho fixo.
 
+**Refinado pelo estudo de 2026‑11‑04** (`complemento_perfil_complexo.md` §12):
+- partes podem ser desenhadas sobrepostas, mas ao gravar são recortadas pela prioridade do
+  material: no IFC cada parte é uma região sem sobreposição;
+- papel núcleo, acabamento ou outro (`Category` `LoadBearing`, `Finish` ou vazio);
+- a origem é fixa (o 0,0 do editor) e move‑se o desenho;
+- esticar: só a faixa entre as duas linhas muda, o resto anda junto, e arestas inclinadas
+  que cruzam a faixa são partidas nela;
+- medida nominal editável na ficha só com faixa; a total, só leitura;
+- linha opcional de **referência das aberturas** (sem ela, o envolvente);
+- uma pena de contorno e uma de separador, e a linha de corte pode ser desligada por
+  aresta; a linha entre partes do mesmo material some (ponto (l));
+- **Criar perfil a partir da seleção** (parede de camadas, viga e pilar retangular ou
+  circular viram partes);
+- sem perfil avulso guardado só no elemento: todo perfil tem nome;
+- giro do perfil (graus) e espelhar em viga e pilar; espelhar na parede.
+
 **No elemento:** o tipo do elemento ganha a estrutura **Perfil** (além de camadas, para
 parede; e de retângulo/círculo, para viga e pilar). Na ficha: o perfil, a largura e a
 altura nominais (só se o perfil tem faixa de esticar) e o espelhar.
@@ -192,9 +208,15 @@ outra resposta, valem as propostas.
   nomeados por parte (como "espessura do reboco") ficam para depois?
 - (k) Frisos ao longo da parede (rodapé, moldura, pingadeira como objeto à parte, à moda
   dos frisos do Revit) ficam para depois do perfil?
+- (l) Linha entre duas partes do **mesmo material** na planta e no corte: apagar
+  (proposta; o Archicad mantém) ou manter?
+- (m) No IFC, a forma por parte num só `IfcWall` (proposta), em vez de exportar as partes
+  como `IfcBuildingElementPart` como o Archicad faz como opção? O fórum relata janelas
+  sumindo e partes soltas no Revit com as partes.
 
 ## 7. Fontes
 `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_dwg_solidos_perfis.md` (§1–§3,
 com as URLs da Graphisoft, Autodesk, GNU LibreDWG, ODA, OSArch e buildingSMART);
+`complemento_perfil_complexo.md` (estudo a fundo do perfil, ajuda AC18–AC29 e fórum);
 `archicad_modelagem.md` (SEO, perfis complexos, laje e cobertura);
 `revit_modelagem_familias.md` (frisos e rebaixos); `autocad.md` (DWG/DWF no Brasil).
