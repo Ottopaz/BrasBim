@@ -21,7 +21,7 @@ from pathlib import Path
 
 import ifcopenshell
 
-from brasbim.core import display_layers, intervention
+from brasbim.core import display_layers, intervention, units
 from brasbim.core.collab import Client, Server, protocol
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
@@ -151,6 +151,7 @@ class Session:
     def _attach(self, doc: Document, path: str | None, modified: bool = False) -> None:
         self.discard_backup()  # o projeto anterior foi salvo ou descartado (spec/ui 21 §3)
         self.doc = doc
+        units.activate(doc)  # os campos leem e escrevem na unidade dele (spec/ui 44 §2a)
         # Filtro de situação da janela (spec/ui 31 §3): continua ao trocar de projeto.
         doc.situation_view = getattr(self, "_situation_view", intervention.DEFAULT_VIEW)
         self.history = History(doc)
@@ -403,6 +404,7 @@ class Session:
         self._changes += 1
         self.last_changed = changed
         self.last_tx = tx
+        units.activate(self.doc)
         self.selection = {g for g in self.selection if self.doc.find(g) is not None}
         if self.storey_id and self.doc.find(self.storey_id) is None:
             storeys = self.doc.storeys()

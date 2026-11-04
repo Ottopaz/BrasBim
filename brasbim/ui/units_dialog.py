@@ -23,7 +23,7 @@ from brasbim.core.document import OpError
 from brasbim.ui import theme
 
 # Valor do exemplo de cada tipo de medida (m, m² ou graus).
-SAMPLES = {"linear": 3.25, "radius": 0.45, "angle": 37.5, "level": 2.8, "elevation": -0.15,
+SAMPLES = {"work": 3.255, "linear": 3.25, "radius": 0.45, "angle": 37.5, "level": 2.8, "elevation": -0.15,
            "opening": 0.8, "area": 12.4}
 
 
@@ -51,7 +51,8 @@ class UnitsDialog(QDialog):
         self.setWindowTitle("Unidades do projeto")
         self.config = copy.deepcopy(units.config(session.doc))
         layout = QVBoxLayout(self)
-        note = QLabel("Só o texto das medidas no desenho muda; o modelo continua exato, em "
+        note = QLabel("Medidas de trabalho: o que se digita e lê nos campos. As outras "
+                      "linhas: o texto das medidas no desenho. O modelo continua exato, em "
                       "metros. Vale para todo o projeto.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {theme.INK_SOFT};")
@@ -73,6 +74,9 @@ class UnitsDialog(QDialog):
             decimals = QSpinBox()
             decimals.setRange(0, units.MAX_DECIMALS)
             show = QCheckBox()
+            if kind == "work":  # o campo já diz a unidade
+                show.setEnabled(False)
+                show.setToolTip("os campos mostram a unidade no nome")
             hide = QCheckBox()
             example = QLabel()
             example.setMinimumWidth(90)

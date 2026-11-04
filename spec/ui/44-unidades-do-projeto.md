@@ -43,6 +43,18 @@ O modelo continua exato, em metros no IFC: isto muda **só o texto mostrado**.
 - Ocultar zeros finais: "3,50" → "3,5", "3,00" → "3". Mostrar a unidade põe o símbolo
   depois do número ("325 cm", "12,40 m²"); na área ele vem ligado.
 
+## 2a. Medidas de trabalho (pedido do revisor, 2026‑11‑04)
+"Se eu seleciono cm eu quero trabalhar em cm": a primeira linha da janela é **Medidas de
+trabalho** (m, cm, mm; casas; ocultar zeros). Vale para o que se **digita e lê**:
+- quadro de medidas junto ao cursor (a unidade ao lado do campo; contas como `+15`
+  também em cm; `x300 y100`);
+- linha de comando (número e coordenadas `x;y`, `@dx;dy`);
+- ficha (Propriedades): campos e leituras de comprimento ("Comprimento", "Espessura",
+  "Altura (cm)"…); ângulos, %, mm de papel, áreas e contagens não mudam;
+- barra Opções e janela de tipos (camadas, esquadrias, seções).
+Os padrões prontos mudam também as medidas de trabalho (em cm, uma casa para o
+milímetro, sem zeros finais: "14,5", "325"). Teste UN06.
+
 ## 3. No IFC
 - Pset `BrasBim_Unidades` no `IfcProject`, propriedade `Config` (texto JSON com uma
   entrada por tipo de medida: unidade, casas, mostrar unidade, ocultar zeros). Sem o Pset
@@ -53,8 +65,8 @@ O modelo continua exato, em metros no IFC: isto muda **só o texto mostrado**.
   equipe).
 
 ## 4. Fica para depois (etapa 2)
-- **Unidade de trabalho**: digitar e ler medidas nos campos, quadro de medidas e barra de
-  estado na unidade escolhida (hoje sempre metros). Mexe em todos os campos: spec própria.
+- ~~Unidade de trabalho~~: feita (§2a). Falta a barra de estado e as janelas de objetos
+  paramétricos e de terreno.
 - **Tabelas**: unidade e casas dos valores calculados (comprimento, área, volume), e se
   o total soma o mostrado ou o exato.
 - **Padrões com nome** ligados a cada vista salva (ex.: planta de prefeitura em m e

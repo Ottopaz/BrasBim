@@ -17,8 +17,16 @@ from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
 
+from brasbim.core import units
 from brasbim.ui import theme
 from brasbim.ui.tools import SELECTION_TOOLS, Mods, parse_entry
+
+
+def _first_is_length(tool) -> bool:
+    """O número digitado sem campo vai para o primeiro campo: é comprimento se ele é (ou se
+    a ferramenta não tem campos, como o arrasto de alças)."""
+    fields = tool.fields()
+    return not fields or fields[0].unit == "m"
 
 ROWS = 3
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
@@ -129,7 +137,7 @@ class MeasureBox(QFrame):
                 continue
             f = fields[row]
             self.names[row].setText(f.label)
-            self.units[row].setText(f.unit)
+            self.units[row].setText(units.work_symbol() if f.unit == "m" else f.unit)
             for w in widgets[:3]:
                 w.show()
             self.locks[row].setVisible(f.fixed is not None)
@@ -225,12 +233,19 @@ class MeasureBox(QFrame):
         if not text.strip():
             self.tool.fix(key, None)
             return True
+        measured = f.fixed if f.fixed is not None else f.value
+        length = f.unit == "m"  # na unidade de trabalho (spec/ui 44 §2a)
+        if length and measured is not None:
+            measured = units.to_work(measured)
         try:
-            kind, value = parse_entry(text, f.fixed if f.fixed is not None else f.value,
-                                      f.signed)
+            kind, value = parse_entry(text, measured, f.signed)
         except ValueError as e:
             error = str(e)
         else:
+            if kind == "point":
+                value = tuple(units.from_work(v) for v in value)
+            elif kind == "value" and length:
+                value = units.from_work(value)
             if kind == "point":
                 self.consumed = True
                 self.editing = None
@@ -262,8 +277,10 @@ class MeasureBox(QFrame):
                 self.view.ctx.session.message(str(e), "recusa")
                 return
             if kind == "point":
-                self.view.enter_point(value)
+                self.view.enter_point(tuple(units.from_work(v) for v in value))
                 return
+            if kind == "value" and _first_is_length(self.tool):
+                value = units.from_work(value)
             if kind != "value" or not self.tool.numeric(value):
                 self.view.ctx.session.message("a ferramenta não espera um número agora",
                                               "recusa")

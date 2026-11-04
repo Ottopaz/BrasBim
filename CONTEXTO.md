@@ -21,7 +21,14 @@ janela de operações de sólidos; Área de seleção ao lado do Selecionar).*
 > ("m · 2 casas", padrões prontos m/cm/mm que mudam linear, raio e esquadria) e
 > Projeto > Unidades do projeto (`ui/units_dialog.py`, tabela com exemplo ao lado).
 > A barra da vista passa a só ícones quando o vão entre grupos fica < 24 px
-> (`view_bar.MIN_GAP`). Testes UN01–UN05. **Etapa 2 (spec §4):** unidade de trabalho
+> (`view_bar.MIN_GAP`). Testes UN01–UN05. **Medidas de trabalho (§2a, mesmo dia, "quero
+> trabalhar em cm"):** tipo `work` em `units`; `units.activate(doc)` (sessão, a cada
+> mudança) e `to_work`/`from_work`/`fmt_work`/`unit_label`; `tools.fmt_len`/`parse_len`;
+> convertem o quadro de medidas (campos com unidade "m"), a linha de comando
+> (`command_input.parse_point`, número para o 1º campo), a ficha (`properties._number`
+> pelo nome do campo — `is_length_label` —, `_read` de "N m"), a barra Opções (pela dica)
+> e a janela de tipos (`types_dialog.exact`/`parse_len`). Padrões prontos mudam o trabalho
+> junto. UN06. Falta: barra de estado, objetos paramétricos, terreno. **Etapa 2 (spec §4):** unidade de trabalho
 > (digitar nos campos), tabelas, padrões com nome por vista, precisão extra.
 
 > **Onde paramos (2026‑11‑04):** o revisor confirmou o 3D ("ótimo e adequado") e respondeu
@@ -607,7 +614,7 @@ janela de operações de sólidos; Área de seleção ao lado do Selecionar).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (881 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (882 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from brasbim.core import units
 from brasbim.ui import command_palette, theme
 from brasbim.ui.command_input import (
     DEFAULT_ALIASES,
@@ -43,7 +44,7 @@ from brasbim.ui.command_input import (
     parse_number,
     validate_aliases,
 )
-from brasbim.ui.tools import fmt
+from brasbim.ui.tools import fmt, fmt_len
 
 SHORT_GROUP = 6  # grupos de opções com até tantas escolhas viram links lado a lado (§5)
 PLACEHOLDER = "comando, apelido ou x;y"
@@ -328,9 +329,13 @@ class CommandLine(QFrame):
                 return "recusado"
             self.point(entry.point)
             x, y = entry.point
-            return f"ponto {fmt(x)}; {fmt(y)}"
+            return f"ponto {fmt_len(x)}; {fmt_len(y)}"
         if entry.kind == "number":
-            if not tool.numeric(entry.value):
+            fields = tool.fields()
+            value = entry.value
+            if not fields or fields[0].unit == "m":  # unidade de trabalho (spec/ui 44 §2a)
+                value = units.from_work(value)
+            if not tool.numeric(value):
                 session.message("a ferramenta não espera um número agora", "recusa")
                 return "recusado"
             view.after_tool_input()

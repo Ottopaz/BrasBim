@@ -26,6 +26,7 @@ from brasbim.core import (
     storeys,
     transform,
     type_variants,
+    units,
 )
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -63,8 +64,18 @@ DRAG_START = 0.5  # fração de ``tol`` que o cursor precisa andar para começar
 
 
 def fmt(value: float) -> str:
-    """Número em metros com vírgula decimal (spec/ui §2.1)."""
+    """Número com duas casas e vírgula decimal (spec/ui §2.1)."""
     return f"{value:.2f}".replace(".", ",")
+
+
+def fmt_len(value: float, exact: bool = False) -> str:
+    """Comprimento (m) num campo, na unidade de trabalho do projeto (spec/ui 44 §2a)."""
+    return units.fmt_work(value, exact)
+
+
+def parse_len(text: str) -> float:
+    """Comprimento digitado na unidade de trabalho → metros."""
+    return units.from_work(parse_number(text))
 
 
 def fmt_exact(value: float) -> str:
@@ -164,7 +175,7 @@ class Field:
             return str(round(value))
         if self.unit == "°":
             return f"{value:.1f}".replace(".", ",")
-        return fmt(value)
+        return fmt_len(value) if self.unit == "m" else fmt(value)
 
 
 def _degrees(dx: float, dy: float) -> float:

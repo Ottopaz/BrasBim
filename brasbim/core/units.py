@@ -30,6 +30,10 @@ UNIT_LABELS = {"m": "metros", "cm": "centímetros", "mm": "milímetros", "m2": "
 
 # (chave, nome, onde aparece, unidades possíveis, padrão)
 KINDS = (
+    ("work", "Medidas de trabalho",
+     "o que se digita e lê: ficha, barra Opções, quadro de medidas e linha de comando",
+     tuple(LENGTH_UNITS),
+     {"unit": "m", "decimals": 2, "show_unit": False, "hide_zeros": False}),
     ("linear", "Cota linear", "cotas e cotas automáticas da parede", tuple(LENGTH_UNITS),
      {"unit": "m", "decimals": 2, "show_unit": False, "hide_zeros": False}),
     ("radius", "Raio e diâmetro", "cota de raio (R, Ø)", tuple(LENGTH_UNITS),
@@ -49,12 +53,23 @@ KIND_KEYS = tuple(k for k, *_ in KINDS)
 DEFAULTS = {k: d for k, _, _, _, d in KINDS}
 _ALLOWED = {k: units for k, _, _, units, _ in KINDS}
 
-# Padrões prontos da barra da vista (§2): mudam cota linear, raio e esquadria.
-PRESET_KINDS = ("linear", "radius", "opening")
+# Padrões prontos da barra da vista (§2): mudam as medidas de trabalho, a cota linear, o
+# raio e as esquadrias. No trabalho em cm fica uma casa (o milímetro), sem zeros finais.
+PRESET_KINDS = ("work", "linear", "radius", "opening")
+
+
+def _preset(unit: str, decimals: int, work: dict) -> dict:
+    same = {"unit": unit, "decimals": decimals}
+    return {"work": {"unit": unit, **work}, "linear": same, "radius": same, "opening": same}
+
+
 PRESETS = (
-    ("meters", "Metros, 2 casas (projeto legal)", {"unit": "m", "decimals": 2}),
-    ("centimeters", "Centímetros, sem casas (executivo)", {"unit": "cm", "decimals": 0}),
-    ("millimeters", "Milímetros, sem casas", {"unit": "mm", "decimals": 0}),
+    ("meters", "Metros, 2 casas (projeto legal)",
+     _preset("m", 2, {"decimals": 2, "hide_zeros": False})),
+    ("centimeters", "Centímetros, sem casas (executivo)",
+     _preset("cm", 0, {"decimals": 1, "hide_zeros": True})),
+    ("millimeters", "Milímetros, sem casas", _preset("mm", 0, {"decimals": 0,
+                                                              "hide_zeros": False})),
 )
 
 
@@ -135,9 +150,8 @@ def apply_preset(doc: Document, preset: str):
     found = [v for k, _, v in PRESETS if k == preset]
     if not found:
         raise OpError(f"padrão de unidades desconhecido: {preset!r}")
-    values = found[0]
     new = copy.deepcopy(config(doc))
-    for kind in PRESET_KINDS:
+    for kind, values in found[0].items():
         new[kind].update(values)
     return set_units(doc, new)
 
@@ -145,8 +159,8 @@ def apply_preset(doc: Document, preset: str):
 def preset_of(doc: Document) -> str | None:
     """O padrão pronto que a configuração atual segue, se segue algum."""
     cfg = config(doc)
-    for name, _, values in PRESETS:
-        if all(all(cfg[k][f] == v for f, v in values.items()) for k in PRESET_KINDS):
+    for name, _, kinds in PRESETS:
+        if all(cfg[k][f] == v for k, values in kinds.items() for f, v in values.items()):
             return name
     return None
 
@@ -166,6 +180,8 @@ def _apply(doc: Document, op: Op) -> set[str]:
                                                        ensure_ascii=False))})
     doc.__dict__["_units"] = new
     doc.__dict__.pop("_units_key", None)
+    if doc.__dict__.get("_units_active"):
+        activate(doc)
     return {op.id}
 
 
@@ -226,3 +242,58 @@ def summary(doc: Document) -> str:
     cfg = config(doc)["linear"]
     n = cfg["decimals"]
     return f"{LENGTH_UNITS[cfg['unit']][0]} · {n} casa{'s' if n != 1 else ''}"
+
+
+# --- medidas de trabalho (spec/ui 44 §2a) ------------------------------------------------
+# A interface lê e escreve comprimentos na unidade de trabalho do projeto aberto. Como os
+# campos não conhecem o documento, a sessão marca o documento ativo (``activate``).
+
+_work = dict(DEFAULTS["work"])
+
+
+def activate(doc: Document | None) -> None:
+    """O documento aberto na janela: seus campos passam a usar a unidade de trabalho dele."""
+    global _work
+    if doc is None:
+        _work = dict(DEFAULTS["work"])
+        return
+    doc.__dict__["_units_active"] = True
+    _work = dict(config(doc)["work"])
+
+
+def work_unit() -> str:
+    return _work["unit"]
+
+
+def work_symbol() -> str:
+    return LENGTH_UNITS[_work["unit"]][0]
+
+
+def to_work(value: float) -> float:
+    """Metros → unidade de trabalho."""
+    return value * LENGTH_UNITS[_work["unit"]][1]
+
+
+def from_work(value: float) -> float:
+    """Unidade de trabalho → metros."""
+    return value / LENGTH_UNITS[_work["unit"]][1]
+
+
+def fmt_work(value: float, exact: bool = False) -> str:
+    """Comprimento ``value`` (m) no campo, na unidade de trabalho, sem o símbolo.
+    ``exact``: até 4 casas além das pedidas, sem zeros sobrando (campos que voltam ao
+    modelo sem perder o milímetro)."""
+    v = to_work(value)
+    decimals, hide = _work["decimals"], _work["hide_zeros"]
+    if exact:
+        text = _number(v, decimals + 4, True)
+        if not hide and decimals:
+            whole, _, frac = text.partition(",")
+            text = f"{whole},{frac.ljust(decimals, '0')}"
+        return text
+    return _number(v, decimals, hide)
+
+
+def unit_label(label: str) -> str:
+    """Troca "(m)" no nome de um campo pela unidade de trabalho."""
+    return label.replace("(m)", f"({work_symbol()})")

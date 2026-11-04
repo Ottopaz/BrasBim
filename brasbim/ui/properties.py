@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, edit_state, geom2d, intervention, type_variants
+from brasbim.core import display_layers, edit_state, geom2d, intervention, type_variants, units
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -72,7 +72,7 @@ from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui import icons, theme
-from brasbim.ui.tools import block_grid, fmt, parse_number
+from brasbim.ui.tools import block_grid, fmt, fmt_len, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
@@ -203,6 +203,15 @@ def _parse_points(text: str) -> list:
             raise ValueError(item)
         points.append([parse_number(parts[0]), parse_number(parts[1])])
     return points
+
+
+_METERS = re.compile(r"^(-?\d+(?:,\d+)?) m$")
+_NOT_LENGTH = ("°", "%", "(mm)", "²", "Espelhos", "CA máximo", "Escala", "Cópias")
+
+
+def is_length_label(label: str) -> bool:
+    """O campo é um comprimento? (Os que não são dizem a unidade no nome.)"""
+    return not any(mark in label for mark in _NOT_LENGTH)
 
 
 def _common(values):
@@ -440,14 +449,28 @@ class PropertiesPanel(QScrollArea):
         self.groups.append(_Group(re.sub(r"</?b>", "", text)))
 
     def _read(self, label: str, text: str) -> None:
+        m = _METERS.match(text)  # "5,00 m": na unidade de trabalho (spec/ui 44 §2a)
+        if m and units.work_unit() != "m":
+            text = f"{fmt_len(float(m.group(1).replace(',', '.')))} {units.work_symbol()}"
         value = QLabel(text)
         value.setStyleSheet(f"color: {theme.INK}")
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._add(label, value)
 
     def _number(self, label: str, value, commit, placeholder: str = "",
-                allow_empty: bool = False) -> QLineEdit:
-        field = QLineEdit("" if value is None else fmt(value))
+                allow_empty: bool = False, length: bool | None = None) -> QLineEdit:
+        """Campo numérico; comprimento (``length``, ou pelo nome: sem °, %, mm, ²) é lido e
+        escrito na unidade de trabalho do projeto (spec/ui 44 §2a)."""
+        if length is None:
+            length = is_length_label(label)
+        if length:
+            inner = commit
+
+            def commit(v):
+                inner(None if v is None else units.from_work(v))
+        shown = fmt_len(value, exact=True) if length and value is not None else (
+            "" if value is None else fmt(value))
+        field = QLineEdit(shown)
         field.setPlaceholderText(placeholder)
         original = field.text()
 
@@ -468,7 +491,7 @@ class PropertiesPanel(QScrollArea):
             commit(number)
 
         field.editingFinished.connect(done)
-        self._add(label, field)
+        self._add(units.unit_label(label) if length else label, field)
         return field
 
     def _combo(self, label: str, items, current, commit) -> QComboBox:
@@ -1629,7 +1652,7 @@ class PropertiesPanel(QScrollArea):
             elif kind == "number":
                 self._number(name, _common(v.get(key) for v in values),
                              lambda v, k=key: commit(k, v), placeholder=MIXED
-                             if len(values) > 1 else "", allow_empty=True)
+                             if len(values) > 1 else "", allow_empty=True, length=False)
             elif kind == "read":
                 current = _common(v.get(key) for v in values)
                 self._read(name, MIXED if current is None and len(values) > 1

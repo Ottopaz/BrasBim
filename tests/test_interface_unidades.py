@@ -65,3 +65,72 @@ def test_un05_barra_da_vista_padroes_e_janela(window, app):
     assert window.edit_units(restore)
     assert units.config(doc) == units.default_config()
     assert isinstance(UnitsDialog(s), UnitsDialog)
+
+
+def test_un06_trabalhar_em_centimetros(window, app):
+    """Com o padrão Centímetros, digita-se e lê-se em cm (spec/ui 44 §2a): quadro de
+    medidas, linha de comando, ficha e barra Opções; o modelo continua em metros."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLineEdit
+    from test_interface import _click, _move
+    from test_interface_medidas_3d import _path
+
+    from brasbim.core.walls import commands as cmd
+
+    s = window.session
+    s.run(lambda: units.apply_preset(s.doc, "centimeters"))
+    assert units.work_unit() == "cm"
+
+    # Quadro de medidas: "325" é 3,25 m.
+    window.activate_tool("wall")
+    _click(window, (0, 0))
+    _move(window, (2, 0))
+    QTest.keyClicks(window.plan, "3")  # a primeira tecla abre o quadro
+    QTest.keyClicks(window.plan.numeric, "25")
+    measure = window.plan.measure
+    assert measure.units[0].text() == "cm"
+    QTest.keyClick(window.plan.numeric, Qt.Key_Return)
+    QTest.keyClick(window.plan, Qt.Key_Return)
+    (wall,) = s.doc.ifc.by_type("IfcWall")
+    assert _path(s, wall).end == pytest.approx((3.25, 0))
+
+    # Linha de comando: coordenadas em cm.
+    window.activate_tool("wall")
+    line = window.command_line
+    line.field.setText("0;100")
+    line.run()
+    line.field.setText("@250;0")
+    assert line.run() == "ponto 250; 100"
+    QTest.keyClick(window.plan, Qt.Key_Return)
+    second = next(w for w in s.doc.ifc.by_type("IfcWall") if w != wall)
+    assert _path(s, second).start == pytest.approx((0, 1))
+    assert _path(s, second).end == pytest.approx((2.5, 1))
+
+    # Ficha: comprimento e espessura em cm; o nome do campo diz a unidade.
+    window.activate_tool("select")
+    s.select([wall.GlobalId])
+    app.processEvents()
+    rows = {n: w for g in window.properties.groups for n, w in g.rows}
+    assert rows["Comprimento"].text() == "325"
+    assert rows["Espessura"].text() == "14"
+    rows["Comprimento"].setText("400")
+    rows["Comprimento"].editingFinished.emit()
+    assert _path(s, wall).length == pytest.approx(4.0)
+    assert cmd.read_state(s.doc, wall)["path"]
+
+    # Barra Opções: altura fixa em cm.
+    window.activate_tool("wall")
+    tool = window.toolbox.active
+    tool.options.top = "fixed"
+    window.options_bar.show_for(tool)
+    (height,) = [w for w in window.options_bar.findChildren(QLineEdit)
+                 if w.toolTip().startswith("Altura da parede")]
+    assert "(cm)" in height.toolTip()
+    height.setText("270")
+    height.editingFinished.emit()
+    assert tool.options.fixed_height == pytest.approx(2.70)
+
+    # De volta a metros, tudo como antes.
+    s.run(lambda: units.apply_preset(s.doc, "meters"))
+    assert units.work_unit() == "m"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from brasbim.core import units
 from brasbim.ui.command_search import Command, normalize, search
 
 Point = tuple[float, float]
@@ -124,7 +125,7 @@ def parse_point(text: str, base: Point | None) -> Point | None:
     values = [parse_number(p) for p in parts]
     if len(parts) != 2 or None in values:
         raise EntryError(f"coordenada inválida: {text!r} (use x;y)")
-    x, y = values
+    x, y = (units.from_work(v) for v in values)  # unidade de trabalho (spec/ui 44 §2a)
     if relative:
         if base is None:
             raise EntryError("não há ponto anterior para a coordenada relativa")

@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention, type_variants
+from brasbim.core import display_layers, intervention, type_variants, units
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
@@ -71,10 +71,12 @@ from brasbim.ui.tools import (
     _WallTool,
     floor_types,
     fmt,
+    fmt_len,
     parse_number,
     roof_types,
 )
 
+_NOT_LENGTH = ("grau", "°", "%", "mm de papel", "Cópias")
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
 ICON_PX = 20  # ícones das barras (spec/ui 11 §3)
 
@@ -850,7 +852,17 @@ class OptionsBar(QToolBar):
 
     def _number(self, value, commit, tip: str, placeholder: str = "",
                 allow_empty: bool = False) -> QLineEdit:
-        field = QLineEdit("" if value is None else fmt(value))
+        """Campo da barra; comprimento (a dica não fala em graus, %, nem mm de papel) é lido
+        e escrito na unidade de trabalho (spec/ui 44 §2a)."""
+        length = not any(mark in tip for mark in _NOT_LENGTH)
+        if length:
+            inner = commit
+
+            def commit(v):
+                inner(None if v is None else units.from_work(v))
+            tip = units.unit_label(tip)
+        shown = "" if value is None else (fmt_len(value, exact=True) if length else fmt(value))
+        field = QLineEdit(shown)
         field.setFixedWidth(64)
         field.setToolTip(tip)
         field.setPlaceholderText(placeholder)
@@ -898,7 +910,7 @@ class OptionsBar(QToolBar):
         self._label("Espessura")
         self._number(options.thickness, commit,
                      f"Espessura {noun} (m); vazio = a do tipo",
-                     placeholder=fmt(nominal) if nominal is not None else "",
+                     placeholder=fmt_len(nominal) if nominal is not None else "",
                      allow_empty=True)
 
     # --- parede (§4.1) --------------------------------------------------------------
