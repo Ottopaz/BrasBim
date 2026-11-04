@@ -171,7 +171,9 @@ perfis na interface.
 ## 6. Pontos para o revisor
 **Respostas (2026‑10‑29):** (a) **centímetros**; (b) papel + blocos; (c) cor verdadeira;
 (d) DWG 2000 serve. **(2026‑11‑01):** (f) Somar fica de fora; (g) apagar o operador
-desfaz o recorte com aviso (as duas como propostas). (e), (h)–(k) em aberto.
+desfaz o recorte com aviso (as duas como propostas). **(2026‑11‑04):** perfil complexo
+em **parede, viga e pilar** por enquanto (o escopo do §4). (e), (h)–(k) em aberto; sem
+outra resposta, valem as propostas.
 
 - (a) DWG: unidade da vista em **metros** (proposta), centímetros ou milímetros?
 - (b) DWG: prancha no espaço do papel com os desenhos como blocos (proposta), ou já
