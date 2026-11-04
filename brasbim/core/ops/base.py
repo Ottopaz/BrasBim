@@ -71,6 +71,7 @@ HANDLER_MODULES = (
     "brasbim.core.fillings.doors",
     "brasbim.core.fillings.rebuild",
     "brasbim.core.structure.types",
+    "brasbim.core.type_variants",
     "brasbim.core.structure.columns",
     "brasbim.core.structure.beams",
     "brasbim.core.structure.slabs",

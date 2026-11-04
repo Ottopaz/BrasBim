@@ -55,8 +55,8 @@ O vidro continua translúcido em todos (no branco, um cinza‑claro translúcido
 - **Exibir > Estilos do 3D**: diálogo para criar, duplicar, renomear e excluir estilos do
   usuário (os de fábrica não se apagam).
 - A **vista 3D salva** guarda o estilo; a imagem dela na prancha usa o estilo gravado.
-- Os estilos do usuário vão no IFC, num Pset próprio do projeto (`BrasBim_Estilos3D`),
-  para valerem para toda a equipe; o último estilo usado fica na preferência do usuário.
+- Os estilos do usuário ficam **só na preferência de cada pessoa** (resposta (c),
+  2026‑11‑04), não no IFC; o último estilo usado também.
 
 ### 2.4 Segunda etapa (fora desta entrega)
 Sombras do sol (data, hora, norte do projeto) e sombra suave de ambiente pedem shaders
@@ -66,7 +66,7 @@ Sombras do sol (data, hora, norte do projeto) e sombra suave de ambiente pedem s
 E3D01 contorno tira as emendas de uma malha facetada (cilindro) e mantém as arestas
 vivas de uma caixa; E3D02 cada estilo de fábrica produz as cores e as arestas esperadas
 na cena (sem tela); E3D03 a vista salva guarda e devolve o estilo, e a imagem da prancha
-o usa; E3D04 estilo do usuário gravado no IFC e relido.
+o usa; E3D04 estilo do usuário gravado na preferência e relido.
 
 ## 3. Espessura livre de parede e laje
 
@@ -125,6 +125,12 @@ O revisor pediu as vistas do 3D "urgentemente": o §2 entrou antes do §3.
 - **Junto (pedido do mesmo dia):** alças da laje no 3D — vértices, meio dos lados, centro
   (mover livre), setas X e Y (mover só naquele eixo, com a distância no quadro de
   medidas) e seta Z (sobe e desce a laje: deslocamento do topo).
+
+## 4b. Andamento (2026‑11‑04)
+- **§3 feito:** `brasbim/core/type_variants.py` e a interface (ficha e barra Opções;
+  variantes recuadas sob o tipo na ficha e na janela de tipos, fora das listas das
+  ferramentas). Testes EL01–EL06.
+- **E3D04** passa a ser só preferência do usuário (resposta (c)).
 
 ## 5. Pontos para o revisor
 **Respostas (2026‑11‑04):** (a) era o defeito do teste de profundidade (corrigido; "3D

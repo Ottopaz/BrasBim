@@ -4,8 +4,31 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑01 (estilos do 3D feitos; laje com alças no 3D; quadro das
-operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisão).*
+*Atualizado em 2026‑11‑04 (espessura livre feita; janela de operações de sólidos; Área de
+seleção ao lado do Selecionar).*
+
+> **Onde paramos (2026‑11‑04):** o revisor confirmou o 3D ("ótimo e adequado") e respondeu
+> a spec/ui 43 §5: (b) seis estilos servem, (c) estilos do usuário **só na preferência**,
+> (d) esticar a camada estrutural, (e) variantes recolhidas sob o tipo, (f) ordem ok.
+> **Espessura livre feita** (§3): `brasbim/core/type_variants.py` — a variante é um
+> `IfcWallType`/`IfcSlabType` de verdade com a camada `LoadBearing` (laje: a mais grossa)
+> esticada, nome "Alvenaria 14 · 17 cm", Pset `BrasBim_Variante` (`Origem`, `Espessura`,
+> op `type_variant.set`); `set_thickness` (ficha, uma ou várias), `create_with` (barra
+> Opções: a variante nasce na transação da parede/laje), variante sem uso sai na mesma
+> transação, derivação `first=True` refaz as variantes quando o tipo de origem muda.
+> Interface: campo Espessura editável na ficha (parede, paredes, laje, lajes), campo na
+> barra Opções de Parede e Laje (vazio = a do tipo), variantes recuadas sob a origem na
+> ficha e na janela de tipos, fora das listas das ferramentas. Testes EL01–EL06
+> (`tests/test_espessura_livre.py`, `tests/test_interface_espessura.py`).
+> **Janela de operações de sólidos** (pedido do revisor, spec/ui 41 §3a):
+> `ui/solid_panel.py`, painel solto "Operações de sólidos" (Editar, botão direito, abre
+> junto com a ferramenta Recortar por elemento, Exibir > Painéis): seleção atual com a
+> contagem por tipo, listas Alvos/Operadores com quantidade (Usar a seleção, Somar a
+> seleção, Limpar; clicar seleciona), operação por ícones, Aplicar e Tirar entre eles
+> (`solids.remove_between`). SO08. **Área de seleção** foi para o topo da barra
+> Ferramentas, ao lado do Selecionar (`toolbars.TOP_TOOLS`). **Perfil complexo** (spec/ui
+> 41 §4) ainda **não existe**: espera (h)–(k). **Falta da 43:** estilos do usuário (E3D04,
+> agora só preferência) e sombras.
 
 > **3D em raio-X corrigido (2026‑11‑01):** a causa das "arestas invisíveis" era o QPainter
 > do controle de orientação (spec/ui 40 §4), que deixa o teste de profundidade desligado
@@ -567,7 +590,7 @@ operações de sólidos; espessura livre — spec/ui 43 §3 — ainda em revisã
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (829 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (876 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

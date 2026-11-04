@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, edit_state, geom2d, intervention
+from brasbim.core import display_layers, edit_state, geom2d, intervention, type_variants
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -502,8 +502,25 @@ class PropertiesPanel(QScrollArea):
         self._add(holder)
 
     def _types(self, ifc_class: str):
-        return [(e.Name or e.GlobalId, e.GlobalId)
-                for e in sorted(self.session.doc.ifc.by_type(ifc_class), key=lambda e: e.Name or "")]
+        """Tipos da lista; cada variante de espessura logo abaixo do tipo de origem, recuada
+        (spec/ui 43 §3.1)."""
+        doc = self.session.doc
+        found = sorted(doc.ifc.by_type(ifc_class), key=lambda e: e.Name or "")
+        out = []
+        for e in found:
+            if type_variants.is_variant(e) and type_variants.origin_of(doc, e) is not e:
+                continue
+            out.append((e.Name or e.GlobalId, e.GlobalId))
+            if ifc_class in ("IfcWallType", "IfcSlabType"):
+                out += [(f"    {v.Name}", v.GlobalId) for v in type_variants.variants_of(doc, e)]
+        return out
+
+    def _thickness_field(self, elements, values) -> None:
+        """Espessura editável de parede e laje (spec/ui 43 §3): valor diferente do tipo dá
+        uma variante do tipo; o do tipo volta ao tipo de origem."""
+        doc = self.session.doc
+        self._number("Espessura", _common(round(v, 6) for v in values), lambda v: self._run(
+            lambda: type_variants.set_thickness(doc, elements, v)), placeholder=MIXED)
 
     def _run(self, build) -> None:
         self.session.run(build)
@@ -523,6 +540,8 @@ class PropertiesPanel(QScrollArea):
         self._combo("Tipo", self._types("IfcWallType"), state["type"],
                     lambda v: edit(type=v))
         self._edit_type_button("IfcWallType", state["type"])
+        if not foreign and state["type"]:
+            self._thickness_field([wall], [wall_types.thickness(doc.get(state["type"]))])
         self._combo("Linha de referência", REF_LINES, state["ref_line"],
                     lambda v: edit(ref_line=v))
         flip = QCheckBox("Inverter camadas")
@@ -583,7 +602,8 @@ class PropertiesPanel(QScrollArea):
         self._section("Quantidades")
         thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
         self._read("Comprimento no eixo", f"{fmt(q.get('Length', 0))} m")
-        self._read("Espessura", f"{fmt(thickness)} m")
+        if foreign or not state["type"]:
+            self._read("Espessura", f"{fmt(thickness)} m")
         self._read("Altura", f"{fmt(height)} m")
         self._read("Área lateral bruta", f"{fmt(q.get('GrossSideArea', 0))} m²")
         self._read("Área lateral líquida", f"{fmt(q.get('NetSideArea', 0))} m²")
@@ -641,6 +661,9 @@ class PropertiesPanel(QScrollArea):
 
         self._combo("Tipo", self._types("IfcWallType"), _common(s["type"] for s in states),
                     lambda v: edit(type=v))
+        if all(s["type"] for s in states):
+            self._thickness_field(walls, [wall_types.thickness(doc.get(s["type"]))
+                                          for s in states])
         self._combo("Linha de referência", REF_LINES, _common(s["ref_line"] for s in states),
                     lambda v: edit(ref_line=v))
         self._combo("Inverter camadas", [("Não", False), ("Sim", True)],
@@ -981,7 +1004,10 @@ class PropertiesPanel(QScrollArea):
             self._structure_tail(slab, state)
             return
         thickness = slabs.thickness(doc, state)
-        self._read("Espessura", f"{fmt(thickness)} m")
+        if state["type"]:
+            self._thickness_field([slab], [thickness])
+        else:
+            self._read("Espessura", f"{fmt(thickness)} m")
         self._section("Altura")
         self._number("Deslocamento do topo", state["top_offset"], lambda v: self._run(
             lambda: sc.edit_element(doc, slab, top_offset=v)))
@@ -1524,6 +1550,8 @@ class PropertiesPanel(QScrollArea):
         elif own:
             module = sc.module_of(elements[0])
             self._section_fields([e for e, _ in own], [module.section(doc, s) for _, s in own])
+        if elements[0].is_a("IfcSlab") and len(own) == len(elements)                 and all(s["type"] for s in states):
+            self._thickness_field(elements, [slabs.thickness(doc, s) for s in states])
         if elements[0].is_a("IfcSlab"):
             self._number("Deslocamento do topo", _common(s["top_offset"] for s in states),
                          lambda v: self._run(lambda: sc.edit_elements(doc, elements,

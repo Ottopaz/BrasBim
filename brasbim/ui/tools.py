@@ -25,6 +25,7 @@ from brasbim.core import (
     snap,
     storeys,
     transform,
+    type_variants,
 )
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -1412,6 +1413,7 @@ class _WallOptions:
         self.ref_line = "left_face"
         self.top = "storey"  # "storey" (pavimento de cima) ou "fixed"
         self.fixed_height = wall_params.DEFAULT_FIXED_HEIGHT
+        self.thickness: float | None = None  # espessura livre; None = a do tipo (spec/ui 43)
 
     def command_options(self) -> dict:
         out = {"ref_line": self.ref_line}
@@ -1422,6 +1424,8 @@ class _WallOptions:
     def band(self, doc) -> tuple[float, float]:
         wall_type = doc.find(self.type) if self.type else None
         thickness = wall_types.thickness(wall_type) if wall_type is not None else 0.14
+        if self.thickness:
+            thickness = self.thickness
         sense, offset = wall_params.layer_usage(self.ref_line, False, thickness)
         return wall_params.band(sense, offset, thickness)
 
@@ -1607,8 +1611,10 @@ class WallTool(_WallTool):
             self.points = []
             return
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_chain(doc, options.type, storey, points, closed=closed,
-                                              **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_chain(doc, t, storey, points, closed=closed,
+                                       **options.command_options())))
 
     def shape_preview(self):
         marks = []
@@ -1649,8 +1655,10 @@ class ArcWallTool(_WallTool):
             return
         a, b = self.points
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_arc_wall(doc, options.type, storey, a, b, q,
-                                                 **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_arc_wall(doc, t, storey, a, b, q,
+                                          **options.command_options())))
 
     def shape_preview(self):
         if not self.points or not self.snapped:
@@ -1703,8 +1711,10 @@ class RectangleTool(_WallTool):
             self.session.message("o retângulo precisa de largura e profundidade", "recusa")
             return
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_rectangle(doc, options.type, storey, a, q,
-                                                  **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_rectangle(doc, t, storey, a, q,
+                                           **options.command_options())))
 
     def shape_preview(self):
         if not self.points or not self.snapped:
@@ -1953,6 +1963,7 @@ class _SlabOptions:
         self.mode = "polygon"  # "rectangle" ou "room" (pelo cômodo, spec/ui 12 §4)
         self.boundary = "outer"  # contorno pelo cômodo: inner, axis, outer
         self.top_offset = 0.0
+        self.thickness: float | None = None  # espessura livre; None = a do tipo (spec/ui 43)
 
 
 class SlabTool(_WallTool):
@@ -2055,8 +2066,10 @@ class SlabTool(_WallTool):
         if options.type is None or storey is None:
             self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
         else:
-            self.session.run(lambda: sc.create_slab(doc, options.type, storey, points,
-                                                    top_offset=options.top_offset))
+            self.session.run(lambda: type_variants.create_with(
+                doc, options.type, options.thickness,
+                lambda t: sc.create_slab(doc, t, storey, points,
+                                         top_offset=options.top_offset)))
         self.points = []
 
     def _create_in_room(self, p) -> None:
@@ -2064,9 +2077,10 @@ class SlabTool(_WallTool):
         if options.type is None or storey is None:
             self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
             return
-        self.session.run(lambda: sc.create_slab_in_room(doc, options.type, storey, p,
-                                                        options.boundary,
-                                                        top_offset=options.top_offset))
+        self.session.run(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: sc.create_slab_in_room(doc, t, storey, p, options.boundary,
+                                             top_offset=options.top_offset)))
 
     def press(self, p, mods, button="left"):
         if button != "left":
@@ -2137,14 +2151,14 @@ class SlabTool(_WallTool):
 
 def roof_types(doc) -> list:
     """Tipos de laje de cobertura (``ROOF``), para a ferramenta Cobertura."""
-    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType == "ROOF"),
-                  key=lambda t: t.Name or "")
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType == "ROOF"
+                   and not type_variants.is_variant(t)), key=lambda t: t.Name or "")
 
 
 def floor_types(doc) -> list:
     """Tipos de laje que não são de cobertura, para a ferramenta Laje."""
-    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType != "ROOF"),
-                  key=lambda t: t.Name or "")
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType != "ROOF"
+                   and not type_variants.is_variant(t)), key=lambda t: t.Name or "")
 
 
 class _RoofOptions:

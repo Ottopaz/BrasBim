@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention
+from brasbim.core import display_layers, intervention, type_variants
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
@@ -873,8 +873,33 @@ class OptionsBar(QToolBar):
         return field
 
     def _types(self, ifc_class: str):
+        """Tipos da lista; as variantes de espessura ficam de fora (o campo Espessura as
+        escolhe, spec/ui 43 §3.1)."""
         doc = self.window_.session.doc
-        return sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+        return sorted((t for t in doc.ifc.by_type(ifc_class)
+                       if not type_variants.is_variant(t)), key=lambda t: t.Name or "")
+
+    def _thickness(self, tool, noun: str) -> None:
+        """Espessura livre (spec/ui 43 §3.1): vazio = a do tipo."""
+        options = self.tool.options if tool is None else tool.options
+        doc = self.window_.session.doc
+        found = doc.find(options.type) if options.type else None
+        nominal = type_variants.type_thickness(found) if found is not None else None
+
+        def commit(value):
+            if value is not None and value <= 0:
+                self.window_.session.message("Espessura: deve ser maior que zero", "recusa")
+                return
+            if value is not None and nominal is not None and abs(value - nominal) < 1e-6:
+                value = None
+            options.thickness = value
+            self.window_.plan.update()
+
+        self._label("Espessura")
+        self._number(options.thickness, commit,
+                     f"Espessura {noun} (m); vazio = a do tipo",
+                     placeholder=fmt(nominal) if nominal is not None else "",
+                     allow_empty=True)
 
     # --- parede (§4.1) --------------------------------------------------------------
 
@@ -895,6 +920,7 @@ class OptionsBar(QToolBar):
                            "abre o tipo escolhido na janela de tipos de parede")
         edit.triggered.connect(lambda: window.edit_type("IfcWallType", options.type))
         self.addAction(edit)
+        self._thickness(tool, "da próxima parede")
         self.addSeparator()
         self._choices(REF_LINES, options.ref_line, lambda v: setattr(options, "ref_line", v))
         self.addSeparator()
@@ -1104,6 +1130,7 @@ class OptionsBar(QToolBar):
 
         self._type_group("IfcSlabType", options, set_type, "da próxima laje",
                          floor_types(self.window_.session.doc))
+        self._thickness(tool, "da próxima laje")
         self.addSeparator()
 
         def set_mode(value):

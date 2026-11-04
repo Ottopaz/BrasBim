@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import materials, plan
+from brasbim.core import materials, plan, type_variants
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params, window_types
@@ -137,7 +137,18 @@ class TypesDialog(QDialog):
     # --- lista -------------------------------------------------------------------------
 
     def types(self) -> list:
-        return sorted(self.session.doc.ifc.by_type(self.ifc_class), key=lambda t: t.Name or "")
+        """Tipos em ordem de nome; cada variante de espessura logo abaixo do tipo de origem
+        (spec/ui 43 §3.1)."""
+        doc = self.session.doc
+        found = sorted(doc.ifc.by_type(self.ifc_class), key=lambda t: t.Name or "")
+        out = []
+        for t in found:
+            if type_variants.is_variant(t) and type_variants.origin_of(doc, t) is not t:
+                continue
+            out.append(t)
+            if self.ifc_class in ("IfcWallType", "IfcSlabType"):
+                out += type_variants.variants_of(doc, t)
+        return out
 
     def uses(self, element_type) -> int:
         return len(ifcopenshell.util.element.get_types(element_type))
@@ -148,7 +159,8 @@ class TypesDialog(QDialog):
         self.list.clear()
         row = 0
         for i, element_type in enumerate(self.types()):
-            item = QListWidgetItem(f"{element_type.Name}  ({self.uses(element_type)})")
+            indent = "    " if type_variants.is_variant(element_type) else ""
+            item = QListWidgetItem(f"{indent}{element_type.Name}  ({self.uses(element_type)})")
             item.setData(Qt.UserRole, element_type.GlobalId)
             self.list.addItem(item)
             if element_type.GlobalId == select:
