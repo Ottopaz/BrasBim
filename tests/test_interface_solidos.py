@@ -134,3 +134,71 @@ def test_so07_quadro_e_destaque_ao_selecionar(window, app):
     s.select([])
     window.plan.repaint()
     assert not badge.isVisible() and partner_ids(window.plan) == set()
+
+
+def test_so08_janela_de_operacoes(window, app):
+    """Janela de operações de sólidos (spec/ui 41 §3a): seleção e contagem, listas pela
+    seleção, recusa, aplicar, clique no item seleciona e tirar entre eles."""
+    from brasbim.ui import solid_panel
+
+    s = window.session
+    a, b = _walls(window)
+    full = _net(a)
+    panel = window.solids_panel
+    window.show_solids_panel()
+    assert window.solids_dock.isVisible()
+    assert panel.selection_label.text() == "Seleção: Nada selecionado"
+    assert not panel.apply_button.isEnabled()
+
+    s.select([a.GlobalId, b.GlobalId])
+    assert panel.selection_label.text() == "Seleção: 2 elementos (2 paredes)"
+    s.select([a.GlobalId])
+    assert "1 elemento" in panel.selection_label.text()
+    panel.take(solid_panel.TARGETS)
+    s.select([b.GlobalId])
+    panel.take(solid_panel.OPERATORS)
+    assert panel.targets == [a.GlobalId] and panel.operators == [b.GlobalId]
+    assert panel.boxes[solid_panel.TARGETS].title().endswith(": 1")
+    assert panel.boxes[solid_panel.OPERATORS].title().endswith(": 1")
+
+    # Um elemento tem um papel só: pôr B como alvo o tira dos operadores.
+    panel.take(solid_panel.TARGETS, add=True)
+    assert panel.targets == [a.GlobalId, b.GlobalId] and panel.operators == []
+    s.select([b.GlobalId])
+    panel.take(solid_panel.OPERATORS)
+    assert panel.targets == [a.GlobalId]
+
+    panel.set_operation(solids.SUBTRACT)
+    assert panel.apply_button.isEnabled()
+    assert panel.apply()
+    app.processEvents()
+    assert [r.RelatedElement for r in solids.cut_by(a)] == [b]
+    assert _net(a) < full - 1e-6
+    assert s.selection == {a.GlobalId}
+    assert "recortado por 1" in panel.lists[solid_panel.TARGETS].item(0).text()
+
+    # Clicar no item seleciona o elemento.
+    item = panel.lists[solid_panel.OPERATORS].item(0)
+    panel.lists[solid_panel.OPERATORS].itemClicked.emit(item)
+    assert s.selection == {b.GlobalId}
+
+    # Repetir o mesmo par é recusado; tirar entre eles desfaz.
+    assert not panel.apply()
+    assert panel.remove()
+    assert solids.cut_by(a) == []
+    assert abs(_net(a) - full) < 1e-6
+
+    # Sem seleção, recusa com mensagem; elemento apagado sai da lista.
+    before = len(s.messages)
+    s.select([])
+    panel.take(solid_panel.TARGETS)
+    assert s.messages[-1]["level"] == "recusa" and len(s.messages) > before
+    from brasbim.core import delete
+
+    s.run(lambda: delete.delete_elements(s.doc, [b.GlobalId])[0])
+    assert panel.operators == []
+
+    # A ferramenta abre a janela junto.
+    window.solids_dock.hide()
+    window.activate_tool("solid_cut")
+    assert window.solids_dock.isVisible()

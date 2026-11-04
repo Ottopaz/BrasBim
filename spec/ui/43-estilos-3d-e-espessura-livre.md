@@ -127,6 +127,11 @@ O revisor pediu as vistas do 3D "urgentemente": o §2 entrou antes do §3.
   medidas) e seta Z (sobe e desce a laje: deslocamento do topo).
 
 ## 5. Pontos para o revisor
+**Respostas (2026‑11‑04):** (a) era o defeito do teste de profundidade (corrigido; "3D
+ótimo e adequado"); (b) os seis estilos servem; (c) estilos do usuário **só na preferência
+de cada um** (não no IFC); (d) esticar a camada estrutural; (e) variantes recolhidas sob o
+tipo de origem; (f) a ordem serve.
+
 - (a) As "arestas invisíveis" que incomodam são as **emendas** das faces (faixas nas
   árvores, triângulos), ou linhas que aparecem **atrás** das paredes? Um print em
   `feedback/prints/` ajuda. (Na imagem do README não aparecem linhas atrás das faces.)

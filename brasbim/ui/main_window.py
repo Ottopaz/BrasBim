@@ -83,6 +83,7 @@ from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
 from brasbim.ui.solid_badge import SolidBadge
+from brasbim.ui.solid_panel import SolidPanel
 from brasbim.ui.table_view import TableView
 from brasbim.ui.team_panel import JoinDialog, TeamPanel
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
@@ -367,6 +368,19 @@ class MainWindow(QMainWindow):
         self.team = TeamPanel(self.session)
         self.team_dock = self._dock("Equipe", "equipe", self.team, Qt.RightDockWidgetArea)
         self.team_dock.hide()
+        # Operações de sólidos (spec/ui 41 §3a): solta, aberta pelo menu ou pela ferramenta
+        self.solids_panel = SolidPanel(self.session)
+        self.solids_dock = self._dock("Operações de sólidos", "operacoes_solidos",
+                                      self.solids_panel, Qt.RightDockWidgetArea)
+        self.solids_dock.setFloating(True)
+        self.solids_dock.resize(340, 520)
+        self.solids_dock.hide()
+
+    def show_solids_panel(self) -> None:
+        """Editar > Operações de sólidos (spec/ui 41 §3a)."""
+        self.solids_dock.show()
+        self.solids_dock.raise_()
+        self.solids_panel.refresh()
 
     def _action(self, menu, text, slot, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -442,6 +456,7 @@ class MainWindow(QMainWindow):
                           ("selection_area", "Área de seleção"),
                           ("solid_cut", "Recortar por elemento")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        self._action(edit_menu, "Operações de sólidos", self.show_solids_panel)
         self._action(edit_menu, "Tirar recortes", self.remove_solid_cuts)
         self._action(edit_menu, "Remover área de seleção", self.remove_selection_area)
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
@@ -516,6 +531,7 @@ class MainWindow(QMainWindow):
         library_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
         self.panels_menu.addAction(library_action)
         self.panels_menu.addAction(self.team_dock.toggleViewAction())
+        self.panels_menu.addAction(self.solids_dock.toggleViewAction())
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
@@ -2135,6 +2151,8 @@ class MainWindow(QMainWindow):
 
     def activate_tool(self, name: str) -> None:
         tool = self.toolbox.activate(name)
+        if name == "solid_cut":  # a janela abre junto com a ferramenta (spec/ui 41 §3a)
+            self.show_solids_panel()
         self.tools_bar.mark(name)
         self.options_bar.show_for(tool)
         self._set_hint(tool.hint())
@@ -2362,9 +2380,13 @@ class MainWindow(QMainWindow):
     def _solid_context(self, gid) -> list:
         """Tirar recortes por elemento do que está sob o cursor (spec/ui 41 §3)."""
         element = self.session.doc.find(gid)
-        if element is None or not solids.relations_of(element):
+        if element is None or not (solids.can_be_operator(element)
+                                   or solids.can_be_target(self.session.doc, element)):
             return []
-        return [("Tirar recortes", lambda: self.remove_solid_cuts(gid))]
+        out = [("Operações de sólidos", self.show_solids_panel)]
+        if solids.relations_of(element):
+            out.append(("Tirar recortes", lambda: self.remove_solid_cuts(gid)))
+        return out
 
     def remove_solid_cuts(self, gid=None) -> None:
         session = self.session

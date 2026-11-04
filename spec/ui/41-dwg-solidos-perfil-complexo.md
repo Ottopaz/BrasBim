@@ -97,6 +97,30 @@ arquivo mantém); SO02 cobertura aparando parede (para cima); SO03 mover o opera
 o alvo; SO04 apagar o operador devolve e avisa; SO05 interseção; SO06 na interface
 (ferramenta, ficha, botão direito, planta cortada).
 
+### 3a. Janela de operações de sólidos (pedido de 2026‑11‑04)
+O revisor pediu uma **janela** para montar a operação sem depender da ordem dos cliques,
+na linha do que os programas de BIM costumam ter (função descrita pela ajuda pública do
+Archicad; nomes e disposição próprios).
+
+**Uso:** Editar > Operações de sólidos, o botão "Recortar por elemento" da barra
+Ferramentas (abre a janela junto com a ferramenta) e o botão direito sobre um elemento.
+Painel solto, que fica aberto enquanto se trabalha:
+- **Seleção atual**: quantos elementos e de que tipo ("3 elementos: 2 paredes, 1 laje"),
+  sempre atualizada; com um elemento só, o nome dele.
+- **Alvos (recortados)** e **Operadores (que recortam)**: duas listas, cada uma com a
+  quantidade no título e os botões **Usar a seleção** (troca a lista pela seleção atual,
+  só o que pode ter aquele papel; o resto é recusado com mensagem), **Somar a seleção** e
+  **Limpar**. Clicar num item seleciona o elemento na vista.
+- **Operação**: subtrair, subtrair para cima, subtrair para baixo, interseção (ícones e
+  nome).
+- **Aplicar**: recorta cada alvo por cada operador (uma transação; mesmas recusas da
+  ferramenta: par repetido, ciclo, alvo de outra origem). **Tirar entre eles**: tira só
+  os recortes entre os alvos e os operadores da lista.
+- As listas ficam na sessão; elemento apagado sai delas sozinho.
+
+**Teste SO08:** usar a seleção como alvo e operador, contagens, aplicar, tirar entre eles,
+recusa de alvo inválido, clique no item seleciona.
+
 ## 4. Perfil complexo
 **O quê:** uma seção desenhada à mão, com várias partes, cada uma com seu material e papel
 (núcleo ou acabamento), usada para **paredes** (retas e curvas), **vigas** e **pilares**.

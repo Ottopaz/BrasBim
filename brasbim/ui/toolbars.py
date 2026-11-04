@@ -334,9 +334,13 @@ class _FlowBox(QWidget):
         self.setSizePolicy(policy)
 
 
-# Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" fica sempre no topo.
+# Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" e "Área de seleção" ficam
+# sempre no topo, lado a lado (pedido do revisor, 2026-11-04). Na paleta de comandos a área
+# continua no grupo Edição.
+TOP_TOOLS = [CREATE_TOOLS[0], *[t for t in EDIT_TOOLS if t[0] == "selection_area"]]
 TOOL_GROUPS = [("Modelagem", "modelagem", CREATE_TOOLS[1:]), ("Vistas", "vistas", VIEW_TOOLS),
-               ("Documentação", "documentacao", DOC_TOOLS), ("Edição", "edicao", EDIT_TOOLS)]
+               ("Documentação", "documentacao", DOC_TOOLS),
+               ("Edição", "edicao", [t for t in EDIT_TOOLS if t not in TOP_TOOLS])]
 SITUATION_BUTTONS = (("EXISTENTE", "sit_existing"), ("A_DEMOLIR", "sit_demolish"),
                      ("A_CONSTRUIR", "sit_new"))  # spec/ui 39 §7
 _WIDE = 90  # px: abaixo disso o título do grupo vira só a seta (com a dica)
@@ -365,7 +369,8 @@ class ToolsBar(QDockWidget):
         column.setContentsMargins(3, 3, 3, 3)
         column.setSpacing(2)
         top = _FlowBox()
-        self._add(window, top, CREATE_TOOLS[0])
+        for item in TOP_TOOLS:
+            self._add(window, top, item)
         column.addWidget(top)
         collapsed = self._collapsed()
         for title, key, tools in TOOL_GROUPS:

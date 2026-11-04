@@ -245,6 +245,19 @@ def remove_cuts(doc: Document, elements):
     return Transaction("Tirar recortes", remove_ops(doc, [rels[g] for g in sorted(rels)]))
 
 
+def remove_between(doc: Document, targets, operators):
+    """Transação "Tirar recortes": só os recortes de um dos ``targets`` por um dos
+    ``operators`` (janela de operações de sólidos, spec/ui 41 §3a)."""
+    from brasbim.core.ops.history import Transaction
+
+    ops_ids = {o.GlobalId for o in operators}
+    rels = [r for t in targets for r in cut_by(t)
+            if r.RelatedElement is not None and r.RelatedElement.GlobalId in ops_ids]
+    if not rels:
+        raise OpError("nenhum recorte entre esses alvos e operadores")
+    return Transaction("Tirar recortes", remove_ops(doc, rels))
+
+
 # --- operações -------------------------------------------------------------------------
 
 
