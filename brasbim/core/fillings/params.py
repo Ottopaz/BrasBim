@@ -38,7 +38,6 @@ DOOR_OPERATIONS = {
     "ROLLINGUP": [("ROLLINGUP", "MIDDLE")],
     "NOTDEFINED": [],
 }
-PANEL_POSITIONS = ("LEFT", "MIDDLE", "RIGHT")
 
 # Padrões do tipo de porta (porta §3.2, CG a revisar).
 DEFAULT_LINING = {

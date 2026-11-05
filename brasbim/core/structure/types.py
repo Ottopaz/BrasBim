@@ -63,18 +63,9 @@ COLUMN = ProfileKind("column", "IfcColumnType", "IfcColumn", ("COLUMN",),
                      (*profiles.SHAPES, profiles.CUSTOM), "pilar", "pilares")
 BEAM = ProfileKind("beam", "IfcBeamType", "IfcBeam", ("BEAM",), ("rect", profiles.CUSTOM),
                    "viga", "vigas")
-PROFILE_KINDS = {k.prefix: k for k in (COLUMN, BEAM)}
 TYPE_PSET = "BrasBim_Perfil"  # tipo com perfil do projeto
 
 SLAB_TYPES = ("FLOOR", "BASESLAB", "ROOF")  # ROOF: peças da cobertura (cobertura.md §3.2)
-
-
-def profile_kind(entity) -> ProfileKind:
-    """Pilar ou viga, pela ocorrência ou pelo tipo."""
-    for k in (COLUMN, BEAM):
-        if entity.is_a(k.type_class) or entity.is_a(k.element_class):
-            return k
-    raise OpError(f"{entity.is_a()} não é pilar nem viga")
 
 
 def _material_set(element_type, ifc_class: str):

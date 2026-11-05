@@ -670,8 +670,3 @@ FILES = {
     "eletrodomesticos/area-de-servico.ifc": (lavadora,),
     "vegetacao/vegetacao.ifc": (arvore, palmeira, arbusto, vaso),
 }
-
-
-def all_states() -> list[dict]:
-    return [s for makers in FILES.values() for make in makers for s in make()]
-

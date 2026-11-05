@@ -219,12 +219,6 @@ def surface(state: dict) -> tuple[list[tuple[float, float, float]], list[tuple[i
     return verts, [tuple(renum[i] for i in t) for t in tris]
 
 
-def delaunay(points) -> list[tuple[int, int, int]]:
-    """Triângulos (índices, anti-horário) da triangulação de Delaunay dos pontos."""
-    samples = [(float(p[0]), float(p[1]), 0.0, None) for p in points]
-    return _triangulate(samples, None)
-
-
 def hull(points) -> list[tuple[float, float]]:
     from brasbim.core import geom2d
 

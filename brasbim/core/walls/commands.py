@@ -441,14 +441,6 @@ def attach_filling(doc: Document, opening, element) -> Transaction:
     return Transaction("Preencher abertura", [Op("filling.attach", _gid(element), data=data)])
 
 
-def detach_filling(doc: Document, element) -> Transaction:
-    element = doc.get(_gid(element), "IfcElement")
-    ops = [Op("filling.detach", element.GlobalId,
-              data={"opening": rel.RelatingOpeningElement.GlobalId})
-           for rel in element.FillsVoids]
-    return Transaction("Desligar preenchimento", ops)
-
-
 # --- tipos e pavimentos (provisório) -------------------------------------------------
 
 

@@ -189,11 +189,6 @@ def release(doc: Document, element) -> None:
         _remove_opening(doc, opening)
 
 
-def wall_of(doc: Document, element):
-    rel = _connection(element)
-    return rel.RelatingElement if rel is not None else None
-
-
 def hosted_by(doc: Document, wall) -> list:
     """Objetos presos à parede (pela ``IfcRelConnectsElements``)."""
     from brasbim.core.objects import elements

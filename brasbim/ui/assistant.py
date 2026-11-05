@@ -186,11 +186,6 @@ def _short(text: str, size: int = 40) -> str:
     return cut.rstrip(",.;:")
 
 
-def tool_label(name: str) -> str:
-    """Nome da ferramenta MCP (``mcp__brasbim__create_walls``) → ``create_walls``."""
-    return name.split("__")[-1]
-
-
 # --- painel -------------------------------------------------------------------------------
 
 

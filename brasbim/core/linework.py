@@ -57,11 +57,6 @@ class Lines:
     def to_dicts(self) -> list[dict]:
         return [self.line(i) for i in range(len(self))]
 
-    def polylines(self):
-        """``(pontos (k, 2), fechada)`` de cada linha, sem copiar."""
-        for i in range(len(self)):
-            yield self.coords[self.starts[i]:self.starts[i + 1]], bool(self.closed[i])
-
     def pack(self) -> str:
         q = np.round(self.coords / QUANTUM).astype(np.int64)
         deltas = np.diff(q, axis=0, prepend=np.zeros((1, 2), dtype=np.int64))

@@ -372,14 +372,6 @@ def edit_op(doc: Document, name: str, new: dict | None) -> Op:
     return Op("material.edit", name, before=state(doc, name), after={"style": new})
 
 
-def add_library_styles(doc: Document, names=None) -> None:
-    """Grava os estilos da biblioteca (§4.4) nos materiais que ainda não têm estilo."""
-    for material in doc.ifc.by_type("IfcMaterial"):
-        if material.Name in LIBRARY and (names is None or material.Name in names) \
-                and read_style(material) is None:
-            write_style(doc, material, copy.deepcopy(LIBRARY[material.Name]))
-
-
 def ensure_style(doc: Document, name: str) -> None:
     """Grava o estilo padrão no material que ainda não tem nenhum (as peças das esquadrias
     apontam para o ``IfcSurfaceStyle`` dele, spec/ui 09 §7)."""

@@ -16,9 +16,10 @@ complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
 > respostas de 10‑30). Ajustes da junção: espessura livre recusa a parede de perfil
 > (`type_variants.is_profile`; sobra da barra Opções é ignorada; o campo some da ficha;
 > PC11); pilar de perfil recortado por sólido recorta cada parte na planta
-> (`plan._structure_regions`); editor de perfis na unidade de trabalho (cm/mm). **Ficaram
-> de fora** (só em `origin/main`): `d9296c5` (autoria) e `c498e83` (revisão geral antes do
-> instalador); juntar os dois ramos antes de publicar `main`. Próximo do perfil: o que o
+> (`plan._structure_regions`); editor de perfis na unidade de trabalho (cm/mm). **Juntado
+> depois** (mesmo dia): merge de `origin/main` no ramo, com `d9296c5` (autoria) e `c498e83`
+> (revisão geral antes do instalador); as etapas antigas do perfil em `origin/main` ficaram
+> pela versão deste ramo, e `PROFILE_KINDS` (sem uso) saiu como na revisão. Próximo do perfil: o que o
 > estudo de 11‑04 acrescenta e ainda falta (referência das aberturas, criar perfil a
 > partir da seleção, giro/espelhar em viga e pilar, linha entre partes do mesmo material)
 > e a etapa (3) borda de laje/cobertura e caminho livre.
@@ -204,6 +205,15 @@ complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
 > **Falta nesta etapa:** o 3D pinta a peça de uma cor só (não por parte); a planta usa a
 > hachura do 1º material. **Próximo:** etapa (2) parede de perfil (PC03, PC05).
 
+> **Revisão geral (2026‑10‑30):** o revisor quer um instalador `.exe` (depois, um site);
+> antes, pediu revisão do código e pente fino das ferramentas. Relatório:
+> `reports/Revisao geral antes do instalador (2026-10-30).md`. Feito: PR08/PR09 corrigidos
+> (`pytest.approx` aninhado, recusado pelo pytest 9), **VB09 deixou de ser instável**
+> (empate de ordem desempatado por GlobalId; teste com uma vizinha só), linha inalcançável
+> em `view_bar.py`, ≈ 120 linhas sem uso removidas (lista no relatório §1). 845 testes
+> passando, ruff limpo. **Recomendação ao revisor** (§4): antes da versão pública, M1
+> sólidos (spec 41 §3, faltam (e)–(k)), M2 recortar parede pela cobertura, M3 forro/piso
+> (`IfcCovering`), I1 exportar IFC 2x3, I2 glTF; depois o instalador. Aguarda a decisão.
 
 > **Limpeza da janela (2026‑10‑29, noite):** pedido do revisor no print `feedback/prints/barras.png`.
 > spec/ui 42, em revisão e implementada: faixa de título própria nos painéis (`ui/docks.py`: encaixado só o nome; solto, o botão de fechar), coluna de ferramentas sem barra de rolagem, barra da vista espalhada pela largura, campo da linha de comando até o Histórico quando não há opções e balão da última mensagem acima da barra da vista (`ui/balloon.py`). Testes LJ01–LJ07 em `tests/test_interface_limpeza.py`. Depois, segue o §3 da spec/ui 41 (sólidos).
@@ -685,7 +695,7 @@ complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (882 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (905 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
@@ -1409,9 +1419,6 @@ documentação do desenho técnico (`spec/REQUISITOS.md` §8).
    no 3D.
 
 ## Pendências
-- **Teste instável VB09** (`tests/test_barra_da_vista.py::test_vb09_ordem_de_desenho`):
-  falha às vezes, também sem as mudanças da spec 40; o desempate por GlobalId (aleatório)
-  muda quem é "a seguinte". Fixar os GlobalIds no teste ou o desempate em `reorder`.
 - spec/ui 40: caixas de combinação (QComboBox) ainda podem cortar com "…" se estreitas;
   o controle de orientação não anima a troca de vista (a pedido, depois).
 - **Pacotes 17–18 concluídos (2026‑10‑21)**, spec `spec/elementos/escada-terreno.md` em
