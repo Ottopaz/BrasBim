@@ -331,8 +331,8 @@ def sync_relations(doc: Document, element, cuts: list[Cut]) -> None:
     ``ImpliedOrder`` verdadeiro (spec/ui 12 §2.3, [IFC-INTERF])."""
     wanted = {c.cutter.gid for c in cuts}
     for rel in list(getattr(element, "InterferesElements", ()) or ()):
-        if not rel.is_a("IfcRelInterferesElements"):
-            continue
+        if not rel.is_a("IfcRelInterferesElements") or rel.InterferenceType != INTERFERENCE:
+            continue  # as operações de sólidos (``solids``) têm relação própria
         related = rel.RelatedElement
         if related is None or related.GlobalId not in wanted:
             doc.ifc.remove(rel)

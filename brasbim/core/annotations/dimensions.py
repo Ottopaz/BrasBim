@@ -23,7 +23,7 @@ import itertools
 import logging
 import math
 
-from brasbim.core import geom2d, storeys
+from brasbim.core import geom2d, storeys, units
 from brasbim.core.annotations import base, prims
 from brasbim.core.annotations.prims import Prims, Stroke, Text
 from brasbim.core.document import Document, OpError
@@ -262,7 +262,8 @@ def _build(doc: Document, storey, state: dict) -> Prims:
             continue
         c = at((a + b) / 2, off)
         out.texts.append(Text((c[0] + up[0] * TEXT_GAP * k, c[1] + up[1] * TEXT_GAP * k),
-                              fmt(b - a), TEXT * k, shown, "center", "bottom"))
+                              units.length(doc, "linear", b - a), TEXT * k, shown,
+                              "center", "bottom"))
     return out
 
 

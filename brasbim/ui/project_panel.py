@@ -542,6 +542,24 @@ class ProjectPanel(QWidget):
 
     # --- objetos paramétricos ---------------------------------------------------------------
 
+    _objects_seen = None
+
+    def _objects_signature(self):
+        """O que a árvore de objetos mostra: tipos (com o Pset gravado), quantas
+        ocorrências cada um tem e a biblioteca de onde vêm as atualizações."""
+        import ifcopenshell.util.element as ue
+
+        from brasbim.core.objects import types as ot
+
+        doc = self.session.doc
+        out = [id(doc), id(self.library_index)]
+        for t in ot.all_types(doc):
+            pset = ue.get_pset(t, ot.PSET, should_inherit=False) or {}
+            out.append((t.GlobalId, t.Name, tuple(sorted(
+                (k, v) for k, v in pset.items() if k != "id")),
+                len(ue.get_types(t))))
+        return tuple(out)
+
     def _refresh_objects(self) -> None:
         from brasbim.core.objects import commands as oc
         from brasbim.core.objects import definition as od
@@ -551,6 +569,12 @@ class ProjectPanel(QWidget):
         from brasbim.ui.object_widgets import resolver_for
 
         doc = self.session.doc
+        # Só refaz a árvore quando os tipos de objeto, as contagens ou a biblioteca mudam:
+        # refazer a cada edição custava ~140 ms com a biblioteca carregada.
+        signature = self._objects_signature()
+        if signature == self._objects_seen:
+            return
+        self._objects_seen = signature
         closed = {self.objects.topLevelItem(i).text(0)
                   for i in range(self.objects.topLevelItemCount())
                   if not self.objects.topLevelItem(i).isExpanded()}

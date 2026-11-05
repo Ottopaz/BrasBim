@@ -26,6 +26,8 @@ from brasbim.core import (
     snap,
     storeys,
     transform,
+    type_variants,
+    units,
 )
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -40,7 +42,16 @@ from brasbim.core.objects import elements as objects
 from brasbim.core.objects import formula, hosting
 from brasbim.core.objects import plan as object_plan
 from brasbim.core.objects import types as object_types
-from brasbim.core.structure import beams, columns, profiles, roofs, rooms, slab_openings, slabs
+from brasbim.core.structure import (
+    beams,
+    columns,
+    profiles,
+    roofs,
+    rooms,
+    slab_openings,
+    slabs,
+    solids,
+)
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.structure import types as st_types
@@ -54,8 +65,18 @@ DRAG_START = 0.5  # fração de ``tol`` que o cursor precisa andar para começar
 
 
 def fmt(value: float) -> str:
-    """Número em metros com vírgula decimal (spec/ui §2.1)."""
+    """Número com duas casas e vírgula decimal (spec/ui §2.1)."""
     return f"{value:.2f}".replace(".", ",")
+
+
+def fmt_len(value: float, exact: bool = False) -> str:
+    """Comprimento (m) num campo, na unidade de trabalho do projeto (spec/ui 44 §2a)."""
+    return units.fmt_work(value, exact)
+
+
+def parse_len(text: str) -> float:
+    """Comprimento digitado na unidade de trabalho → metros."""
+    return units.from_work(parse_number(text))
 
 
 def fmt_exact(value: float) -> str:
@@ -155,7 +176,7 @@ class Field:
             return str(round(value))
         if self.unit == "°":
             return f"{value:.1f}".replace(".", ",")
-        return fmt(value)
+        return fmt_len(value) if self.unit == "m" else fmt(value)
 
 
 def _degrees(dx: float, dy: float) -> float:
@@ -1404,6 +1425,7 @@ class _WallOptions:
         self.ref_line = "left_face"
         self.top = "storey"  # "storey" (pavimento de cima) ou "fixed"
         self.fixed_height = wall_params.DEFAULT_FIXED_HEIGHT
+        self.thickness: float | None = None  # espessura livre; None = a do tipo (spec/ui 43)
 
     def command_options(self) -> dict:
         out = {"ref_line": self.ref_line}
@@ -1414,6 +1436,8 @@ class _WallOptions:
     def band(self, doc) -> tuple[float, float]:
         wall_type = doc.find(self.type) if self.type else None
         thickness = wall_types.thickness(wall_type) if wall_type is not None else 0.14
+        if self.thickness:
+            thickness = self.thickness
         sense, offset = wall_params.layer_usage(self.ref_line, False, thickness)
         return wall_params.band(sense, offset, thickness)
 
@@ -1599,8 +1623,10 @@ class WallTool(_WallTool):
             self.points = []
             return
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_chain(doc, options.type, storey, points, closed=closed,
-                                              **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_chain(doc, t, storey, points, closed=closed,
+                                       **options.command_options())))
 
     def shape_preview(self):
         marks = []
@@ -1641,8 +1667,10 @@ class ArcWallTool(_WallTool):
             return
         a, b = self.points
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_arc_wall(doc, options.type, storey, a, b, q,
-                                                 **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_arc_wall(doc, t, storey, a, b, q,
+                                          **options.command_options())))
 
     def shape_preview(self):
         if not self.points or not self.snapped:
@@ -1695,8 +1723,10 @@ class RectangleTool(_WallTool):
             self.session.message("o retângulo precisa de largura e profundidade", "recusa")
             return
         options, doc, storey = self.options, self.session.doc, self.session.storey
-        self._commit(lambda: cmd.create_rectangle(doc, options.type, storey, a, q,
-                                                  **options.command_options()))
+        self._commit(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: cmd.create_rectangle(doc, t, storey, a, q,
+                                           **options.command_options())))
 
     def shape_preview(self):
         if not self.points or not self.snapped:
@@ -1975,6 +2005,7 @@ class _SlabOptions:
         self.mode = "polygon"  # "rectangle" ou "room" (pelo cômodo, spec/ui 12 §4)
         self.boundary = "outer"  # contorno pelo cômodo: inner, axis, outer
         self.top_offset = 0.0
+        self.thickness: float | None = None  # espessura livre; None = a do tipo (spec/ui 43)
 
 
 class SlabTool(_WallTool):
@@ -2077,8 +2108,10 @@ class SlabTool(_WallTool):
         if options.type is None or storey is None:
             self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
         else:
-            self.session.run(lambda: sc.create_slab(doc, options.type, storey, points,
-                                                    top_offset=options.top_offset))
+            self.session.run(lambda: type_variants.create_with(
+                doc, options.type, options.thickness,
+                lambda t: sc.create_slab(doc, t, storey, points,
+                                         top_offset=options.top_offset)))
         self.points = []
 
     def _create_in_room(self, p) -> None:
@@ -2086,9 +2119,10 @@ class SlabTool(_WallTool):
         if options.type is None or storey is None:
             self.session.message("não há tipo de laje ou pavimento ativo", "recusa")
             return
-        self.session.run(lambda: sc.create_slab_in_room(doc, options.type, storey, p,
-                                                        options.boundary,
-                                                        top_offset=options.top_offset))
+        self.session.run(lambda: type_variants.create_with(
+            doc, options.type, options.thickness,
+            lambda t: sc.create_slab_in_room(doc, t, storey, p, options.boundary,
+                                             top_offset=options.top_offset)))
 
     def press(self, p, mods, button="left"):
         if button != "left":
@@ -2159,14 +2193,14 @@ class SlabTool(_WallTool):
 
 def roof_types(doc) -> list:
     """Tipos de laje de cobertura (``ROOF``), para a ferramenta Cobertura."""
-    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType == "ROOF"),
-                  key=lambda t: t.Name or "")
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType == "ROOF"
+                   and not type_variants.is_variant(t)), key=lambda t: t.Name or "")
 
 
 def floor_types(doc) -> list:
     """Tipos de laje que não são de cobertura, para a ferramenta Laje."""
-    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType != "ROOF"),
-                  key=lambda t: t.Name or "")
+    return sorted((t for t in doc.ifc.by_type("IfcSlabType") if t.PredefinedType != "ROOF"
+                   and not type_variants.is_variant(t)), key=lambda t: t.Name or "")
 
 
 class _RoofOptions:
@@ -5504,6 +5538,100 @@ class RotateViewTool(Tool):
         self.finished = True
 
 
+# --- Recortar por elemento (spec/ui 41 §3) ---------------------------------------------
+
+
+class SolidCutTool(Tool):
+    """Com os alvos selecionados, clica-se nos operadores; Enter (ou botão direito) aplica.
+    Sem seleção, primeiro clica nos alvos e Enter passa aos operadores. A operação fica na
+    barra Opções."""
+
+    name, label = "solid_cut", "Recortar por elemento"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.operation = solids.SUBTRACT
+        self.targets: list[str] = []
+        self.operators: list[str] = []
+        self.picking_targets = False
+
+    def _start(self) -> None:
+        doc = self.session.doc
+        chosen = [g for g in sorted(self.session.selection)
+                  if solids.can_be_target(doc, doc.find(g))]
+        self.targets, self.operators = chosen, []
+        self.picking_targets = not chosen
+
+    def hint(self):
+        if not self.targets and not self.picking_targets:
+            self._start()
+        if self.picking_targets:
+            return ("Clique as paredes, pilares, vigas ou lajes a recortar; Enter passa ao "
+                    "elemento que recorta")
+        return (f"Clique o elemento que recorta ({solids.LABELS[self.operation]}); Enter "
+                "ou botão direito aplica; Esc cancela")
+
+    def _pick(self, p):
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        roof = roofs.roof_of(element) if element is not None else None
+        return roof or element
+
+    def press(self, p, mods, button="left"):
+        if not self.targets and not self.picking_targets:
+            self._start()
+        if button != "left":
+            if button == "right":
+                self.key("enter")
+            return
+        element = self._pick(p)
+        if element is None:
+            return
+        gid = element.GlobalId
+        if self.picking_targets:
+            if not solids.can_be_target(self.session.doc, element):
+                self.session.message("só parede, pilar, viga e laje do BrasBim são "
+                                     "recortados", "recusa")
+            elif gid not in self.targets:
+                self.targets.append(gid)
+            return
+        if gid in self.targets:
+            self.session.message("clique um elemento diferente do recortado", "recusa")
+        elif not solids.can_be_operator(element):
+            self.session.message("esse elemento não tem corpo para recortar", "recusa")
+        elif gid not in self.operators:
+            self.operators.append(gid)
+
+    def key(self, key):
+        if key != "enter":
+            return False
+        if self.picking_targets:
+            if self.targets:
+                self.picking_targets = False
+            return True
+        if not self.operators:
+            return bool(self.targets)
+        doc = self.session.doc
+        targets = [doc.get(g) for g in self.targets]
+        operators = [doc.get(g) for g in self.operators]
+        operation = self.operation
+        if self.session.run(lambda: solids.cut_elements(doc, targets, operators, operation)):
+            self.session.select(self.targets)
+            self.finished = True
+        self.targets, self.operators, self.picking_targets = [], [], False
+        return True
+
+    def cancel(self):
+        busy = bool(self.targets or self.operators)
+        self.targets, self.operators, self.picking_targets = [], [], False
+        return busy
+
+    def preview(self):
+        chosen = set(self.targets) | set(self.operators)
+        return [Mark(s.points, s.closed) for s in self.ctx.plan.shapes if s.owner in chosen]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
          BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
@@ -5511,7 +5639,7 @@ TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool,
-         RotateViewTool)
+         RotateViewTool, SolidCutTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",

@@ -68,6 +68,12 @@ vários, Enter termina). Sem seleção, primeiro clica nos alvos. Na ficha do al
 operador, **Recorta**. Botão direito: "Tirar recortes". Um operador pode ficar numa camada
 escondida e continua cortando (como no Archicad).
 
+**Ao selecionar (pedido de 2026‑11‑01):** com um elemento que recorta ou é recortado
+selecionado sozinho, aparece junto dele um quadro com uma linha por operação: o ícone da
+operação e "Recortado por Parede 2 · subtrair" (ou "Recorta …"); clicar na linha seleciona
+o outro. Os outros elementos ficam destacados (tracejado laranja na planta, tinta laranja
+no 3D). Teste SO07.
+
 **No IFC:**
 - A relação: `IfcRelInterferesElements` com `RelatingElement` = alvo, `RelatedElement` =
   operador, `ImpliedOrder` = verdadeiro, `InterferenceType` = `SUBTRACT`,
@@ -91,6 +97,30 @@ arquivo mantém); SO02 cobertura aparando parede (para cima); SO03 mover o opera
 o alvo; SO04 apagar o operador devolve e avisa; SO05 interseção; SO06 na interface
 (ferramenta, ficha, botão direito, planta cortada).
 
+### 3a. Janela de operações de sólidos (pedido de 2026‑11‑04)
+O revisor pediu uma **janela** para montar a operação sem depender da ordem dos cliques,
+na linha do que os programas de BIM costumam ter (função descrita pela ajuda pública do
+Archicad; nomes e disposição próprios).
+
+**Uso:** Editar > Operações de sólidos, o botão "Recortar por elemento" da barra
+Ferramentas (abre a janela junto com a ferramenta) e o botão direito sobre um elemento.
+Painel solto, que fica aberto enquanto se trabalha:
+- **Seleção atual**: quantos elementos e de que tipo ("3 elementos: 2 paredes, 1 laje"),
+  sempre atualizada; com um elemento só, o nome dele.
+- **Alvos (recortados)** e **Operadores (que recortam)**: duas listas, cada uma com a
+  quantidade no título e os botões **Usar a seleção** (troca a lista pela seleção atual,
+  só o que pode ter aquele papel; o resto é recusado com mensagem), **Somar a seleção** e
+  **Limpar**. Clicar num item seleciona o elemento na vista.
+- **Operação**: subtrair, subtrair para cima, subtrair para baixo, interseção (ícones e
+  nome).
+- **Aplicar**: recorta cada alvo por cada operador (uma transação; mesmas recusas da
+  ferramenta: par repetido, ciclo, alvo de outra origem). **Tirar entre eles**: tira só
+  os recortes entre os alvos e os operadores da lista.
+- As listas ficam na sessão; elemento apagado sai delas sozinho.
+
+**Teste SO08:** usar a seleção como alvo e operador, contagens, aplicar, tirar entre eles,
+recusa de alvo inválido, clique no item seleciona.
+
 ## 4. Perfil complexo
 **O quê:** uma seção desenhada à mão, com várias partes, cada uma com seu material e papel
 (núcleo ou acabamento), usada para **paredes** (retas e curvas), **vigas** e **pilares**.
@@ -105,6 +135,22 @@ Marcas: o **ponto de inserção** (a linha de referência da parede, o eixo da v
 pilar) e as **faixas de esticar** (uma horizontal e uma vertical, opcionais): o que está
 além da linha anda quando a largura ou a altura do elemento mudam. Sem faixa, o perfil
 tem tamanho fixo.
+
+**Refinado pelo estudo de 2026‑11‑04** (`complemento_perfil_complexo.md` §12):
+- partes podem ser desenhadas sobrepostas, mas ao gravar são recortadas pela prioridade do
+  material: no IFC cada parte é uma região sem sobreposição;
+- papel núcleo, acabamento ou outro (`Category` `LoadBearing`, `Finish` ou vazio);
+- a origem é fixa (o 0,0 do editor) e move‑se o desenho;
+- esticar: só a faixa entre as duas linhas muda, o resto anda junto, e arestas inclinadas
+  que cruzam a faixa são partidas nela;
+- medida nominal editável na ficha só com faixa; a total, só leitura;
+- linha opcional de **referência das aberturas** (sem ela, o envolvente);
+- uma pena de contorno e uma de separador, e a linha de corte pode ser desligada por
+  aresta; a linha entre partes do mesmo material some (ponto (o));
+- **Criar perfil a partir da seleção** (parede de camadas, viga e pilar retangular ou
+  circular viram partes);
+- sem perfil avulso guardado só no elemento: todo perfil tem nome;
+- giro do perfil (graus) e espelhar em viga e pilar; espelhar na parede.
 
 **No elemento:** o tipo do elemento ganha a estrutura **Perfil** (além de camadas, para
 parede; e de retângulo/círculo, para viga e pilar). Na ficha: o perfil, a largura e a
@@ -183,6 +229,9 @@ vários contextos (laje, pilar, viga e outros), cada um levando a forma desenhad
 §4.1 e os pontos (l)–(n). **(2026‑10‑30, depois):** (l)–(n) como propostos (laje pela
 borda; borda como peça própria agregada à laje; ordem editor + viga + pilar → parede →
 borda e caminho livre → guarda‑corpo).
+**(2026‑11‑04):** perfil complexo
+em **parede, viga e pilar** por enquanto (o escopo do §4). (o) e (p) em aberto; sem outra
+resposta, valem as propostas.
 
 - (a) DWG: unidade da vista em **metros** (proposta), centímetros ou milímetros?
 - (b) DWG: prancha no espaço do papel com os desenhos como blocos (proposta), ou já
@@ -208,10 +257,16 @@ borda e caminho livre → guarda‑corpo).
   própria laje?
 - (n) Ordem de entrega do perfil: (1) editor + viga + pilar, (2) parede, (3) borda de
   laje/cobertura e caminho livre, (4) guarda‑corpo (proposta)?
+- (o) Linha entre duas partes do **mesmo material** na planta e no corte: apagar
+  (proposta; o Archicad mantém) ou manter?
+- (p) No IFC, a forma por parte num só `IfcWall` (proposta), em vez de exportar as partes
+  como `IfcBuildingElementPart` como o Archicad faz como opção? O fórum relata janelas
+  sumindo e partes soltas no Revit com as partes.
 
 ## 7. Fontes
 `research_notes/Pesquisa Archicad Revit AutoCAD/complemento_dwg_solidos_perfis.md` (§1–§3,
 com as URLs da Graphisoft, Autodesk, GNU LibreDWG, ODA, OSArch e buildingSMART);
+`complemento_perfil_complexo.md` (estudo a fundo do perfil, ajuda AC18–AC29 e fórum);
 `archicad_modelagem.md` (SEO, perfis complexos, laje e cobertura);
 `revit_modelagem_familias.md` (frisos e rebaixos); `autocad.md` (DWG/DWF no Brasil).
 §4.1: mesma nota, §3 "Rodada 2" (ajuda Graphisoft AC18/AC21/AC22/AC24/AC28 sobre

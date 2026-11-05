@@ -50,6 +50,7 @@ from brasbim.core import (
     materials,
     props,
     storeys,
+    units,
 )
 from brasbim.core.clip import Rings
 from brasbim.core.document import Document, OpError
@@ -470,8 +471,18 @@ def _cut_wall(doc: Document, wall, cut: float, show_above: bool) -> _Cut | None:
                 emit("wall_view", [[(x0, y), (x1, y)] for y in (band.ymin, band.ymax)],
                      closed=False)
         pieces = clip.difference(pieces, holes)
+    glob = [[frame.to_global(p) for p in r] for r in pieces]
+    # Recortada por elemento (spec/ui 41 §3): só o que a seção da forma resultante cobre.
+    from brasbim.core.structure import solids
+
+    section = solids.section(wall, ifcopenshell.util.element.get_container(wall), cut)         if glob else None
+    if section is not None:
+        glob = clip.intersection(glob, section) if section else []
+        out.shapes += [Shape(gid, "wall", tuple(r), True, style) for r in glob]
+        out.pieces = glob
+        return out
     emit("wall", pieces)
-    out.pieces = [[frame.to_global(p) for p in r] for r in pieces]
+    out.pieces = glob
     return out
 
 
@@ -742,10 +753,6 @@ def door_shapes(doc: Document, door, storey, cut_z: float | None = None) -> list
 LABEL_GAP = 0.30  # etiqueta a 0,30 m da face, do lado oposto ao da folha (spec/ui 05 §5)
 
 
-def _fmt(v: float) -> str:
-    return f"{v:.2f}".replace(".", ",")
-
-
 def door_label(doc: Document, door, storey) -> Label | None:
     if door.ObjectPlacement is None or not door.OverallWidth:
         return None
@@ -763,9 +770,9 @@ def door_label(doc: Document, door, storey) -> Label | None:
         except OpError:
             pass
     at = _door_to_storey(door, storey)((float(door.OverallWidth) / 2, -LABEL_GAP))
-    size = f"{_fmt(width)} × {_fmt(height)}"
+    size = f"{units.length(doc, 'opening', width)} × {units.length(doc, 'opening', height)}"
     if door.is_a("IfcWindow") and sill is not None:
-        size += f" / {_fmt(sill)}"  # peitoril (spec/ui 09 §6.3)
+        size += f" / {units.length(doc, 'opening', sill)}"  # peitoril (spec/ui 09 §6.3)
     return Label(door.GlobalId, at, str(code), size)
 
 
@@ -820,6 +827,10 @@ class _Element:
     z: tuple[float, float]  # cotas do fundo e do topo, a partir do pavimento
     fill: dict
     edge_weight: float
+    cut_rings: Rings | None = None  # seção da forma recortada por elemento (spec/ui 41 §3)
+
+    def cut_shape(self) -> Rings:
+        return self.cut_rings if self.cut_rings is not None else [list(self.ring)]
     # Pilar de perfil do projeto (spec/ui 41 §4): (contorno, fundo) de cada parte.
     parts: list[tuple[list[Point], dict]] | None = None
 
@@ -877,7 +888,7 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
                 parts = [(outline, {**materials.style(doc, name)["cut"], "source": "material"})
                          for name, outline in columns.part_outlines(doc, state)]
             return _Element(element, kind, ring, [ring], (z0, z0 + columns.height(doc, state)),
-                            _material_fill(doc, element_type), CUT_WEIGHT, parts)
+                            _material_fill(doc, element_type), CUT_WEIGHT, parts=parts)
         if kind == "beam":
             ring = beams.outline(doc, state)
             z1 = beams.top_z(doc, state)
@@ -910,14 +921,17 @@ def _structure(doc: Document, storey, cut: float, show_above: bool
                          for x in _contained(storey, cls, doc)) if e is not None]
     shapes: list[Shape] = []
     cut_columns: Rings = []
+    from brasbim.core.structure import solids
+
     for e in found:
         gid = e.element.GlobalId
         z0, z1 = e.z
         closed = e.kind != "beam"
         if z0 < cut < z1:
-            shapes.append(Shape(gid, e.kind, tuple(e.ring), True))
+            e.cut_rings = solids.section(e.element, storey, cut)
+            shapes += [Shape(gid, e.kind, tuple(r), True) for r in e.cut_shape()]
             if e.kind == "column":
-                cut_columns.append(list(e.ring))
+                cut_columns += e.cut_shape()
             continue
         if z1 <= cut:
             role = f"{e.kind}_view"
@@ -1008,13 +1022,19 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         tint = plan.colors.get(e.element.GlobalId)
         hatch = plan.hatches.get(e.element.GlobalId)
+        if z0 < cut < z1 and e.cut_rings is not None:
+            ring = e.cut_rings
         if z0 < cut < z1:
             if e.parts:  # uma região por parte, cada uma com o corte do seu material
                 for outline, fill in e.parts:
-                    plan.regions.append(Region(e.element.GlobalId, [list(outline)], fill,
-                                               tint, hatch))
-                    plan.edges.append(Edge([list(outline)], LAYER_WEIGHT,
-                                           materials.LINE_COLOR, tint=tint))
+                    rings = [list(outline)]
+                    if e.cut_rings is not None:  # pilar de perfil recortado por sólido
+                        rings = clip.intersection(rings, e.cut_rings)
+                        if not rings:
+                            continue
+                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch))
+                    plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR,
+                                           tint=tint))
             else:
                 plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
             plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))
@@ -1372,7 +1392,7 @@ def _documentation(doc: Document, storey, plan: Plan) -> None:
             area = q.get("NetFloorArea", spaces.area(state["outline"]))
             plan.labels.append(Label(
                 e.GlobalId, spaces.label_point(state), state["name"] or "",
-                f"{area:.2f}".replace(".", ",") + " m²", "space", 0.0,
+                units.area(doc, area), "space", 0.0,
                 storeys.paper(storey, SPACE_NAME_MM), SPACE_AREA_MM / SPACE_NAME_MM,
                 state["number"] or ""))
         elif e.is_a("IfcAnnotation") and base.kind_of(e) is not None:

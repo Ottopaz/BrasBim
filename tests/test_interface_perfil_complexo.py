@@ -196,3 +196,34 @@ def test_pc06_tipo_de_parede_com_perfil(window):
     s.history.undo()  # volta às camadas
     assert wall_types.profile_of(s.doc.get(t)) is None
     dialog.close()
+
+
+def test_pc06_editor_em_centimetros(window):
+    """Com a unidade de trabalho em cm (spec/ui 44 §2a), o editor de perfis lê e mostra
+    as medidas em cm; o perfil continua gravado em metros."""
+    from brasbim.core import units
+
+    s = window.session
+    s.run(lambda: units.apply_preset(s.doc, "centimeters"))
+    try:
+        dialog = ProfilesDialog(s, window)
+        dialog.show()
+        dialog.add()  # retângulo 0,20 × 0,40
+        assert "Largura 20" in dialog.size_label.text() and " cm " in dialog.size_label.text()
+        for field, text in zip(dialog.rect_fields, ("-30", "0", "60", "10"), strict=True):
+            field.setText(text)
+        dialog.add_exact_rect()
+        added = dialog.state["parts"][1]["outline"]
+        assert [tuple(round(v, 4) for v in q) for q in added] == [
+            (-0.3, 0.0), (0.3, 0.0), (0.3, 0.1), (-0.3, 0.1)]
+        dialog.stretch_boxes["stretch_y"].setChecked(True)
+        dialog.stretch_fields["stretch_y"].setText("-20")
+        dialog._stretch_edited("stretch_y")
+        assert dialog.apply()
+        state = profile_defs.read_state(profile_defs.all_defs(s.doc)[0])
+        assert state["stretch_y"] == pytest.approx(-0.2)
+        dialog.load(dialog.current)
+        assert dialog.stretch_fields["stretch_y"].text() == "-20"
+        dialog.close()
+    finally:
+        s.run(lambda: units.apply_preset(s.doc, "meters"))

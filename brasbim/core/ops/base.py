@@ -53,6 +53,7 @@ DeriveFn = Callable[[Document, set[str]], None]
 
 _APPLY: dict[str, ApplyFn] = {}
 _INVERT: dict[str, InvertFn] = {}
+_DERIVE_FIRST: list[DeriveFn] = []  # antes dos corpos (quem mais precisa ser refeito)
 _DERIVE: list[DeriveFn] = []
 _DERIVE_LAST: list[DeriveFn] = []  # depois de todos os corpos refeitos (camadas)
 _CHECK: list[Callable[[Document, Op], None]] = []  # antes de cada operação (travados)
@@ -71,6 +72,8 @@ HANDLER_MODULES = (
     "brasbim.core.fillings.rebuild",
     "brasbim.core.profile_defs",
     "brasbim.core.structure.types",
+    "brasbim.core.type_variants",
+    "brasbim.core.units",
     "brasbim.core.structure.columns",
     "brasbim.core.structure.beams",
     "brasbim.core.structure.slabs",
@@ -80,6 +83,7 @@ HANDLER_MODULES = (
     "brasbim.core.structure.skylights",
     "brasbim.core.structure.railings",
     "brasbim.core.structure.stairs",
+    "brasbim.core.structure.solids",
     "brasbim.core.terrain",
     "brasbim.core.annotations.spaces",
     "brasbim.core.annotations.drafting",
@@ -147,8 +151,8 @@ def check_before(op: Op, current: dict) -> None:
             raise OpError(f"{op.op} {op.id}: '{key}' é {current.get(key)!r}, esperado {value!r}")
 
 
-def register_derive(fn: DeriveFn, last: bool = False) -> None:
-    (_DERIVE_LAST if last else _DERIVE).append(fn)
+def register_derive(fn: DeriveFn, last: bool = False, first: bool = False) -> None:
+    (_DERIVE_LAST if last else _DERIVE_FIRST if first else _DERIVE).append(fn)
 
 
 def register_check(fn) -> None:
@@ -179,5 +183,5 @@ def invert_op(op: Op) -> Op:
 
 def derive(doc: Document, dirty: set[str]) -> None:
     _ensure_loaded()
-    for fn in (*_DERIVE, *_DERIVE_LAST):
+    for fn in (*_DERIVE_FIRST, *_DERIVE, *_DERIVE_LAST):
         fn(doc, dirty)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 
-from brasbim.core import storeys
+from brasbim.core import storeys, units
 from brasbim.core.annotations import base, prims
 from brasbim.core.annotations.prims import Fill, Prims, Stroke, Text
 from brasbim.core.document import OpError
@@ -195,7 +195,8 @@ def _inside(ring, p) -> bool:
 
 
 def level_text(doc, storey, state) -> str:
-    return state["fixed"] or signed(level_value(doc, storey, state["at"]))
+    return state["fixed"] or units.length(doc, "level", level_value(doc, storey, state["at"]),
+                                          signed=True)
 
 
 def _level_build(doc, storey, state) -> Prims:

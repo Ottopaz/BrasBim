@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import ifcopenshell.geom
 import ifcopenshell.util.element
@@ -89,6 +89,8 @@ class Mesh:
     parts: dict | None = None  # parede por camadas: {material: triângulos (n, 3, 3)}
     glass: np.ndarray | None = None  # triângulos translúcidos (vidro), (n, 3) float32
     glass_colors: np.ndarray | None = None  # (n, 4): RGBA
+    # Contas da apresentação (luz, contorno), feitas na primeira vez que o estilo pede
+    cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def all_vertices(self) -> np.ndarray:
@@ -105,6 +107,100 @@ def _shaded(vertices: np.ndarray, color) -> np.ndarray:
     normals = normals / np.where(length > 0, length, 1)[:, None]
     light = 0.45 + 0.55 * np.abs(normals @ _LIGHT)
     return np.repeat(np.clip(np.outer(light, color), 0, 1), 3, axis=0).astype(np.float32)
+
+
+FEATURE_ANGLE = 20.0  # graus: acima disso a aresta entre duas faces é viva (spec/ui 43 §2.1)
+_WELD = 1e-5  # m: vértices mais perto que isto são o mesmo
+
+
+def _light(vertices: np.ndarray) -> np.ndarray:
+    """Fator de luz (n,) de cada vértice, pela normal do triângulo (o mesmo de ``_shaded``)."""
+    tri = vertices.reshape(-1, 3, 3).astype(np.float64)
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    length = np.linalg.norm(normals, axis=1)
+    normals = normals / np.where(length > 0, length, 1)[:, None]
+    return np.repeat(0.45 + 0.55 * np.abs(normals @ _LIGHT), 3).astype(np.float32)
+
+
+def light_of(mesh: Mesh) -> np.ndarray:
+    if "light" not in mesh.cache:
+        mesh.cache["light"] = _light(mesh.vertices) if len(mesh.vertices) else             np.zeros(0, dtype=np.float32)
+    return mesh.cache["light"]
+
+
+def flat_colors(mesh: Mesh) -> np.ndarray:
+    """Cores do material sem a luz (estilo chapado)."""
+    if "flat" not in mesh.cache:
+        light = light_of(mesh)
+        mesh.cache["flat"] = np.clip(mesh.colors / np.where(light > 0, light, 1)[:, None],
+                                     0, 1).astype(np.float32)
+    return mesh.cache["flat"]
+
+
+def feature_edges(vertices: np.ndarray, angle: float = FEATURE_ANGLE):
+    """Arestas do contorno de uma malha de triângulos soltos (n × 3, 3 por triângulo).
+
+    Devolve ``(vivas, lisas, normais)``: ``vivas`` (m, 3) em pares de pontos, as arestas
+    entre faces com ângulo maior que ``angle``, as bordas (só um triângulo) e as de mais de
+    dois; ``lisas`` (k, 2, 3), as emendas entre faces quase no mesmo plano, com as duas
+    normais (k, 2, 3), para achar as silhuetas pela posição do olho
+    (``silhouette_edges``)."""
+    empty = (np.zeros((0, 3), np.float32), np.zeros((0, 2, 3), np.float32),
+             np.zeros((0, 2, 3), np.float32))
+    tri = np.asarray(vertices, dtype=np.float64).reshape(-1, 3, 3)
+    if not len(tri):
+        return empty
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    length = np.linalg.norm(normals, axis=1)
+    keep = length > 1e-12
+    tri, normals = tri[keep], normals[keep] / length[keep][:, None]
+    if not len(tri):
+        return empty
+    keys = np.round(tri.reshape(-1, 3) / _WELD).astype(np.int64)
+    points, index = np.unique(keys, axis=0, return_inverse=True)
+    index = index.reshape(-1, 3)
+    points = points.astype(np.float64) * _WELD
+    pairs = np.concatenate([index[:, [0, 1]], index[:, [1, 2]], index[:, [2, 0]]])
+    owner = np.tile(np.arange(len(index)), 3)
+    pairs.sort(axis=1)
+    distinct = pairs[:, 0] != pairs[:, 1]  # triângulo fino: a aresta some na solda
+    pairs, owner = pairs[distinct], owner[distinct]
+    if not len(pairs):
+        return empty
+    unique, inverse, counts = np.unique(pairs, axis=0, return_inverse=True,
+                                        return_counts=True)
+    inverse = inverse.ravel()
+    hard = counts != 2
+    order = np.argsort(inverse, kind="stable")
+    starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
+    two = np.flatnonzero(counts == 2)
+    first, second = owner[order[starts[two]]], owner[order[starts[two] + 1]]
+    cos = np.einsum("ij,ij->i", normals[first], normals[second])
+    sharp = cos < math.cos(math.radians(angle))
+    hard[two[sharp]] = True
+    smooth = two[~sharp]
+    hard_pts = points[unique[hard]].reshape(-1, 3).astype(np.float32)
+    smooth_pts = points[unique[smooth]].astype(np.float32)
+    smooth_n = np.stack([normals[first[~sharp]], normals[second[~sharp]]], axis=1)
+    return hard_pts, smooth_pts, smooth_n.astype(np.float32)
+
+
+def contour_of(mesh: Mesh):
+    """(vivas, lisas, normais) da malha (opacos e vidros), guardadas na malha."""
+    if "contour" not in mesh.cache:
+        mesh.cache["contour"] = feature_edges(mesh.all_vertices)
+    return mesh.cache["contour"]
+
+
+def silhouette_edges(smooth: np.ndarray, normals: np.ndarray, eye) -> np.ndarray:
+    """Das emendas lisas, as que separam uma face de frente de uma de costas para o olho
+    (a silhueta das superfícies curvas facetadas), em pares de pontos (m, 3)."""
+    if not len(smooth):
+        return np.zeros((0, 3), np.float32)
+    v = np.asarray(eye, dtype=np.float32) - smooth[:, 0]
+    a = np.einsum("ij,ij->i", normals[:, 0], v)
+    b = np.einsum("ij,ij->i", normals[:, 1], v)
+    return smooth[a * b < 0].reshape(-1, 3)
 
 
 def _shading_of(ifc, name: str):
@@ -208,14 +304,57 @@ class Scene:
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
-        self.meshes: dict[str, Mesh] = {}
+        self._meshes: dict[str, Mesh] = {}
+        # Pedidos adiados (``defer_update``/``defer_load``): feitos na primeira leitura de
+        # ``meshes``, isto é, quando alguém (a vista 3D na tela, a imagem da prancha, a
+        # escolha por raio) precisa das malhas. Com o 3D fechado, editar não triangula.
+        self._pending: set[str] = set()
+        self._pending_load = None  # (ifc, doc)
+        self._pending_ifc = None
         # Malhas das camadas ocultas (spec/ui 18 §4), guardadas para voltar sem tesselar.
         self._hidden: dict[str, Mesh] = {}
         self.extra_hidden: set[str] = set()  # ocultos da janela (spec/ui 39 §4)
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
-        self.tessellations = 0
+        self._tessellations = 0
         self._settings = ifcopenshell.geom.settings()
         self._settings.set("use-world-coords", True)
+
+    @property
+    def meshes(self) -> dict[str, Mesh]:
+        self._flush()
+        return self._meshes
+
+    @property
+    def tessellations(self) -> int:
+        """Triangulações feitas até agora (com os pedidos adiados já feitos)."""
+        self._flush()
+        return self._tessellations
+
+    @property
+    def pending(self) -> bool:
+        return bool(self._pending) or self._pending_load is not None
+
+    def _flush(self) -> None:
+        if self._pending_load is not None:
+            (ifc, doc), self._pending_load = self._pending_load, None
+            self._pending = set()
+            self.load(ifc, doc)
+        elif self._pending:
+            changed, self._pending = self._pending, set()
+            self.update(self._pending_ifc, changed)
+
+    def defer_load(self, ifc, doc=None) -> None:
+        """Como ``load``, feito só quando as malhas forem lidas."""
+        self._pending_load = (ifc, doc)
+        self._pending = set()
+
+    def defer_update(self, ifc, changed) -> None:
+        """Como ``update``, feito só quando as malhas forem lidas (junta os pedidos)."""
+        if self._pending_load is not None:
+            self._pending_load = (ifc, self._pending_load[1])
+            return
+        self._pending_ifc = ifc
+        self._pending |= set(changed)
 
     def _wanted(self, entity) -> bool:
         if entity is None:
@@ -276,7 +415,7 @@ class Scene:
         return self._single(entity)
 
     def _single(self, entity) -> Mesh | None:
-        self.tessellations += 1
+        self._tessellations += 1
         try:
             shape = props.body_shape(self._settings, entity)
         except RuntimeError as e:
@@ -340,6 +479,7 @@ class Scene:
         return self._layers[storey.GlobalId]
 
     def load(self, ifc, doc=None) -> None:
+        self._pending_load, self._pending = None, set()  # a carga cobre o que esperava
         if doc is not None:
             self.doc = doc
         self._layers.clear()

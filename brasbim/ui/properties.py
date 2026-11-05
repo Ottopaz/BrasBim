@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, edit_state, geom2d, intervention
+from brasbim.core import display_layers, edit_state, geom2d, intervention, type_variants, units
 from brasbim.core import storeys as storeys_
 from brasbim.core.annotations import base as annotation_base
 from brasbim.core.annotations import commands as ac
@@ -50,9 +50,19 @@ from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
 from brasbim.core.objects import elements as objects
+from brasbim.core.ops import Transaction
 from brasbim.core.ops.history import combine
 from brasbim.core.quantities import legal_areas, tables
-from brasbim.core.structure import beams, columns, profiles, roofs, skylights, slab_openings, slabs
+from brasbim.core.structure import (
+    beams,
+    columns,
+    profiles,
+    roofs,
+    skylights,
+    slab_openings,
+    slabs,
+    solids,
+)
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
@@ -62,7 +72,7 @@ from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui import icons, theme
-from brasbim.ui.tools import block_grid, fmt, parse_number
+from brasbim.ui.tools import block_grid, fmt, fmt_len, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
@@ -195,6 +205,15 @@ def _parse_points(text: str) -> list:
     return points
 
 
+_METERS = re.compile(r"^(-?\d+(?:,\d+)?) m$")
+_NOT_LENGTH = ("°", "%", "(mm)", "²", "Espelhos", "CA máximo", "Escala", "Cópias")
+
+
+def is_length_label(label: str) -> bool:
+    """O campo é um comprimento? (Os que não são dizem a unidade no nome.)"""
+    return not any(mark in label for mark in _NOT_LENGTH)
+
+
 def _common(values):
     """O valor comum a todos, ou ``None`` se diferem (campo "vários")."""
     values = list(values)
@@ -312,6 +331,8 @@ class PropertiesPanel(QScrollArea):
             self._tool_options()
         if active is None and selection:
             self._layer_field(selection)
+        if active is None and len(selection) == 1:
+            self._solid_field(selection[0])
         self.lying = self.wants_lying()
         if self.lying:
             self._render_lying()
@@ -428,14 +449,28 @@ class PropertiesPanel(QScrollArea):
         self.groups.append(_Group(re.sub(r"</?b>", "", text)))
 
     def _read(self, label: str, text: str) -> None:
+        m = _METERS.match(text)  # "5,00 m": na unidade de trabalho (spec/ui 44 §2a)
+        if m and units.work_unit() != "m":
+            text = f"{fmt_len(float(m.group(1).replace(',', '.')))} {units.work_symbol()}"
         value = QLabel(text)
         value.setStyleSheet(f"color: {theme.INK}")
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._add(label, value)
 
     def _number(self, label: str, value, commit, placeholder: str = "",
-                allow_empty: bool = False) -> QLineEdit:
-        field = QLineEdit("" if value is None else fmt(value))
+                allow_empty: bool = False, length: bool | None = None) -> QLineEdit:
+        """Campo numérico; comprimento (``length``, ou pelo nome: sem °, %, mm, ²) é lido e
+        escrito na unidade de trabalho do projeto (spec/ui 44 §2a)."""
+        if length is None:
+            length = is_length_label(label)
+        if length:
+            inner = commit
+
+            def commit(v):
+                inner(None if v is None else units.from_work(v))
+        shown = fmt_len(value, exact=True) if length and value is not None else (
+            "" if value is None else fmt(value))
+        field = QLineEdit(shown)
         field.setPlaceholderText(placeholder)
         original = field.text()
 
@@ -456,7 +491,7 @@ class PropertiesPanel(QScrollArea):
             commit(number)
 
         field.editingFinished.connect(done)
-        self._add(label, field)
+        self._add(units.unit_label(label) if length else label, field)
         return field
 
     def _combo(self, label: str, items, current, commit) -> QComboBox:
@@ -490,8 +525,25 @@ class PropertiesPanel(QScrollArea):
         self._add(holder)
 
     def _types(self, ifc_class: str):
-        return [(e.Name or e.GlobalId, e.GlobalId)
-                for e in sorted(self.session.doc.ifc.by_type(ifc_class), key=lambda e: e.Name or "")]
+        """Tipos da lista; cada variante de espessura logo abaixo do tipo de origem, recuada
+        (spec/ui 43 §3.1)."""
+        doc = self.session.doc
+        found = sorted(doc.ifc.by_type(ifc_class), key=lambda e: e.Name or "")
+        out = []
+        for e in found:
+            if type_variants.is_variant(e) and type_variants.origin_of(doc, e) is not e:
+                continue
+            out.append((e.Name or e.GlobalId, e.GlobalId))
+            if ifc_class in ("IfcWallType", "IfcSlabType"):
+                out += [(f"    {v.Name}", v.GlobalId) for v in type_variants.variants_of(doc, e)]
+        return out
+
+    def _thickness_field(self, elements, values) -> None:
+        """Espessura editável de parede e laje (spec/ui 43 §3): valor diferente do tipo dá
+        uma variante do tipo; o do tipo volta ao tipo de origem."""
+        doc = self.session.doc
+        self._number("Espessura", _common(round(v, 6) for v in values), lambda v: self._run(
+            lambda: type_variants.set_thickness(doc, elements, v)), placeholder=MIXED)
 
     def _run(self, build) -> None:
         self.session.run(build)
@@ -511,6 +563,8 @@ class PropertiesPanel(QScrollArea):
         self._combo("Tipo", self._types("IfcWallType"), state["type"],
                     lambda v: edit(type=v))
         self._edit_type_button("IfcWallType", state["type"])
+        if not foreign and state["type"] and not type_variants.is_profile(doc.get(state["type"])):
+            self._thickness_field([wall], [wall_types.thickness(doc.get(state["type"]))])
         self._combo("Linha de referência", REF_LINES, state["ref_line"],
                     lambda v: edit(ref_line=v))
         flip = QCheckBox("Inverter camadas")
@@ -571,7 +625,8 @@ class PropertiesPanel(QScrollArea):
         self._section("Quantidades")
         thickness = wall_types.thickness(doc.get(state["type"], "IfcWallType"))
         self._read("Comprimento no eixo", f"{fmt(q.get('Length', 0))} m")
-        self._read("Espessura", f"{fmt(thickness)} m")
+        if foreign or not state["type"]:
+            self._read("Espessura", f"{fmt(thickness)} m")
         self._read("Altura", f"{fmt(height)} m")
         self._read("Área lateral bruta", f"{fmt(q.get('GrossSideArea', 0))} m²")
         self._read("Área lateral líquida", f"{fmt(q.get('NetSideArea', 0))} m²")
@@ -629,6 +684,9 @@ class PropertiesPanel(QScrollArea):
 
         self._combo("Tipo", self._types("IfcWallType"), _common(s["type"] for s in states),
                     lambda v: edit(type=v))
+        if all(s["type"] and not type_variants.is_profile(doc.get(s["type"])) for s in states):
+            self._thickness_field(walls, [wall_types.thickness(doc.get(s["type"]))
+                                          for s in states])
         self._combo("Linha de referência", REF_LINES, _common(s["ref_line"] for s in states),
                     lambda v: edit(ref_line=v))
         self._combo("Inverter camadas", [("Não", False), ("Sim", True)],
@@ -969,7 +1027,10 @@ class PropertiesPanel(QScrollArea):
             self._structure_tail(slab, state)
             return
         thickness = slabs.thickness(doc, state)
-        self._read("Espessura", f"{fmt(thickness)} m")
+        if state["type"]:
+            self._thickness_field([slab], [thickness])
+        else:
+            self._read("Espessura", f"{fmt(thickness)} m")
         self._section("Altura")
         self._number("Deslocamento do topo", state["top_offset"], lambda v: self._run(
             lambda: sc.edit_element(doc, slab, top_offset=v)))
@@ -1231,6 +1292,30 @@ class PropertiesPanel(QScrollArea):
             self._read("Edição", "Travado" if len(locked) == len(selection)
                        else f"{len(locked)} travados")
 
+    def _solid_field(self, element) -> None:
+        """Recortado por / Recorta (spec/ui 41 §3), cada um com o botão de tirar."""
+        doc = self.session.doc
+        for title, rels in (("Recortado por", solids.cut_by(element)),
+                            ("Recorta", solids.cutting(element))):
+            rels = [r for r in rels if r.RelatingElement and r.RelatedElement]
+            if not rels:
+                continue
+            self._section(title)
+            for rel in rels:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                text = QLabel(solids.describe(rel, element))
+                text.setStyleSheet(f"color: {theme.INK}")
+                row.addWidget(text, 1)
+                button = QPushButton("Tirar")
+                button.setToolTip("Tira este recorte; a forma volta a ser a de antes")
+                button.clicked.connect(lambda _=False, r=rel: self._run(
+                    lambda: Transaction("Tirar recorte", solids.remove_ops(doc, [r]))))
+                row.addWidget(button)
+                holder = QWidget()
+                holder.setLayout(row)
+                self._add(holder)
+
     def _sheet(self, sheet) -> None:
         """Prancha (spec/ui 15 §5)."""
         doc = self.session.doc
@@ -1488,6 +1573,8 @@ class PropertiesPanel(QScrollArea):
         elif own:
             module = sc.module_of(elements[0])
             self._section_fields([e for e, _ in own], [module.section(doc, s) for _, s in own])
+        if elements[0].is_a("IfcSlab") and len(own) == len(elements)                 and all(s["type"] for s in states):
+            self._thickness_field(elements, [slabs.thickness(doc, s) for s in states])
         if elements[0].is_a("IfcSlab"):
             self._number("Deslocamento do topo", _common(s["top_offset"] for s in states),
                          lambda v: self._run(lambda: sc.edit_elements(doc, elements,
@@ -1565,7 +1652,7 @@ class PropertiesPanel(QScrollArea):
             elif kind == "number":
                 self._number(name, _common(v.get(key) for v in values),
                              lambda v, k=key: commit(k, v), placeholder=MIXED
-                             if len(values) > 1 else "", allow_empty=True)
+                             if len(values) > 1 else "", allow_empty=True, length=False)
             elif kind == "read":
                 current = _common(v.get(key) for v in values)
                 self._read(name, MIXED if current is None and len(values) > 1

@@ -130,9 +130,27 @@ class Built:
         self.box = od.bounds(self.solids)
 
 
+_BUILT: dict[str, Built] = {}  # (tipo, valores, espelho) em JSON → cálculo pronto
+
+
 def build(doc: Document, type_state: dict, occurrence_values: dict, mirror: bool) -> Built:
+    """Cálculo da ocorrência. O mesmo tipo com os mesmos valores dá o mesmo resultado:
+    fica guardado (a planta refaz os objetos a cada edição do modelo). Quem usa o
+    ``Built`` só lê."""
+    try:
+        key = json.dumps([type_state, occurrence_values, bool(mirror)], sort_keys=True)
+    except (TypeError, ValueError):
+        key = None
+    found = _BUILT.get(key) if key is not None else None
+    if found is not None:
+        return found
     values = ot.evaluate(type_state, occurrence_values)
-    return Built(type_state, values, mirror)
+    built = Built(type_state, values, mirror)
+    if key is not None:
+        if len(_BUILT) > 2048:
+            _BUILT.clear()
+        _BUILT[key] = built
+    return built
 
 
 def resolve(doc: Document, state: dict) -> tuple[object, dict, Built]:

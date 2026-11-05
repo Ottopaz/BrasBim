@@ -4,7 +4,163 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑10‑30 (perfil complexo, etapa 2: parede de perfil).*
+*Atualizado em 2026‑11‑04 (unidades do projeto — spec/ui 44, etapa 1 —; espessura livre;
+janela de operações de sólidos; Área de seleção ao lado do Selecionar; estudo do perfil
+complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
+
+> **Perfil complexo junto da linha de 11‑04 (2026‑11‑04):** as etapas 1 e 2 do perfil
+> (viga, pilar e parede; notas de 2026‑10‑30 mais abaixo) estavam só em `origin/main`,
+> que divergiu do `main` local em `29725b3`. Trazidas por *cherry-pick* (spec, etapa 1,
+> etapa 2) para o ramo `worktree-perfil-complexo`, sobre o `main` local. Os pontos da
+> spec/ui 41 do estudo de 11‑04 viraram **(o)** e **(p)** (as letras (l)–(n) já eram das
+> respostas de 10‑30). Ajustes da junção: espessura livre recusa a parede de perfil
+> (`type_variants.is_profile`; sobra da barra Opções é ignorada; o campo some da ficha;
+> PC11); pilar de perfil recortado por sólido recorta cada parte na planta
+> (`plan._structure_regions`); editor de perfis na unidade de trabalho (cm/mm). **Juntado
+> depois** (mesmo dia): merge de `origin/main` no ramo, com `d9296c5` (autoria) e `c498e83`
+> (revisão geral antes do instalador); as etapas antigas do perfil em `origin/main` ficaram
+> pela versão deste ramo, e `PROFILE_KINDS` (sem uso) saiu como na revisão. Próximo do perfil: o que o
+> estudo de 11‑04 acrescenta e ainda falta (referência das aberturas, criar perfil a
+> partir da seleção, giro/espelhar em viga e pilar, linha entre partes do mesmo material)
+> e a etapa (3) borda de laje/cobertura e caminho livre.
+
+> **Perfil complexo, estudo a fundo (2026‑11‑04, pedido do revisor):**
+> `research_notes/.../complemento_perfil_complexo.md`, a partir da ajuda AC18–AC29 e de
+> resumos do fórum (o fórum bloqueia a leitura automática). Cobre:
+> - o editor, as partes e o papel de cada uma;
+> - a origem, a medida nominal e a total;
+> - esticar e os deslocamentos nomeados;
+> - o uso em parede, viga e pilar, com aberturas e junções;
+> - a planta (o Archicad não tem vista simbólica), a captura, os quantitativos e o IFC.
+>
+> O §12 lista 14 decisões; a spec/ui 41 §4 foi refinada e ganhou os pontos (o) e (p) (eram (l) e (m), renomeados ao juntar com a etapa 1).
+> Próximo: as etapas 1 e 2 já existiam (ver a nota acima); falta o que o §12 acrescenta.
+
+> **Unidades do projeto (2026‑11‑04, pedido do revisor):** pesquisa
+> `research_notes/.../complemento_unidades.md` (Archicad: unidades de trabalho, cotas por
+> tipo, unidades de cálculo — três lugares separados) e **spec/ui 44**
+> (`spec/ui/44-unidades-do-projeto.md`, em revisão; pontos (a)–(e) no §6). **Etapa 1
+> feita:** `brasbim/core/units.py` — sete tipos de medida (cota linear, raio, ângulo,
+> nível, elevação, esquadrias, área), cada um com unidade (m/cm/mm; m²/cm²; graus
+> decimais ou g/m/s), casas 0–4, mostrar a unidade e ocultar zeros finais; Pset
+> `BrasBim_Unidades` (`Config` JSON) no `IfcProject`, op `units.set`; padrão = o texto de
+> antes. Aplicado em `dimensions`, `drawing2d` (raio/ângulo), `drafting.level_text`,
+> `drawings/section` (níveis), `plan.door_label` e área dos ambientes; chave
+> `units.key` no cache das anotações. Interface: botão **Unidades** na barra da vista
+> ("m · 2 casas", padrões prontos m/cm/mm que mudam linear, raio e esquadria) e
+> Projeto > Unidades do projeto (`ui/units_dialog.py`, tabela com exemplo ao lado).
+> A barra da vista passa a só ícones quando o vão entre grupos fica < 24 px
+> (`view_bar.MIN_GAP`). Testes UN01–UN05. **Medidas de trabalho (§2a, mesmo dia, "quero
+> trabalhar em cm"):** tipo `work` em `units`; `units.activate(doc)` (sessão, a cada
+> mudança) e `to_work`/`from_work`/`fmt_work`/`unit_label`; `tools.fmt_len`/`parse_len`;
+> convertem o quadro de medidas (campos com unidade "m"), a linha de comando
+> (`command_input.parse_point`, número para o 1º campo), a ficha (`properties._number`
+> pelo nome do campo — `is_length_label` —, `_read` de "N m"), a barra Opções (pela dica)
+> e a janela de tipos (`types_dialog.exact`/`parse_len`). Padrões prontos mudam o trabalho
+> junto. UN06. Falta: barra de estado, objetos paramétricos, terreno. **Etapa 2 (spec §4):** unidade de trabalho
+> (digitar nos campos), tabelas, padrões com nome por vista, precisão extra.
+
+> **Onde paramos (2026‑11‑04):** o revisor confirmou o 3D ("ótimo e adequado") e respondeu
+> a spec/ui 43 §5: (b) seis estilos servem, (c) estilos do usuário **só na preferência**,
+> (d) esticar a camada estrutural, (e) variantes recolhidas sob o tipo, (f) ordem ok.
+> **Espessura livre feita** (§3): `brasbim/core/type_variants.py` — a variante é um
+> `IfcWallType`/`IfcSlabType` de verdade com a camada `LoadBearing` (laje: a mais grossa)
+> esticada, nome "Alvenaria 14 · 17 cm", Pset `BrasBim_Variante` (`Origem`, `Espessura`,
+> op `type_variant.set`); `set_thickness` (ficha, uma ou várias), `create_with` (barra
+> Opções: a variante nasce na transação da parede/laje), variante sem uso sai na mesma
+> transação, derivação `first=True` refaz as variantes quando o tipo de origem muda.
+> Interface: campo Espessura editável na ficha (parede, paredes, laje, lajes), campo na
+> barra Opções de Parede e Laje (vazio = a do tipo), variantes recuadas sob a origem na
+> ficha e na janela de tipos, fora das listas das ferramentas. Testes EL01–EL06
+> (`tests/test_espessura_livre.py`, `tests/test_interface_espessura.py`).
+> **Janela de operações de sólidos** (pedido do revisor, spec/ui 41 §3a):
+> `ui/solid_panel.py`, painel solto "Operações de sólidos" (Editar, botão direito, abre
+> junto com a ferramenta Recortar por elemento, Exibir > Painéis): seleção atual com a
+> contagem por tipo, listas Alvos/Operadores com quantidade (Usar a seleção, Somar a
+> seleção, Limpar; clicar seleciona), operação por ícones, Aplicar e Tirar entre eles
+> (`solids.remove_between`). SO08. **Área de seleção** foi para o topo da barra
+> Ferramentas, ao lado do Selecionar (`toolbars.TOP_TOOLS`). **Perfil complexo** (spec/ui
+> 41 §4): etapas 1 e 2 vieram de `origin/main` (nota no topo). **Falta da 43:** estilos do usuário (E3D04,
+> agora só preferência) e sombras.
+
+> **3D em raio-X corrigido (2026‑11‑01):** a causa das "arestas invisíveis" era o QPainter
+> do controle de orientação (spec/ui 40 §4), que deixa o teste de profundidade desligado
+> no fim do quadro; ele só era ligado no `initializeGL`, então do 2º quadro em diante faces
+> e arestas de trás apareciam através das da frente. `view3d._reset_state()` refaz o
+> estado no começo de cada `draw_scene` (teste E3D05). Conferido com a vista real
+> (`grabFramebuffer`, três quadros seguidos). A imagem da prancha não sofria disso.
+
+> **Desempenho (2026‑11‑01):** `scripts/simular_usuario.py` simula uma pessoa (3
+> pavimentos, portas, janelas, lajes, cobertura, móveis, árvores, desfazer, 3D, salvar) e
+> cronometra cada ação (tempos.csv + perfil). Correções feitas pelo perfil, sem mudar
+> comportamento: painel Projeto só refaz a árvore de objetos quando tipos/contagens mudam
+> (`_objects_signature`); `formula.parse` guardado por texto (árvore só de tuplas);
+> `types.definition_from_text` guarda a definição normalizada por texto (cópia por
+> `json.loads`); `elements.build` guarda o `Built` por (tipo, valores, espelho); a cena 3D
+> adia triangular (`Scene.defer_update`/`defer_load`, feito na 1ª leitura de `meshes`;
+> `View3D.fit` adiado se escondido); altura do título dos painéis guardada. Resultado:
+> janela 719→367 ms, porta 556→287, laje 935→480, Enter da parede 496→244, mover 1,7→0,9 s,
+> trocar de pavimento 219→65; suíte 291→244 s. **Próximos gargalos:** carregar o 3D
+> (~17 ms por elemento no `create_shape`; usar o iterador do IfcOpenShell em vários
+> núcleos), desfazer (~0,5–0,7 s), derivação das junções a cada edição.
+
+> **Feito depois (2026‑11‑01, pedido "corrija as vistas urgentemente no 3D"):** spec/ui 43
+> **§2 implementado** sem esperar as respostas (a)–(c): `brasbim/core/view_styles.py`
+> (seis estilos de fábrica), `scene3d.feature_edges`/`silhouette_edges` (contorno: arestas
+> > 20°, bordas e silhuetas pelo olho; cache na `Mesh.cache`), `view3d.draw_scene(...,
+> style=, related=)`; Exibir > Estilo do 3D e botão na barra da vista (só com o 3D à
+> vista), preferência `3d/estilo`, vista 3D salva com `options.style`
+> (`saved_views.VIEW3D_OPTIONS`) e imagem da prancha pelo estilo gravado
+> (`saved_views_ui.style_of`). A janela do 3D pede profundidade 24 bits e 4 amostras.
+> **Laje no 3D:** `handles3d.SlabHandle3D` / `slab_handles` — vértices, meio dos lados,
+> centro (mover livre), setas X/Y (só naquele eixo; Distância no quadro) e seta Z (sobe e
+> desce: muda o `top_offset`; "Deslocamento do topo" no quadro, aceita negativo). **Quadro das
+> operações de sólidos** (`ui/solid_badge.py`): elemento com recorte selecionado sozinho
+> mostra junto dele o ícone da operação e "Recortado por X · subtrair"/"Recorta Y · …";
+> clicar seleciona o outro; os outros ficam tracejados em laranja na planta e tingidos no
+> 3D (`solids.partners`, `theme.SOLID_PARTNER`). Testes `tests/test_estilos_3d.py`
+> (E3D01–E3D03 e laje) e SO07. **Falta:** estilos do usuário (E3D04), sombras, espessura
+> livre (§3, aguarda (d)–(f)).
+
+> **Pedidos novos (2026‑11‑01, depois dos sólidos):** o revisor não gosta do 3D mostrando
+> "arestas invisíveis" e quer outras apresentações (sem essas linhas, modelo todo branco),
+> estudando as do Archicad; e quer editar a espessura da parede e da laje com qualquer
+> valor, mantendo os tipos. Não entendeu a operação de sólidos (explicada na conversa).
+> Feito: pesquisa `research_notes/.../complemento_estilos_3d.md` e **spec/ui 43**
+> (`spec/ui/43-estilos-3d-e-espessura-livre.md`, em revisão): estilos com nome (faces,
+> luz, arestas "contorno"/todas/nenhuma), seis de fábrica (Colorido, Colorido sem linhas,
+> Maquete branca, Maquete branca sem linhas, Desenho, Arame); espessura livre por
+> **variante do tipo** (camada estrutural estica; Pset `BrasBim_Variante`). Pontos (a)–(f)
+> no §5. **Próximo:** respostas e implementar, espessura primeiro. O §4 da spec 41 (perfil
+> complexo) fica depois.
+
+> **Onde paramos (2026‑11‑01):** o revisor respondeu (f) Somar fica de fora e (g) apagar
+> o operador desfaz o recorte com aviso (registrado no §6 da spec/ui 41). **Núcleo do §3
+> feito** em `brasbim/core/structure/solids.py`: `IfcRelInterferesElements` (alvo =
+> Relating, operador = Related, `ImpliedOrder`, tipo SUBTRACT/SUBTRACT_UP/SUBTRACT_DOWN/
+> INTERSECT; os recortes por prioridade continuam com o tipo `Recorte`, e
+> `cuts.sync_relations` só mexe nesses). Ops `solid.add`/`solid.remove` (`add_ops`,
+> `remove_ops`, `remove_for_deleted`; recusa par repetido, ciclo, alvo de outra origem ou
+> água de cobertura). Alvos: parede, pilar, viga, laje; operador: qualquer elemento com
+> corpo ou cobertura (pelas águas). Derivação nova em duas pontas (`register_derive(...,
+> first=True)` em `ops/base.py`): `expand` põe na lista suja o alvo de um operador que
+> mudou; `derive` (última, antes de camadas e situação) embrulha o `Body` refeito: para
+> cima/baixo um `IfcPolygonalBoundedHalfSpace` por face de baixo/cima do operador
+> (`Clipping`), subtrair/intersectar o corpo do operador como `IfcTriangulatedFaceSet`
+> (`CSG`); `NetVolume` desconta o volume medido. Excluir (`delete.delete_elements`) tira
+> antes as relações (o desfazer devolve; a do operador avisa). Testes SO01–SO05 em
+> `tests/test_solidos.py`. **Interface (SO06) feita:** ferramenta `SolidCutTool`
+> ("Recortar por elemento", grupo Edição e menu Editar; com a seleção clica os
+> operadores, sem seleção clica os alvos antes; Enter ou botão direito aplica; operação na
+> barra Opções; ícones `solid_*`), ficha com "Recortado por"/"Recorta" e botão Tirar,
+> Editar > Tirar recortes e o mesmo no botão direito (`solids.remove_cuts`). Planta: o
+> alvo cortado pelo plano é desenhado pela seção do corpo resultante
+> (`solids.section`, fatia da malha + shapely), que recorta as peças da parede e o
+> contorno de pilar/viga/laje (`_Element.cut_rings`). SO06 em
+> `tests/test_interface_solidos.py`; 855 testes. **Falta:** copiar alvo + operador juntos
+> levar o recorte (hoje a cópia nunca leva); teste no aplicativo pelo revisor. **Próximo:**
+> §4 perfil complexo (PC01–PC06), que espera (h)–(k). Achado: `test_vb09_ordem_de_desenho` falha às vezes (desempate por
+> GlobalId aleatório), sem relação com isto.
 
 > **Perfil complexo, etapa 2 (2026‑10‑30, noite):** fechadas as pendências da etapa 1 (3D
 > por material da parte em pilar e viga, `scene3d._profile_layers`; planta do pilar com
@@ -539,7 +695,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (845 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Testes (905 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |

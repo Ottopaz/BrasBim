@@ -27,11 +27,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import display_layers, intervention, profile_defs
+from brasbim.core import display_layers, intervention, profile_defs, type_variants, units
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
-from brasbim.core.structure import profiles, roofs
+from brasbim.core.structure import profiles, roofs, solids
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.docks import plain_title
@@ -57,6 +57,7 @@ from brasbim.ui.tools import (
     SkylightTool,
     SlabOpeningTool,
     SlabTool,
+    SolidCutTool,
     SpaceTool,
     SplineTool,
     StairTool,
@@ -70,10 +71,12 @@ from brasbim.ui.tools import (
     _WallTool,
     floor_types,
     fmt,
+    fmt_len,
     parse_number,
     roof_types,
 )
 
+_NOT_LENGTH = ("grau", "°", "%", "mm de papel", "Cópias")
 # (ferramenta, ícone, nome, uso) — o uso vai na dica e na barra de estado (§3).
 ICON_PX = 20  # ícones das barras (spec/ui 11 §3)
 
@@ -148,6 +151,9 @@ EDIT_TOOLS = [
      "elemento")),
     ("selection_area", "selection_area", "Área de seleção",
      ("marque uma área; arraste um vértice dentro dela para esticar; Esc remove a área")),
+    ("solid_cut", "solid_cut", "Recortar por elemento",
+     ("com os elementos a recortar selecionados, clique o que recorta; Enter aplica; "
+      "operação na barra de opções")),
 ]
 WALL_FORMS = [
     ("wall", "wall_line", "Parede reta",
@@ -330,9 +336,13 @@ class _FlowBox(QWidget):
         self.setSizePolicy(policy)
 
 
-# Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" fica sempre no topo.
+# Grupos da barra de ferramentas (spec/ui 34 §3); "Selecionar" e "Área de seleção" ficam
+# sempre no topo, lado a lado (pedido do revisor, 2026-11-04). Na paleta de comandos a área
+# continua no grupo Edição.
+TOP_TOOLS = [CREATE_TOOLS[0], *[t for t in EDIT_TOOLS if t[0] == "selection_area"]]
 TOOL_GROUPS = [("Modelagem", "modelagem", CREATE_TOOLS[1:]), ("Vistas", "vistas", VIEW_TOOLS),
-               ("Documentação", "documentacao", DOC_TOOLS), ("Edição", "edicao", EDIT_TOOLS)]
+               ("Documentação", "documentacao", DOC_TOOLS),
+               ("Edição", "edicao", [t for t in EDIT_TOOLS if t not in TOP_TOOLS])]
 SITUATION_BUTTONS = (("EXISTENTE", "sit_existing"), ("A_DEMOLIR", "sit_demolish"),
                      ("A_CONSTRUIR", "sit_new"))  # spec/ui 39 §7
 _WIDE = 90  # px: abaixo disso o título do grupo vira só a seta (com a dica)
@@ -361,7 +371,8 @@ class ToolsBar(QDockWidget):
         column.setContentsMargins(3, 3, 3, 3)
         column.setSpacing(2)
         top = _FlowBox()
-        self._add(window, top, CREATE_TOOLS[0])
+        for item in TOP_TOOLS:
+            self._add(window, top, item)
         column.addWidget(top)
         collapsed = self._collapsed()
         for title, key, tools in TOOL_GROUPS:
@@ -664,6 +675,16 @@ class OptionsBar(QToolBar):
                             "a área vale em todos os pavimentos (tracejado grosso)")],
                           tool.all_storeys, lambda v: (tool.set_all_storeys(v),
                                                        self.window_.plan.update()))
+        elif isinstance(tool, SolidCutTool):  # spec/ui 41 §3
+            self._choices([(solids.SUBTRACT, "solid_subtract", "Subtrair",
+                            "tira do elemento o volume do que recorta"),
+                           (solids.UP, "solid_up", "Subtrair para cima",
+                            "tira o que recorta e tudo acima dele (cobertura aparando parede)"),
+                           (solids.DOWN, "solid_down", "Subtrair para baixo",
+                            "tira o que recorta e tudo abaixo dele"),
+                           (solids.INTERSECT, "solid_intersect", "Interseção",
+                            "fica só a parte dentro do que recorta")],
+                          tool.operation, lambda v: setattr(tool, "operation", v))
         elif isinstance(tool, FilletTool):  # spec/ui 23 §6
             self._label("Raio")
             self._number(tool.radius, lambda v: setattr(tool, "radius", v),
@@ -831,7 +852,17 @@ class OptionsBar(QToolBar):
 
     def _number(self, value, commit, tip: str, placeholder: str = "",
                 allow_empty: bool = False) -> QLineEdit:
-        field = QLineEdit("" if value is None else fmt(value))
+        """Campo da barra; comprimento (a dica não fala em graus, %, nem mm de papel) é lido
+        e escrito na unidade de trabalho (spec/ui 44 §2a)."""
+        length = not any(mark in tip for mark in _NOT_LENGTH)
+        if length:
+            inner = commit
+
+            def commit(v):
+                inner(None if v is None else units.from_work(v))
+            tip = units.unit_label(tip)
+        shown = "" if value is None else (fmt_len(value, exact=True) if length else fmt(value))
+        field = QLineEdit(shown)
         field.setFixedWidth(64)
         field.setToolTip(tip)
         field.setPlaceholderText(placeholder)
@@ -854,8 +885,33 @@ class OptionsBar(QToolBar):
         return field
 
     def _types(self, ifc_class: str):
+        """Tipos da lista; as variantes de espessura ficam de fora (o campo Espessura as
+        escolhe, spec/ui 43 §3.1)."""
         doc = self.window_.session.doc
-        return sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+        return sorted((t for t in doc.ifc.by_type(ifc_class)
+                       if not type_variants.is_variant(t)), key=lambda t: t.Name or "")
+
+    def _thickness(self, tool, noun: str) -> None:
+        """Espessura livre (spec/ui 43 §3.1): vazio = a do tipo."""
+        options = self.tool.options if tool is None else tool.options
+        doc = self.window_.session.doc
+        found = doc.find(options.type) if options.type else None
+        nominal = type_variants.type_thickness(found) if found is not None else None
+
+        def commit(value):
+            if value is not None and value <= 0:
+                self.window_.session.message("Espessura: deve ser maior que zero", "recusa")
+                return
+            if value is not None and nominal is not None and abs(value - nominal) < 1e-6:
+                value = None
+            options.thickness = value
+            self.window_.plan.update()
+
+        self._label("Espessura")
+        self._number(options.thickness, commit,
+                     f"Espessura {noun} (m); vazio = a do tipo",
+                     placeholder=fmt_len(nominal) if nominal is not None else "",
+                     allow_empty=True)
 
     # --- parede (§4.1) --------------------------------------------------------------
 
@@ -876,6 +932,7 @@ class OptionsBar(QToolBar):
                            "abre o tipo escolhido na janela de tipos de parede")
         edit.triggered.connect(lambda: window.edit_type("IfcWallType", options.type))
         self.addAction(edit)
+        self._thickness(tool, "da próxima parede")
         self.addSeparator()
         self._choices(REF_LINES, options.ref_line, lambda v: setattr(options, "ref_line", v))
         self.addSeparator()
@@ -1128,6 +1185,7 @@ class OptionsBar(QToolBar):
 
         self._type_group("IfcSlabType", options, set_type, "da próxima laje",
                          floor_types(self.window_.session.doc))
+        self._thickness(tool, "da próxima laje")
         self.addSeparator()
 
         def set_mode(value):

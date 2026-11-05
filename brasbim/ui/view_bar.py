@@ -24,11 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import display_layers as dl
-from brasbim.core import intervention, pens
+from brasbim.core import intervention, pens, units, view_styles
 from brasbim.ui import icons, theme
 from brasbim.ui.plan_view import ZOOM_PERCENTS, PlanView
 from brasbim.ui.section_view import SectionView
 
+MIN_GAP = 24  # px entre os grupos; menos que isso, os botões ficam só com o ícone
 DETAIL_LABEL = {"simple": "Simplificado", "layers": "Por camadas"}
 
 
@@ -118,7 +119,15 @@ class ViewBar(QFrame):
         self.situation = _menu_button("situation", "Situação na vista (projeto legal)")
         for action in window.situation_actions.values():
             self.situation.menu().addAction(action)
-        for widget in (self.layers, self.detail, self.pens, self.situation):
+        self.style3d = _menu_button("style3d", "Estilo do 3D")  # spec/ui 43 §2.3
+        for action in window.style3d_actions.values():
+            self.style3d.menu().addAction(action)
+        layout.addWidget(self.style3d)
+        layout.addStretch(1)
+        # Unidades do projeto (spec/ui 44): resumo da cota linear; padrões e a janela
+        self.units = _menu_button("units", "Unidades e casas decimais das medidas do desenho")
+        self.units.menu().aboutToShow.connect(self._fill_units)
+        for widget in (self.layers, self.detail, self.pens, self.situation, self.units):
             layout.addWidget(widget)
             layout.addStretch(1)
         # Só quando há: "N ocultos · Mostrar tudo" (§4)
@@ -139,8 +148,8 @@ class ViewBar(QFrame):
         self.pick_locked.setChecked(True)
         self.pick_locked.toggled.connect(window.set_pick_locked)
         layout.addWidget(self.pick_locked)
-        self.texted = (self.rotation, self.layers, self.detail, self.pens, self.situation,
-                       self.show_all)
+        self.texted = (self.rotation, self.style3d, self.layers, self.detail, self.pens,
+                       self.situation, self.units, self.show_all)
         self.tips = {b: b.toolTip() for b in self.texted}
         self.plan_only = (self.rotation, self.scale_icon, window.scale_combo, self.detail)
 
@@ -188,6 +197,8 @@ class ViewBar(QFrame):
             widget.setVisible(view is not None)
         for widget in self.plan_only:
             widget.setVisible(plan)
+        self.style3d.setVisible(self.window.showing_3d())
+        self.style3d.setText(view_styles.name_of(self.window.view3d.style_id))
         doc = self.window.session.doc
         comb = dl.matching_combination(doc, self.window.session.display)
         self.layers.setVisible(dl.read_config(doc) is not None)
@@ -195,6 +206,7 @@ class ViewBar(QFrame):
         self.detail.setText(DETAIL_LABEL[self.window.ctx.detail])
         self.pens.setText(pens.table(pens.config(doc), self.window.window_pens)["name"])
         self.situation.setText(intervention.VIEW_LABEL[doc.situation_view])
+        self.units.setText(units.summary(doc))
         self.pick_locked.setChecked(self.window.ctx.pick_locked)
         hidden = len(self.window.ctx.hidden)
         self.hidden_label.setText(f"{hidden} oculto{'s' if hidden != 1 else ''} ·")
@@ -217,7 +229,9 @@ class ViewBar(QFrame):
         for button in self.texted:
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             button.setToolTip(f"{self.tips[button]}: {button.text()}")
-        if self.layout().sizeHint().width() > self.width():
+        layout = self.layout()
+        gaps = sum(1 for i in range(layout.count()) if layout.itemAt(i).spacerItem())
+        if layout.sizeHint().width() + gaps * MIN_GAP > self.width():
             for button in self.texted:
                 button.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
@@ -235,6 +249,21 @@ class ViewBar(QFrame):
         self.next.setEnabled(view.can_go(1))
         if not self.zoom.lineEdit().hasFocus():
             self.zoom.lineEdit().setText(f"{round(view.zoom_percent())}%")
+
+    def _fill_units(self) -> None:
+        """Padrões prontos (marcado o que vale agora) e a janela (spec/ui 44 §2)."""
+        menu = self.units.menu()
+        menu.clear()
+        session = self.window.session
+        current = units.preset_of(session.doc)
+        for key, text, _ in units.PRESETS:
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(key == current)
+            action.triggered.connect(lambda _=False, k=key: session.run(
+                lambda: units.apply_preset(session.doc, k)))
+        menu.addSeparator()
+        menu.addAction("Unidades do projeto", self.window.edit_units)
 
     def _fill_layers(self) -> None:
         menu = self.layers.menu()

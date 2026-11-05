@@ -15,7 +15,8 @@ estado em JSON no Pset ``BrasBim_VistaSalva``::
      "crop": [x0, y0, x1, y1] | None, "camera": None, "pens": None}
 
 ``kind``: ``plan`` (``storey``), ``section`` (``view``: corte ou fachada) ou ``3d``
-(``camera``: ``target``, ``distance``, ``yaw``, ``pitch``, ``aspect``). As camadas são uma
+(``camera``: ``target``, ``distance``, ``yaw``, ``pitch``, ``aspect``; ``options``: o
+``style`` do 3D, spec/ui 43). As camadas são uma
 cópia do estado da hora de salvar (§2); ``None`` = como estiver a janela.
 """
 
@@ -48,6 +49,7 @@ PLAN_OPTIONS = {"detail": "simple", "show_above": True, "show_tags": True,
                 "situation": "project",  # filtro de situação (spec/ui 31 §3)
                 "rotation": 0.0}  # giro da vista em graus (spec/ui 39 §3)
 CAMERA_KEYS = ("target", "distance", "yaw", "pitch", "aspect")
+VIEW3D_OPTIONS = {"style": "colorido"}  # estilo do 3D (spec/ui 43 §2.3)
 WIDTH_3D = 160.0  # mm: largura padrão da vista 3D no papel (§5)
 
 
@@ -158,7 +160,8 @@ def _validate(doc: Document, state: dict) -> None:
     crop = state.get("crop")
     if crop is not None and (len(crop) != 4 or crop[2] <= crop[0] or crop[3] <= crop[1]):
         raise OpError("recorte inválido")
-    unknown = set(state.get("options") or {}) - set(PLAN_OPTIONS)
+    known = VIEW3D_OPTIONS if state["kind"] == "3d" else PLAN_OPTIONS
+    unknown = set(state.get("options") or {}) - set(known)
     if unknown:
         raise OpError(f"opções desconhecidas: {sorted(unknown)}")
     if options(state)["situation"] not in intervention.VIEW_LABEL:

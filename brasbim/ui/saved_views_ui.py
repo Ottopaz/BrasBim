@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from brasbim.core import display_layers, snap, storeys
+from brasbim.core import display_layers, snap, storeys, view_styles
 from brasbim.core.drawings import saved_views, views
 from brasbim.ui import theme
 
@@ -87,7 +87,8 @@ def capture(window, crop: bool = False) -> tuple[str, dict, str] | None:
             "target": [round(float(v), 4) for v in camera.target],
             "distance": round(float(camera.distance), 4), "yaw": round(float(camera.yaw), 6),
             "pitch": round(float(camera.pitch), 6),
-            "aspect": round(widget.width() / max(widget.height(), 1), 4)}}
+            "aspect": round(widget.width() / max(widget.height(), 1), 4)},
+            "options": {"style": widget.style_id}}  # estilo do 3D (spec/ui 43 §2.3)
         return kind, fields, saved_views.suggest_name(doc, "3d")
     view = widget.view
     if view is None:
@@ -198,6 +199,11 @@ def _scene_for(doc, layers):
     return SimpleNamespace(meshes={g: m for g, m in every.items() if g not in hidden})
 
 
+def style_of(state: dict) -> dict:
+    """Estilo do 3D gravado na vista salva (spec/ui 43 §2.3); sem ele, o padrão."""
+    return view_styles.get((state.get("options") or {}).get("style"))
+
+
 def render_3d(doc, state: dict, width: int, height: int) -> QImage | None:
     """Imagem da vista 3D salva com ``width`` × ``height`` pixels, ou ``None`` se não há
     OpenGL."""
@@ -230,7 +236,8 @@ def render_3d(doc, state: dict, width: int, height: int) -> QImage | None:
             camera.target = np.array(cam["target"], dtype=float)
             camera.distance, camera.yaw, camera.pitch = (cam["distance"], cam["yaw"],
                                                          cam["pitch"])
-            view3d.draw_scene(_scene_for(doc, state.get("layers")), camera, width / height)
+            view3d.draw_scene(_scene_for(doc, state.get("layers")), camera, width / height,
+                              style=style_of(state))
             GL.glFinish()
             fbo.release()
             image = fbo.toImage()

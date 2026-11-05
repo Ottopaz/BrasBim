@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from brasbim.core import materials, plan, profile_defs
+from brasbim.core import materials, plan, profile_defs, type_variants, units
 from brasbim.core.document import OpError
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, params, window_types
@@ -49,8 +49,8 @@ from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import types as wall_types
 from brasbim.ui import icons, theme
 from brasbim.ui.materials_dialog import MaterialsDialog
-from brasbim.ui.tools import fmt, parse_number
-from brasbim.ui.tools import fmt_exact as exact
+from brasbim.ui.tools import fmt, fmt_len, parse_len, parse_number
+from brasbim.ui.tools import fmt_exact as plain_exact
 
 WALL_USES = [("Parede maciça", "SOLIDWALL"), ("Divisória", "PARTITIONING"),
              ("Parapeito / mureta", "PARAPET"), ("Parede hidráulica", "PLUMBINGWALL")]
@@ -60,13 +60,19 @@ FILLS = [("Nenhum", "none"), ("Sólido", "solid"), ("Hachura", "hatch")]
 DOOR_OPERATIONS = params.DOOR_OPERATION_LABELS
 
 
+def exact(value: float) -> str:
+    """Comprimento (m) no campo, na unidade de trabalho, sem perder o milímetro (spec/ui 44
+    §2a)."""
+    return fmt_len(value, exact=True)
+
+
 def _number_text(value) -> str:
     return "" if value is None else exact(value)
 
 
 def _parse_optional(text: str):
     text = text.strip()
-    return None if not text else parse_number(text)
+    return None if not text else parse_len(text)
 
 
 def _dispose(item) -> None:
@@ -138,7 +144,18 @@ class TypesDialog(QDialog):
     # --- lista -------------------------------------------------------------------------
 
     def types(self) -> list:
-        return sorted(self.session.doc.ifc.by_type(self.ifc_class), key=lambda t: t.Name or "")
+        """Tipos em ordem de nome; cada variante de espessura logo abaixo do tipo de origem
+        (spec/ui 43 §3.1)."""
+        doc = self.session.doc
+        found = sorted(doc.ifc.by_type(self.ifc_class), key=lambda t: t.Name or "")
+        out = []
+        for t in found:
+            if type_variants.is_variant(t) and type_variants.origin_of(doc, t) is not t:
+                continue
+            out.append(t)
+            if self.ifc_class in ("IfcWallType", "IfcSlabType"):
+                out += type_variants.variants_of(doc, t)
+        return out
 
     def uses(self, element_type) -> int:
         return len(ifcopenshell.util.element.get_types(element_type))
@@ -149,7 +166,8 @@ class TypesDialog(QDialog):
         self.list.clear()
         row = 0
         for i, element_type in enumerate(self.types()):
-            item = QListWidgetItem(f"{element_type.Name}  ({self.uses(element_type)})")
+            indent = "    " if type_variants.is_variant(element_type) else ""
+            item = QListWidgetItem(f"{indent}{element_type.Name}  ({self.uses(element_type)})")
             item.setData(Qt.UserRole, element_type.GlobalId)
             self.list.addItem(item)
             if element_type.GlobalId == select:
@@ -312,14 +330,14 @@ class _PlanStyleDialog(TypesDialog):
         self.form.addRow(QLabel("<span style='color:#666'>Representação na planta</span>"))
         self.fill = self._combo("Preenchimento", FILLS, style["fill"])
         self.fill_color = self._color("Cor do preenchimento", style["fill_color"])
-        self.hatch_angle = self._line("Ângulo da hachura (°)", exact(style["hatch_angle"]))
-        self.hatch_spacing = self._line("Espaçamento da hachura", exact(style["hatch_spacing"]))
+        self.hatch_angle = self._line("Ângulo da hachura (°)", plain_exact(style["hatch_angle"]))
+        self.hatch_spacing = self._line("Espaçamento da hachura", plain_exact(style["hatch_spacing"]))
         weights = list(wall_types.LINE_WEIGHTS)
         if style["line_weight"] not in weights:
             weights.append(style["line_weight"])
         self.line_weight = self._combo(
             "Espessura da linha",
-            [(f"{exact(w * 1000)} mm", w) for w in sorted(weights)], style["line_weight"])
+            [(f"{plain_exact(w * 1000)} mm", w) for w in sorted(weights)], style["line_weight"])
         self.line_color = self._color("Cor da linha", style["line_color"])
         self.sample = QLabel()
         self.form.addRow("Amostra", self.sample)
@@ -486,7 +504,7 @@ class WallTypesDialog(_PlanStyleDialog):
     def _update_total(self) -> None:
         try:
             total = sum(layer["thickness"] for layer in self.read_layers())
-            self.total.setText(f"{fmt(total)} m")
+            self.total.setText(f"{fmt_len(total, exact=True)} {units.work_symbol()}")
         except ValueError:
             self.total.setText("—")
 
@@ -500,7 +518,7 @@ class WallTypesDialog(_PlanStyleDialog):
                 raise ValueError(f"camada {row + 1} sem material")
             priority = self.layers.item(row, 3).text().strip()
             layer.update(material=material,
-                         thickness=parse_number(self.layers.item(row, 1).text()),
+                         thickness=parse_len(self.layers.item(row, 1).text()),
                          category=self.layers.cellWidget(row, 2).currentData(),
                          priority=int(priority) if priority else None)
             out.append(layer)
@@ -633,7 +651,7 @@ class DoorTypesDialog(TypesDialog):
         if not name:
             raise ValueError("nome vazio")
         operation = self.operation.currentData()
-        depth = parse_number(self.panel_depth.text())
+        depth = parse_len(self.panel_depth.text())
         if operation == state["operation_type"]:
             panels = [{**p, "depth": depth} for p in state["panels"]]
         else:
@@ -643,11 +661,11 @@ class DoorTypesDialog(TypesDialog):
             "code": self.code.text().strip() or None,
             "operation_type": operation,
             "panels": panels,
-            "defaults": {"width": parse_number(self.width.text()),
-                         "height": parse_number(self.height.text()),
-                         "base": parse_number(self.base.text())},
+            "defaults": {"width": parse_len(self.width.text()),
+                         "height": parse_len(self.height.text()),
+                         "base": parse_len(self.base.text())},
             "lining": {**state["lining"],
-                       "thickness": parse_number(self.lining_thickness.text()),
+                       "thickness": parse_len(self.lining_thickness.text()),
                        "depth": _parse_optional(self.lining_depth.text()),
                        "casing_thickness": _parse_optional(self.casing_thickness.text()),
                        "casing_depth": _parse_optional(self.casing_depth.text())},
@@ -852,23 +870,23 @@ class WindowTypesDialog(TypesDialog):
         if partitioning != state["partitioning"]:
             state = window_types.with_partitioning(state, partitioning)
         vertical = params.is_vertical(partitioning)
-        frame = {"frame_depth": parse_number(self.frame_depth.text()),
-                 "frame_thickness": parse_number(self.frame_thickness.text())}
+        frame = {"frame_depth": parse_len(self.frame_depth.text()),
+                 "frame_thickness": parse_len(self.frame_thickness.text())}
         state["panels"] = [{**p, **frame, "operation": combo.currentData()}
                            for p, combo in zip(state["panels"], self.operations)]
-        lining = {**state["lining"], "depth": parse_number(self.lining_depth.text()),
-                  "thickness": parse_number(self.lining_thickness.text())}
+        lining = {**state["lining"], "depth": parse_len(self.lining_depth.text()),
+                  "thickness": parse_len(self.lining_thickness.text())}
         if self.bar_positions is not None:
             key = "mullion" if vertical else "transom"
-            lining[f"{key}_thickness"] = parse_number(self.bar_thickness.text())
+            lining[f"{key}_thickness"] = parse_len(self.bar_thickness.text())
             lining[f"{key}_offsets"] = [round(parse_number(f.text()) / 100, 9)
                                         for f in self.bar_positions]
         state["lining"] = lining
         state["name"] = self.name.text().strip()
         state["code"] = self.code.text().strip() or None
-        state["defaults"] = {"width": parse_number(self.width.text()),
-                             "height": parse_number(self.height.text()),
-                             "base": parse_number(self.base.text())}
+        state["defaults"] = {"width": parse_len(self.width.text()),
+                             "height": parse_len(self.height.text()),
+                             "base": parse_len(self.base.text())}
         state["materials"] = {k: f.text().strip() or None for k, f in self.materials.items()}
         chosen = self.partitioning.currentData()
         if chosen != partitioning:  # divisão trocada agora: caixilhos refeitos
@@ -1122,12 +1140,12 @@ class _ProfileTypesDialog(_StructureTypesDialog):
     def read_section(self) -> dict:
         shape = self.shape.currentData()
         if shape == "circle":
-            return {"shape": "circle", "d": parse_number(self.d.text())}
+            return {"shape": "circle", "d": parse_len(self.d.text())}
         if shape == profiles.CUSTOM:
             return {"shape": profiles.CUSTOM, "profile": self.profile.currentData(),
-                    "b": parse_number(self.b.text()), "h": parse_number(self.h.text())}
-        return {"shape": "rect", "b": parse_number(self.b.text()),
-                "h": parse_number(self.h.text())}
+                    "b": parse_len(self.b.text()), "h": parse_len(self.h.text())}
+        return {"shape": "rect", "b": parse_len(self.b.text()),
+                "h": parse_len(self.h.text())}
 
     def _redraw(self, *_args) -> None:
         shape = self.shape.currentData()
@@ -1265,7 +1283,7 @@ class SlabTypesDialog(_StructureTypesDialog):
     def _update_total(self) -> None:
         try:
             total = sum(layer["thickness"] for layer in self.read_layers())
-            self.total.setText(f"{fmt(total)} m")
+            self.total.setText(f"{fmt_len(total, exact=True)} {units.work_symbol()}")
         except ValueError:
             self.total.setText("—")
 
@@ -1276,7 +1294,7 @@ class SlabTypesDialog(_StructureTypesDialog):
             if not material:
                 raise ValueError(f"camada {row + 1} sem material")
             out.append({"material": material,
-                        "thickness": parse_number(self.layers.item(row, 1).text())})
+                        "thickness": parse_len(self.layers.item(row, 1).text())})
         return out
 
     def add_layer(self) -> None:

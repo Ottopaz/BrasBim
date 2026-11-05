@@ -44,6 +44,7 @@ from brasbim.core import (
     pens,
     select_similar,
     snap,
+    view_styles,
 )
 from brasbim.core import plan as plan_mod
 from brasbim.core import storeys as storeys_
@@ -54,6 +55,7 @@ from brasbim.core.drawings import saved_views
 from brasbim.core.drawings import sheets as sheets_
 from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
+from brasbim.core.structure import solids
 from brasbim.core.walls import commands as cmd
 from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
 from brasbim.ui.assistant import AssistantPanel
@@ -81,6 +83,8 @@ from brasbim.ui.scene3d import STANDARD_VIEWS, Scene
 from brasbim.ui.section_view import SectionView
 from brasbim.ui.selection_bar import SelectionBar
 from brasbim.ui.session import Session
+from brasbim.ui.solid_badge import SolidBadge
+from brasbim.ui.solid_panel import SolidPanel
 from brasbim.ui.table_view import TableView
 from brasbim.ui.team_panel import JoinDialog, TeamPanel
 from brasbim.ui.toolbars import OptionsBar, ToolsBar, history_bar
@@ -103,6 +107,7 @@ _LEVEL_COLOR = {"recusa": theme.ERROR, "aviso": theme.WARN, "info": theme.INK}
 SELECT_MODE_KEY = "selecao/somar_cliques"  # spec/ui 28 §4
 SHEET_LIMITS_KEY = "prancha/limites_dos_desenhos"  # spec/ui 29 §3
 SITUATION_VIEW_KEY = "situacao/vista"  # spec/ui 31 §3
+STYLE3D_KEY = "3d/estilo"  # spec/ui 43 §2.3
 VIEW_BAR_KEY = "barras/barra_da_vista"  # spec/ui 39 §2
 DRAW_ORDER = (("front", "Trazer para a frente"), ("back", "Mandar para trás"),
               ("forward", "Um passo à frente"), ("backward", "Um passo atrás"),
@@ -252,6 +257,7 @@ class MainWindow(QMainWindow):
         view.context_requested.connect(
             lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
         view.selection_bar = SelectionBar(view, self.run_selection_action)
+        view.solid_badge = SolidBadge(view, lambda gid: self.session.select([gid]))
 
     # --- montagem --------------------------------------------------------------------
 
@@ -363,6 +369,19 @@ class MainWindow(QMainWindow):
         self.team = TeamPanel(self.session)
         self.team_dock = self._dock("Equipe", "equipe", self.team, Qt.RightDockWidgetArea)
         self.team_dock.hide()
+        # Operações de sólidos (spec/ui 41 §3a): solta, aberta pelo menu ou pela ferramenta
+        self.solids_panel = SolidPanel(self.session)
+        self.solids_dock = self._dock("Operações de sólidos", "operacoes_solidos",
+                                      self.solids_panel, Qt.RightDockWidgetArea)
+        self.solids_dock.setFloating(True)
+        self.solids_dock.resize(340, 520)
+        self.solids_dock.hide()
+
+    def show_solids_panel(self) -> None:
+        """Editar > Operações de sólidos (spec/ui 41 §3a)."""
+        self.solids_dock.show()
+        self.solids_dock.raise_()
+        self.solids_panel.refresh()
 
     def _action(self, menu, text, slot, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -435,8 +454,11 @@ class MainWindow(QMainWindow):
             self._action(order_menu, text, lambda _=False, m=mode: self.draw_order(m))
         for key, text in (("offset", "Deslocar paralela"), ("trim", "Aparar/estender"),
                           ("fillet", "Concordar"), ("measure", "Medir"),
-                          ("selection_area", "Área de seleção")):
+                          ("selection_area", "Área de seleção"),
+                          ("solid_cut", "Recortar por elemento")):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
+        self._action(edit_menu, "Operações de sólidos", self.show_solids_panel)
+        self._action(edit_menu, "Tirar recortes", self.remove_solid_cuts)
         self._action(edit_menu, "Remover área de seleção", self.remove_selection_area)
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
         group = QActionGroup(self)
@@ -469,6 +491,16 @@ class MainWindow(QMainWindow):
             if key == "iso_sw":
                 standard.addSeparator()
             self._action(standard, label, lambda _=False, k=key: self.standard_view(k))
+        style_menu = view_menu.addMenu("Estilo do 3D")  # spec/ui 43 §2
+        group = QActionGroup(self)
+        self.style3d_actions = {}
+        for style in view_styles.FACTORY:
+            action = self._action(style_menu, style["name"],
+                                  lambda _=False, k=style["id"]: self.set_style3d(k))
+            action.setCheckable(True)
+            group.addAction(action)
+            self.style3d_actions[style["id"]] = action
+        self.style3d_actions[view_styles.DEFAULT].setChecked(True)
         self._action(view_menu, "Salvar vista", lambda: self.save_view(), "Ctrl+Alt+S")
         self.show_in_plan_action = self._action(view_menu, "Mostrar na planta",
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
@@ -500,6 +532,7 @@ class MainWindow(QMainWindow):
         library_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
         self.panels_menu.addAction(library_action)
         self.panels_menu.addAction(self.team_dock.toggleViewAction())
+        self.panels_menu.addAction(self.solids_dock.toggleViewAction())
         self.bars_menu = view_menu.addMenu("Barras")
         self._action(view_menu, "Reorganizar barras", self.reset_bars)
         self.selection_bar_action = self._action(view_menu, "Mini-barra da seleção",
@@ -572,6 +605,7 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Perfis", lambda: self.edit_profiles())
         self._action(project_menu, "Tabelas de penas", lambda: self.edit_pens())
         self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
+        self._action(project_menu, "Unidades do projeto", lambda: self.edit_units())
         project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto", lambda: self.new_object())
@@ -867,6 +901,9 @@ class MainWindow(QMainWindow):
             self.set_sheet_limits(str(limits).lower() == "true", save=False)
         if str(settings.value(VIEW_BAR_KEY, True)).lower() == "false":
             self.set_view_bar_visible(False)
+        style = settings.value(STYLE3D_KEY)
+        if style in self.style3d_actions:
+            self.set_style3d(style, save=False)
         situation = settings.value(SITUATION_VIEW_KEY)
         if situation in self.situation_actions:
             self.set_situation_view(situation, save=False)
@@ -903,7 +940,7 @@ class MainWindow(QMainWindow):
             self._refresh_section_views(reset=True)
             self.activate_tool("select")
             self.ctx.invalidate()
-            self.scene.load(self.session.doc.ifc, self.session.doc)
+            self.scene.defer_load(self.session.doc.ifc, self.session.doc)
             self.plan.rotations.clear()  # o giro é da sessão (spec/ui 39 §3)
             self.ctx.hidden = set()  # os ocultos também (§4)
             self.scene.extra_hidden = set()
@@ -920,9 +957,9 @@ class MainWindow(QMainWindow):
             self._refresh_section_views()
             if self.session.last_tx is not None and any(
                     op.op == "material.edit" for op in self.session.last_tx.ops):
-                self.scene.load(self.session.doc.ifc, self.session.doc)  # cores novas
+                self.scene.defer_load(self.session.doc.ifc, self.session.doc)  # cores novas
             else:
-                self.scene.update(self.session.doc.ifc, self.session.last_changed)
+                self.scene.defer_update(self.session.doc.ifc, self.session.last_changed)
             tool = self.toolbox.active
             if tool.cursor is not None and tool.name in ("door", "window", "split", "column"):
                 tool.move(tool.cursor, Mods())  # a pré-visualização vê o modelo novo
@@ -1013,6 +1050,23 @@ class MainWindow(QMainWindow):
             _settings().setValue(SELECT_MODE_KEY, bool(accumulate))
         self._set_hint(self.toolbox.active.hint())
         self.plan.update()
+
+    def showing_3d(self) -> bool:
+        """Há uma vista 3D à vista: lado a lado ou uma aba 3D à frente."""
+        return self.split or isinstance(self.tabs.currentWidget(), View3D)
+
+    def set_style3d(self, style_id: str, save: bool = True) -> None:
+        """Exibir > Estilo do 3D e a barra da vista (spec/ui 43 §2.3): vale para o 3D e o
+        3D da área; o último usado fica na preferência do usuário."""
+        style_id = view_styles.get(style_id)["id"]
+        self.style3d_actions[style_id].setChecked(True)
+        if save:
+            _settings().setValue(STYLE3D_KEY, style_id)
+        for view in [self.view3d, *self.findChildren(View3D)]:
+            view.style_id = style_id
+            view.update()
+        if hasattr(self, "view_bar"):
+            self.view_bar.refresh()
 
     def set_situation_view(self, view: str, save: bool = True) -> None:
         """Exibir > Situação na vista (spec/ui 31 §3): preferência, não vai para o IFC."""
@@ -1111,6 +1165,17 @@ class MainWindow(QMainWindow):
         done = self.session.run(lambda: pens.edit_config(doc, new))
         self._refresh_all()
         return done
+
+    def edit_units(self, apply=None) -> bool:
+        """Projeto > Unidades do projeto e barra da vista (spec/ui 44); ``apply`` recebe a
+        janela antes de mostrá-la (testes)."""
+        from brasbim.ui.units_dialog import UnitsDialog
+
+        dialog = UnitsDialog(self.session, self)
+        if apply is not None:
+            apply(dialog)
+            return dialog.result() == UnitsDialog.Accepted
+        return dialog.exec() == UnitsDialog.Accepted
 
     def edit_municipal(self, apply=None) -> bool:
         """Projeto > Perfil municipal… (spec/ui 31 §4); ``apply`` recebe o quadro antes de
@@ -1228,6 +1293,9 @@ class MainWindow(QMainWindow):
             camera.target = np.array(cam["target"], dtype=float)
             camera.distance, camera.yaw, camera.pitch = (cam["distance"], cam["yaw"],
                                                          cam["pitch"])
+            style = (state.get("options") or {}).get("style")
+            if style:  # spec/ui 43 §2.3
+                self.set_style3d(style)
             if not self.split:
                 self.set_view("3d")
             self.view3d.update()
@@ -1285,6 +1353,7 @@ class MainWindow(QMainWindow):
         view = self.area_views.get("area")
         if view is None:
             view = AreaView3D(self.scene, self.toolbox)
+            view.style_id = self.view3d.style_id
             self._hook_view(view)
             self.area_views["area"] = view
             self.tabs.addTab(view, view.title)
@@ -2096,6 +2165,8 @@ class MainWindow(QMainWindow):
 
     def activate_tool(self, name: str) -> None:
         tool = self.toolbox.activate(name)
+        if name == "solid_cut":  # a janela abre junto com a ferramenta (spec/ui 41 §3a)
+            self.show_solids_panel()
         self.tools_bar.mark(name)
         self.options_bar.show_for(tool)
         self._set_hint(tool.hint())
@@ -2167,6 +2238,7 @@ class MainWindow(QMainWindow):
                 half = max(self.splitter.width() // 2, 1)
                 self.splitter.setSizes([half, half])
                 self.split = True
+                self.view_bar.refresh()
             return
         if self.split:
             self._add_fixed_tabs()
@@ -2174,6 +2246,7 @@ class MainWindow(QMainWindow):
             self.tabs.show()
             self.split = False
         self.tabs.setCurrentWidget(self.plan if mode == "plan" else self.view3d)
+        self.view_bar.refresh()
 
     def standard_view(self, name: str) -> None:
         """Vista 3D padrão; com a planta à frente, passa para o 3D."""
@@ -2316,13 +2389,31 @@ class MainWindow(QMainWindow):
         hide = [("Ocultar selecionados", self.hide_selection),
                 ("Isolar selecionados", self.isolate_selection)]
         return (actions + hide + self._object_context(gid) + self._layer_actions(gid)
-                + self._order_context(gid) + self._lock_context(gid)
+                + self._order_context(gid) + self._solid_context(gid) + self._lock_context(gid)
                 + self._team_context(gid) + area)
 
     def _order_context(self, gid) -> list:
         if edit_state.annotation_order(self.session.doc.find(gid)) is None:
             return []
         return [(text, lambda m=mode: self.draw_order(m)) for mode, text in DRAW_ORDER]
+
+    def _solid_context(self, gid) -> list:
+        """Tirar recortes por elemento do que está sob o cursor (spec/ui 41 §3)."""
+        element = self.session.doc.find(gid)
+        if element is None or not (solids.can_be_operator(element)
+                                   or solids.can_be_target(self.session.doc, element)):
+            return []
+        out = [("Operações de sólidos", self.show_solids_panel)]
+        if solids.relations_of(element):
+            out.append(("Tirar recortes", lambda: self.remove_solid_cuts(gid)))
+        return out
+
+    def remove_solid_cuts(self, gid=None) -> None:
+        session = self.session
+        ids = session.selection if gid is None or gid in session.selection else {gid}
+        elements = [e for e in (session.doc.find(g) for g in sorted(ids)) if e is not None]
+        if session.run(lambda: solids.remove_cuts(session.doc, elements)):
+            self.properties.refresh()
 
     def _lock_context(self, gid) -> list:
         """Travar ou destravar o que está sob o cursor (com a seleção, se for dela)."""

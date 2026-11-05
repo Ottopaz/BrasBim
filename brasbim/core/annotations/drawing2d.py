@@ -13,7 +13,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import geom2d, storeys
+from brasbim.core import geom2d, storeys, units
 from brasbim.core.annotations import base, prims
 from brasbim.core.annotations.prims import Prims, Stroke, Text
 from brasbim.core.document import Document, OpError
@@ -248,11 +248,11 @@ def _radius_build(doc, storey, state) -> Prims:
         other = (center[0] - d[0] * radius, center[1] - d[1] * radius)
         out.strokes += [Stroke((other, tip), False, DIM_WEIGHT), _arrow(tip, center, k),
                         _arrow(other, center, k)]
-        text = f"Ø {fmt(2 * radius)}"
+        text = f"Ø {units.length(doc, 'radius', 2 * radius)}"
         mid = center
     else:
         out.strokes += [Stroke((center, tip), False, DIM_WEIGHT), _arrow(tip, center, k)]
-        text = f"R {fmt(radius)}"
+        text = f"R {units.length(doc, 'radius', radius)}"
         mid = ((center[0] + tip[0]) / 2, (center[1] + tip[1]) / 2)
     angle = prims.readable(state["angle"])
     up = (-math.sin(math.radians(angle)), math.cos(math.radians(angle)))
@@ -325,7 +325,7 @@ def _angle_build(doc, storey, state) -> Prims:
             out.strokes.append(Stroke((tuple(p), q), False, DIM_WEIGHT))
     mid_angle = math.radians(a0 + ((a1 - a0) % 360.0) / 2)
     at = (v[0] + (r + 1.5 * k) * math.cos(mid_angle), v[1] + (r + 1.5 * k) * math.sin(mid_angle))
-    text = f"{angle_value(state):.1f}°".replace(".", ",")
+    text = units.angle(doc, angle_value(state))
     out.texts.append(Text(at, text, TEXT * k, 0.0, "center", "middle"))
     return out
 

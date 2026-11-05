@@ -430,3 +430,204 @@ class FillingHandle3D:
                 pts.append((p[0], p[1], self.zb + z))
             lines.append(pts)
         return lines
+
+
+# --- laje (pedido do revisor em 2026-11-01) --------------------------------------------
+
+AXIS_ARM = 0.3  # fração do maior lado da laje: comprimento das setas X, Y e Z (mín. 1 m)
+
+
+def _slab_outline(doc, gid: str) -> list[Point]:
+    from brasbim.core.structure import commands as sc
+
+    return [(float(p[0]), float(p[1])) for p in sc.outline_of(doc, gid)]
+
+
+def slab_center(outline) -> Point:
+    """Centro da caixa do contorno (fica dentro da laje nas formas comuns)."""
+    xs, ys = [p[0] for p in outline], [p[1] for p in outline]
+    return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+
+
+def slab_handles(doc, gid: str, z: float) -> list[tuple[str, tuple[float, float, float]]]:
+    """Alças da laje no 3D, na face de cima (cota ``z``): vértices (``slab_v``), meio dos
+    lados (``slab_e``), o centro (``slab_move``, move livre no plano) e as pontas das setas
+    X, Y e Z (``slab_x``, ``slab_y``: movem só naquele eixo no plano; ``slab_z``: sobe e
+    desce a laje, mudando o deslocamento do topo)."""
+    outline = _slab_outline(doc, gid)
+    n = len(outline)
+    out = [(f"slab_v{i}", (*q, z)) for i, q in enumerate(outline)]
+    out += [(f"slab_e{i}", ((outline[i][0] + outline[(i + 1) % n][0]) / 2,
+                            (outline[i][1] + outline[(i + 1) % n][1]) / 2, z))
+            for i in range(n)]
+    cx, cy = slab_center(outline)
+    xs, ys = [p[0] for p in outline], [p[1] for p in outline]
+    arm = max(1.0, AXIS_ARM * max(max(xs) - min(xs), max(ys) - min(ys)))
+    out += [("slab_move", (cx, cy, z)), ("slab_x", (cx + arm, cy, z)),
+            ("slab_y", (cx, cy + arm, z)), ("slab_z", (cx, cy, z + arm))]
+    return out
+
+
+class SlabHandle3D:
+    """Arrasto de uma alça da laje no 3D: no plano da face de cima, vértice, lado
+    (paralelo), mover livre ou só em X ou em Y (com a distância no quadro); na vertical,
+    a seta Z (com o deslocamento do topo no quadro)."""
+
+    in_wall_plane = False
+
+    @property
+    def planar(self) -> bool:
+        return self.kind != "slab_z"
+
+    def __init__(self, ctx, gid: str, kind: str, z: float, z_bottom: float):
+        self.ctx, self.gid, self.kind = ctx, gid, kind
+        self.plane_z, self.z_bottom = z, z_bottom
+        self.outline0 = _slab_outline(ctx.session.doc, gid)
+        self.center = slab_center(self.outline0)
+        self.fixed: dict[str, float] = {}
+        self.moved = self.sticky = self.ctrl = False
+        self.point: Point | None = None
+        self.error: str | None = None
+        self.tx = None
+        self.anchor = None
+        self.wall = None  # a vista só usa nas alças da parede
+        handles = dict(slab_handles(ctx.session.doc, gid, z))
+        self.base = handles[kind][:2]
+        self.grip_z = handles[kind][2]
+        self.z: float | None = None  # cota do cursor (seta Z)
+        self.storey_z = self.top_offset0 = 0.0
+        if kind == "slab_z":
+            from brasbim.core.structure import commands as sc
+
+            doc = ctx.session.doc
+            self.top_offset0 = float(sc.read_state(doc, doc.get(gid))["top_offset"])
+
+    @property
+    def moving(self) -> bool:
+        return self.kind in ("slab_move", "slab_x", "slab_y")
+
+    def lift(self) -> float:
+        """Quanto a laje sobe (negativo: desce) com a seta Z."""
+        value = self.fixed.get("top_offset")
+        if value is not None:
+            return value - self.top_offset0
+        return (self.z - self.grip_z) if self.z is not None else 0.0
+
+    def snap_z(self, z: float, alt: bool, tol: float) -> float:
+        """Cota do cursor em centímetros inteiros de subida (Alt: livre)."""
+        if alt:
+            return z
+        return self.grip_z + round((z - self.grip_z) / 0.01) * 0.01
+
+    def _index(self) -> int:
+        return int(self.kind[6:])
+
+    def snap_point(self, p: Point, mods) -> Point:
+        """Atração como na planta; nas setas, o ponto vai para a reta do eixo."""
+        from brasbim.ui.tools import Mods
+
+        if self.kind.startswith("slab_e"):
+            return self.ctx.snap(p, Mods(alt=mods.alt)).point
+        q = self.ctx.snap(p, mods).point
+        if self.kind == "slab_x":
+            return (q[0], self.base[1])
+        if self.kind == "slab_y":
+            return (self.base[0], q[1])
+        return q
+
+    def vector(self) -> Point:
+        """Deslocamento da laje (alças de mover), com a distância digitada se houver."""
+        p = self.point or self.base
+        v = (p[0] - self.base[0], p[1] - self.base[1])
+        if self.kind == "slab_x":
+            v = (v[0], 0.0)
+        elif self.kind == "slab_y":
+            v = (0.0, v[1])
+        value = self.fixed.get("distance")
+        if value is not None:
+            length = math.hypot(*v)
+            if length < 1e-12:  # sem direção ainda: o sentido positivo do eixo
+                v = (0.0, 1.0) if self.kind == "slab_y" else (1.0, 0.0)
+                length = 1.0
+            v = (v[0] * value / length, v[1] * value / length)
+        return v
+
+    def _offset(self) -> float:
+        from brasbim.ui.tools import _edge_offset
+
+        value = self.fixed.get("distance")
+        offset = _edge_offset(self.outline0, self._index(), self.point) if self.point else 0.0
+        if value is not None:
+            offset = math.copysign(value, offset if abs(offset) > 1e-12 else 1.0)
+        return offset
+
+    def fields(self):
+        from brasbim.ui.tools import Field
+
+        if self.kind.startswith("slab_v"):
+            return []
+        if self.kind == "slab_z":
+            return [Field("top_offset", "Deslocamento do topo", "m",
+                          self.top_offset0 + self.lift(), self.fixed.get("top_offset"),
+                          negative=True)]
+        value = abs(self._offset()) if self.kind.startswith("slab_e") else \
+            math.hypot(*self.vector())
+        return [Field("distance", "Distância", "m", value, self.fixed.get("distance"))]
+
+    def check(self, key: str, value: float) -> str | None:
+        if key == "top_offset":
+            return None  # pode descer abaixo da cota do pavimento
+        return "a medida não pode ser negativa" if value < 0 else None
+
+    def update(self, point: Point | None = None, z: float | None = None,
+               ctrl: bool = False) -> None:
+        if point is not None:
+            self.point = point
+        if z is not None:
+            self.z = z
+        self.ctrl = ctrl
+        try:
+            self.tx, self.error = self.build(), None
+        except OpError as e:
+            self.tx, self.error = None, str(e)
+
+    def build(self):
+        from brasbim.core import transform
+        from brasbim.core.structure import commands as sc
+
+        doc = self.ctx.session.doc
+        if self.kind == "slab_z":
+            lift = self.lift()
+            if abs(lift) < 1e-9:
+                raise OpError("leve a seta para cima ou para baixo")
+            return sc.edit_element(doc, self.gid, top_offset=self.top_offset0 + lift)
+        if self.moving:
+            v = self.vector()
+            if math.hypot(*v) < 1e-9:
+                raise OpError("leve a alça para mover a laje")
+            return transform.move_elements(doc, [self.gid], v)
+        if self.kind.startswith("slab_e"):
+            return sc.offset_slab_edge(doc, self.gid, self._index(), self._offset())
+        if self.point is None:
+            raise OpError("leve a alça para o novo lugar do vértice")
+        return sc.move_slab_vertex(doc, self.gid, self._index(), self.point)
+
+    def new_outline(self) -> list[Point]:
+        if self.moving:
+            v = self.vector()
+            return [(p[0] + v[0], p[1] + v[1]) for p in self.outline0]
+        for op in self.tx.ops if self.tx is not None else []:
+            after = op.after if isinstance(op.after, dict) else None
+            if op.id == self.gid and after and after.get("outline"):
+                return [(float(p[0]), float(p[1])) for p in after["outline"]]
+        return self.outline0
+
+    def outline(self) -> list[list[tuple[float, float, float]]]:
+        """Contorno de cima e de baixo e as arestas verticais da laje na posição nova."""
+        pts = self.new_outline()
+        dz = self.lift() if self.kind == "slab_z" else 0.0
+        top = [(x, y, self.plane_z + dz) for x, y in pts]
+        bottom = [(x, y, self.z_bottom + dz) for x, y in pts]
+        lines = [top + top[:1], bottom + bottom[:1]]
+        lines += [[a, b] for a, b in zip(top, bottom, strict=True)]
+        return lines

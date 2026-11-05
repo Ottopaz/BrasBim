@@ -23,7 +23,7 @@ import ifcopenshell.api.root
 import ifcopenshell.api.spatial
 import ifcopenshell.util.element
 
-from brasbim.core import guid, props
+from brasbim.core import guid, props, units
 from brasbim.core.annotations import prims
 from brasbim.core.document import Document, OpError, local_placement
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
@@ -160,7 +160,7 @@ def build(doc: Document, element) -> prims.Prims:
     values = ifcopenshell.util.element.get_pset(element, PSET, should_inherit=False) or {}
     storey = ifcopenshell.util.element.get_container(element)
     key = (values.get("Parametros"), storey.GlobalId if storey else None,
-           storeys.scale(storey) if storey else None)
+           storeys.scale(storey) if storey else None, units.key(doc))
     cache = doc.__dict__.setdefault("_prims_cache", {})
     found = cache.get(element.GlobalId)
     if found is None or found[0] != key:

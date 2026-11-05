@@ -91,10 +91,10 @@ def test_ui38_deitado_no_topo(window):
     assert lines >= 2
     blocks = _blocks(panel)
     assert list(blocks)[:2] == ["Parede", "Altura"]
-    geometry = blocks["Quantidades"]
-    assert len(geometry) == 6
-    assert max(c for _, _, c in geometry) + 1 == math.ceil(6 / lines)
-    assert max(r for _, r, _ in geometry) + 1 == min(lines, 6)
+    geometry = blocks["Quantidades"]  # a espessura fica no alto, editável (spec/ui 43 §3)
+    assert len(geometry) == 5
+    assert max(c for _, _, c in geometry) + 1 == math.ceil(5 / lines)
+    assert max(r for _, r, _ in geometry) + 1 == min(lines, 5)
     _dock(window, Qt.RightDockWidgetArea, 300)  # volta a ficar em pé
     _settle()
     assert not panel.lying and panel.form is not None
