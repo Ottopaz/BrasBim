@@ -58,6 +58,14 @@ LIBRARY = {
     "Telha de fibrocimento": {"color": "#A9ADA8", "cut": _cut("solid", background="#8F938E")},
     "Telha metálica": {"color": "#9AA3AD", "cut": _cut("solid", background="#7F8892")},
     "Impermeabilização": {"color": "#4A4A48", "cut": _cut("solid", background="#3A3A38")},
+    # Forro e piso (spec/ui 46 §2): o corte do material de cima é a paginação na planta
+    "Gesso": {"color": "#F1EFEA", "cut": _cut("none")},
+    "PVC": {"color": "#F4F4F2", "cut": _cut("none")},
+    "Porcelanato": {"color": "#D9D4CB", "cut": _cut("cross", angle=0.0, spacing=0.60)},
+    "Cerâmica": {"color": "#C9B9A3", "cut": _cut("cross", angle=0.0, spacing=0.45)},
+    "Piso vinílico": {"color": "#B89C7A", "cut": _cut("lines", angle=0.0, spacing=0.18)},
+    "Piso laminado": {"color": "#A98564", "cut": _cut("lines", angle=0.0, spacing=0.20)},
+    "Argamassa": {"color": "#CFCAC0", "cut": _cut("none")},
     # Objetos paramétricos (objeto-parametrico.md §4.5)
     "Tecido": {"color": "#8E949E", "cut": _cut("none")},
     "Madeira MDF branca": {"color": "#ECEAE4", "cut": _cut("none")},

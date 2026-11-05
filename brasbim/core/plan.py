@@ -23,6 +23,9 @@ bordas das paredes. A laje mostra como furos os pilares que a atravessam e as ab
 cada abertura tem ``slab_opening`` (contorno, para escolher) e ``slab_opening_x`` (as
 diagonais do X; spec/ui 12 §3.5).
 
+Piso (spec/ui 46 §5): ``covering`` (contorno, para escolher), com a paginação do material
+de cima como região sob as paredes. O forro fica acima do plano de corte: não aparece.
+
 Regiões (``Region``) e bordas (``Edge``) desenham as paredes cortadas: no detalhe
 simplificado, uma mancha por tipo (paredes do mesmo tipo unidas, sem linha na junção);
 no por camadas, uma por material, com a prioridade das camadas nas junções
@@ -183,7 +186,7 @@ class Plan:
         for roles in (("annotation",), _COLUMN_ROLES, _BEAM_ROLES, ("opening_box",),
                       ("wall",),
                       ("wall_view", "wall_above"), _OPENING_ROLES, ("object_box",),
-                      ("space",), _SLAB_ROLES, _ROOF_ROLES):
+                      ("space",), ("covering",), _SLAB_ROLES, _ROOF_ROLES):
             found = [s for s in self.shapes if s.role in roles and s.owner not in self.locked]
             for s in found:
                 if s.closed and _inside(s.points, p):
@@ -217,7 +220,7 @@ class Plan:
         out = []
         groups = {**self.owners("wall"),
                   **self.owners(("door", "window", "column", "beam", "slab", "space",
-                                 "annotation", "roof")),
+                                 "annotation", "roof", "covering")),
                   **self.owners("object_box")}
         for owner, shapes in sorted(groups.items()):
             shapes = [s for s in shapes if s.role != "below"]
@@ -225,7 +228,8 @@ class Plan:
                 continue
             # A laje (e a abertura nela) só entra inteira, mesmo no cruzamento (spec/ui 10
             # §4.1).
-            if not crossing or shapes[0].role.startswith(("slab", "space", "roof")):
+            if not crossing or shapes[0].role.startswith(("slab", "space", "roof",
+                                                          "covering")):
                 if all(inside(q) for s in shapes for q in s.points):
                     out.append(owner)
             elif any(_touches(s, rect, inside) for s in shapes):
@@ -1118,6 +1122,7 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     # Lajes sob as paredes; pilares e vigas por cima (spec/ui 10 §6.1).
     plan.shapes += [s for s in structure if s.role.startswith("slab")]
     _structure_regions(plan, found, cut, ("slab",))
+    _floor_finishes(doc, storey, plan)
     cuts = [c for c in (_cut_wall(doc, wall, cut, show_above)
                         for wall in _continuous_last(_contained(storey, "IfcWall", doc)))
             if c is not None]
@@ -1165,6 +1170,30 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     plan.pens = {gid: pens.annotation_category(doc, doc.find(gid))
                  for gid in {owner for owner, _ in plan.annotations}}
     return plan
+
+
+def _floor_finishes(doc: Document, storey, plan: Plan) -> None:
+    """Pisos do pavimento: a paginação (o corte do material de cima) sob as paredes e o
+    contorno para escolher (spec/ui 46 §5)."""
+    from brasbim.core.structure import coverings
+
+    for e in _contained(storey, "IfcCovering", doc):
+        if not coverings.is_covering(e) or coverings.predefined(e) != "FLOORING":
+            continue
+        try:
+            state = coverings.read_state(e)
+            rings = coverings.net_rings(doc, state)
+            name = coverings.top_material(doc.get(state["type"]))
+        except (OpError, ValueError, KeyError) as error:
+            log.warning("piso %s fora da planta: %s", e.GlobalId, error)
+            continue
+        fill = {**materials.style(doc, name)["cut"], "source": "material"}
+        if fill["pattern"] != "none":
+            plan.regions.append(Region(e.GlobalId, [list(r) for r in rings], fill,
+                                       plan.colors.get(e.GlobalId),
+                                       plan.hatches.get(e.GlobalId)))
+        plan.shapes.append(Shape(e.GlobalId, "covering",
+                                 tuple(tuple(p) for p in state["outline"]), True))
 
 
 def _stairs_and_railings(doc: Document, storey, plan: Plan, cut: float) -> None:

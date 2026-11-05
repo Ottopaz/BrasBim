@@ -56,6 +56,7 @@ from brasbim.core.quantities import legal_areas, tables
 from brasbim.core.structure import (
     beams,
     columns,
+    coverings,
     profiles,
     roofs,
     skylights,
@@ -66,7 +67,7 @@ from brasbim.core.structure import (
 from brasbim.core.structure import commands as sc
 from brasbim.core.structure import common as structure_common
 from brasbim.core.walls import commands as cmd
-from brasbim.core.walls import openings, rebuild, top
+from brasbim.core.walls import openings, rebuild, roof_top, top
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
@@ -76,6 +77,7 @@ from brasbim.ui.tools import block_grid, fmt, fmt_len, parse_number
 
 REF_LINES = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
+WALL_TOPS = [*TOPS, ("Até a cobertura", "roof")]  # spec/ui 45
 TOP_SHAPES = [("Plano", "flat"), ("Inclinado", "slope"), ("Empena", "gable"), ("Livre", "free")]
 SLOPE_RISE, GABLE_RISE = 0.50, 1.00  # topo novo: fim e cumeeira acima da altura atual
 OPENS_TO = [("Face esquerda da parede", "left"), ("Face direita da parede", "right")]
@@ -296,6 +298,8 @@ class PropertiesPanel(QScrollArea):
             self._wall_opening(selection[0])
         elif len(selection) == 1 and selection[0].is_a("IfcGrid"):
             self._grid(selection[0])
+        elif len(selection) == 1 and coverings.is_covering(selection[0]):
+            self._covering(selection[0])
         elif len(selection) == 1 and _misc_kind(selection[0]):
             getattr(self, _misc_kind(selection[0]))(selection[0])
         elif len(selection) == 1 and objects.is_object(selection[0]):
@@ -577,8 +581,12 @@ class PropertiesPanel(QScrollArea):
         height = rebuild.height(doc, state)
 
         def top(mode):
+            if mode == "roof":
+                self._run(lambda: Transaction("Topo até a cobertura",
+                                              roof_top.to_roof_ops(doc, wall)))
+                return
             if mode == "fixed":
-                edit(top_mode="fixed", fixed_height=height)
+                edit(top_mode="fixed", fixed_height=height, top_roofs=[])
                 return
             storey = doc.get(state["storey"])
             above = doc.storey_above(storey)
@@ -586,17 +594,19 @@ class PropertiesPanel(QScrollArea):
                 self.session.message("não há pavimento acima deste", "recusa")
                 self.refresh()
                 return
-            edit(top_mode="storey", top_storey=above.GlobalId, top_offset=0.0)
+            edit(top_mode="storey", top_storey=above.GlobalId, top_offset=0.0, top_roofs=[])
 
         path = geom2d.path_from_dict(state["path"])
         straight = isinstance(path, geom2d.LinePath)
-        if straight:
+        if straight and state["top_mode"] != "roof":
             self._combo("Forma do topo", TOP_SHAPES, state["top_shape"],
                         lambda v: edit(top_shape=v,
                                        top_profile=_initial_profile(v, state, path, height)))
         if state["top_shape"] == "flat":
-            self._combo("Topo", TOPS, state["top_mode"], top)
-            if state["top_mode"] == "fixed":
+            self._combo("Topo", WALL_TOPS, state["top_mode"], top)
+            if state["top_mode"] == "roof":
+                self._roof_top_fields(wall, state, height, edit)
+            elif state["top_mode"] == "fixed":
                 self._number("Altura", state["fixed_height"], lambda v: edit(fixed_height=v))
             else:
                 self._number("Deslocamento do topo", state["top_offset"],
@@ -698,17 +708,20 @@ class PropertiesPanel(QScrollArea):
 
         def to_fixed(w):
             height = rebuild.height(doc, read_wall(doc, w))
-            return cmd.edit_wall(doc, w, top_mode="fixed", fixed_height=height)
+            return cmd.edit_wall(doc, w, top_mode="fixed", fixed_height=height, top_roofs=[])
 
         def to_storey(w):
             above = doc.storey_above(doc.get(read_wall(doc, w)["storey"]))
             if above is None:
                 raise OpError(f"não há pavimento acima da parede {w.GlobalId}")
             return cmd.edit_wall(doc, w, top_mode="storey", top_storey=above.GlobalId,
-                                 top_offset=0.0)
+                                 top_offset=0.0, top_roofs=[])
 
-        self._combo("Topo", TOPS, mode,
-                    lambda v: each(to_fixed if v == "fixed" else to_storey))
+        def to_roof(w):
+            return Transaction("Topo até a cobertura", roof_top.to_roof_ops(doc, w))
+
+        self._combo("Topo", WALL_TOPS, mode, lambda v: each(
+            {"fixed": to_fixed, "storey": to_storey, "roof": to_roof}[v]))
         if mode == "fixed":
             self._number("Altura", _common(s["fixed_height"] for s in states),
                          lambda v: edit(fixed_height=v), placeholder=MIXED)
@@ -959,6 +972,24 @@ class PropertiesPanel(QScrollArea):
         mirror.clicked.connect(lambda on: apply(lambda sec: {**sec, "mirror": bool(on)}))
         self._add("Espelhar perfil", mirror)
 
+    def _roof_top_fields(self, wall, state: dict, height: float, edit) -> None:
+        """Parede até a cobertura (spec/ui 45 §2): as coberturas (clicar seleciona), a
+        face que vale, a altura que resulta e Soltar."""
+        doc = self.session.doc
+        for gid in state["top_roofs"]:
+            roof = doc.find(gid)
+            button = QPushButton(roof.Name if roof is not None else gid)
+            button.setFlat(True)
+            button.setToolTip("Selecionar a cobertura")
+            button.clicked.connect(lambda _c=False, g=gid: self.session.select([g]))
+            self._add("Cobertura", button)
+        self._combo("Até a face", [(label, key) for key, label in roof_top.FACE_LABEL.items()],
+                    state["roof_face"], lambda v: edit(roof_face=v))
+        self._read("Altura resultante", f"{fmt(height)} m")
+        release = QPushButton("Soltar da cobertura")
+        release.clicked.connect(lambda: self._run(lambda: roof_top.detach(doc, [wall])))
+        self._add(release)
+
     def _structure_tail(self, element, state: dict) -> None:
         self._structure_common([element])
         self._section("Identificação")
@@ -1165,6 +1196,16 @@ class PropertiesPanel(QScrollArea):
         self._number("Pé-direito", state["height"], lambda v: edit(height=v),
                      placeholder=f"calculado: {fmt(q.get('Height', 0))}", allow_empty=True)
         self._area_class(space, state, edit)
+        found = coverings.bound_to(doc, space)
+        if found:  # forro e piso presos a ele (spec/ui 46 §3): clicar seleciona
+            self._section("Forro e piso")
+            for c in found:
+                t = ifcopenshell.util.element.get_type(c)
+                button = QPushButton(t.Name if t is not None else c.GlobalId)
+                button.setFlat(True)
+                button.setToolTip("Selecionar")
+                button.clicked.connect(lambda _c=False, g=c.GlobalId: self.session.select([g]))
+                self._add(coverings.NOUN[coverings.predefined(c)].capitalize(), button)
         self._section("Quantidades")
         self._read("Área", f"{fmt(q.get('NetFloorArea', 0))} m²")
         self._read("Perímetro", f"{fmt(q.get('GrossPerimeter', 0))} m")
@@ -1904,6 +1945,58 @@ class PropertiesPanel(QScrollArea):
         self._number("Direção (°)", state["angle"], lambda v: edit(angle=v % 360.0))
         self._section("Identificação")
         self._read("GlobalId", stair.GlobalId)
+
+    def _covering(self, covering) -> None:
+        """Forro ou piso (spec/ui 46 §3): tipo, cota, ambiente e quantidades."""
+        doc = self.session.doc
+        state = coverings.read_state(covering)
+        kind = coverings.predefined(covering)
+        noun = coverings.NOUN[kind]
+
+        def edit(**changes):
+            self._run(lambda: coverings.edit_covering(doc, covering, **changes))
+
+        self._title(noun.capitalize())
+        self._combo("Tipo", [(t.Name or t.GlobalId, t.GlobalId)
+                             for t in coverings.types_of(doc, kind)],
+                    state["type"], lambda v: edit(type=v))
+        self._edit_type_button("IfcCoveringType", state["type"])
+        z0, z1 = coverings.z_range(doc, state)
+        self._read("Espessura", f"{fmt(z1 - z0)} m")
+        self._section("Altura")
+        if kind == "CEILING":
+            self._number("Altura (face de baixo)", state["elevation"],
+                         lambda v: edit(elevation=v))
+        else:
+            self._number("Deslocamento do topo", state["elevation"],
+                         lambda v: edit(elevation=v))
+        self._read("Cota do topo", f"{fmt(z1)} m")
+        self._read("Cota do fundo", f"{fmt(z0)} m")
+        self._section("Ambiente")
+        space = doc.find(state["space"]) if state["space"] else None
+        if space is not None:
+            button = QPushButton(" ".join(x for x in (space.Name, space.LongName) if x)
+                                 or space.GlobalId)
+            button.setFlat(True)
+            button.setToolTip("Selecionar o ambiente")
+            button.clicked.connect(lambda: self.session.select([space.GlobalId]))
+            self._add("Preso a", button)
+            release = QPushButton("Soltar do ambiente")
+            release.setToolTip("O contorno fica como está e deixa de acompanhar o ambiente")
+            release.clicked.connect(lambda: self._run(
+                lambda: coverings.release(doc, covering)))
+            self._add(release)
+        else:
+            self._read("Preso a", "nenhum (contorno livre)")
+            self._points_field("Contorno (x y; x y)", state["outline"], 2,
+                               lambda v: edit(outline=v))
+        q = ifcopenshell.util.element.get_pset(covering, coverings.QTO) or {}
+        self._section("Quantidades")
+        self._read("Área", f"{fmt(q.get('NetArea', 0))} m²")
+        self._read("Área bruta", f"{fmt(q.get('GrossArea', 0))} m²")
+        self._read("Perímetro", f"{fmt(coverings.perimeter(state['outline']))} m")
+        self._section("Identificação")
+        self._read("GlobalId", covering.GlobalId)
 
     def _railing(self, railing) -> None:
         """Guarda-corpo solto (escada-terreno.md §3)."""

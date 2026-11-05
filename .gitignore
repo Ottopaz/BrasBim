@@ -31,3 +31,6 @@ htmlcov/
 
 # Conversor de DWG baixado (scripts/baixar_libredwg.py; spec/ui 22 §8)
 /brasbim/vendor/
+
+# Montagem do instalador (instalador/construir.py)
+/build_log.txt

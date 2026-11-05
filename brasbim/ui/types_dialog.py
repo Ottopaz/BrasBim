@@ -1231,11 +1231,16 @@ class SlabTypesDialog(_StructureTypesDialog):
     title = "Tipos de laje"
     noun = "lajes"
 
+    use_items = SLAB_USES
+
+    def read_type(self, element_type) -> dict:
+        return sc.read_type(element_type)
+
     def build_editor(self, slab_type) -> None:
-        state = sc.read_type(slab_type)
+        state = self.read_type(slab_type)
         self.state = state
         self.name = self._line("Nome", state["name"] or "")
-        self.use = self._combo("Função", SLAB_USES, state["predefined_type"])
+        self.use = self._combo("Função", self.use_items, state["predefined_type"])
         self.form.addRow(QLabel("Camadas, de cima para baixo:"))
         self.layers = QTableWidget(0, 3)
         self.layers.setHorizontalHeaderLabels(["Material", "Espessura", ""])
@@ -1347,3 +1352,66 @@ class SlabTypesDialog(_StructureTypesDialog):
         return sc.create_slab_type(self.session.doc, _unique(names, f"{state['name']} (cópia)"),
                                    state["layers"], state["predefined_type"],
                                    state["plan_style"])
+
+
+class CoveringTypesDialog(SlabTypesDialog):
+    """Tipos de forro e de piso (spec/ui 46 §2): camadas de cima para baixo, como a laje;
+    o material de cima do piso dá a paginação da planta."""
+
+    ifc_class = "IfcCoveringType"
+    title = "Tipos de forro e piso"
+    noun = "revestimentos"
+    use_items = (("Forro", "CEILING"), ("Piso", "FLOORING"))
+
+    def read_type(self, element_type) -> dict:
+        from brasbim.core.structure import coverings
+
+        return coverings.read_type(element_type)
+
+    def _plan_source(self, element_type) -> None:
+        pass  # sem representação própria: a planta usa o material de cima
+
+    def plan_changes(self) -> dict:
+        return {}
+
+    def edit(self, changes):
+        from brasbim.core.structure import coverings
+
+        return coverings.edit_type(self.session.doc, self.current, **changes)
+
+    def new_transaction(self):
+        from brasbim.core.structure import coverings
+
+        names = {t.Name for t in self.types()}
+        return coverings.create_type(self.session.doc, _unique(names, "Novo tipo de piso"),
+                                     [{"material": "Porcelanato", "thickness": 0.01}])
+
+    def copy_transaction(self):
+        from brasbim.core.structure import coverings
+
+        state = coverings.read_type(self.session.doc.get(self.current))
+        names = {t.Name for t in self.types()}
+        return coverings.create_type(self.session.doc,
+                                     _unique(names, f"{state['name']} (cópia)"),
+                                     state["layers"], state["predefined_type"])
+
+    def delete_transaction(self, gid):
+        from brasbim.core.structure import coverings
+
+        doc = self.session.doc
+        element_type = doc.get(gid)
+        if not self.uses(element_type):
+            return coverings.delete_type(doc, gid)
+        others = [t for t in self.types() if t.GlobalId != gid
+                  and t.PredefinedType == element_type.PredefinedType]
+        if not others:
+            raise OpError(f"o tipo {element_type.Name} está em uso e não há outro do mesmo "
+                          "uso para pôr no lugar")
+        names = [t.Name for t in others]
+        name, ok = QInputDialog.getItem(
+            self, "Tipo em uso",
+            f"{self.uses(element_type)} {self.noun} usam {element_type.Name}. "
+            "Que tipo fica no lugar?", names, 0, False)
+        if not ok:
+            return Transaction("", [])
+        return coverings.delete_type(doc, gid, others[names.index(name)].GlobalId)

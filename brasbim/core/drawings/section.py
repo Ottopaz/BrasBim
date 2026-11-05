@@ -28,6 +28,7 @@ from brasbim.core.drawings import views
 
 CLASSES = ("IfcWall", "IfcSlab", "IfcColumn", "IfcBeam", "IfcDoor", "IfcWindow",
            "IfcStairFlight", "IfcRailing",  # escada-terreno.md: peças da escada e soltos
+           "IfcCovering",  # forro e piso (spec/ui 46 §5)
            # objetos paramétricos (objeto-parametrico.md §7): sem hachura no corte
            "IfcFurniture", "IfcSanitaryTerminal", "IfcElectricAppliance",
            "IfcGeographicElement", "IfcBuildingElementProxy")
@@ -270,10 +271,31 @@ def _wall_layers(doc: Document, wall, a, d) -> list[tuple[str | None, float, flo
     return found
 
 
+def _covering_layers(doc: Document, covering) -> list[tuple[str | None, float, float]]:
+    """(material, cota de baixo, cota de cima) das camadas do forro ou do piso."""
+    from brasbim.core.structure import coverings
+    from brasbim.core.structure import types as st_types
+
+    if not coverings.is_covering(covering):
+        return []
+    state = coverings.read_state(covering)
+    storey = doc.get(state["storey"])
+    z = float(storey.Elevation or 0.0) + coverings.z_range(doc, state)[0]
+    out = []
+    for layer in st_types.layer_set(doc.get(state["type"])).MaterialLayers:
+        t = float(layer.LayerThickness)
+        out.append((layer.Material.Name if layer.Material else None, z, z + t))
+        z += t
+    return out
+
+
 def _slab_layers(doc: Document, slab) -> list[tuple[str | None, float, float]]:
     """(material, cota de baixo, cota de cima) das camadas da laje."""
     from brasbim.core.structure import slabs
     from brasbim.core.structure import types as st_types
+
+    if slab.is_a("IfcCovering"):
+        return _covering_layers(doc, slab)
 
     state = slabs.read_state(doc, slab)
     if state["foreign"] is not None:
@@ -317,7 +339,7 @@ def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
             part = clip.intersection(rings, [_strip(u0, u1)])
             if part:
                 pieces.append((name, part))
-    elif element.is_a("IfcSlab"):
+    elif element.is_a("IfcSlab") or element.is_a("IfcCovering"):
         for name, z0, z1 in _slab_layers(doc, element):
             part = clip.intersection(rings, [_strip(-_FAR, _FAR, z0, z1)])
             if part:

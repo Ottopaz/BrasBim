@@ -6,14 +6,16 @@ from __future__ import annotations
 from brasbim.core.walls.top import PSET_SHAPES
 
 REF_LINES = ("axis", "left_face", "right_face")
-TOP_MODES = ("storey", "fixed")
+TOP_MODES = ("storey", "fixed", "roof")  # roof: até a cobertura (spec/ui 45)
+ROOF_FACES = ("bottom", "top")
 DEFAULT_FIXED_HEIGHT = 2.80
 MAX_TILT = 45.0  # graus (spec/ui 08 §5.1)
 
 # Pset próprio com os vínculos que não têm atributo IFC (spec §3.1).
 PSET = "BrasBim_Parede"
 _PSET_REF = {"axis": "EIXO", "left_face": "FACE_ESQUERDA", "right_face": "FACE_DIREITA"}
-_PSET_TOP = {"storey": "PAVIMENTO", "fixed": "ALTURA_FIXA"}
+_PSET_TOP = {"storey": "PAVIMENTO", "fixed": "ALTURA_FIXA", "roof": "COBERTURA"}
+_PSET_FACE = {"bottom": "BAIXO", "top": "CIMA"}
 
 # Campos do estado de uma parede (``data`` de wall.create; chaves de wall.edit).
 STATE_KEYS = (
@@ -33,6 +35,8 @@ STATE_KEYS = (
     "top_shape",
     "top_profile",
     "tilt",
+    "top_roofs",
+    "roof_face",
 )
 
 
@@ -51,6 +55,10 @@ def default_state() -> dict:
         "top_shape": "flat",  # spec/ui 08 §4
         "top_profile": [],  # [[posição, altura a partir da base], ...]
         "tilt": 0.0,  # graus a partir da vertical, + para a esquerda (spec/ui 08 §5)
+        # Topo até a cobertura (spec/ui 45): as coberturas e a face que vale; o topo de
+        # antes (pavimento ou altura fixa) fica guardado como reserva e para soltar.
+        "top_roofs": [],
+        "roof_face": "bottom",
     }
 
 
@@ -88,12 +96,15 @@ def pset_values(state: dict) -> dict:
         "PavimentoBase": state["storey"],
         "DeslocamentoBase": float(state["base_offset"]),
         "TipoTopo": _PSET_TOP[state["top_mode"]],
-        "PavimentoTopo": state["top_storey"] if state["top_mode"] == "storey" else None,
+        "PavimentoTopo": state["top_storey"] if state["top_mode"] in ("storey", "roof")
+        else None,
         "DeslocamentoTopo": float(state["top_offset"]),
         "AlturaFixa": float(state["fixed_height"]),
         "SemJuncaoCom": " ".join(sorted(state.get("no_join") or [])) or None,
         "FormaTopo": PSET_SHAPES[state.get("top_shape") or "flat"],
         "Inclinacao": float(state.get("tilt") or 0.0),
+        "CoberturasTopo": " ".join(state.get("top_roofs") or []) or None,
+        "FaceCobertura": _PSET_FACE[state.get("roof_face") or "bottom"],
     }
 
 
@@ -116,6 +127,9 @@ def state_from_pset(values: dict) -> dict:
             values.get("PerfilTopoPosicoes") or [], values.get("PerfilTopoAlturas") or [],
             strict=True)],
         "tilt": float(values.get("Inclinacao") or 0.0),
+        "top_roofs": (values.get("CoberturasTopo") or "").split(),
+        "roof_face": {v: k for k, v in _PSET_FACE.items()}[values.get("FaceCobertura")
+                                                            or "BAIXO"],
     }
 
 
@@ -128,5 +142,9 @@ def validate(state: dict) -> None:
         raise ValueError("topo ligado a pavimento exige o pavimento do topo")
     if state["top_mode"] == "fixed" and state["fixed_height"] <= 0:
         raise ValueError("altura fixa deve ser maior que zero")
+    if state["top_mode"] == "roof" and not state.get("top_roofs"):
+        raise ValueError("topo até a cobertura exige a cobertura")
+    if state.get("roof_face", "bottom") not in ROOF_FACES:
+        raise ValueError(f"face da cobertura inválida: {state.get('roof_face')!r}")
     if abs(state.get("tilt") or 0.0) > MAX_TILT + 1e-9:
         raise ValueError(f"inclinação fora do limite de ±{MAX_TILT:.0f}°")

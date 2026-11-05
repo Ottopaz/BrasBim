@@ -108,17 +108,21 @@ def label_point(state: dict) -> tuple[float, float]:
     return tuple(state["label_at"]) if state["label_at"] else center(state["outline"])
 
 
-def height(doc: Document, state: dict) -> float:
-    """Pé-direito (spec/ui 13 §3.2)."""
+def height(doc: Document, state: dict, gid: str | None = None) -> float:
+    """Pé-direito (spec/ui 13 §3.2): com forro, até a face de baixo dele (spec/ui 46
+    §3); ``gid``: o ambiente, para achar o forro preso a ele."""
     if state["height"] is not None:
         return float(state["height"])
     from brasbim.core.annotations.drafting import _inside
-    from brasbim.core.structure import slabs
+    from brasbim.core.structure import coverings, slabs
 
     storey = doc.get(state["storey"], "IfcBuildingStorey")
     z = float(storey.Elevation or 0.0)
     above = doc.storey_above(storey)
     c = center(state["outline"])
+    ceiling = coverings.ceiling_height(doc, storey, c, gid)
+    if ceiling is not None and ceiling > 0.01:
+        return ceiling
     bottoms = []
     for s in [storey] + ([above] if above is not None else []):
         for slab in ifcopenshell.util.element.get_decomposition(s):
@@ -257,7 +261,7 @@ def rebuild(doc: Document, space) -> None:
     if state["outline"] is None:
         return
     doc.changed.add(space.GlobalId)
-    h = height(doc, state)
+    h = height(doc, state, space.GlobalId)
     ifc = doc.ifc
     ox, oy = state["outline"][0]
     pts = [ifc.createIfcCartesianPoint((float(x - ox), float(y - oy)))

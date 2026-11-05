@@ -135,7 +135,8 @@ def _sweep(doc: Document, parts: list[dict], path: geom2d.Path) -> list:
 
 
 def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
-             profile=None, tilt: float = 0.0, cut=None, sweep=None) -> None:
+             profile=None, tilt: float = 0.0, cut=None, sweep=None,
+             roof_cuts=None) -> None:
     """Corpo: extrusão da planta (vertical, ou inclinada na parede tombada) e, com topo
     inclinado, recorte por um semiespaço limitado por trecho (spec/ui 08 §4.2, §5.2).
     ``cut`` = (referencial, recortes, prisma) dos recortes por prioridade (spec/ui 12 §2).
@@ -172,6 +173,9 @@ def set_body(doc: Document, wall, segments: list[geom2d.Segment], height: float,
         frame, found, own = cut
         solid = cuts.clipped(ifc, solid, frame, found, own)
         kind = "Clipping"
+    for halfspace in roof_cuts or []:  # até a cobertura (spec/ui 45 §3)
+        solid = ifc.createIfcBooleanClippingResult("DIFFERENCE", solid, halfspace)
+        kind = "Clipping"
     items = [solid]
     if sweep is not None:  # por último: o recorte (Clipping) só aceita sólido simples
         items = [ifc.createIfcBooleanResult("INTERSECTION", solid, part) for part in sweep[0]]
@@ -201,6 +205,10 @@ def height(doc: Document, state: dict) -> float:
     found = _definition(doc, state)
     if found is not None and found[1].get("stretch_y") is None:
         return profile_defs.bounds(found[1]["parts"])[3]
+    if state["top_mode"] == "roof":  # até a cobertura (spec/ui 45)
+        from brasbim.core.walls import roof_top
+
+        return roof_top.shape(doc, state).height
     if state.get("top_profile"):
         return top.highest(state["top_profile"])
     if state["top_mode"] == "fixed":
@@ -320,7 +328,12 @@ def rebuild_wall(doc: Document, wall) -> None:
     thickness = wall_types.thickness(wall_type)
     path = geom2d.path_from_dict(state["path"])
 
-    h = height(doc, state)
+    roof = None
+    if state["top_mode"] == "roof":  # até a cobertura (spec/ui 45)
+        from brasbim.core.walls import roof_top
+
+        roof = roof_top.shape(doc, state)
+    h = roof.height if roof is not None else height(doc, state)
     if h <= 0:
         raise OpError(f"parede {wall.GlobalId}: altura resultante {h:.3f} m não é positiva")
 
@@ -343,6 +356,10 @@ def rebuild_wall(doc: Document, wall) -> None:
     except ValueError as e:
         raise OpError(f"parede {wall.GlobalId}: {e}") from e
     top_profile = state["top_profile"]
+    roof_cuts, plan_ring = None, None
+    if roof is not None:
+        roof_cuts = roof_top.halfspaces(doc, state, own.frame, roof)
+        plan_ring = [own.frame.to_global(p) for p in geom2d.polygon(segments)]
     # Recortes por pilar, viga e laje (spec/ui 12 §2); topo inclinado e parede tombada
     # ficam sem (``cuts.piece`` devolve None).
     from brasbim.core.structure import cuts  # evita import circular
@@ -358,9 +375,14 @@ def rebuild_wall(doc: Document, wall) -> None:
     if parts is not None:
         _, y0, _, y1 = profile_defs.bounds(parts)
         sweep = (_sweep(doc, parts, path), y0, y1)
-    set_body(doc, wall, segments, h, top_profile, tilt, cut, sweep)
+    set_body(doc, wall, segments, h, top_profile, tilt, cut, sweep, roof_cuts)
     cuts.sync_relations(doc, wall, found)
-    openings.refresh(doc, wall, own, h, top_profile)
+    from brasbim.core.walls import roof_top
+
+    roof_top.sync_relations(doc, wall, state)
+    openings.refresh(doc, wall, own, h,
+                     roof_top.axis_profile(doc, state, roof) if roof is not None
+                     else top_profile)
     cut = openings.deductions(wall, own, h, segments)
     if tilt:
         _warn_tilt_joins(doc, wall, tilt)
@@ -371,6 +393,11 @@ def rebuild_wall(doc: Document, wall) -> None:
     footprint = geom2d.area(segments)
     if parts is not None:  # volume pela seção do perfil (sem descontar as pontas)
         side, net_volume = length * h, profile_defs.area(parts) * length
+    elif roof is not None:
+        from shapely.geometry import Polygon
+
+        net_volume = roof_top.volume(doc, state, Polygon(plan_ring).buffer(0), roof)
+        side = net_volume / thickness
     elif top_profile:
         side = top.side_area(top_profile, 0.0, length)
         net_volume = top.volume(geom2d.polygon(segments), top_profile)
@@ -424,6 +451,15 @@ def affected_walls(doc: Document, dirty: set[str]) -> list:
             walls[gid] = entity
         elif entity.is_a("IfcWallType"):
             walls.update({w.GlobalId: w for w in ifcopenshell.util.element.get_types(entity)})
+        elif entity.is_a("IfcRoof") or entity.is_a("IfcSlabType"):
+            # paredes até a cobertura (spec/ui 45): a cobertura ou o tipo dela mudou
+            from brasbim.core.structure import roofs
+            from brasbim.core.walls import roof_top
+
+            ids = {gid} if entity.is_a("IfcRoof") else {
+                r.GlobalId for r in doc.ifc.by_type("IfcRoof") if roofs.is_roof(r)
+                and roofs.read_state(doc, r)["type"] == gid}
+            walls.update({w.GlobalId: w for w in roof_top.walls_of(doc, ids)})
         elif entity.is_a("IfcBuildingStorey"):
             for wall in doc.ifc.by_type("IfcWall"):
                 values = ifcopenshell.util.element.get_pset(wall, params.PSET) or {}

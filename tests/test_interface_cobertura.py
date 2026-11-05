@@ -43,6 +43,7 @@ def test_cb14_ferramenta_pelas_paredes(window):
     assert s.doc.get(tool.options.type).Name == "Telha cerâmica"
     _move(window, (4, 2.5))
     assert tool.shape_preview()  # o contorno das paredes aparece
+    top = roofs.wall_top(s.doc, s.storey)  # antes: depois, as paredes sobem ao telhado
     _click(window, (4, 2.5))
     assert tool.pending is not None and not _roofs(window)
     QTest.keyClick(window.plan, Qt.Key_Return)  # cumeeira paralela ao lado maior
@@ -50,9 +51,21 @@ def test_cb14_ferramenta_pelas_paredes(window):
     state = roofs.read_state(s.doc, roof)
     a, b = state["outline"][state["side"]], state["outline"][(state["side"] + 1) % 4]
     assert abs(a[1] - b[1]) < 1e-9  # lado horizontal (o maior)
-    assert state["base_height"] == pytest.approx(roofs.wall_top(s.doc, s.storey))
+    assert state["base_height"] == pytest.approx(top)
     shapes = [sh for sh in window.ctx.plan.shapes if sh.owner == roof.GlobalId]
     assert [sh.role for sh in shapes] == ["roof_edge"]  # acima do plano de corte
+    # as quatro paredes de baixo foram presas à cobertura (spec/ui 45, ponto (c)); o
+    # Desfazer do balão solta só elas, e a cobertura fica
+    from brasbim.core.walls.wall import read_state as read_wall
+
+    walls = s.doc.ifc.by_type("IfcWall")
+    assert all(read_wall(s.doc, w)["top_mode"] == "roof" for w in walls)
+    message = s.messages[-1]
+    assert message["text"] == "4 paredes presas à cobertura"
+    assert window.balloon.button.isVisibleTo(window.balloon)
+    window.balloon.button.click()
+    assert all(read_wall(s.doc, w)["top_mode"] == "storey" for w in walls)
+    assert _roofs(window)
 
 
 def test_cb15_uma_agua_clicando_o_lado(window):

@@ -45,6 +45,7 @@ from brasbim.core.objects import types as object_types
 from brasbim.core.structure import (
     beams,
     columns,
+    coverings,
     profiles,
     roofs,
     rooms,
@@ -1423,7 +1424,7 @@ class _WallOptions:
         types = sorted(session.doc.ifc.by_type("IfcWallType"), key=lambda t: t.Name or "")
         self.type = types[0].GlobalId if types else None
         self.ref_line = "left_face"
-        self.top = "storey"  # "storey" (pavimento de cima) ou "fixed"
+        self.top = "storey"  # "storey" (pavimento de cima), "fixed" ou "roof" (spec/ui 45)
         self.fixed_height = wall_params.DEFAULT_FIXED_HEIGHT
         self.thickness: float | None = None  # espessura livre; None = a do tipo (spec/ui 43)
 
@@ -1431,6 +1432,8 @@ class _WallOptions:
         out = {"ref_line": self.ref_line}
         if self.top == "fixed":
             out.update(top_mode="fixed", fixed_height=self.fixed_height)
+        elif self.top == "roof":
+            out.update(top_mode="roof")
         return out
 
     def band(self, doc) -> tuple[float, float]:
@@ -2450,6 +2453,92 @@ class SpaceTool(SlabTool):
             self.session.run(lambda: ac.create_space(doc, storey, points, name=options.name,
                                                      height=options.height))
         self.points = []
+
+
+class _CoveringOptions:
+    """Opções das ferramentas Forro e Piso (spec/ui 46 §3)."""
+
+    type_class = "IfcCoveringType"
+    kind = "CEILING"
+
+    def __init__(self, session: Session):
+        found = coverings.types_of(session.doc, self.kind)
+        preferred = {"CEILING": "Forro de gesso", "FLOORING": "Porcelanato"}[self.kind]
+        pick = next((t for t in found if t.Name == preferred), found[0] if found else None)
+        self.type = pick.GlobalId if pick is not None else None
+        self.mode = "room"  # pelo ambiente (preso a ele), "polygon" ou "rectangle"
+        self.elevation = coverings.DEFAULT_ELEVATION[self.kind]
+        self.thickness = None  # a ferramenta Laje tem; aqui vale sempre a do tipo
+
+
+class _CeilingOptions(_CoveringOptions):
+    kind = "CEILING"
+
+
+class _FlooringOptions(_CoveringOptions):
+    kind = "FLOORING"
+
+
+class CeilingTool(SlabTool):
+    """Forro (spec/ui 46 §3): um clique no ambiente (fica preso a ele) ou o contorno."""
+
+    name, label = "ceiling", "Forro"
+    options_class = _CeilingOptions
+
+    def hint(self):
+        noun = coverings.NOUN[self.options.kind]
+        if self.options.type is None:
+            return f"Não há tipo de {noun} no projeto"
+        if self.options.mode == "room":
+            return (f"Clique dentro de um ambiente: o {noun} fica preso a ele e acompanha "
+                    "as paredes")
+        return super().hint().replace("da laje", f"do {noun}")
+
+    def _room(self, p) -> list | None:
+        storey = self.session.storey
+        if storey is None:
+            return None
+        found = coverings.space_at(self.session.doc, storey, p)
+        return spaces.read_state(found)["outline"] if found is not None else None
+
+    def _create_in_room(self, p) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if options.type is None or storey is None:
+            self.session.message(f"não há tipo de {coverings.NOUN[options.kind]} ou "
+                                 "pavimento ativo", "recusa")
+            return
+        found = coverings.space_at(doc, storey, p)
+        if found is None:
+            self.session.message("clique dentro de um ambiente (crie-o com a ferramenta "
+                                 "Ambiente) ou desenhe o contorno", "recusa")
+            return
+        self.session.run(lambda: coverings.create_in_space(doc, options.type, found,
+                                                           options.elevation))
+
+    def _create(self, points) -> None:
+        options, doc, storey = self.options, self.session.doc, self.session.storey
+        if options.type is None or storey is None:
+            self.session.message(f"não há tipo de {coverings.NOUN[options.kind]} ou "
+                                 "pavimento ativo", "recusa")
+        else:
+            self.session.run(lambda: coverings.create_covering(
+                doc, options.type, storey, points, options.elevation))
+        self.points = []
+
+    def fill_all(self) -> None:
+        """Em todos os ambientes do pavimento, com Desfazer no balão (spec/ui 46 §3)."""
+        options, session = self.options, self.session
+        if options.type is None or session.storey is None:
+            session.message("não há tipo ou pavimento ativo", "recusa")
+            return
+        session.fill_spaces(options.type, options.elevation)
+
+
+class FlooringTool(CeilingTool):
+    """Piso (spec/ui 46 §3): o topo no nível do pavimento, a espessura para baixo."""
+
+    name, label = "flooring", "Piso"
+    options_class = _FlooringOptions
 
 
 class _HatchOptions:
@@ -5632,14 +5721,80 @@ class SolidCutTool(Tool):
         return [Mark(s.points, s.closed) for s in self.ctx.plan.shapes if s.owner in chosen]
 
 
+class RoofAttachTool(Tool):
+    """Prender à cobertura (spec/ui 45 §2): com as paredes selecionadas, clica-se na
+    cobertura. Sem seleção, primeiro clica nas paredes e Enter passa à cobertura."""
+
+    name, label = "roof_attach", "Prender à cobertura"
+
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.walls: list[str] = []
+        self.picking_walls = False
+
+    def _start(self) -> None:
+        doc = self.session.doc
+        self.walls = [g for g in sorted(self.session.selection)
+                      if (e := doc.find(g)) is not None and e.is_a("IfcWall")]
+        self.picking_walls = not self.walls
+
+    def hint(self):
+        if not self.walls and not self.picking_walls:
+            self._start()
+        if self.picking_walls:
+            return "Clique as paredes que vão até a cobertura; Enter passa à cobertura"
+        return "Clique a cobertura; Esc cancela"
+
+    def press(self, p, mods, button="left"):
+        if not self.walls and not self.picking_walls:
+            self._start()
+        if button == "right":
+            self.key("enter")
+            return
+        if button != "left":
+            return
+        doc = self.session.doc
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        element = doc.find(gid) if gid else None
+        if element is None:
+            return
+        if self.picking_walls:
+            if not element.is_a("IfcWall"):
+                self.session.message("clique uma parede", "recusa")
+            elif element.GlobalId not in self.walls:
+                self.walls.append(element.GlobalId)
+            return
+        roof = element if roofs.is_roof(element) else roofs.roof_of(element)
+        if roof is None:
+            self.session.message("clique uma cobertura", "recusa")
+            return
+        from brasbim.core.walls import roof_top
+
+        walls = list(self.walls)
+        if self.session.run(lambda: roof_top.attach(doc, walls, roof)):
+            self.session.select(walls)
+            self.finished = True
+        self.walls, self.picking_walls = [], False
+
+    def key(self, key):
+        if key == "enter" and self.picking_walls and self.walls:
+            self.picking_walls = False
+            return True
+        return False
+
+    def preview(self):
+        chosen = set(self.walls)
+        return [Mark(s.points, s.closed) for s in self.ctx.plan.shapes if s.owner in chosen]
+
+
 TOOLS = (SelectTool, WallTool, ArcWallTool, RectangleTool, DoorTool, WindowTool,
          WallOpeningTool, ColumnTool,
-         BeamTool, SlabTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
+         BeamTool, SlabTool, CeilingTool, FlooringTool, RoofTool, SkylightTool, StairTool, RailingTool, ObjectTool,
          GridTool, TerrainTool, PickCurvesTool, CurveLevelTool, SlabOpeningTool, SpaceTool, DimensionTool, LevelTool, TextTool,
          LineTool, SplineTool, CircleTool, ArcTool, RadiusDimTool, AngleDimTool, LabelTool,
          RevisionTool, HatchTool, NorthTool, SectionTool, ElevationTool, SplitTool, MoveTool, CopyTool, RotateTool,
          MirrorTool, OffsetTool, TrimTool, FilletTool, MeasureTool, AreaTool,
-         RotateViewTool, SolidCutTool)
+         RotateViewTool, SolidCutTool, RoofAttachTool)
 # Ferramentas que agem sobre a seleção (mini-barra, spec/ui 03 §5): ao terminar, ou com
 # Esc, a vista volta para Selecionar.
 SELECTION_TOOLS = ("move", "copy", "rotate", "mirror", "split", "slab_opening",
@@ -5770,6 +5925,8 @@ class ToolBox:
                     holder.type and doc.find(holder.type)):
                 continue  # sem tipo do IFC (abertura, ambiente, anotações) ou tipo válido
             types = sorted(doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
+            if ifc_class == "IfcCoveringType":  # forro e piso: só os tipos do mesmo uso
+                types = [t for t in types if t.PredefinedType == holder.kind]
             holder.type = types[0].GlobalId if types else None
 
     def activate(self, name: str) -> Tool:

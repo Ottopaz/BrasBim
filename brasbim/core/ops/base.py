@@ -83,6 +83,7 @@ HANDLER_MODULES = (
     "brasbim.core.structure.skylights",
     "brasbim.core.structure.railings",
     "brasbim.core.structure.stairs",
+    "brasbim.core.structure.coverings",
     "brasbim.core.structure.solids",
     "brasbim.core.terrain",
     "brasbim.core.annotations.spaces",

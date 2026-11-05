@@ -52,7 +52,9 @@ _MIN_AREA = 1e-6  # m²: face menor que isto não vira semiespaço
 
 
 def is_solid_rel(rel) -> bool:
-    return rel.is_a("IfcRelInterferesElements") and rel.InterferenceType in OPERATIONS
+    # a parede até a cobertura (spec/ui 45) usa SUBTRACT_UP com nome próprio: não é daqui
+    return (rel.is_a("IfcRelInterferesElements") and rel.InterferenceType in OPERATIONS
+            and rel.Name != "BrasBim: topo até a cobertura")
 
 
 def _rels(doc: Document) -> list:

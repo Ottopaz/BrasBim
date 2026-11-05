@@ -5,6 +5,7 @@ elementos, para ver a geometria nova deles (``doc.changed``).
 - Ambiente: refeito quando ele muda, ou quando muda uma laje, um tipo de laje ou um
   pavimento (o pé-direito calculado depende deles), ou uma parede ou um pilar (área
   líquida). O ambiente pelo cômodo (com ``seed``) refaz antes o contorno pelas paredes.
+- Forro e piso (spec/ui 46): refeitos depois dos ambientes, com o contorno deles.
 - Anotação: refeita quando ela muda, quando muda a escala ou a cota do pavimento dela,
   quando muda um elemento a que uma cota está presa (``depends``) e, na cota de nível,
   quando muda uma laje.
@@ -18,7 +19,8 @@ from brasbim.core.annotations import base, dimensions, spaces
 from brasbim.core.document import Document, OpError
 from brasbim.core.ops.base import register_derive
 
-_SLAB_LIKE = ("IfcSlab", "IfcSlabType", "IfcBuildingStorey")
+_SLAB_LIKE = ("IfcSlab", "IfcSlabType", "IfcBuildingStorey", "IfcCovering",
+              "IfcCoveringType")  # o forro dá o pé-direito (spec/ui 46 §3)
 _WALL_LIKE = ("IfcWall", "IfcWallType", "IfcColumn", "IfcColumnType")
 
 
@@ -42,6 +44,10 @@ def derive(doc: Document, dirty: set[str]) -> None:
                 spaces.rebuild(doc, space)
             except OpError:
                 continue
+    # forro e piso presos ao ambiente acompanham o contorno refeito (spec/ui 46 §4)
+    from brasbim.core.structure import coverings
+
+    coverings.sync(doc, touched)
     storeys_touched = {g for g in touched
                        if (e := doc.find(g)) is not None and e.is_a("IfcBuildingStorey")}
     for element in sorted(doc.ifc.by_type("IfcAnnotation"), key=lambda e: e.GlobalId):

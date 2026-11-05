@@ -27,6 +27,8 @@ DEFAULT_ALIASES = {
     "tool:column": "PI",
     "tool:beam": "VG",
     "tool:slab": "LJ",
+    "tool:ceiling": "FR",
+    "tool:flooring": "PS",
     "tool:roof": "CB",
     "tool:skylight": "CLB",
     "tool:stair": "ED",

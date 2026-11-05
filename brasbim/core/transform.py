@@ -609,29 +609,41 @@ def _skylight_ops(doc: Document, gids, fn, turn: float = 0.0, mirror_axis=None,
 
 
 def _misc(doc: Document, gids) -> list:
-    """Escadas (também por uma peça), guarda-corpos soltos e terrenos da seleção."""
+    """Escadas (também por uma peça), guarda-corpos soltos, terrenos, forros e pisos da
+    seleção. O forro e o piso presos a um ambiente que também vai ficam de fora: seguem o
+    ambiente (spec/ui 46 §4)."""
     from brasbim.core import terrain
-    from brasbim.core.structure import railings, stairs
+    from brasbim.core.structure import coverings, railings, stairs
 
+    ids = {g if isinstance(g, str) else g.GlobalId for g in gids}
     out = []
     for g in gids:
         e = doc.get(g if isinstance(g, str) else g.GlobalId)
         e = stairs.stair_of(e) or e
-        if (stairs.is_stair(e) or railings.is_railing(e) or terrain.is_terrain(e))                 and e not in out:
+        if coverings.is_covering(e) and coverings.read_state(e)["space"] in ids:
+            continue
+        if (stairs.is_stair(e) or railings.is_railing(e) or terrain.is_terrain(e)
+                or coverings.is_covering(e)) and e not in out:
             out.append(e)
     return out
 
 
 def _misc_ops(doc: Document, items, fn, turn: float = 0.0, mirror_axis=None,
               copying: bool = False) -> list[Op]:
-    """Escada, guarda-corpo e terreno levados pela transformação
-    (``spec/elementos/escada-terreno.md``)."""
+    """Escada, guarda-corpo, terreno, forro e piso levados pela transformação
+    (``spec/elementos/escada-terreno.md``, spec/ui 46: o revestimento movido sozinho solta
+    do ambiente; a cópia sai solta)."""
     from brasbim.core import terrain
-    from brasbim.core.structure import railings, stairs
+    from brasbim.core.structure import coverings, railings, stairs
 
     ops, names = [], {s.Name for s in stairs.all_stairs(doc)}
     for e in items:
-        if stairs.is_stair(e):
+        if coverings.is_covering(e):
+            module, state = coverings, coverings.read_state(e)
+            changes = {"outline": [[float(c) for c in fn(tuple(q))] for q in state["outline"]],
+                       "space": None}
+            edit = coverings.edit_covering
+        elif stairs.is_stair(e):
             module, state = stairs, stairs.read_state(e)
             changes = stairs.mapped(state, fn, turn, mirror_axis)
             edit = stairs.edit_stair
@@ -653,7 +665,8 @@ def _misc_ops(doc: Document, items, fn, turn: float = 0.0, mirror_axis=None,
                 n += 1
             data["name"] = f"Escada {n}"
             names.add(data["name"])
-        prefix = {stairs: "stair", railings: "railing", terrain: "terrain"}[module]
+        prefix = {stairs: "stair", railings: "railing", terrain: "terrain",
+                  coverings: "covering"}[module]
         ops.append(Op(f"{prefix}.create", guid.new(), data=data))
     return ops
 
@@ -668,8 +681,11 @@ def _with_objects(label: str, doc: Document, gids, core, objects_ops,
     misc_ids = {e.GlobalId for e in misc} | {
         p.GlobalId for e in misc for rel in e.IsDecomposedBy or () for p in rel.RelatedObjects}
     grid_list = [doc.get(g) for g in others if doc.get(g).is_a("IfcGrid")]
+    from brasbim.core.structure import coverings  # os que seguem o ambiente: fora daqui
+
     others = [g for g in others if not doc.get(g).is_a("IfcGrid")
-              and not skylights.is_skylight(doc.get(g)) and g not in misc_ids]
+              and not skylights.is_skylight(doc.get(g)) and g not in misc_ids
+              and not coverings.is_covering(doc.get(g))]
     extra = (objects_ops(found) + (grid_ops(grid_list) if grid_list else []) + sky_ops(gids)
              + (misc_ops(misc) if misc else []))
     if not others:

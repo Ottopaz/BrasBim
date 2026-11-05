@@ -4,9 +4,127 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑05 (perfil complexo: pendências do estudo de 11‑04 fechadas —
-referência das aberturas, giro e espelhar, criar a partir da seleção, linha entre partes
-do mesmo material).*
+*Atualizado em 2026‑11‑05 (M2, M3, I1 IFC 2x3/4, I2 glTF/OBJ e o instalador `.exe`
+prontos, sem commit: o revisor testa e depois commitamos tudo).*
+
+> **M2 parede presa à cobertura (2026‑11‑05):** o revisor seguiu a recomendação da
+> revisão geral (M2 → M3 → I1 → I2 → instalador). Pesquisa
+> `research_notes/.../complemento_parede_e_cobertura.md` (recorte associativo pela
+> cobertura no Archicad, prender topo/base no Revit) e **spec/ui 45**
+> (`spec/ui/45-parede-presa-a-cobertura.md`, em revisão): modo de topo "Cobertura" para
+> parede e pilar — sobe até a face de baixo, recorta o que passa (`SUBTRACT_UP` dos
+> sólidos), associativo, várias coberturas juntas, soltar devolve o topo de antes.
+> Pontos (a)–(e) no §7. **Respostas e implementação (mesmo dia):** (a) "Até a
+> cobertura", (b) reserva no pavimento de cima, (c) prende sozinho com Desfazer no balão,
+> (d) usuário escolhe face de baixo/de cima (platibanda), (e) só parede.
+> `brasbim/core/walls/roof_top.py`: `top_mode` `roof`, `top_roofs`, `roof_face` (Pset
+> `TipoTopo` COBERTURA, `CoberturasTopo`, `FaceCobertura`; o topo de antes fica em
+> `top_storey`/`fixed_height` e é a reserva do trecho descoberto). Altura = maior cota da
+> face sobre a planta; corpo extrudado e recortado por um `IfcPolygonalBoundedHalfSpace`
+> por água (plano da face, limite = água + 1 mm) e um horizontal por trecho descoberto;
+> volume exato (plano × área no centroide), conferido com o motor geométrico; topo ao
+> longo do eixo para o aviso das janelas. Relação `IfcRelInterferesElements`
+> `SUBTRACT_UP` nomeada (`roof_top.REL_NAME`), fora de `solids.is_solid_rel`. Associativa
+> (cobertura ou tipo dela mudam → `affected_walls`); apagar a cobertura solta
+> (`delete.py`). Comandos `attach`/`detach`/`auto_attach`/`to_roof_ops`/`roofs_over`;
+> `Session._attach_to_new_roofs` + botão de ação no balão (`balloon.py`). Interface: Topo
+> "Até a cobertura" na barra Opções da Parede e na ficha (cobertura, "Até a face",
+> altura, Soltar), ferramenta `roof_attach` (Editar e botão direito), Soltar da
+> cobertura. Testes RC01–RC08 (`tests/test_parede_cobertura.py`,
+> `tests/test_interface_parede_cobertura.py`); 927 testes, ruff limpo. **Fica para
+> depois:** pilar até a cobertura, prender a base, parede tombada/de perfil/de topo à
+> mão. **Próximo:** M3 forro e piso (`IfcCovering`).
+>
+> **M3 forro e piso (2026‑11‑05):** pesquisa `research_notes/.../complemento_forro_e_piso.md`
+> (as páginas oficiais do Revit/Archicad não abriram; resumo do buscador + esquema IFC 4.3
+> do IfcOpenShell) e **spec/ui 46** (`spec/ui/46-forro-e-piso.md`, em revisão):
+> `IfcCovering` CEILING/FLOORING por ambiente num clique, preso ao ambiente (que já segue
+> as paredes), tipos com camadas, "em todos os ambientes" com Desfazer, pé‑direito pelo
+> forro. Pontos (a)–(f) no §8. O revisor pediu **commit só no fim** de M2–I2 + instalador
+> (o M2 está pronto e não commitado, no ramo `perfil-complexo-editor`).
+> **Respostas e implementação (mesmo dia):** o revisor deixou a escolha comigo ("pode
+> fazer o que julgar melhor, depois eu vou testar"; sempre Archicad e Revit como base):
+> valem as propostas, registradas no §8 com os ajustes. `brasbim/core/structure/coverings.py`:
+> tipos `covering_type.*` (`IfcCoveringType` + `IfcMaterialLayerSet`, uso no tipo) e
+> ocorrências `covering.*` (estado: tipo, pavimento, contorno, `space`, `elevation` —
+> forro: face de baixo, padrão 2,60; piso: topo, padrão 0, espessura para baixo). Corpo =
+> contorno menos os pilares (`IfcArbitraryProfileDefWithVoids` quando fura), `FootPrint`,
+> `IfcRelCoversSpaces`, `Qto_CoveringBaseQuantities`, `Pset_CoveringCommon`, Pset
+> `BrasBim_Revestimento` (`Ambiente`, `Altura`/`Deslocamento`). Preso ao ambiente:
+> `coverings.sync`, chamado no fim da derivação dos ambientes, copia o contorno refeito;
+> o pé‑direito calculado do ambiente passa a ser o do forro (`spaces.height`). Excluir o
+> ambiente solta (`delete.py`); editar o contorno solta; mover junto com o ambiente
+> segue, sozinho solta, cópia sai solta (`transform._misc`). Comandos `create_in_space`
+> (recusa o mesmo tipo duas vezes), `create_covering`, `fill_storey`, `edit_covering`,
+> `release`, `delete_type`. Biblioteca (sessão nova): 4 forros, 6 pisos; materiais novos
+> com paginação de corte (Porcelanato 60 × 60, Cerâmica 45 × 45, réguas). Planta: piso
+> com a paginação sob as paredes e papel `covering` (escolha depois do ambiente); forro
+> fora da planta. 3D e corte com as camadas. Tabelas: categoria `coverings`, modelo "Forro
+> e piso por tipo", colunas Forro/Piso nos ambientes. Interface: ferramentas **Forro** e
+> **Piso** (Modelagem, atalhos FR/PS) com Pelo ambiente/Polígono/Retângulo, altura ou
+> deslocamento e "Em todos os ambientes" (balão com Desfazer, `Session.fill_spaces`);
+> ficha (tipo, altura, ambiente clicável, Soltar do ambiente, contorno livre,
+> quantidades); seção "Forro e piso" na ficha do ambiente; Projeto > Tipos de forro e
+> piso (`CoveringTypesDialog`). Camada "Pisos e lajes". Testes FP01–FP08
+> (`tests/test_forro_piso.py`, `tests/test_interface_forro_piso.py`). **Fica para
+> depois:** planta de forro, rodapé e revestimento de parede, reboco acima do forro nos
+> quantitativos. **Próximo:** I1 exportar IFC 2x3.
+>
+> **I1 exportar IFC 2x3 e IFC 4 (2026‑11‑05):** "siga a sequência". Pesquisa
+> `research_notes/.../complemento_exportar_ifc.md` (opções do exportador do Revit:
+> versão, quantidades, só o visível; tradutores do Archicad e CV 2.0; o que o
+> `ifcopenshell.util.schema.Migrator` faz e as 15 classes sem equivalente no 2x3) e
+> **spec/ui 47** (aprovada pela delegação do revisor, implementada).
+> `brasbim/core/ifc_export.py`: cópia do projeto → filtro (destino Coordenação ou
+> Estrutura e instalações, só o visível, desenhos 2D só no 4/4.3, Psets `BrasBim_*`
+> opcionais; relações que ficam vazias saem) → no 2x3, adaptação na cópia em 4.3
+> (recortes saem, curva indexada → polilinha, malha → `IfcFacetedBrep`/
+> `IfcShellBasedSurfaceModel`, perfil/constituintes → material ou `IfcMaterialList`) →
+> 4.3 → 4 → (valores só do IFC 4 trocados, um `IfcOwnerHistory` do BrasBim) → 2x3 com
+> proxy de reserva → reclassificação (`IfcDoorStyle`/`IfcWindowStyle` com a operação,
+> `IfcFurnishingElement`, `IfcFlowTerminal`, terreno como proxy com `ObjectType`),
+> `IfcWallStandardCase` para parede de camadas com eixo, estilos em
+> `IfcPresentationStyleAssignment`, enumerados obrigatórios `NOTDEFINED` → validador do
+> esquema; com erro, não grava. GlobalIds preservados. Interface: Arquivo > Exportar IFC
+> (2x3, 4) (`ExportIfcDialog`, opções guardadas em `exportar_ifc/*`), balão com o que
+> foi adaptado. Testes EX01–EX06 (`tests/test_exportar_ifc.py`,
+> `tests/test_interface_exportar_ifc.py`, projeto `tests/casa_completa.py`); 942
+> testes. **Fica com o revisor:** abrir no Revit, Archicad, Eberick e QiBuilder.
+> **Próximo:** I2 glTF.
+>
+> **I2 exportar 3D glTF/OBJ (2026‑11‑05):** pesquisa
+> `research_notes/.../complemento_exportar_gltf.md` (Archicad sem glTF nativo — só
+> complementos; Revit não pesquisado) e **spec/ui 48** (implementada).
+> `brasbim/core/model_export.py`, sem biblioteca nova: tritura cada produto com corpo
+> (`ifcopenshell.geom`, coordenadas do mundo; fora ambientes, aberturas, 2D, eixos), cor
+> do estilo da face ou, sem estilo, do material do elemento (`element_material`:
+> acabamento da parede, camada de cima da laje/piso, de baixo do forro, material do
+> perfil), vidro com transparência; z → y. GLB escrito à mão (nós por pavimento → por
+> elemento, `extras` GlobalId/ClasseIfc/Tipo/Pavimento, PBR sem metal) e OBJ + MTL.
+> Só o visível. Arquivo > Exportar 3D (glTF, OBJ) (`MainWindow.export_3d`). Testes
+> G01–G05 (`tests/test_exportar_3d.py` e o G05 da interface em
+> `tests/test_interface_exportar_ifc.py`). **Próximo:** instalador `.exe`.
+>
+> **Instalador `.exe` (2026‑11‑05):** **spec/ui 49** (implementada). `instalador/`:
+> `brasbim.spec` (PyInstaller 6.22, pasta única sem console, todos os módulos do
+> `brasbim` por nome, `collect_all` de ifcopenshell/ezdxf/pyclipr/shapely, recursos
+> `ui/icons|fonts|logo`, `library`, `perfis`, `vendor`; Qt sem módulos que não usamos),
+> `iniciar.py`, `brasbim.iss` (Inno Setup 6: só para o usuário, sem administrador,
+> `%LOCALAPPDATA%\Programs\BrasBim`, pt‑BR, licença GPL, atalho no menu Iniciar e na Área
+> de Trabalho, associar `.ifc` opcional, "Abrir o BrasBim agora", AppId fixo para
+> atualizar por cima) e `construir.py` (LibreDWG → PyInstaller → `BrasBim.exe
+> --verificar` → ISCC; recurso de versão do .exe). `brasbim.ui.app.verify()`
+> (`--verificar`): sem janela, preferências num lugar temporário, projeto com parede,
+> IFC 2x3 e GLB, logo. Resultado: `dist/BrasBim-0.0.1-Setup.exe` (≈ 100 MB; a pasta tem
+> ≈ 390 MB) — instalado em silêncio, verificado e desinstalado limpo. Inno Setup 6.7.3
+> instalado na máquina (winget, só usuário) e PyInstaller no `.venv` (só montagem; fora
+> do `pyproject`). Testes IN01–IN02 (`tests/test_instalador.py`). **Atenção:** antes do
+> desvio das preferências, a verificação gravou nas preferências reais a geometria e os
+> painéis de uma janela sem tela (e repôs as marcas do menu Exibir ao padrão); as chaves
+> `geometria` e `paineis` foram apagadas (o BrasBim abre no arranjo padrão). **Fica para
+> depois:** assinar o .exe (sem certificado, o SmartScreen avisa "editor desconhecido"),
+> reduzir o tamanho (ifcopenshell 125 MB, PySide6 103 MB, LibreDWG duplicado). **Próximo:**
+> o revisor testa o Setup e os itens M2, M3, I1, I2; depois o commit de tudo.
 
 > **Editor de perfis: Aplicar e desenho livre (2026‑11‑05, pedido do revisor):** o
 > Aplicar "não aplicava" porque partes sobrepostas eram recusadas e a recusa ia para a

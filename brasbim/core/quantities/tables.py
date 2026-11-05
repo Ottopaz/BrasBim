@@ -64,6 +64,8 @@ CATEGORIES = {
     "beams": Category("Vigas", ("IfcBeam",), ("IfcBeamType",)),
     "roofs": Category("Coberturas", ("IfcRoof",), ("IfcSlabType",)),
     "spaces": Category("Ambientes", ("IfcSpace",), ()),
+    "coverings": Category("Revestimentos (forro e piso)", ("IfcCovering",),
+                          ("IfcCoveringType",)),
     # objetos paramétricos (objeto-parametrico.md §8)
     "furniture": Category("Mobiliário", ("IfcFurniture",), ("IfcFurnitureType",)),
     "sanitary": Category("Louças e metais", ("IfcSanitaryTerminal",),
@@ -223,6 +225,36 @@ def _plan_area(r: _Reader, e):
     return float(value) if isinstance(value, (int, float)) else None
 
 
+def _covering_space(r: _Reader, e):
+    from brasbim.core.structure import coverings
+
+    gid = coverings.read_state(e)["space"] if coverings.is_covering(e) else None
+    space = r.doc.find(gid) if gid else None
+    if space is None:
+        return None
+    return " ".join(x for x in (space.Name, space.LongName) if x) or space.GlobalId
+
+
+def _covering_kind(r: _Reader, e):
+    from brasbim.core.structure import coverings
+
+    kind = coverings.predefined(e)
+    return coverings.NOUN[kind].capitalize() if kind in coverings.KINDS else None
+
+
+def _space_covering(r: _Reader, e, kind: str, what: str):
+    """Tipo (``type``) ou área (``area``) do forro ou do piso preso ao ambiente."""
+    from brasbim.core.structure import coverings
+
+    found = [c for c in coverings.bound_to(r.doc, e) if coverings.predefined(c) == kind]
+    if not found:
+        return None
+    if what == "area":
+        return sum(_q(c, coverings.QTO, "NetArea") or 0.0 for c in found)
+    names = [t.Name for c in found if (t := r.element_type(c)) is not None]
+    return ", ".join(names) or None
+
+
 @dataclass(frozen=True)
 class Field:
     key: str
@@ -344,6 +376,7 @@ _S = "Qto_SlabBaseQuantities"
 _C = "Qto_ColumnBaseQuantities"
 _B = "Qto_BeamBaseQuantities"
 _SP = "Qto_SpaceBaseQuantities"
+_CV = "Qto_CoveringBaseQuantities"
 _OWN = {
     "walls": [
         Field("length", "Comprimento", "m", True, lambda r, e: _q(e, _W, "Length")),
@@ -396,6 +429,22 @@ _OWN = {
         Field("floor_area", "Área útil", "m²", True, lambda r, e: _q(e, _SP, "NetFloorArea")),
         Field("perimeter", "Perímetro", "m", True, lambda r, e: _q(e, _SP, "GrossPerimeter")),
         Field("height", "Pé-direito", "m", False, lambda r, e: _q(e, _SP, "Height")),
+        # forro e piso presos ao ambiente (spec/ui 46 §5)
+        Field("ceiling", "Forro", None, False,
+              lambda r, e: _space_covering(r, e, "CEILING", "type")),
+        Field("ceiling_area", "Área de forro", "m²", True,
+              lambda r, e: _space_covering(r, e, "CEILING", "area")),
+        Field("floor", "Piso", None, False,
+              lambda r, e: _space_covering(r, e, "FLOORING", "type")),
+        Field("flooring_area", "Área de piso", "m²", True,
+              lambda r, e: _space_covering(r, e, "FLOORING", "area")),
+    ],
+    "coverings": [
+        Field("kind", "Uso", None, False, _covering_kind),
+        Field("space", "Ambiente", None, False, _covering_space),
+        Field("area", "Área", "m²", True, lambda r, e: _q(e, _CV, "NetArea")),
+        Field("gross_area", "Área bruta", "m²", True, lambda r, e: _q(e, _CV, "GrossArea")),
+        Field("thickness", "Espessura", "m", False, lambda r, e: _q(e, _CV, "Width")),
     ],
     LEGAL: [Field(key, title, unit, False, lambda r, e: None) for key, title, unit in (
         ("item", "Descrição", None), ("area", "Área", "m²"), ("index", "Índice", None),
@@ -816,6 +865,10 @@ TEMPLATES = {
         {"name": "Estrutura: lajes", "category": "slabs",
          "columns": _cols("type", "count", "volume"), "group_by": "type",
          "rows": "group"}]),
+    "coverings": ("Forro e piso por tipo", [{
+        "name": "Forro e piso por tipo", "category": "coverings",
+        "columns": _cols("kind", "type", "area"), "group_by": "type", "rows": "group",
+        "sort": {"field": "kind", "descending": False}}]),
     "objects": ("Lista de mobiliário e equipamentos", [{
         "name": "Lista de mobiliário e equipamentos", "category": "objects",
         "columns": _cols("code", "object", "type", "count"),

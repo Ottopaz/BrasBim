@@ -300,7 +300,7 @@ class Scene:
     """Malhas por GlobalId."""
 
     CLASSES = ("IfcWall", "IfcDoor", "IfcWindow", "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof",
-               "IfcStair", "IfcRailing", *objects.OCCURRENCE_CLASSES)
+               "IfcStair", "IfcRailing", "IfcCovering", *objects.OCCURRENCE_CLASSES)
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
@@ -438,7 +438,8 @@ class Scene:
                 return styled
         layered = ((_wall_profile_layers(self.doc, entity, tri) or self._split(entity, tri))
                    if entity.is_a("IfcWall")
-                   else _slab_layers(entity, tri) if entity.is_a("IfcSlab")
+                   else _slab_layers(entity, tri)
+                   if entity.is_a("IfcSlab") or entity.is_a("IfcCovering")
                    else _profile_layers(entity, tri)
                    if entity.is_a("IfcColumn") or entity.is_a("IfcBeam") else None)
         if layered is None:

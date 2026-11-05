@@ -538,14 +538,14 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             if role in ("plant", "plant_fill"):  # vegetação: por cima das paredes
                 self._draw_object(painter, shape, selected)
                 continue
-            if role in ("wall", "column", "beam", "slab", "space", "roof"):
+            if role in ("wall", "column", "beam", "slab", "space", "roof", "covering"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
                 if not selected:
                     continue
                 painter.setPen(QPen(C["select"], 2 * self.unit))
                 fill = QColor(C["select"])
-                fill.setAlpha(40 if role in ("slab", "space", "roof") else 110)
+                fill.setAlpha(40 if role in ("slab", "space", "roof", "covering") else 110)
                 painter.setBrush(QBrush(fill))
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")

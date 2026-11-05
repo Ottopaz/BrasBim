@@ -11,11 +11,11 @@ from brasbim.core.objects import commands as oc
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import commands as sc
-from brasbim.core.structure import slab_openings
+from brasbim.core.structure import coverings, slab_openings
 from brasbim.core.walls import commands as cmd
 from brasbim.core.walls import openings
 
-_LABELS = {"IfcStair": "escada", "IfcRailing": "guarda-corpo", "IfcGeographicElement": "terreno"}
+_LABELS = {"IfcCovering": "revestimento", "IfcStair": "escada", "IfcRailing": "guarda-corpo", "IfcGeographicElement": "terreno"}
 
 
 def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
@@ -85,6 +85,8 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
             continue
         if ac.is_annotation(element):
             ops += ac.delete_ops(doc, element)
+        elif coverings.is_covering(element):
+            add(coverings.delete_ops(doc, element))
         elif sc.is_structure(element) or slab_openings.is_slab_opening(element):
             add(sc.delete_ops(doc, element))  # a laje já leva as aberturas dela
     # Operações de sólidos dos excluídos saem antes, para o desfazer devolvê-las; a do
@@ -93,6 +95,12 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
 
     gone = {e.GlobalId for e in entities} | {op.id for op in ops if op.op.endswith(".delete")}
     ops = solids.remove_for_deleted(doc, gone) + ops
+    # paredes até a cobertura que sai voltam ao topo de antes (spec/ui 45 §3 item 6)
+    from brasbim.core.walls import roof_top
+
+    ops = roof_top.detach_ops_for_deleted(doc, gone) + ops
+    # forro e piso do ambiente excluído ficam soltos, com o último contorno (spec/ui 46 §4)
+    ops = coverings.release_ops_for_deleted(doc, gone) + ops
     label = "Excluir"
     if len(entities) == 1 and door_list:
         label = f"Excluir {fc.kind(door_list[0]).noun}"

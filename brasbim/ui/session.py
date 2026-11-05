@@ -90,6 +90,20 @@ _SLAB_TYPES = [
      [("Impermeabilização", 0.02), ("Concreto", 0.10)]),
 ]
 
+# Forro e piso (spec/ui 46 §2): camadas de cima para baixo.
+_COVERING_TYPES = [
+    ("Forro de gesso", "CEILING", [("Gesso", 0.0125)]),
+    ("Forro de drywall", "CEILING", [("Gesso acartonado", 0.0125)]),
+    ("Forro de PVC", "CEILING", [("PVC", 0.01)]),
+    ("Forro de madeira", "CEILING", [("Madeira", 0.02)]),
+    ("Porcelanato", "FLOORING", [("Porcelanato", 0.01), ("Argamassa", 0.005)]),
+    ("Cerâmica", "FLOORING", [("Cerâmica", 0.008), ("Argamassa", 0.005)]),
+    ("Piso vinílico", "FLOORING", [("Piso vinílico", 0.003)]),
+    ("Piso laminado", "FLOORING", [("Piso laminado", 0.007)]),
+    ("Granito", "FLOORING", [("Granito", 0.02), ("Argamassa", 0.01)]),
+    ("Cimentado", "FLOORING", [("Argamassa", 0.03)]),
+]
+
 
 def _cm(value: float) -> str:
     return f"{round(value * 100)}"
@@ -140,9 +154,10 @@ class Session:
         for listener in list(self.listeners):
             listener(event)
 
-    def message(self, text: str, level: str = "info") -> None:
+    def message(self, text: str, level: str = "info", action=None) -> None:
+        """``action``: (texto, função) de um botão no balão, como "Desfazer"."""
         self.messages.append({"time": datetime.now().strftime("%H:%M:%S"), "level": level,
-                              "text": text})
+                              "text": text, "action": action})
         del self.messages[:-MAX_MESSAGES]
         self._emit("messages")
 
@@ -200,6 +215,11 @@ class Session:
             history.commit(sc.create_beam_type(doc, f"Viga {_cm(b)}×{_cm(h)}", b, h))
         for name, predefined, layers in _SLAB_TYPES:
             history.commit(sc.create_slab_type(
+                doc, name, [{"material": m, "thickness": t} for m, t in layers], predefined))
+        from brasbim.core.structure import coverings
+
+        for name, predefined, layers in _COVERING_TYPES:
+            history.commit(coverings.create_type(
                 doc, name, [{"material": m, "thickness": t} for m, t in layers], predefined))
         self._attach(doc, None)
         # O diário começa com o conteúdo inicial, para que reaplicá-lo reproduza a sessão.
@@ -306,7 +326,60 @@ class Session:
             return False
         self._show_created(tx)
         self._warn_filtered(tx)
+        self._attach_to_new_roofs(tx)
         return True
+
+    def fill_spaces(self, covering_type: str, elevation: float | None = None) -> bool:
+        """Forro ou piso em todos os ambientes do pavimento (spec/ui 46 §3); o balão diz
+        quantos, com "Desfazer"."""
+        from brasbim.core.structure import coverings
+
+        if self.storey is None:
+            self.message("não há pavimento ativo", "recusa")
+            return False
+        if not self.run(lambda: coverings.fill_storey(self.doc, covering_type, self.storey,
+                                                       elevation)):
+            return False
+        done = self.history.undo_stack[-1]
+        n = len(done.ops)
+        kind = self.doc.get(covering_type).PredefinedType
+        noun = coverings.NOUN[kind] if n == 1 else coverings.PLURAL[kind]
+
+        def undo():
+            if self.history.undo_stack and self.history.undo_stack[-1] is done:
+                self.history.undo()
+
+        self.message(f"{n} {noun} em {n} ambiente{'s' if n > 1 else ''}", "info",
+                     action=("Desfazer", undo))
+        return True
+
+    def _attach_to_new_roofs(self, tx: Transaction) -> None:
+        """Cobertura nova prende as paredes de baixo (spec/ui 45 §2, ponto (c)), numa
+        transação à parte: o "Desfazer" do balão tira só isso."""
+        from brasbim.core.walls import roof_top
+
+        for op in tx.ops:
+            if op.op != "roof.create" or self.doc.find(op.id) is None:
+                continue
+            try:
+                attach = roof_top.auto_attach(self.doc, op.id)
+                if attach is None:
+                    continue
+                self.history.commit(attach)
+            except OpError as e:
+                self.message(f"paredes não presas à cobertura: {e}", "aviso")
+                continue
+            n = len({o.id for o in attach.ops if o.op == "wall.edit"})
+            done = self.history.undo_stack[-1]
+
+            def undo(done=done):
+                # só se o prender ainda é o último passo (senão desfaria outra coisa)
+                if self.history.undo_stack and self.history.undo_stack[-1] is done:
+                    self.history.undo()
+
+            text = ("1 parede presa à cobertura" if n == 1
+                    else f"{n} paredes presas à cobertura")
+            self.message(text, "info", action=("Desfazer", undo))
 
     # --- situação (spec/ui 31) -----------------------------------------------------------
 

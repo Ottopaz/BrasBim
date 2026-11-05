@@ -289,6 +289,7 @@ def test_ui71_mostrar_na_planta(window):
                              "Bloquear a camada deste elemento",
                              "Mostrar só a camada deste elemento",
                              "Operações de sólidos",  # spec/ui 41 §3a
+                             "Prender à cobertura",  # spec/ui 45 §2
                              "Travar"]  # spec/ui 39 §5
     actions["Mostrar na planta"]()
     QApplication.processEvents()

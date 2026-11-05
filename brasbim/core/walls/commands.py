@@ -36,12 +36,25 @@ def _wall_data(doc: Document, wall_type, storey, path: geom2d.Path, options: dic
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     data.update(options)
-    if "top_mode" not in options:
-        # Padrão (spec §3.1): topo ligado ao pavimento imediatamente acima, se houver.
+    if "top_mode" not in options or (data["top_mode"] == "roof"
+                                      and not options.get("top_storey")):
+        # Padrão (spec §3.1): topo ligado ao pavimento imediatamente acima, se houver; na
+        # parede até a cobertura, ele é o topo de reserva (spec/ui 45 §3).
         above = doc.storey_above(doc.get(data["storey"], "IfcBuildingStorey"))
         if above is not None:
-            data["top_mode"], data["top_storey"] = "storey", above.GlobalId
-    if data["top_mode"] == "storey" and data.get("top_storey"):
+            data["top_storey"] = above.GlobalId
+            if "top_mode" not in options:
+                data["top_mode"] = "storey"
+    data["top_roofs"] = [_gid(r) for r in data.get("top_roofs") or []]
+    if data["top_mode"] == "roof" and not data["top_roofs"]:
+        # até a cobertura sem dizer qual: as que passam sobre a parede; sem nenhuma, a
+        # parede fica no topo de reserva (spec/ui 45 §2)
+        from brasbim.core.walls import roof_top
+
+        data["top_roofs"] = roof_top.roofs_over(doc, data)
+        if not data["top_roofs"]:
+            data["top_mode"] = "storey" if data.get("top_storey") else "fixed"
+    if data["top_mode"] in ("storey", "roof") and data.get("top_storey"):
         data["top_storey"] = _gid(data["top_storey"])
     return data
 
@@ -134,7 +147,8 @@ def edit_wall(doc: Document, wall, **changes) -> Transaction:
     if "top_mode" in changes and "top_storey" not in changes:
         # O pavimento do topo só é gravado no modo "storey"; levá-lo junto permite
         # desfazer a troca para altura fixa.
-        changes["top_storey"] = state["top_storey"] if changes["top_mode"] == "storey" else None
+        changes["top_storey"] = (state["top_storey"] if changes["top_mode"] in ("storey", "roof")
+                                 else None)
     before = {k: state[k] for k in changes}
     ops = [Op("wall.edit", wall.GlobalId, before=before, after=dict(changes))]
     if any(k in changes for k in _JOIN_KEYS):

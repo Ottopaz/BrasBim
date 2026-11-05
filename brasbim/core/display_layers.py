@@ -44,14 +44,14 @@ IMPORTED_GROUP = "Importadas"
 KINDS = ("wall", "door", "window", "slab", "roof", "space", "column", "beam", "dimension",
          "text", "line2d", "hatch", "level_mark", "north", "view", "circle2d", "arc2d",
          "spline2d", "radius_dim", "angle_dim", "label", "revision", "grid", "stair",
-         "railing", "terrain", "reference2d",
+         "railing", "terrain", "reference2d", "covering",
          "object:furniture",
          "object:sanitary", "object:appliance", "object:vegetation", "object:proxy")
 
 # Conjunto inicial (§3.1): grupo → [(camada, ferramentas que vão para ela)].
 INITIAL = (
     ("Arquitetura", (("Paredes", ("wall",)), ("Esquadrias", ("door", "window")),
-                     ("Pisos e lajes", ("slab", "stair", "railing")),
+                     ("Pisos e lajes", ("slab", "stair", "railing", "covering")),
                      ("Cobertura", ("roof",)),
                      ("Ambientes", ("space",)))),
     ("Estrutura", (("Pilares", ("column",)), ("Vigas", ("beam",)),
@@ -170,6 +170,7 @@ def _roofs():
 FALLBACK = {"circle2d": "line2d", "arc2d": "line2d", "spline2d": "line2d",
             "radius_dim": "dimension", "angle_dim": "dimension", "label": "text",
             "revision": "north", "grid": "north", "stair": "slab", "railing": "slab",
+            "covering": "slab",
             "reference2d": "line2d"}
 
 
@@ -208,6 +209,8 @@ def kind_of(element) -> str | None:
         return "railing"
     if terrain.is_terrain(element):
         return "terrain"
+    if element.is_a("IfcCovering"):
+        return "covering"
     for cls, kind in (("IfcWall", "wall"), ("IfcDoor", "door"), ("IfcWindow", "window"),
                       ("IfcColumn", "column"), ("IfcBeam", "beam"), ("IfcRoof", "roof"),
                       ("IfcSpace", "space"), ("IfcSlab", "slab")):

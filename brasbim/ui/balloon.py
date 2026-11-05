@@ -3,14 +3,22 @@
 
 Depois de uma ação, a mesma mensagem que entra em Mensagens aparece num balão no canto de
 baixo, à esquerda da vista, logo acima da barra da vista. Some sozinho depois de alguns
-segundos, esmaecendo; uma mensagem nova toma o lugar da anterior. Não pega o mouse: o
-clique passa para a vista que está embaixo.
+segundos, esmaecendo; uma mensagem nova toma o lugar da anterior. Não pega o mouse (o
+clique passa para a vista que está embaixo), salvo quando traz um botão de ação, como o
+"Desfazer" de quem prendeu paredes à cobertura (spec/ui 45 §2).
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer
-from PySide6.QtWidgets import QFrame, QGraphicsOpacityEffect, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+)
 
 from brasbim.ui import theme
 
@@ -40,9 +48,16 @@ class MessageBalloon(QFrame):
         self.label = QLabel()
         self.label.setWordWrap(True)
         self.label.setTextFormat(Qt.PlainText)
-        layout = QVBoxLayout(self)
+        self.button = QPushButton()
+        self.button.setFlat(True)
+        self.button.setCursor(Qt.PointingHandCursor)
+        self.button.clicked.connect(self._act)
+        self.button.hide()
+        self._action = None
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 7, 12, 7)
         layout.addWidget(self.label)
+        layout.addWidget(self.button)
         self.opacity = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.opacity)
         self.fade = QPropertyAnimation(self.opacity, b"opacity", self)
@@ -56,13 +71,21 @@ class MessageBalloon(QFrame):
         area.installEventFilter(self)
         self.hide()
 
-    def show_message(self, text: str, level: str = "info") -> None:
+    def show_message(self, text: str, level: str = "info", action=None) -> None:
+        """``action``: (texto, função) de um botão; com ele, o balão pega o clique."""
         self.level = level
+        self._action = action
+        self.button.setVisible(action is not None)
+        if action is not None:
+            self.button.setText(action[0])
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, action is None)
         color = LEVEL_COLOR.get(level, theme.ACCENT)
         self.setStyleSheet(
             f"#balao {{ background: {theme.FIELD}; border: 1px solid {theme.RULE};"
             f" border-left: 3px solid {color}; border-radius: 4px; }}"
-            f"#balao QLabel {{ color: {theme.INK}; background: transparent; border: none; }}")
+            f"#balao QLabel {{ color: {theme.INK}; background: transparent; border: none; }}"
+            f"#balao QPushButton {{ color: {theme.ACCENT}; font-weight: bold;"
+            f" border: none; padding: 0 4px; }}")
         self.label.setText(text)
         self.fade.stop()
         self.opacity.setOpacity(1.0)
@@ -70,6 +93,13 @@ class MessageBalloon(QFrame):
         self.show()
         self.raise_()
         self.timer.start(duration(text, level))
+
+    def _act(self) -> None:
+        action, self._action = self._action, None
+        self.button.hide()
+        self.dismiss()
+        if action is not None:
+            action[1]()
 
     def dismiss(self) -> None:
         """Esmaece e esconde."""
@@ -88,6 +118,8 @@ class MessageBalloon(QFrame):
     def place(self) -> None:
         area = self.parentWidget()
         room = min(MAX_WIDTH, max(120, area.width() - 2 * MARGIN)) - 24
+        if self.button.isVisible():
+            room -= self.button.sizeHint().width() + 8
         text = self.label.fontMetrics().horizontalAdvance(self.label.text()) + 2
         width = min(room, text)
         self.label.setFixedSize(width, self.label.heightForWidth(width))

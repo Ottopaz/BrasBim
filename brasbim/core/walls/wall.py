@@ -204,6 +204,30 @@ def _place(doc: Document, wall, storey, path: geom2d.Path, base_offset: float) -
     ifcopenshell.util.element.remove_deep2(doc.ifc, old)
 
 
+ROOF_TOP_REFUSED = {
+    "tilt": "parede tombada ainda não vai até a cobertura",
+    "profile": "parede de perfil ainda não vai até a cobertura",
+    "top_profile": "o topo inclinado à mão e o topo até a cobertura não andam juntos; "
+                   "volte o topo a plano antes",
+}
+
+
+def _check_roof_top(doc: Document, state: dict, wall_type, tilted: bool) -> None:
+    """Topo até a cobertura (spec/ui 45 §3 item 7): só parede reta ou curva, de
+    camadas, de topo plano; as coberturas têm de existir."""
+    from brasbim.core.structure import roofs
+
+    if tilted:
+        raise OpError(ROOF_TOP_REFUSED["tilt"])
+    if wall_types.profile_of(wall_type) is not None:
+        raise OpError(ROOF_TOP_REFUSED["profile"])
+    if state.get("top_profile"):
+        raise OpError(ROOF_TOP_REFUSED["top_profile"])
+    for gid in state["top_roofs"]:
+        if not roofs.is_roof(doc.find(gid)):
+            raise OpError(f"a cobertura {gid} não existe")
+
+
 def write_state(doc: Document, wall, state: dict) -> None:
     try:
         params.validate(state)
@@ -218,8 +242,10 @@ def write_state(doc: Document, wall, state: dict) -> None:
     if tilted and wall_types.profile_of(wall_type) is not None:
         raise OpError(TILT_WITH_PROFILE)
     storey = doc.get(state["storey"], "IfcBuildingStorey")
-    if state["top_mode"] == "storey":
+    if state["top_mode"] == "storey" or (state["top_mode"] == "roof" and state["top_storey"]):
         doc.get(state["top_storey"], "IfcBuildingStorey")
+    if state["top_mode"] == "roof":
+        _check_roof_top(doc, state, wall_type, tilted)
 
     wall.Name = state["name"]
     _assign_type(doc, wall, wall_type, tilted)
@@ -239,8 +265,9 @@ def write_state(doc: Document, wall, state: dict) -> None:
     for key in ("PavimentoBase", "PavimentoTopo"):
         if values[key] is not None:
             values[key] = doc.ifc.createIfcIdentifier(values[key])
-    if values["SemJuncaoCom"] is not None:
-        values["SemJuncaoCom"] = doc.ifc.createIfcText(values["SemJuncaoCom"])
+    for key in ("SemJuncaoCom", "CoberturasTopo"):
+        if values[key] is not None:
+            values[key] = doc.ifc.createIfcText(values[key])
     values["Inclinacao"] = doc.ifc.createIfcPlaneAngleMeasure(values["Inclinacao"])
     pset = props.ensure_pset(doc, wall, params.PSET)
     _remove_profile_props(doc, pset)

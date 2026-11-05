@@ -38,6 +38,7 @@ from brasbim.ui.docks import plain_title
 from brasbim.ui.tools import (
     AreaTool,
     BeamTool,
+    CeilingTool,
     ColumnTool,
     DimensionTool,
     DoorTool,
@@ -98,6 +99,10 @@ CREATE_TOOLS = [
      "clique o início e o fim; continua do último ponto; Esc ou clique duplo encerra"),
     ("slab", "slab", "Laje",
      "polígono (feche no primeiro ponto) ou retângulo por dois cantos"),
+    ("ceiling", "ceiling", "Forro",
+     "clique dentro de um ambiente (fica preso a ele) ou desenhe o contorno"),
+    ("flooring", "flooring", "Piso",
+     "clique dentro de um ambiente (fica preso a ele) ou desenhe o contorno"),
     ("roof", "roof", "Cobertura",
      "clique dentro da edificação, ou desenhe o contorno de apoio; escolha a forma na barra"),
     ("skylight", "skylight", "Claraboia",
@@ -172,12 +177,16 @@ _SEEN = "vista do lado oposto ao da abertura"
 HANDS = [("left", "hinge_left", "Mão esquerda", f"dobradiças à esquerda, {_SEEN}"),
          ("right", "hinge_right", "Mão direita", f"dobradiças à direita, {_SEEN}")]
 TOPS = [("Pavimento de cima", "storey"), ("Altura fixa", "fixed")]
+# parede: também até a cobertura (spec/ui 45)
+WALL_TOPS = [*TOPS, ("Até a cobertura", "roof")]
 ALIGNS = [("Face esquerda", "left_face"), ("Eixo", "axis"), ("Face direita", "right_face")]
 SLAB_MODES = [("polygon", "slab", "Polígono",
                "clique os vértices; feche no primeiro ponto, com clique duplo ou Enter"),
               ("rectangle", "wall_rect", "Retângulo", "clique dois cantos opostos")]
 SLAB_ROOM = ("room", "slab_room", "Pelo cômodo",
              "clique dentro de um cômodo fechado por paredes")
+COVERING_ROOM = ("room", "space", "Pelo ambiente",
+                 "clique dentro de um ambiente: fica preso a ele e acompanha as paredes")
 ROOF_MODES = [("room", "slab_room", "Pelas paredes",
                "clique dentro da edificação: apoia no contorno externo das paredes"),
               *SLAB_MODES]
@@ -525,7 +534,7 @@ def tool_kind(tool) -> str | None:
             return getattr(tool, "prefix", kind)
     if isinstance(tool, SplineTool):
         return "spline2d"
-    for cls, kind in ((SpaceTool, "space"), (HatchTool, "hatch"), (LineTool, "line2d"),
+    for cls, kind in ((CeilingTool, "covering"), (SpaceTool, "space"), (HatchTool, "hatch"), (LineTool, "line2d"),
                       (TextTool, "text"), (DimensionTool, "dimension"), (NorthTool, "north"),
                       (ViewTool, "view"), (LevelTool, "level_mark"), (BeamTool, "beam"),
                       (SlabOpeningTool, None), (RoofTool, "roof"), (SlabTool, "slab"),
@@ -750,6 +759,8 @@ class OptionsBar(QToolBar):
         elif isinstance(tool, SlabOpeningTool):
             self._choices(SLAB_MODES, tool.options.mode,
                           lambda v: setattr(tool.options, "mode", v))
+        elif isinstance(tool, CeilingTool):
+            self._covering(tool)
         elif isinstance(tool, RoofTool):
             self._roof(tool)
         elif isinstance(tool, SlabTool):
@@ -942,7 +953,8 @@ class OptionsBar(QToolBar):
             options.top = value
             self.show_for(tool)
 
-        self._combo(TOPS, options.top, set_top, "Topo da próxima parede")
+        self._combo(WALL_TOPS, options.top, set_top,
+                    "Topo da próxima parede (até a cobertura: a que passar em cima dela)")
         if options.top == "fixed":
             self._number(options.fixed_height, lambda v: setattr(options, "fixed_height", v),
                          "Altura da parede (m)")
@@ -1204,6 +1216,45 @@ class OptionsBar(QToolBar):
         self._label("Deslocamento do topo")
         self._number(options.top_offset, lambda v: setattr(options, "top_offset", v),
                      "Cota da face de cima em relação ao pavimento (m)")
+
+    def _covering(self, tool) -> None:
+        """Forro e piso (spec/ui 46 §3): tipo, modo, altura do forro (o piso fica no nível
+        do pavimento) e Em todos os ambientes."""
+        from brasbim.core.structure import coverings
+
+        options = tool.options
+        noun = coverings.NOUN[options.kind]
+
+        def set_type(gid):
+            options.type = gid
+            self.show_for(tool)
+
+        self._type_group("IfcCoveringType", options, set_type, f"do próximo {noun}",
+                         coverings.types_of(self.window_.session.doc, options.kind))
+        self.addSeparator()
+
+        def set_mode(value):
+            tool.cancel()
+            tool.points = []
+            options.mode = value
+            self.show_for(tool)
+
+        self._choices([COVERING_ROOM, *SLAB_MODES], options.mode, set_mode)
+        self.addSeparator()
+        if options.kind == "CEILING":
+            self._label("Altura")
+            self._number(options.elevation, lambda v: setattr(options, "elevation", v),
+                         "Altura da face de baixo do forro, a partir do pavimento (m)")
+        else:
+            self._label("Deslocamento")
+            self._number(options.elevation, lambda v: setattr(options, "elevation", v),
+                         "Cota do topo do piso em relação ao pavimento (m)")
+        self.addSeparator()
+        fill = make_action(self, "covering_all", "Em todos os ambientes",
+                           f"põe o {noun} escolhido em cada ambiente do pavimento que "
+                           f"ainda não tem {noun}")
+        fill.triggered.connect(lambda: (tool.fill_all(), self.window_.plan.update()))
+        self.addAction(fill)
 
     def _roof(self, tool) -> None:
         """Cobertura (cobertura.md §4): tipo, forma, modo do contorno, inclinação, beiral e

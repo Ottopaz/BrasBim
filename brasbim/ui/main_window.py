@@ -92,6 +92,7 @@ from brasbim.ui.tools import Mods, PlanContext, ToolBox, fmt
 from brasbim.ui.types_dialog import (
     BeamTypesDialog,
     ColumnTypesDialog,
+    CoveringTypesDialog,
     DoorTypesDialog,
     SlabTypesDialog,
     WallTypesDialog,
@@ -112,6 +113,23 @@ VIEW_BAR_KEY = "barras/barra_da_vista"  # spec/ui 39 §2
 DRAW_ORDER = (("front", "Trazer para a frente"), ("back", "Mandar para trás"),
               ("forward", "Um passo à frente"), ("backward", "Um passo atrás"),
               ("default", "Ordem padrão"))  # spec/ui 39 §6
+
+
+def ifc_options(settings):
+    """Opções da última exportação de IFC (spec/ui 47 §2)."""
+    from brasbim.core import ifc_export
+
+    found = ifc_export.Options()
+    for key, default in vars(ifc_export.Options()).items():
+        value = settings.value(f"exportar_ifc/{key}", default)
+        if isinstance(default, bool):
+            value = value in (True, "true", "1", 1)
+        setattr(found, key, value)
+    if found.version not in ifc_export.VERSIONS:
+        found.version = "IFC2X3"
+    if found.target not in ifc_export.TARGETS:
+        found.target = "coordination"
+    return found
 
 
 def _settings() -> QSettings:
@@ -404,6 +422,8 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Importar desenho (DXF, DWG)", lambda: self.import_drawing())
         self._action(file_menu, "Exportar PDF", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela", lambda: self.export_table())
+        self._action(file_menu, "Exportar IFC (2x3, 4)", lambda: self.export_ifc_dialog())
+        self._action(file_menu, "Exportar 3D (glTF, OBJ)", lambda: self.export_3d())
         self._action(file_menu, "Exportar DWG/DXF", lambda: self.export_dwg_dialog())
         # Pedaço da planta pela área de seleção (spec/ui 38 §5)
         self._action(file_menu, "Exportar área (PDF)", lambda: self.export_area("pdf"))
@@ -459,6 +479,10 @@ class MainWindow(QMainWindow):
             self._action(edit_menu, text, lambda _=False, k=key: self.activate_tool(k))
         self._action(edit_menu, "Operações de sólidos", self.show_solids_panel)
         self._action(edit_menu, "Tirar recortes", self.remove_solid_cuts)
+        # parede até a cobertura (spec/ui 45 §2)
+        self._action(edit_menu, "Prender à cobertura",
+                     lambda: self.activate_tool("roof_attach"))
+        self._action(edit_menu, "Soltar da cobertura", self.detach_from_roof)
         self._action(edit_menu, "Remover área de seleção", self.remove_selection_area)
         mode_menu = edit_menu.addMenu("Modo de seleção")  # spec/ui 28 §4
         group = QActionGroup(self)
@@ -601,6 +625,8 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Tipos de pilar", lambda: self.edit_type("IfcColumnType"))
         self._action(project_menu, "Tipos de viga", lambda: self.edit_type("IfcBeamType"))
         self._action(project_menu, "Tipos de laje", lambda: self.edit_type("IfcSlabType"))
+        self._action(project_menu, "Tipos de forro e piso",
+                     lambda: self.edit_type("IfcCoveringType"))
         self._action(project_menu, "Materiais", lambda: self.edit_materials())
         self._action(project_menu, "Perfis", lambda: self.edit_profiles())
         self._action(project_menu, "Tabelas de penas", lambda: self.edit_pens())
@@ -1639,6 +1665,58 @@ class MainWindow(QMainWindow):
             self.session.message(f"não foi possível exportar {text}", "recusa")
         return done
 
+    def export_ifc_dialog(self) -> str | None:
+        """Arquivo > Exportar IFC (spec/ui 47): o quadro de opções, guardadas para a
+        próxima vez."""
+        from brasbim.ui.export_dialog import ExportIfcDialog
+
+        settings = _settings()
+        options = ifc_options(settings)
+        base = str(Path(self.session.path or "Projeto.ifc").with_suffix(""))
+        suffix = {"IFC2X3": "_ifc2x3", "IFC4": "_ifc4", "IFC4X3": "_ifc43"}[options.version]
+        dialog = ExportIfcDialog(options, f"{base}{suffix}.ifc", self)
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        options = dialog.options()
+        for key, value in vars(options).items():
+            settings.setValue(f"exportar_ifc/{key}", value)
+        return self.export_ifc(dialog.path.text().strip(), options)
+
+    def export_ifc(self, path: str, options) -> str | None:
+        from brasbim.core import ifc_export
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            report = ifc_export.export(self.session.doc, path, options)
+        except (OpError, OSError) as e:
+            self.session.message(f"IFC não exportado: {e}", "recusa")
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.session.message(report.text(path))
+        return path
+
+    def export_3d(self, path: str | None = None) -> str | None:
+        """Arquivo > Exportar 3D (spec/ui 48): o que está visível, em .glb ou .obj."""
+        from brasbim.core import model_export
+
+        if path is None:
+            base = str(Path(self.session.path or "Projeto.ifc").with_suffix(".glb"))
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Exportar 3D", base, "glTF binário (*.glb);;OBJ (*.obj)")
+            if not path:
+                return None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = model_export.export(self.session.doc, path)
+        except (OpError, OSError) as e:
+            self.session.message(f"3D não exportado: {e}", "recusa")
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.session.message(result.text(path))
+        return path
+
     def export_dwg_dialog(self) -> list[str]:
         """Arquivo > Exportar DWG/DXF: o quadro com a lista do Navegador."""
         from brasbim.ui.export_dialog import ExportDwgDialog
@@ -2037,7 +2115,7 @@ class MainWindow(QMainWindow):
         self.messages.scrollToBottom()
         last = self.session.messages[-1] if self.session.messages else None
         if last and hasattr(self, "balloon"):
-            self.balloon.show_message(last["text"], last["level"])
+            self.balloon.show_message(last["text"], last["level"], last.get("action"))
         if last and last["level"] == "recusa":
             self.statusBar().showMessage(last["text"], 6000)
 
@@ -2266,7 +2344,8 @@ class MainWindow(QMainWindow):
         """Janela de tipos (parede, porta, janela, pilar, viga, laje), aberta no ``gid``."""
         dialog_class = {"IfcWallType": WallTypesDialog, "IfcDoorType": DoorTypesDialog,
                         "IfcWindowType": WindowTypesDialog, "IfcColumnType": ColumnTypesDialog,
-                        "IfcBeamType": BeamTypesDialog, "IfcSlabType": SlabTypesDialog}[ifc_class]
+                        "IfcBeamType": BeamTypesDialog, "IfcSlabType": SlabTypesDialog,
+                        "IfcCoveringType": CoveringTypesDialog}[ifc_class]
         self.toolbox.active.cancel()
         dialog_class(self.session, self, select=gid).exec()
         self.toolbox.check_types()
@@ -2389,7 +2468,8 @@ class MainWindow(QMainWindow):
         hide = [("Ocultar selecionados", self.hide_selection),
                 ("Isolar selecionados", self.isolate_selection)]
         return (actions + hide + self._object_context(gid) + self._layer_actions(gid)
-                + self._order_context(gid) + self._solid_context(gid) + self._lock_context(gid)
+                + self._order_context(gid) + self._solid_context(gid) + self._roof_context(gid)
+                + self._lock_context(gid)
                 + self._team_context(gid) + area)
 
     def _order_context(self, gid) -> list:
@@ -2407,6 +2487,28 @@ class MainWindow(QMainWindow):
         if solids.relations_of(element):
             out.append(("Tirar recortes", lambda: self.remove_solid_cuts(gid)))
         return out
+
+    def _roof_context(self, gid) -> list:
+        """Parede: prender à cobertura e, se presa, soltar (spec/ui 45 §2)."""
+        from brasbim.core.walls import roof_top
+
+        element = self.session.doc.find(gid)
+        if element is None or not element.is_a("IfcWall"):
+            return []
+        out = [("Prender à cobertura", lambda: self.activate_tool("roof_attach"))]
+        if any(roof_top.is_roof_rel(r) for r in element.InterferesElements or ()):
+            out.append(("Soltar da cobertura", lambda: self.detach_from_roof(gid)))
+        return out
+
+    def detach_from_roof(self, gid=None) -> None:
+        from brasbim.core.walls import roof_top
+
+        session = self.session
+        ids = session.selection if gid is None or gid in session.selection else {gid}
+        walls = [e for e in (session.doc.find(g) for g in sorted(ids))
+                 if e is not None and e.is_a("IfcWall")]
+        if session.run(lambda: roof_top.detach(session.doc, walls)):
+            self.properties.refresh()
 
     def remove_solid_cuts(self, gid=None) -> None:
         session = self.session
