@@ -167,3 +167,58 @@ def test_pc11_parede_de_perfil_sem_espessura_livre(model):
     assert ue.get_type(w2) == t
     assert not type_variants.variants_of(model.doc, t)
     assert valid(model.doc.ifc)
+
+
+def test_pc12_referencia_das_aberturas(model):
+    """A janela se alinha à linha de referência do perfil, e não ao envolvente; a linha
+    anda com o esticar e espelha com as camadas invertidas."""
+    from brasbim.core.fillings import commands as fc
+
+    def_id, t = profile_type(model, opening_ref=0.07, stretch_x=0.0)
+    assert profile_defs.state(model.doc, def_id)["opening_ref"] == pytest.approx(0.07)
+    wt = model.doc.get(model.commit(fc.create_window_type(
+        model.doc, "J", lining={"depth": 0.04})).ops[0].id)
+
+    def window_y(wall):
+        tx = model.commit(fc.create_window(model.doc, wt, wall, 1.0, 1.0, 1.0, 0.5,
+                                           align="axis"))
+        window = next(model.doc.get(op.id) for op in tx.ops if op.op == "filling.attach")
+        lo, hi = bounds(window)
+        return lo[1], hi[1]
+
+    w = wall_of(model, t)
+    # perfil de 0,20 esticado para 0,20 (igual): linha em 0,07, janela de 0,05 a 0,09
+    assert window_y(w) == pytest.approx((0.05, 0.09), abs=1e-6)
+    # editar a linha no perfil leva a janela junto; desfazer volta
+    window = model.doc.ifc.by_type("IfcWindow")[-1]
+    model.commit(profile_defs.edit(model.doc, def_id, opening_ref=-0.07))
+    assert [c[1] for c in bounds(window)] == pytest.approx([-0.09, -0.05], abs=1e-6)
+    model.history.undo()
+    assert [c[1] for c in bounds(window)] == pytest.approx([0.05, 0.09], abs=1e-6)
+    flipped = wall_of(model, t, (0, 5), (5, 5), flip_layers=True)
+    lo, hi = window_y(flipped)
+    assert (lo - 5, hi - 5) == pytest.approx((-0.09, -0.05), abs=1e-6)
+    # tipo mais largo: a linha (à direita da faixa de esticar) anda junto
+    model.commit(wc.edit_wall_type(model.doc, t, profile={"id": def_id, "b": 0.30}))
+    assert rebuild.opening_line(model.doc, read_state(model.doc, w)) == pytest.approx(0.17)
+    with pytest.raises(OpError, match="referência das aberturas"):
+        model.commit(profile_defs.edit(model.doc, def_id, opening_ref=0.5))
+    assert valid(model.doc.ifc)
+
+
+def test_pc14_mesmo_material_sem_linha_entre_partes(model):
+    """Duas partes encostadas do mesmo material viram um trecho só na planta e no corte
+    (spec/ui 41 ponto (o)); materiais diferentes continuam separados."""
+    left = [[-0.07, 0.0], [0.0, 0.0], [0.0, 2.0], [-0.07, 2.0]]
+    right = [[0.0, 0.0], [0.07, 0.0], [0.07, 2.0], [0.0, 2.0]]
+    finish = [[0.07, 0.0], [0.09, 0.0], [0.09, 2.0], [0.07, 2.0]]
+    def_id = model.commit(profile_defs.create(model.doc, muro(stretch_y=None, parts=[
+        {"material": "Bloco cerâmico", "role": "core", "outline": left},
+        {"material": "Bloco cerâmico", "role": "core", "outline": right},
+        {"material": "Reboco", "role": "finish", "outline": finish}]))).ops[0].id
+    t = model.doc.get(model.commit(wc.create_wall_type(
+        model.doc, "Muro", [], profile={"id": def_id, "b": 0.16})).ops[0].id)
+    found = layers.wall_layers(model.doc, read_state(model.doc, wall_of(model, t)))
+    assert [(ly.material, ly.ymin, ly.ymax) for ly in found] == [
+        ("Bloco cerâmico", pytest.approx(-0.07), pytest.approx(0.07)),
+        ("Reboco", pytest.approx(0.07), pytest.approx(0.09))]

@@ -1142,8 +1142,10 @@ class _ProfileTypesDialog(_StructureTypesDialog):
         if shape == "circle":
             return {"shape": "circle", "d": parse_len(self.d.text())}
         if shape == profiles.CUSTOM:
+            # giro e espelhar ficam como estavam no tipo (mudam pela ficha)
+            kept = {k: v for k, v in self.state["section"].items() if k in ("angle", "mirror")}
             return {"shape": profiles.CUSTOM, "profile": self.profile.currentData(),
-                    "b": parse_len(self.b.text()), "h": parse_len(self.h.text())}
+                    "b": parse_len(self.b.text()), "h": parse_len(self.h.text()), **kept}
         return {"shape": "rect", "b": parse_len(self.b.text()),
                 "h": parse_len(self.h.text())}
 

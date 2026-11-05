@@ -238,8 +238,7 @@ def _write_material(doc: Document, wall_type, state: dict, definition: dict | No
             doc.ifc, name=state["name"], set_type="IfcMaterialProfileSet")
         parts = profile_defs.stretched(definition, b, profile_defs.nominal(definition)[1])
         made = profile_defs.write_parts(doc, material, parts, definition["name"])
-        material.CompositeProfile = doc.ifc.createIfcCompositeProfileDef(
-            "AREA", definition["name"], made, None)
+        material.CompositeProfile = profile_defs.composite(doc, made, definition["name"])
         kind = "IfcMaterialProfileSet"
     rel = ifcopenshell.api.material.assign_material(
         doc.ifc, products=[wall_type], type=kind, material=material)

@@ -246,6 +246,18 @@ def band(doc: Document, state: dict) -> joins.Band:
     return joins.Band(geom2d.path_from_dict(state["path"]), ymin * k, ymax * k)
 
 
+def opening_line(doc: Document, state: dict) -> float | None:
+    """y local da referência das aberturas da parede de perfil (spec/ui 41 §4), ou
+    ``None``: sem ela, portas e janelas usam as faces do envolvente."""
+    found = _definition(doc, state)
+    if found is None:
+        return None
+    y = profile_defs.opening_line(found[1], found[0]["b"])
+    if y is None:
+        return None
+    return -y if state["flip_layers"] else y
+
+
 def end_cuts(doc: Document, wall, own: joins.Band) -> dict[str, geom2d.Curve]:
     """Curva de corte (coordenadas do pavimento) de cada extremidade com junção.
 

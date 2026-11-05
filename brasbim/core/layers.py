@@ -71,7 +71,7 @@ def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
     if not y0 < z < y1:
         return None
     line = LineString([(x0 - 1.0, z), (x1 + 1.0, z)])
-    out = []
+    found_ = []
     for part in parts:
         found = Polygon(part["outline"], part.get("holes") or []).intersection(line)
         pieces = getattr(found, "geoms", [found])
@@ -79,8 +79,17 @@ def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
             if piece.is_empty or piece.length < 1e-9:
                 continue
             xs = [c[0] for c in piece.coords]
-            out.append(Layer(len(out), part["material"], _PART_PRIORITY[part["role"]],
-                             min(xs), max(xs)))
+            found_.append([part["material"], _PART_PRIORITY[part["role"]], min(xs), max(xs)])
+    # Trechos encostados do mesmo material viram um só: sem linha entre eles (ponto (o)).
+    merged = []
+    for item in sorted(found_, key=lambda t: t[2]):
+        last = merged[-1] if merged else None
+        if last and last[0] == item[0] and abs(last[3] - item[2]) < 1e-9:
+            last[1], last[3] = max(last[1], item[1]), item[3]
+        else:
+            merged.append(item)
+    out = [Layer(i, material, priority, a, b)
+           for i, (material, priority, a, b) in enumerate(merged)]
     return out or None
 
 

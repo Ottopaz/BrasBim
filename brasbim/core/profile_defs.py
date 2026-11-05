@@ -4,19 +4,21 @@
 Estado de um perfil::
 
     {"name": "Viga T", "uses": ["beam", "column"],
-     "stretch_x": 0.10, "stretch_y": None,
+     "stretch_x": 0.10, "stretch_y": None, "opening_ref": None,
      "parts": [{"material": "Concreto", "role": "core",
                 "outline": [[x, y], ...], "holes": [[[x, y], ...]]}]}
 
 Coordenadas em metros no plano do desenho; a origem (0, 0) é o ponto de inserção (eixo
 da viga, ponto do pilar). ``stretch_x``/``stretch_y``: linhas de esticar (x = constante,
 y = constante); o que está além delas anda quando a largura ou a altura do elemento
-mudam. Sem a linha, a medida naquela direção é fixa.
+mudam. Sem a linha, a medida naquela direção é fixa. ``opening_ref``: linha de referência
+das aberturas (x = constante, só parede): portas e janelas se alinham a ela em vez das
+faces do envolvente; ela anda com o esticar como os pontos.
 
 Gravação: um ``IfcMaterialProfileSet`` sem dono, com um ``IfcMaterialProfile`` por parte
 (material, ``IfcArbitraryClosedProfileDef`` ou ``...WithVoids``, ``Category``
 ``LoadBearing``/``Finish``) e o Pset ``BrasBim_Perfil`` (``IfcMaterialProperties``):
-``Identificador``, ``Usos``, ``EsticarX``, ``EsticarY``.
+``Identificador``, ``Usos``, ``EsticarX``, ``EsticarY``, ``ReferenciaAberturas``.
 
 Operações ``profile_def.create``/``delete`` (data: estado completo) e
 ``profile_def.edit`` (before/after). ``id`` = o ``Identificador`` (o conjunto de
@@ -26,6 +28,7 @@ materiais não tem GlobalId). Editar refaz os tipos que usam o perfil.
 from __future__ import annotations
 
 import copy
+import math
 
 import ifcopenshell.api.material
 import ifcopenshell.api.pset
@@ -98,6 +101,20 @@ def validate(state: dict) -> None:
         line = state.get(key)
         if line is not None and not low < line < high:
             raise OpError("a linha de esticar tem de cruzar o perfil")
+    ref = state.get("opening_ref")
+    if ref is not None and not x0 - TOL <= ref <= x1 + TOL:
+        raise OpError("a referência das aberturas tem de ficar dentro do perfil")
+
+
+def opening_line(state: dict, width: float) -> float | None:
+    """x da referência das aberturas no perfil esticado na largura ``width``."""
+    ref = state.get("opening_ref")
+    if ref is None:
+        return None
+    sx = state.get("stretch_x")
+    if sx is not None and ref > sx:
+        ref += width - nominal(state)[0]
+    return ref
 
 
 def stretched(state: dict, width: float, height: float) -> list[dict]:
@@ -125,8 +142,56 @@ def stretched(state: dict, width: float, height: float) -> list[dict]:
     return parts
 
 
+def placed(parts: list[dict], angle: float = 0.0, mirror: bool = False) -> list[dict]:
+    """Partes espelhadas (x → −x, pelo eixo vertical que passa na origem) e depois giradas
+    ``angle`` graus, anti-horário, em torno da origem (giro e espelhar da viga e do pilar,
+    spec/ui 41 §4)."""
+    if not mirror and not angle % 360.0:
+        return parts
+    c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+
+    def ring(points):
+        pts = [[-x, y] for x, y in reversed(points)] if mirror else points
+        return [[round(c * x - s * y, 12), round(s * x + c * y, 12)] for x, y in pts]
+
+    return [{**p, "outline": ring(p["outline"]),
+             "holes": [ring(h) for h in p.get("holes") or []]} for p in parts]
+
+
 def area(parts: list[dict]) -> float:
     return sum(_polygon(p).area for p in parts)
+
+
+_ROLE_PRIORITY = {"core": 2, "finish": 1}
+
+
+def resolve_overlaps(parts: list[dict]) -> list[dict]:
+    """Partes desenhadas sobrepostas viram regiões sem sobreposição (estudo de 11‑04 §12,
+    item 2): o núcleo corta o acabamento e, entre partes do mesmo papel, a desenhada
+    depois (a de cima) corta a de baixo. Parte cortada em pedaços vira várias; parte
+    coberta por inteiro some."""
+    from shapely.geometry import polygon as shapely_polygon
+
+    polys = [_polygon(p).buffer(0) for p in parts]
+    rank = [(_ROLE_PRIORITY.get(p.get("role"), 0), i) for i, p in enumerate(parts)]
+    if not any(polys[i].intersection(polys[j]).area > MIN_AREA
+               for i in range(len(polys)) for j in range(i + 1, len(polys))):
+        return parts
+    out = []
+    for i, part in enumerate(parts):
+        winners = [polys[j] for j in range(len(parts)) if rank[j] > rank[i]]
+        rest = polys[i].difference(unary_union(winners)) if winners else polys[i]
+        for piece in getattr(rest, "geoms", [rest]):
+            if piece.geom_type != "Polygon" or piece.area < MIN_AREA:
+                continue
+            piece = shapely_polygon.orient(piece.simplify(0), 1.0)
+
+            def ring(coords):
+                return [[round(float(x), 9), round(float(y), 9)] for x, y in coords[:-1]]
+
+            out.append({**part, "outline": ring(list(piece.exterior.coords)),
+                        "holes": [ring(list(h.coords)) for h in piece.interiors]})
+    return out
 
 
 def union(parts: list[dict]):
@@ -179,18 +244,27 @@ def read_parts(material_profiles) -> list[dict]:
 
 
 def write_parts(doc: Document, profile_set, parts: list[dict], name: str) -> list:
-    """Uma ``IfcMaterialProfile`` por parte; devolve os perfis criados."""
+    """Uma ``IfcMaterialProfile`` por parte; devolve os perfis criados. Uma parte só leva
+    o nome do perfil (é ela a seção inteira)."""
     from brasbim.core.walls import types as wall_types  # evita import circular
 
     made = []
     for i, part in enumerate(parts, 1):
-        profile = write_part_profile(doc.ifc, part, f"{name} {i}")
+        profile = write_part_profile(doc.ifc, part, name if len(parts) == 1 else f"{name} {i}")
         mp = ifcopenshell.api.material.add_profile(
             doc.ifc, profile_set=profile_set,
             material=wall_types.material_named(doc, part["material"]), profile=profile)
         mp.Category = _CATEGORY[part["role"]]
         made.append(profile)
     return made
+
+
+def composite(doc: Document, made: list, name: str):
+    """``IfcCompositeProfileDef`` das partes, ou ``None`` com uma parte só (o IFC pede duas
+    ou mais; aí o corpo extruda o perfil da parte)."""
+    if len(made) < 2:
+        return None
+    return doc.ifc.createIfcCompositeProfileDef("AREA", name, made, None)
 
 
 def remove_parts(doc: Document, profile_set) -> list:
@@ -244,6 +318,7 @@ def read_state(profile_set) -> dict:
     uses = [u for u in (values.get("Usos") or "").split(";") if u]
     return {"name": profile_set.Name, "uses": uses,
             "stretch_x": values.get("EsticarX"), "stretch_y": values.get("EsticarY"),
+            "opening_ref": values.get("ReferenciaAberturas"),
             "parts": read_parts(profile_set.MaterialProfiles)}
 
 
@@ -258,7 +333,8 @@ def _write_pset(doc: Document, profile_set, def_id: str, state_: dict) -> None:
         pset = ifcopenshell.api.pset.add_pset(doc.ifc, product=profile_set, name=PSET)
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=pset, properties={
         "Identificador": def_id, "Usos": ";".join(state_["uses"]),
-        "EsticarX": state_.get("stretch_x"), "EsticarY": state_.get("stretch_y")})
+        "EsticarX": state_.get("stretch_x"), "EsticarY": state_.get("stretch_y"),
+        "ReferenciaAberturas": state_.get("opening_ref")})
 
 
 def users(doc: Document, def_id: str) -> list:
@@ -350,7 +426,8 @@ def create(doc: Document, state_: dict) -> Transaction:
     data = copy.deepcopy(state_)
     data.setdefault("stretch_x", None)
     data.setdefault("stretch_y", None)
-    data["parts"] = _normal_parts(data.get("parts"))
+    data.setdefault("opening_ref", None)
+    data["parts"] = resolve_overlaps(_normal_parts(data.get("parts")))
     validate(data)
     _check_name(doc, data["name"])
     return Transaction(f"Criar perfil {data['name']}", [Op("profile_def.create", guid.new(),
@@ -363,7 +440,7 @@ def edit(doc: Document, def_id: str, **changes) -> Transaction:
     if unknown:
         raise OpError(f"campos desconhecidos: {sorted(unknown)}")
     if "parts" in changes:
-        changes["parts"] = _normal_parts(changes["parts"])
+        changes["parts"] = resolve_overlaps(_normal_parts(changes["parts"]))
     before = {k: current[k] for k in changes}
     return Transaction(f"Editar perfil {current['name']}",
                        [Op("profile_def.edit", def_id, before=before,
@@ -381,3 +458,107 @@ def delete(doc: Document, def_id: str) -> Transaction:
 def for_use(doc: Document, use: str) -> list:
     """Perfis marcados para ``use`` (a lista de cada ferramenta)."""
     return [s for s in all_defs(doc) if use in read_state(s)["uses"]]
+
+
+# --- criar a partir de um elemento (spec/ui 41 §4) -------------------------------------
+
+CIRCLE_STEPS = 32
+
+
+def _rect(x0: float, y0: float, x1: float, y1: float) -> list[list[float]]:
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+
+
+def _round_parts(parts: list[dict]) -> list[dict]:
+    def ring(points):
+        return [[round(float(x), 9), round(float(y), 9)] for x, y in points]
+
+    return [{**p, "outline": ring(p["outline"])} for p in parts]
+
+
+def _wall_parts(doc: Document, element) -> tuple[list[dict], list[str]]:
+    from brasbim.core import layers
+    from brasbim.core.walls import rebuild
+    from brasbim.core.walls import types as wall_types
+    from brasbim.core.walls.wall import read_state
+
+    state = read_state(doc, element)
+    wall_type = doc.get(state["type"], "IfcWallType")
+    if wall_types.profile_of(wall_type) is not None:
+        raise OpError("a parede já usa um perfil do projeto")
+    # o desenho do perfil é o da parede sem inverter (inverter espelha o perfil)
+    plain = {**state, "flip_layers": False, "tilt": 0.0}
+    found = layers.wall_layers(doc, plain)
+    if not found:
+        raise OpError("a parede não tem camadas")
+    items = list(wall_types.layer_set(wall_type).MaterialLayers)
+    h = rebuild.height(doc, plain)
+    parts = [{"material": ly.material or "Concreto",
+              "role": "core" if items[ly.index].Category == "LoadBearing"
+              or len(items) == 1 else "finish",
+              "outline": _rect(ly.ymin, 0.0, ly.ymax, h), "holes": []}
+             for ly in found if ly.ymax - ly.ymin > TOL]
+    if not any(p["role"] == "core" for p in parts):  # sem núcleo marcado: a mais grossa
+        thick = max(parts, key=lambda p: p["outline"][1][0] - p["outline"][0][0])
+        thick["role"] = "core"
+    return parts, ["wall"]
+
+
+def _section_parts(doc: Document, element) -> tuple[list[dict], list[str]]:
+    import ifcopenshell.util.element as ue
+
+    from brasbim.core.structure import beams, columns, profiles
+    from brasbim.core.structure import types as st_types
+
+    beam = element.is_a("IfcBeam")
+    module = beams if beam else columns
+    state = module.read_state(doc, element)
+    if state["foreign"] is not None:
+        raise OpError("o elemento não foi feito no BrasBim")
+    element_type = ue.get_type(element)
+    section = st_types.section(element_type)
+    if section["shape"] == profiles.CUSTOM:
+        raise OpError("o elemento já usa um perfil do projeto")
+    mp = st_types.material_profile(element_type)
+    material = mp.Material.Name if mp.Material else "Concreto"
+    cardinal = beams.CARDINAL[state["ref_line"]] if beam else state["cardinal"]
+    x0, x1, y0, y1 = profiles.extent(section, cardinal)
+    if section["shape"] == "circle":
+        r, (cx, cy) = section["d"] / 2, ((x0 + x1) / 2, (y0 + y1) / 2)
+        outline = [[cx + r * math.cos(2 * math.pi * k / CIRCLE_STEPS),
+                    cy + r * math.sin(2 * math.pi * k / CIRCLE_STEPS)]
+                   for k in range(CIRCLE_STEPS)]
+    else:
+        outline = _rect(x0, y0, x1, y1)
+    uses = ["beam", "column"] if beam else ["column", "beam"]
+    return [{"material": material, "role": "core", "outline": outline, "holes": []}], uses
+
+
+def from_element(doc: Document, element) -> dict:
+    """Estado de um perfil novo com a seção do elemento: parede de camadas (cada camada
+    vira um retângulo da altura da parede, com o material e o papel dela), viga e pilar
+    retangular ou circular. A origem é a do contexto (linha de referência na base, eixo da
+    viga, ponto do pilar); o retângulo estica nas duas direções, a parede na altura."""
+    if element.is_a("IfcWall"):
+        parts, uses = _wall_parts(doc, element)
+    elif element.is_a("IfcBeam") or element.is_a("IfcColumn"):
+        parts, uses = _section_parts(doc, element)
+    else:
+        raise OpError("crie o perfil a partir de uma parede, viga ou pilar")
+    parts = _round_parts(parts)
+    x0, y0, x1, y1 = bounds(parts)
+    circle = len(parts[0]["outline"]) == CIRCLE_STEPS
+    stretch_x = None if circle or uses == ["wall"] else round((x0 + x1) / 2, 9)
+    stretch_y = None if circle else round((y0 + y1) / 2, 9)
+    element_type = ifcopenshell.util.element.get_type(element)
+    base = (element_type.Name if element_type is not None else None) or element.Name         or "Perfil"
+    names, name, n = _names(doc), base, 2
+    while name in names:
+        name, n = f"{base} ({n})", n + 1
+    return {"name": name, "uses": uses, "stretch_x": stretch_x, "stretch_y": stretch_y,
+            "opening_ref": None, "parts": parts}
+
+
+def create_from(doc: Document, element) -> Transaction:
+    """Criar perfil a partir da seleção: o perfil novo, sem mudar o elemento."""
+    return create(doc, from_element(doc, element))

@@ -118,10 +118,12 @@ def section(element_type) -> dict:
     if def_id is not None:
         values = _type_pset(element_type)
         pset = profile_set(element_type)
-        name = (pset.CompositeProfile.ProfileName if pset.CompositeProfile is not None
-                else None) or element_type.Name
+        single = pset.CompositeProfile or material_profile(element_type).Profile
+        name = single.ProfileName or element_type.Name
         return {"shape": profiles.CUSTOM, "profile": def_id,
                 "b": float(values["Largura"]), "h": float(values["Altura"]),
+                "angle": float(values.get("Giro") or 0.0),
+                "mirror": bool(values.get("Espelhar")),
                 "name": name, "parts": profile_defs.read_parts(pset.MaterialProfiles)}
     found = profiles.read(profile(element_type))
     if found is None:
@@ -137,13 +139,26 @@ def resolve_section(doc: Document, section_: dict) -> dict:
         return section_
     definition = profile_defs.state(doc, section_["profile"])
     return {**stored_section(section_), "name": definition["name"],
-            "parts": profile_defs.stretched(definition, section_["b"], section_["h"])}
+            "parts": custom_parts(definition, section_)}
+
+
+def custom_parts(definition: dict, section_: dict) -> list[dict]:
+    """Partes do perfil do projeto esticadas na seção e, depois, espelhadas e giradas."""
+    parts = profile_defs.stretched(definition, section_["b"], section_["h"])
+    return profile_defs.placed(parts, float(section_.get("angle") or 0.0),
+                               bool(section_.get("mirror")))
 
 
 def stored_section(section_: dict) -> dict:
     """A seção como as operações guardam (sem as partes resolvidas)."""
     if _custom(section_):
-        return {k: section_[k] for k in ("shape", "profile", "b", "h")}
+        stored = {k: section_[k] for k in ("shape", "profile", "b", "h")}
+        # giro e espelhar só quando há (seções e diários de antes ficam iguais)
+        if float(section_.get("angle") or 0.0) % 360.0:
+            stored["angle"] = float(section_["angle"]) % 360.0
+        if section_.get("mirror"):
+            stored["mirror"] = True
+        return stored
     return section_
 
 
@@ -181,10 +196,9 @@ def _write_custom(doc: Document, element_type, pset, section_: dict,
                   definition: dict | None = None) -> None:
     """Partes esticadas, ``CompositeProfile`` e Pset do tipo com perfil do projeto."""
     definition = definition or profile_defs.state(doc, section_["profile"])
-    parts = profile_defs.stretched(definition, section_["b"], section_["h"])
+    parts = custom_parts(definition, section_)
     made = profile_defs.write_parts(doc, pset, parts, definition["name"])
-    pset.CompositeProfile = doc.ifc.createIfcCompositeProfileDef(
-        "AREA", definition["name"], made, None)
+    pset.CompositeProfile = profile_defs.composite(doc, made, definition["name"])
     found = ifcopenshell.util.element.get_pset(element_type, TYPE_PSET, should_inherit=False)
     if found is None:
         entity = ifcopenshell.api.pset.add_pset(doc.ifc, product=element_type, name=TYPE_PSET)
@@ -193,7 +207,8 @@ def _write_custom(doc: Document, element_type, pset, section_: dict,
         entity = doc.ifc.by_id(found["id"])
     ifcopenshell.api.pset.edit_pset(doc.ifc, pset=entity, properties={
         "PerfilId": section_["profile"], "Largura": float(section_["b"]),
-        "Altura": float(section_["h"])})
+        "Altura": float(section_["h"]), "Giro": float(section_.get("angle") or 0.0),
+        "Espelhar": bool(section_.get("mirror"))})
 
 
 def _clear_section(doc: Document, element_type, pset) -> None:
@@ -231,7 +246,9 @@ def refresh_profile_def(doc: Document, element_type, definition: dict) -> None:
     pset = profile_set(element_type)
     _clear_section(doc, element_type, pset)
     _write_custom(doc, element_type, pset,
-                  {"shape": profiles.CUSTOM, "profile": def_id, "b": b, "h": h}, definition)
+                  {"shape": profiles.CUSTOM, "profile": def_id, "b": b, "h": h,
+                   "angle": float(values.get("Giro") or 0.0),
+                   "mirror": bool(values.get("Espelhar"))}, definition)
 
 
 def _profile_create(k: ProfileKind):

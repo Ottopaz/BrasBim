@@ -889,7 +889,8 @@ class PropertiesPanel(QScrollArea):
             return commit
 
         shape = _common(sec["shape"] for sec in sections)
-        if column:
+        self._profile_choice(elements, sections, apply)
+        if column and shape != profiles.CUSTOM:
             def to_shape(value):
                 def change(sec):
                     if value == "circle":
@@ -903,11 +904,60 @@ class PropertiesPanel(QScrollArea):
         if shape == "circle":
             self._number("Ø (diâmetro)", _common(sec["d"] for sec in sections), size("d"),
                          placeholder=MIXED)
+        elif shape == profiles.CUSTOM:
+            self._profile_fields(sections, size, apply)
         elif shape == "rect":
             self._number("b (largura)", _common(sec["b"] for sec in sections), size("b"),
                          placeholder=MIXED)
             self._number("h (altura)" if not column else "h (profundidade)",
                          _common(sec["h"] for sec in sections), size("h"), placeholder=MIXED)
+
+    def _profile_choice(self, elements, sections, apply) -> None:
+        """Perfil do projeto do elemento (spec/ui 41 §4): escolher um põe a seção nele,
+        na medida do desenho; "Nenhum" volta ao retângulo da caixa da seção."""
+        from brasbim.core import profile_defs
+
+        doc = self.session.doc
+        use = "column" if elements[0].is_a("IfcColumn") else "beam"
+        available = [(s.Name, profile_defs.id_of(s)) for s in profile_defs.for_use(doc, use)]
+        current = _common(sec.get("profile") for sec in sections)
+        if not available and current is None:
+            return
+
+        def choose(def_id):
+            if def_id is None:
+                apply(lambda sec: {"shape": "rect", **dict(zip(
+                    ("b", "h"), profiles.size(sec), strict=True))})
+                return
+            w, h = profile_defs.nominal(profile_defs.state(doc, def_id))
+            apply(lambda sec: {"shape": profiles.CUSTOM, "profile": def_id, "b": w, "h": h})
+
+        self._combo("Perfil do projeto", [("Nenhum", None), *available], current, choose)
+
+    def _profile_fields(self, sections, size, apply) -> None:
+        """Viga e pilar com perfil do projeto (spec/ui 41 §4): o perfil, as medidas
+        nominais (só na direção em que ele estica), o giro e o espelhar."""
+        from brasbim.core import profile_defs
+
+        def_id = _common(sec["profile"] for sec in sections)
+        if def_id is not None:
+            definition = profile_defs.state(self.session.doc, def_id)
+            for key, axis, label in (("b", "stretch_x", "Largura nominal"),
+                                     ("h", "stretch_y", "Altura nominal")):
+                if definition.get(axis) is not None:
+                    self._number(label, _common(sec[key] for sec in sections), size(key),
+                                 placeholder=MIXED)
+        self._number("Giro do perfil (°)", _common(sec.get("angle") or 0.0 for sec in sections),
+                     lambda v: apply(lambda sec: {**sec, "angle": v % 360.0}),
+                     placeholder=MIXED)
+        mirror = QCheckBox()
+        found = _common(bool(sec.get("mirror")) for sec in sections)
+        mirror.setChecked(bool(found))
+        if found is None:
+            mirror.setTristate(True)
+            mirror.setCheckState(Qt.PartiallyChecked)
+        mirror.clicked.connect(lambda on: apply(lambda sec: {**sec, "mirror": bool(on)}))
+        self._add("Espelhar perfil", mirror)
 
     def _structure_tail(self, element, state: dict) -> None:
         self._structure_common([element])

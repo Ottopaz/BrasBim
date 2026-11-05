@@ -75,8 +75,8 @@ def test_pc06_editor_de_perfis(window):
     added = dialog.state["parts"][1]["outline"]
     assert [tuple(round(v, 2) for v in q) for q in added] == [
         (-0.3, -0.1), (0.3, -0.1), (0.3, 0.0), (-0.3, 0.0)]
-    # a nova parte sobrepõe a primeira (0,20 × 0,40, topo em 0): o aviso aparece
-    assert "sobrepõem" in dialog.note.text()
+    # a nova parte sobrepõe a primeira (0,20 × 0,40, topo em 0): avisa que recorta
+    assert "sobrepostas" in dialog.note.text()
     canvas.remove_selected()
     # por medidas: x, y, largura, altura
     for field, text in zip(dialog.rect_fields, ("-0,3", "0", "0,6", "0,1"), strict=True):
@@ -227,3 +227,182 @@ def test_pc06_editor_em_centimetros(window):
         dialog.close()
     finally:
         s.run(lambda: units.apply_preset(s.doc, "meters"))
+
+
+def test_pc13_ficha_giro_e_espelhar(window):
+    """Ficha do pilar de perfil: altura nominal (só a direção que estica), giro e
+    espelhar; a janela de tipos não perde o giro."""
+    from PySide6.QtWidgets import QCheckBox, QLineEdit
+
+    from brasbim.core.structure import commands as sc
+
+    s = window.session
+    def_id = _profile(window)
+    s.run(lambda: sc.create_column(s.doc, None, s.storey, (2, 3), section={
+        "shape": "custom", "profile": def_id, "b": 0.6, "h": 0.5}))
+    column = max(s.doc.ifc.by_type("IfcColumn"), key=lambda e: e.id())
+
+    def field(name):
+        QApplication.processEvents()
+        return next(w for g in window.properties.groups for n, w in g.rows if n == name)
+
+    def section():
+        return st_types.section(ue.get_type(column))
+
+    s.select([column.GlobalId])
+    QApplication.processEvents()
+    names = [n for g in window.properties.groups for n, _ in g.rows]
+    assert "Altura nominal" in names and "Largura nominal" not in names  # só estica em y
+    turn = field("Giro do perfil (°)")
+    assert isinstance(turn, QLineEdit)
+    turn.setText("90")
+    turn.editingFinished.emit()
+    assert section()["angle"] == pytest.approx(90.0)
+    mirror = field("Espelhar perfil")
+    assert isinstance(mirror, QCheckBox) and not mirror.isChecked()
+    mirror.click()
+    assert section()["mirror"] and section()["angle"] == pytest.approx(90.0)
+    # a janela de tipos guarda a seção com o giro e o espelhar
+    dialog = ColumnTypesDialog(s, window, select=ue.get_type(column).GlobalId)
+    assert dialog.read_section()["mirror"] is True
+    dialog.close()
+
+
+def test_pc15_criar_perfil_a_partir_da_selecao(window):
+    from brasbim.core.walls import commands as wc
+
+    s = window.session
+    t = s.doc.ifc.by_type("IfcWallType")[0]
+    s.run(lambda: wc.create_wall(s.doc, t, s.storey, (0, 0), (5, 0)))
+    wall = s.doc.ifc.by_type("IfcWall")[-1]
+    dialog = ProfilesDialog(s, window)
+    dialog.from_selection()  # nada selecionado: recusa
+    assert not profile_defs.all_defs(s.doc)
+    assert s.messages[-1]["level"] == "recusa"
+    s.select([wall.GlobalId])
+    dialog.from_selection()
+    (made,) = profile_defs.all_defs(s.doc)
+    assert dialog.current == profile_defs.id_of(made)
+    assert profile_defs.read_state(made)["uses"] == ["wall"]
+    assert made.Name.startswith(t.Name)
+    dialog.close()
+
+
+def test_pc12_referencia_das_aberturas_no_editor(window):
+    s = window.session
+    dialog = ProfilesDialog(s, window)
+    dialog.add()  # retângulo de x −0,10 a 0,10
+    box = dialog.stretch_boxes["opening_ref"]
+    box.setChecked(True)  # começa no meio do desenho
+    assert dialog.state["opening_ref"] == pytest.approx(0.0)
+    dialog.stretch_fields["opening_ref"].setText("0,05")
+    dialog.stretch_fields["opening_ref"].textEdited.emit("0,05")
+    assert dialog.apply()
+    (made,) = profile_defs.all_defs(s.doc)
+    assert profile_defs.read_state(made)["opening_ref"] == pytest.approx(0.05)
+    dialog.close()
+
+
+def test_pc17_editor_desenho_livre(window):
+    """O editor desenha como a planta (pedido de 2026‑11‑05): aplicar com partes
+    sobrepostas grava (recortadas), a medida digitada vale na unidade de trabalho,
+    vértices atraem e se arrastam, e a recusa aparece no próprio diálogo."""
+    from brasbim.core import units
+
+    s = window.session
+    s.run(lambda: units.apply_preset(s.doc, "centimeters"))
+    try:
+        dialog = ProfilesDialog(s, window)
+        dialog.show()
+        dialog.add()  # retângulo de x −10 a 10 cm, y −40 a 0
+        canvas = dialog.canvas
+
+        def at(p):
+            return canvas.to_screen(p).toPoint()
+
+        def move(p, buttons=Qt.NoButton):
+            from PySide6.QtCore import QEvent
+            from PySide6.QtGui import QMouseEvent
+
+            q = QPointF(at(p))
+            QApplication.sendEvent(canvas, QMouseEvent(
+                QEvent.MouseMove, q, canvas.mapToGlobal(q), Qt.NoButton, buttons,
+                Qt.NoModifier))
+
+        # o meio da aresta direita atrai
+        point, kind = canvas.snap(canvas.to_screen((0.101, -0.198)))
+        assert kind == "meio" and point == pytest.approx((0.1, -0.2))
+        # polígono por clique + medidas digitadas em cm: capa por cima do retângulo
+        canvas.set_mode("polygon")
+        QTest.mouseClick(canvas, Qt.LeftButton, Qt.NoModifier, at((-0.1, 0.0)))
+        move((0.2, 0.0))  # direção: para a direita
+        QTest.keyClicks(canvas, "30")
+        QTest.keyClick(canvas, Qt.Key_Return)
+        QTest.keyClicks(canvas, "-5;5")  # deslocamento x;y
+        QTest.keyClick(canvas, Qt.Key_Return)
+        QTest.keyClicks(canvas, "-25;0")
+        QTest.keyClick(canvas, Qt.Key_Return)
+        QTest.keyClick(canvas, Qt.Key_Return)  # Enter sem medida fecha
+        cap = dialog.state["parts"][-1]["outline"]
+        assert [tuple(round(v, 4) for v in q) for q in cap] == [
+            (-0.1, 0.0), (0.2, 0.0), (0.15, 0.05), (-0.1, 0.05)]
+        # arrastar um vértice da capa, com atração à grade de 1 cm
+        canvas.set_mode("select")
+        canvas.scale, canvas.center = 2000.0, (0.1, 0.0)  # perto: grade de 1 cm
+        canvas.select(len(dialog.state["parts"]) - 1)
+        QTest.mousePress(canvas, Qt.LeftButton, Qt.NoModifier, at((0.15, 0.05)))
+        move((0.1702, 0.0699), Qt.LeftButton)
+        QTest.mouseRelease(canvas, Qt.LeftButton, Qt.NoModifier, at((0.1702, 0.0699)))
+        assert dialog.state["parts"][-1]["outline"][2] == pytest.approx([0.17, 0.07])
+        # Ctrl+Z do editor desfaz o arrastar
+        QTest.keyClick(canvas, Qt.Key_Z, Qt.ControlModifier)
+        assert dialog.state["parts"][-1]["outline"][2] == pytest.approx([0.15, 0.05])
+        # retângulo sobreposto ao primeiro: aplicar grava, recortado
+        dialog.canvas.add_outline([[-0.05, -0.2], [0.05, -0.2], [0.05, -0.1], [-0.05, -0.1]])
+        assert dialog.apply()
+        parts = profile_defs.read_state(profile_defs.all_defs(s.doc)[0])["parts"]
+        assert len(parts) == 3 and len(parts[0]["holes"]) == 1  # o de baixo foi furado
+        # recusa (linha de esticar fora do perfil): aparece no diálogo
+        dialog.stretch_boxes["stretch_x"].setChecked(True)
+        dialog.stretch_fields["stretch_x"].setText("500")
+        dialog._stretch_edited("stretch_x")
+        from unittest import mock
+
+        with mock.patch("brasbim.ui.profiles_dialog.QMessageBox.warning") as warning:
+            assert not dialog.apply()
+        assert warning.called and "Não aplicado" in dialog.note.text()
+        dialog.dirty = False
+        dialog.close()
+    finally:
+        s.run(lambda: units.apply_preset(s.doc, "meters"))
+
+
+def test_pc18_ficha_poe_e_tira_o_perfil(window):
+    """Pilar e viga que já existem: "Perfil do projeto" na ficha põe o perfil (na medida
+    do desenho) e "Nenhum" volta ao retângulo."""
+    from PySide6.QtWidgets import QComboBox
+
+    from brasbim.core.structure import commands as sc
+
+    s = window.session
+    def_id = _profile(window)
+    s.run(lambda: sc.create_column(s.doc, None, s.storey, (2, 3),
+                                   section={"shape": "rect", "b": 0.2, "h": 0.4}))
+    column = max(s.doc.ifc.by_type("IfcColumn"), key=lambda e: e.id())
+
+    def combo():
+        QApplication.processEvents()
+        return next(w for g in window.properties.groups for n, w in g.rows
+                    if n == "Perfil do projeto")
+
+    s.select([column.GlobalId])
+    box = combo()
+    assert isinstance(box, QComboBox) and box.currentData() is None
+    box.setCurrentIndex(box.findData(def_id))
+    section = st_types.section(ue.get_type(column))
+    assert (section["shape"], section["profile"]) == (profiles.CUSTOM, def_id)
+    assert (section["b"], section["h"]) == pytest.approx((0.6, 0.5))
+    box = combo()
+    box.setCurrentIndex(box.findData(None))
+    section = st_types.section(ue.get_type(column))
+    assert section == {"shape": "rect", "b": pytest.approx(0.6), "h": pytest.approx(0.5)}

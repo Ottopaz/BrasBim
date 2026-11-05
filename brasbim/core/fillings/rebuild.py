@@ -133,7 +133,13 @@ def rebuild_door(doc: Document, door) -> None:
     if depth > thickness + 1e-6:
         log.warning("%s %s: marco (%.3f m) mais profundo que a parede (%.3f m)",
                     "janela" if window else "porta", door.GlobalId, depth, thickness)
-    a, b = params.lining_band(state["align"], state["offset"], depth, band.ymin, band.ymax)
+    from brasbim.core.walls import rebuild as wall_rebuild  # evita import circular
+    from brasbim.core.walls.wall import read_state as read_wall
+
+    # Parede de perfil com referência das aberturas: as faces de alinhamento viram a linha.
+    line = wall_rebuild.opening_line(doc, read_wall(doc, wall))
+    lo, hi = (band.ymin, band.ymax) if line is None else (line, line)
+    a, b = params.lining_band(state["align"], state["offset"], depth, lo, hi)
     w, h = o["width"], o["height"]
     _place(doc, door, opening, state["opens_to"], w, a, b)
     # Faces da parede no sistema da porta (+y da porta = lado para onde abre).
@@ -169,10 +175,13 @@ def affected_doors(doc: Document, dirty: set[str]) -> list:
             found[gid] = entity
         elif entity.is_a("IfcDoorType") or entity.is_a("IfcWindowType"):
             found.update({d.GlobalId: d for d in ifcopenshell.util.element.get_types(entity)})
-        elif entity.is_a("IfcWall"):
-            for opening in openings.of_wall(entity):
-                found.update({e.GlobalId: e for e in _fillings(opening)
-                              if e.is_a("IfcDoor") or e.is_a("IfcWindow")})
+        elif entity.is_a("IfcWall") or entity.is_a("IfcWallType"):
+            # o tipo muda a faixa (e a referência das aberturas do perfil) das paredes dele
+            walls = [entity] if entity.is_a("IfcWall") else                 ifcopenshell.util.element.get_types(entity)
+            for wall in walls:
+                for opening in openings.of_wall(wall):
+                    found.update({e.GlobalId: e for e in _fillings(opening)
+                                  if e.is_a("IfcDoor") or e.is_a("IfcWindow")})
     return sorted(found.values(), key=lambda d: d.GlobalId)
 
 

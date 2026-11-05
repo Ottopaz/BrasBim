@@ -112,14 +112,26 @@ def outline(doc: Document, state: dict, sec: dict | None = None) -> list[tuple[f
 
 
 def part_outlines(doc: Document, state: dict) -> list[tuple[str, list]]:
-    """Pilar de perfil do projeto: (material, contorno no pavimento) de cada parte."""
+    """Pilar de perfil do projeto: (material, contorno no pavimento) de cada parte. Partes
+    encostadas do mesmo material saem juntas, sem a linha entre elas (spec/ui 41 ponto (o))."""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
     sec = section(doc, state)
     a = math.radians(state["angle"])
     c, s = math.cos(a), math.sin(a)
     x0, y0 = state["point"]
-    return [(part["material"], [(x0 + c * x - s * y, y0 + s * x + c * y)
-                                for x, y in part["outline"]])
-            for part in sec.get("parts") or []]
+    by_material: dict[str, list] = {}
+    for part in sec.get("parts") or []:
+        by_material.setdefault(part["material"], []).append(Polygon(part["outline"]))
+    out = []
+    for name, polygons in by_material.items():
+        # simplify(0): tira os vértices alinhados que sobram da emenda
+        joined = unary_union(polygons).simplify(0) if len(polygons) > 1 else polygons[0]
+        for poly in getattr(joined, "geoms", [joined]):
+            ring = list(poly.exterior.coords)[:-1]
+            out.append((name, [(x0 + c * x - s * y, y0 + s * x + c * y) for x, y in ring]))
+    return out
 
 
 def center(doc: Document, state: dict) -> tuple[float, float]:

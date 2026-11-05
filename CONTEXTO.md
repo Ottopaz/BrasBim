@@ -4,9 +4,55 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑04 (unidades do projeto — spec/ui 44, etapa 1 —; espessura livre;
-janela de operações de sólidos; Área de seleção ao lado do Selecionar; estudo do perfil
-complexo; perfil complexo, etapas 1 e 2, trazidas para esta linha).*
+*Atualizado em 2026‑11‑05 (perfil complexo: pendências do estudo de 11‑04 fechadas —
+referência das aberturas, giro e espelhar, criar a partir da seleção, linha entre partes
+do mesmo material).*
+
+> **Editor de perfis: Aplicar e desenho livre (2026‑11‑05, pedido do revisor):** o
+> Aplicar "não aplicava" porque partes sobrepostas eram recusadas e a recusa ia para a
+> janela principal, atrás do diálogo. Agora (estudo §2 e §12 item 2) **partes
+> sobrepostas são aceitas** e recortadas ao gravar (`profile_defs.resolve_overlaps`:
+> núcleo corta acabamento; entre iguais, a de cima corta a de baixo; pedaços viram
+> partes, furos viram `holes`); a operação continua recusando sobreposição. Recusas
+> aparecem no diálogo (aviso + nota em vermelho, `ProfilesDialog._run`). Área de desenho
+> refeita como a planta (`ProfileCanvas`): atração a vértice, origem, interseção, meio,
+> aresta, linhas do perfil, alinhado e grade (1‑2‑5 a partir de 1 cm, 1 mm em mm), com
+> marcador e nome; Shift trava em 15°; medida digitada na unidade de trabalho ("30" na
+> direção do cursor, "a;b" deslocamento) com Enter; arrastar vértice ou parte, clique
+> duplo na aresta cria vértice, botão direito tira; Ctrl+Z do editor; partes com a
+> hachura do corte do material; medidas do trecho e da parte em cm/mm/m. PC16, PC17.
+
+> **Perfil complexo, pendências do estudo fechadas (2026‑11‑05):** os quatro pontos que o
+> §12 do estudo acrescentava, no escopo parede/viga/pilar:
+> - **Referência das aberturas:** `opening_ref` no perfil do projeto (x = constante; Pset
+>   `BrasBim_Perfil.ReferenciaAberturas`), anda com o esticar e espelha com as camadas
+>   invertidas (`profile_defs.opening_line`, `walls.rebuild.opening_line`). Portas e
+>   janelas alinham (face esquerda/eixo/face direita) à linha em vez das faces do
+>   envolvente; o vão continua cortando a seção inteira. Mudar o tipo da parede refaz as
+>   esquadrias dela (`fillings.rebuild.affected_doors` passou a olhar o `IfcWallType`).
+>   Editor: terceira linha "Referência das aberturas (parede)". PC12.
+> - **Giro e espelhar em viga e pilar:** na seção do tipo (`section` ganha `angle` e
+>   `mirror`, só quando diferentes do padrão, para seções e diários antigos ficarem
+>   iguais; Pset do tipo `Giro`/`Espelhar`). As partes gravadas no tipo já saem
+>   espelhadas (x → −x) e giradas em torno da origem (`profile_defs.placed`,
+>   `st_types.custom_parts`), então planta, 3D, recortes e quantitativos seguem sem
+>   mudança; cada giro/espelho é um tipo ("Pilar Cantoneira 30×40 90° espelhado").
+>   Ficha: Perfil, Largura/Altura nominal (só onde estica), Giro do perfil (°), Espelhar
+>   perfil; a janela de tipos guarda os dois. PC13.
+> - **Linha entre partes do mesmo material** some (ponto (o)): trechos encostados do
+>   mesmo material viram um só nas "camadas" da parede de perfil (planta e corte,
+>   `layers._profile_layers`) e no contorno do pilar na planta (`columns.part_outlines`). PC14.
+> - **Criar perfil a partir da seleção** (`profile_defs.from_element`/`create_from`;
+>   botão "Criar a partir da seleção" em Projeto > Perfis): parede de camadas (um
+>   retângulo por camada, altura da parede, papel pela `Category`, estica na altura),
+>   viga e pilar retangular (estica nas duas direções) ou circular (32 lados, fixo). PC15.
+> - **Corrigido junto:** perfil de uma parte só gravava um `IfcCompositeProfileDef` com
+>   um perfil (o IFC pede 2 ou mais; o validador recusava). Agora o conjunto fica sem
+>   composto e o corpo extruda o perfil da parte (`profile_defs.composite`).
+> 913 testes, ruff limpo. **Fica para depois:** etapa (3) borda de laje/cobertura e
+> caminho livre (fora do escopo de 11‑04), deslocamentos nomeados (ponto (j)), pena de
+> contorno/separador e desligar a linha por aresta, as lacunas de corte e
+> projeção da etapa 2.
 
 > **Perfil complexo junto da linha de 11‑04 (2026‑11‑04):** as etapas 1 e 2 do perfil
 > (viga, pilar e parede; notas de 2026‑10‑30 mais abaixo) estavam só em `origin/main`,

@@ -154,7 +154,10 @@ tem tamanho fixo.
 
 **No elemento:** o tipo do elemento ganha a estrutura **Perfil** (além de camadas, para
 parede; e de retângulo/círculo, para viga e pilar). Na ficha: o perfil, a largura e a
-altura nominais (só se o perfil tem faixa de esticar) e o espelhar.
+altura nominais (só se o perfil tem faixa de esticar) e o espelhar. Em viga e pilar, o
+giro (graus) e o espelhar fazem parte da seção, como a largura e a altura: cada
+combinação é um tipo, e as partes gravadas nele já saem espelhadas e giradas
+(implementado em 2026‑11‑05, PC12–PC15).
 
 **No IFC:**
 - O perfil do projeto: `IfcMaterialProfileSet` com um `IfcMaterialProfile` por parte

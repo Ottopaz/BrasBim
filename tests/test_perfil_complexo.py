@@ -146,8 +146,15 @@ def test_pc10_lista_por_uso_e_recusas(model):
         profile_defs.create(model.doc, tee())
     overlapping = tee(name="Ruim")
     overlapping["parts"][1]["outline"] = [[-0.1, -0.5], [0.1, -0.5], [0.1, -0.05], [-0.1, -0.05]]
+    # sobreposta: aceita, e o acabamento (alma) é recortado pelo núcleo (mesa)
+    made = profile_defs.state(model.doc, model.commit(
+        profile_defs.create(model.doc, overlapping)).ops[0].id)
+    assert profile_defs.area(made["parts"]) == pytest.approx(0.06 + 0.2 * 0.4)
+    # a operação em si continua recusando partes sobrepostas (o IFC não as tem)
+    from brasbim.core.ops import Op
     with pytest.raises(OpError, match="se sobrepõem"):
-        profile_defs.create(model.doc, overlapping)
+        model.commit(Transaction("x", [Op("profile_def.create", "x1",
+                                         data=tee(name="Ruim 2", parts=overlapping["parts"]))]))
     beam(model, both)
     with pytest.raises(OpError, match="em uso"):
         profile_defs.delete(model.doc, both)
@@ -185,3 +192,137 @@ def test_pc05b_planta_por_parte(model):
     concrete = materials.style(model.doc, "Concreto")["cut"]["pattern"]
     plaster = materials.style(model.doc, "Reboco")["cut"]["pattern"]
     assert sorted(r.fill["pattern"] for r in regions) == sorted([concrete, plaster])
+
+
+# Cantoneira (L) com a origem no canto: aba 0,30 × 0,10 e alma 0,10 × 0,30.
+ANGLE_PARTS = [
+    {"material": "Concreto", "role": "core",
+     "outline": [[0, 0], [0.3, 0], [0.3, 0.1], [0, 0.1]]},
+    {"material": "Concreto", "role": "core",
+     "outline": [[0, 0.1], [0.1, 0.1], [0.1, 0.4], [0, 0.4]]}]
+
+
+def test_pc13_giro_e_espelhar_em_viga_e_pilar(model):
+    def_id = new_profile(model, name="Cantoneira", parts=ANGLE_PARTS)
+
+    def xy(element):
+        lo, hi = bounds(element)
+        return (lo[0], hi[0], lo[1], hi[1])
+
+    def at(point, **extra):
+        return column(model, def_id, b=0.3, h=0.4, point=point) if not extra else created(
+            model, sc.create_column(model.doc, None, model.terreo, point,
+                                    section={**custom(def_id, 0.3, 0.4), **extra}))
+
+    assert xy(at((10, 0))) == pytest.approx((10.0, 10.3, 0.0, 0.4))
+    mirrored = at((20, 0), mirror=True)
+    assert xy(mirrored) == pytest.approx((19.7, 20.0, 0.0, 0.4))
+    turned = at((30, 0), angle=90.0)
+    assert xy(turned) == pytest.approx((29.6, 30.0, 0.0, 0.3))
+    # cada giro/espelho é um tipo, com o nome dizendo qual
+    t = ue.get_type(turned)
+    assert t != ue.get_type(mirrored) and "90°" in t.Name
+    assert "espelhado" in ue.get_type(mirrored).Name
+    assert st_types.read_profile_type(t)["section"]["angle"] == pytest.approx(90.0)
+    # a seção sem giro nem espelho continua como antes (diários antigos)
+    assert set(st_types.read_profile_type(ue.get_type(at((40, 0))))["section"]) == {
+        "shape", "profile", "b", "h"}
+    # viga espelhada: a aba vai para o outro lado do eixo
+    plain = beam(model, def_id, b=0.3, h=0.4, start=(0, 5), end=(4, 5))
+    flipped = created(model, sc.create_beam(
+        model.doc, None, model.terreo, (0, 8), (4, 8),
+        section={**custom(def_id, 0.3, 0.4), "mirror": True}))
+    (_, _, a0, a1), (_, _, b0, b1) = xy(plain), xy(flipped)
+    assert (b0 - 8, b1 - 8) == pytest.approx((-(a1 - 5), -(a0 - 5)))
+
+    # editar o perfil do projeto mantém o giro do tipo; desfazer volta
+    def edit():
+        parts = [dict(p) for p in ANGLE_PARTS]
+        parts[0] = {**parts[0], "outline": [[0, 0], [0.5, 0], [0.5, 0.1], [0, 0.1]]}
+        model.commit(profile_defs.edit(model.doc, def_id, parts=parts))
+
+    check_history(model, edit)
+    assert xy(turned) == pytest.approx((29.6, 30.0, 0.0, 0.5))
+    # girar pela edição do elemento
+    model.commit(sc.edit_element(model.doc, mirrored,
+                                 section={**custom(def_id, 0.5, 0.4), "angle": 180.0}))
+    assert xy(mirrored) == pytest.approx((19.5, 20.0, -0.4, 0.0))
+    assert valid(model.doc.ifc)
+
+
+def test_pc14_pilar_mesmo_material_junto_na_planta(model):
+    """A cantoneira tem duas partes de concreto: na planta, um contorno só."""
+    from brasbim.core.structure import columns
+
+    def_id = new_profile(model, name="Cantoneira", parts=ANGLE_PARTS)
+    c = column(model, def_id, b=0.3, h=0.4)
+    found = columns.part_outlines(model.doc, columns.read_state(model.doc, c))
+    assert [name for name, _ in found] == ["Concreto"] and len(found[0][1]) == 6
+
+
+def test_pc15_criar_perfil_a_partir_da_selecao(model):
+    """Viga e pilar retangular ou circular e parede de camadas viram perfis do projeto;
+    usar o perfil novo dá a mesma forma."""
+    from estrutura import beam_type, circle_type, column_type
+
+    from brasbim.core.walls import commands as wc
+
+    def make(tx):
+        return created(model, tx)
+
+    rect = make(sc.create_column(model.doc, column_type(model, 0.2, 0.4), model.terreo,
+                                 (0, 0)))
+    state = profile_defs.from_element(model.doc, rect)
+    assert state["uses"] == ["column", "beam"] and len(state["parts"]) == 1
+    assert profile_defs.bounds(state["parts"]) == pytest.approx((-0.1, -0.2, 0.1, 0.2))
+    assert state["stretch_x"] == pytest.approx(0.0) and state["stretch_y"] == pytest.approx(0.0)
+    def_id = model.commit(profile_defs.create_from(model.doc, rect)).ops[0].id
+    again = column(model, def_id, b=0.2, h=0.4, point=(5, 0))
+    lo, hi = bounds(again)
+    assert (lo[0], hi[0], lo[1], hi[1]) == pytest.approx((4.9, 5.1, -0.2, 0.2))
+    with pytest.raises(OpError, match="já usa"):
+        profile_defs.from_element(model.doc, again)
+
+    round_ = make(sc.create_column(model.doc, circle_type(model, 0.3), model.terreo, (8, 0)))
+    state = profile_defs.from_element(model.doc, round_)
+    assert state["stretch_x"] is None and profile_defs.area(state["parts"]) == \
+        pytest.approx(3.1416 * 0.15 ** 2, rel=0.01)
+
+    b = make(sc.create_beam(model.doc, beam_type(model, 0.14, 0.40), model.terreo,
+                            (0, 3), (4, 3)))
+    state = profile_defs.from_element(model.doc, b)
+    # origem no eixo da viga, no topo: a seção fica abaixo
+    assert profile_defs.bounds(state["parts"]) == pytest.approx((-0.07, -0.4, 0.07, 0.0))
+
+    wall_type = model.doc.ifc.by_type("IfcWallType")[0]
+    w = make(wc.create_wall(model.doc, wall_type, model.terreo, (0, 6), (5, 6)))
+    state = profile_defs.from_element(model.doc, w)
+    assert state["uses"] == ["wall"] and state["parts"]
+    assert {p["role"] for p in state["parts"]} >= {"core"}
+    thickness = sum(p["outline"][1][0] - p["outline"][0][0] for p in state["parts"])
+    from brasbim.core.walls import types as wall_types
+    assert thickness == pytest.approx(wall_types.thickness(wall_type))
+    model.commit(profile_defs.create_from(model.doc, w))
+    assert valid(model.doc.ifc)
+
+
+def test_pc16_partes_sobrepostas_recortadas_ao_gravar(model):
+    """O editor aceita partes sobrepostas; ao gravar, o núcleo corta o acabamento e, entre
+    iguais, a de cima (desenhada depois) corta a de baixo."""
+    core = [[0, 0], [0.2, 0], [0.2, 0.4], [0, 0.4]]
+    plaster = [[-0.02, -0.02], [0.22, -0.02], [0.22, 0.42], [-0.02, 0.42]]  # envolve o núcleo
+    def_id = new_profile(model, name="Pilar rebocado", parts=[
+        {"material": "Reboco", "role": "finish", "outline": plaster},
+        {"material": "Concreto", "role": "core", "outline": core}])
+    parts = profile_defs.state(model.doc, def_id)["parts"]
+    finish = next(p for p in parts if p["role"] == "finish")
+    assert len(finish["holes"]) == 1  # o reboco virou um anel em volta do concreto
+    assert profile_defs.area(parts) == pytest.approx(0.24 * 0.44)
+    # dois núcleos: o de cima corta o de baixo
+    top = [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3], [0.1, 0.3]]
+    model.commit(profile_defs.edit(model.doc, def_id, parts=[
+        {"material": "Concreto", "role": "core", "outline": core},
+        {"material": "Aço", "role": "core", "outline": top}]))
+    a, b = profile_defs.state(model.doc, def_id)["parts"]
+    assert profile_defs.area([a]) == pytest.approx(0.08 - 0.02)
+    assert profile_defs.area([b]) == pytest.approx(0.04)

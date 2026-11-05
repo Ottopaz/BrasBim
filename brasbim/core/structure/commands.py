@@ -157,12 +157,19 @@ _PROFILE_TYPES = {"column": ("IfcColumnType", "Pilar", st_types.COLUMN),
                   "beam": ("IfcBeamType", "Viga", st_types.BEAM)}
 
 
+def fmt_angle(degrees: float) -> str:
+    return f"{degrees:.1f}".rstrip("0").rstrip(".").replace(".", ",") + "°"
+
+
 def section_name(prefix: str, section: dict) -> str:
     """"Pilar 25×60", "Pilar Ø35", "Viga 14×40" (dimensões em centímetros)."""
     word = _PROFILE_TYPES[prefix][1]
     if section.get("shape") == profiles.CUSTOM:
         cm = profiles.label({"shape": "rect", "b": section["b"], "h": section["h"]})
-        return f"{word} {section.get('name') or 'perfil'} {cm.replace(' × ', '×')}"
+        extra = "".join(
+            ([f" {fmt_angle(section['angle'])}"] if section.get("angle") else [])
+            + ([" espelhado"] if section.get("mirror") else []))
+        return f"{word} {section.get('name') or 'perfil'} {cm.replace(' × ', '×')}{extra}"
     return f"{word} {profiles.label(section).replace(' × ', '×').replace('Ø ', 'Ø')}"
 
 
@@ -170,7 +177,7 @@ def section_type(doc: Document, prefix: str, section: dict, base=None) -> tuple[
     """(GlobalId do tipo com esta seção, operações para criá-lo se faltar). Material e
     representação na planta vêm de ``base`` (o tipo atual), senão Concreto e o padrão."""
     type_class, _, kind = _PROFILE_TYPES[prefix]
-    section = {k: (v if k in ("shape", "profile") else float(v))
+    section = {k: (v if k in ("shape", "profile", "mirror") else float(v))
                for k, v in st_types.stored_section(section).items()}
     try:
         profiles.validate(section, kind.shapes)
