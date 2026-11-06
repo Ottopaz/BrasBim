@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Gera os arquivos da marca a partir de ``logoBrasBim.png`` (desenho do revisor, fundo
 branco): logo com fundo transparente, o símbolo (o B, sem o nome) em vários tamanhos para
-os ícones e ``brasbim.ico`` para o Windows. Saída em ``brasbim/ui/logo/``.
+os ícones, ``brasbim.ico`` para o Windows e ``brasbim.icns`` para o macOS. Saída em ``brasbim/ui/logo/``.
 
 Uso: ``python scripts/gerar_logo.py`` (refazer sempre que a logo mudar).
 """
@@ -21,6 +21,9 @@ SOURCE = ROOT / "logoBrasBim.png"
 OUT = ROOT / "brasbim" / "ui" / "logo"
 SYMBOL_SIZES = (16, 24, 32, 48, 64, 128, 256)
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+# Tipos do .icns do macOS com imagem PNG dentro, por lado em pixels (spec/ui 50).
+ICNS_TYPES = ((b"icp4", 16), (b"icp5", 32), (b"icp6", 64), (b"ic07", 128),
+              (b"ic08", 256), (b"ic09", 512))
 LOGO_WIDTH = 480  # logo inteira (Sobre, README)
 PAD = 0.04  # margem em volta do símbolo, fração do lado
 
@@ -102,6 +105,16 @@ def write_ico(path: Path, images: list[QImage]) -> None:
     path.write_bytes(header + entries + b"".join(blobs))
 
 
+def write_icns(path: Path, symbol: QImage) -> None:
+    """ICNS (macOS): cabeçalho ``icns`` + tamanho total, e um bloco (tipo, tamanho, PNG)
+    por lado."""
+    blocks = b""
+    for kind, side in ICNS_TYPES:
+        blob = png_bytes(scaled(symbol, side))
+        blocks += kind + struct.pack(">I", 8 + len(blob)) + blob
+    path.write_bytes(b"icns" + struct.pack(">I", 8 + len(blocks)) + blocks)
+
+
 def main() -> int:
     QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
     source = QImage(str(SOURCE))
@@ -119,6 +132,7 @@ def main() -> int:
     for size in SYMBOL_SIZES:
         scaled(symbol, size).save(str(OUT / f"simbolo-{size}.png"))
     write_ico(OUT / "brasbim.ico", [scaled(symbol, s) for s in ICO_SIZES])
+    write_icns(OUT / "brasbim.icns", symbol)
     print(f"logo e símbolo gravados em {OUT}")
     return 0
 

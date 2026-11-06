@@ -1,0 +1,52 @@
+name: Instalador macOS
+
+# Monta o BrasBim.app e o .dmg num Mac do GitHub (spec/ui 50). Roda quando a receita
+# muda, ao criar uma etiqueta de versão (v*) ou à mão (Actions > Instalador macOS > Run
+# workflow). O .dmg fica em "Artifacts" na página da execução; numa etiqueta, também
+# vai para a página de lançamentos (Releases).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "instalador/**"
+      - ".github/workflows/instalador-mac.yml"
+      - "pyproject.toml"
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest      # Apple Silicon (arm64)
+          - runner: macos-15-intel    # Intel (x86_64)
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[ui]" "pyinstaller>=6.10"
+      - name: Montar
+        env:
+          PYTHONUTF8: "1"
+        run: python instalador/construir_mac.py
+      - uses: actions/upload-artifact@v5
+        with:
+          name: BrasBim-macOS-${{ runner.arch }}
+          path: dist/*.dmg
+          if-no-files-found: error
+      - name: Anexar ao lançamento
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "BrasBim $GITHUB_REF_NAME" --notes "" --prerelease
+          gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber
