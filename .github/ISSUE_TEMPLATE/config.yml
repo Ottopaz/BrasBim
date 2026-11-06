@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Como contribuir
+    url: https://github.com/Ottopaz/BrasBim/blob/main/CONTRIBUTING.md
+    about: Especificações, código e objetos para a biblioteca.
