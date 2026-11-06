@@ -4,8 +4,23 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑05 (M2, M3, I1 IFC 2x3/4, I2 glTF/OBJ e o instalador `.exe`
-prontos, sem commit: o revisor testa e depois commitamos tudo).*
+*Atualizado em 2026‑11‑06 (M2, M3, I1 IFC 2x3/4, I2 glTF/OBJ e o instalador `.exe`
+commitados e juntados no `main`).*
+
+> **Onde paramos (2026‑11‑06, retomar em qualquer PC):** os ramos
+> `perfil-complexo-editor` e `cobertura-forro-exportacoes-instalador` entraram no `main`
+> do GitHub por avanço direto (`6137c84`); a nota "retomar em outro PC" do ramo
+> `worktree-perfil-complexo` veio para cá. Os três ramos antigos foram apagados. Conferido
+> num clone novo (Python 3.12.10): 949 testes passando, 4 pulados, ruff limpo. Não há
+> trabalho fora do git. **Num PC novo:** `git clone https://github.com/Ottopaz/BrasBim.git`
+> (ou `git pull --ff-only`), criar o `.venv` (linha "Ambiente" em Comandos; se faltar o
+> Python 3.12, `py install 3.12`) e rodar os testes. **Para o lançamento falta:** o
+> revisor testar o Setup e M2, M3, I1, I2; abrir o IFC exportado no Revit, Archicad,
+> Eberick e QiBuilder; aprovar as specs 45, 46, 48 e 49; opcional: assinar o `.exe` e
+> reduzir o tamanho. **Depois:** o que falta do perfil complexo (referência das aberturas,
+> criar perfil a partir da seleção, giro/espelhar em viga e pilar, linha entre partes do
+> mesmo material), etapa (3) do perfil (borda de laje/cobertura e caminho livre) e
+> unidades, etapa 2 (spec/ui 44 §4).
 
 > **M2 parede presa à cobertura (2026‑11‑05):** o revisor seguiu a recomendação da
 > revisão geral (M2 → M3 → I1 → I2 → instalador). Pesquisa
@@ -859,7 +874,8 @@ prontos, sem commit: o revisor testa e depois commitamos tudo).*
 ## Comandos
 | Para | Comando |
 |---|---|
-| Testes (905 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
+| Ambiente (PC novo) | `py -3.12 -m venv .venv` e `.venv/Scripts/python -m pip install -e .[ui,dev]` (no PowerShell, `".[ui,dev]"` entre aspas) |
+| Testes (949 passando) | `.venv/Scripts/python -m pytest -q -p no:faulthandler` |
 | Lint | `.venv/Scripts/ruff check brasbim tests exemplos scripts` |
 | Aplicativo | `.venv/Scripts/python -m brasbim.ui.app [arquivo.ifc]` |
 | Ícones | `.venv/Scripts/python scripts/gerar_icones.py` |
