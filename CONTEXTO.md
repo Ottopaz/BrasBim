@@ -5,7 +5,23 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 `tools/`).
 
 *Atualizado em 2026‑11‑06 (M2, M3, I1 IFC 2x3/4, I2 glTF/OBJ e o instalador `.exe`
-commitados e juntados no `main`).*
+commitados e juntados no `main`; CI verde nos três sistemas; instalador para macOS).*
+
+> **CI e macOS (2026‑11‑06):** o CI estava vermelho desde 10‑14 (instalava só `.[dev]`,
+> sem PySide6). Agora instala `.[ui,dev]` (Linux com Xvfb) e publica falhas e quedas como
+> anotações públicas (`.github/anotar_falhas.py`, o log completo pede login). Achados e
+> correções: AS13 dependia do Claude Code instalado; UI34 falha no macOS (doca não
+> estreita para uma coluna; `xfail` só lá, conferir num Mac); queda na saída do processo
+> (139 no Linux/macOS, access violation no Windows 3.13) pelas janelas que ficam vivas —
+> `conftest.pytest_unconfigure` sai direto com o código do pytest (`os._exit`;
+> `TerminateProcess` no Windows). **Verde em Windows, Linux e macOS, Python 3.12 e 3.13.**
+> **Instalador macOS (spec/ui 50, em revisão):** `instalador/brasbim_mac.spec` +
+> `construir_mac.py` (PyInstaller → `--verificar` → `codesign --verify` → `hdiutil`),
+> montado no GitHub (`.github/workflows/instalador-mac.yml`: à mão, quando a receita muda
+> e em etiquetas `v*`, que anexam ao lançamento). Primeira montagem ok: Apple Silicon
+> 114 MB e Intel 122 MB (artefatos da execução 42238331223). `brasbim.icns` por
+> `scripts/gerar_logo.py`. Sem assinatura Apple, sem DWG, sem abrir `.ifc` pelo Finder;
+> pontos (a)–(d) no §5. **Falta:** alguém testar num Mac (IN06), principalmente o 3D.
 
 > **Onde paramos (2026‑11‑06, retomar em qualquer PC):** os ramos
 > `perfil-complexo-editor` e `cobertura-forro-exportacoes-instalador` entraram no `main`
