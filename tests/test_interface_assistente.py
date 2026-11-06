@@ -91,6 +91,7 @@ def test_as10_painel_no_menu_exibir(window):
 
 def test_as13_conversa_continua_e_recomeca(window):
     a = window.assistant
+    a.connector = ClaudeCode(program="claude")  # como se estivesse instalado (o CI não tem)
     assert "--resume" not in ClaudeCode(program="claude").arguments("c.json")
     assert ClaudeCode(program="claude").arguments("c.json", "abc")[-2:] == ["--resume", "abc"]
     a.handle_event({"type": "system", "subtype": "init", "session_id": "abc"})

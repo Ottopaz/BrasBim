@@ -33,6 +33,8 @@ jobs:
       # processo viram anotações (aparecem na página do commit, sem precisar de login).
       - name: Testes
         shell: bash
+        env:
+          PYTHONUTF8: "1"
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             run="xvfb-run -a -s '-screen 0 1920x1080x24'"

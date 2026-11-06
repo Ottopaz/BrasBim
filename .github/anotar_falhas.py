@@ -16,6 +16,7 @@ def escape(text: str) -> str:
 
 
 def main(path: str, code: str) -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # no Windows, o console não é UTF-8
     with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.read().splitlines()
 

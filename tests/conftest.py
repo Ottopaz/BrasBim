@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Utilitários de teste: modelo base e comparação de IFC por GlobalId e atributos."""
 
+import sys
+
 import ifcopenshell
 import pytest
 
@@ -74,6 +76,33 @@ def snapshot(ifc) -> dict:
 
 
 # --- interface (Qt sem tela) -------------------------------------------------------------
+
+
+# As janelas dos testes de interface ficam vivas até o fim (pendência no CONTEXTO: a
+# fixture `window` fecha mas não apaga, e as conexões de sinal as seguram), e os servidores
+# do projeto compartilhado deixam linhas abertas. No Linux e no macOS, destruir tudo isso
+# na saída do Python derruba o processo (falha de segmentação, código 139) depois de os
+# testes terem terminado. Saímos direto com o código do pytest, depois do resumo. No
+# Windows não: lá a saída normal é limpa e o `os._exit` (ExitProcess, que ainda descarrega
+# as DLLs do Qt) é que cai.
+_exit_status = None
+
+
+def pytest_sessionfinish(session, exitstatus):
+    global _exit_status
+    _exit_status = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    if _exit_status is None or "PySide6" not in sys.modules or sys.platform == "win32":
+        return
+    import os
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_exit_status)
+
 
 
 @pytest.fixture(scope="module")
