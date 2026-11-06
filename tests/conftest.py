@@ -82,9 +82,9 @@ def snapshot(ifc) -> dict:
 # fixture `window` fecha mas não apaga, e as conexões de sinal as seguram), e os servidores
 # do projeto compartilhado deixam linhas abertas. No Linux e no macOS, destruir tudo isso
 # na saída do Python derruba o processo (falha de segmentação, código 139) depois de os
-# testes terem terminado. Saímos direto com o código do pytest, depois do resumo. No
-# Windows não: lá a saída normal é limpa e o `os._exit` (ExitProcess, que ainda descarrega
-# as DLLs do Qt) é que cai.
+# testes terem terminado (no Windows, com o Python 3.13). Saímos direto com o código do
+# pytest, depois do resumo. No Windows, `os._exit` chama ExitProcess, que ainda descarrega
+# as DLLs do Qt e cai do mesmo jeito; TerminateProcess encerra sem passar por elas.
 _exit_status = None
 
 
@@ -95,12 +95,19 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.hookimpl(trylast=True)
 def pytest_unconfigure(config):
-    if _exit_status is None or "PySide6" not in sys.modules or sys.platform == "win32":
+    if _exit_status is None or "PySide6" not in sys.modules:
         return
     import os
 
     sys.stdout.flush()
     sys.stderr.flush()
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.TerminateProcess.argtypes = (ctypes.c_void_p, ctypes.c_uint)
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), _exit_status)
     os._exit(_exit_status)
 
 
