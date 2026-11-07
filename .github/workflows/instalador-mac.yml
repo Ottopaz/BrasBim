@@ -49,4 +49,7 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "BrasBim $GITHUB_REF_NAME" --notes "" --prerelease
-          gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber
+          # nome fixo, sem a versão: o site baixa de releases/latest/download/<nome>
+          case "$(uname -m)" in arm64) name=BrasBim-macOS-AppleSilicon.dmg ;; *) name=BrasBim-macOS-Intel.dmg ;; esac
+          cp dist/*.dmg "$name"
+          gh release upload "$GITHUB_REF_NAME" "$name" --clobber

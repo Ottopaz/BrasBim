@@ -13,7 +13,13 @@ specs 51 e 52 em rascunho).*
 > ou à mão) em https://ottopaz.github.io/BrasBim/. Lançamento **v0.0.1** (normal, título
 > "versão de teste", para o `releases/latest` dos botões Baixar funcionar) com o
 > `BrasBim-0.0.1-Setup.exe` montado aqui; a etiqueta dispara o `instalador-mac.yml`, que
-> anexa os `.dmg`. **Falta:** domínio próprio (o revisor quer; arquivo `site/CNAME` + DNS
+> anexa os `.dmg`. **Download direto:** os arquivos do lançamento têm nome fixo, sem a
+> versão (`BrasBim-Windows-Setup.exe`, `BrasBim-macOS-AppleSilicon.dmg`,
+> `BrasBim-macOS-Intel.dmg`), e o site baixa de `releases/latest/download/<nome>`; o
+> `instalador-mac.yml` já anexa com esses nomes; o `.exe` (montado à mão) precisa ser
+> anexado como `BrasBim-Windows-Setup.exe` em cada versão nova. Domínio `brasbim.org`
+> (Spaceship): `site/CNAME` e Pages configurados; **falta** o revisor cadastrar o DNS e,
+> depois, ligar o HTTPS obrigatório. **Antes:** domínio próprio (o revisor quer; arquivo `site/CNAME` + DNS
 > + `gh api repos/Ottopaz/BrasBim/pages -X PUT -f cname=…`).
 >
 > **Teste de uso (2026‑11‑07, outro PC):** pull do `main` (`9b6e8ed`), `.venv` atualizado,

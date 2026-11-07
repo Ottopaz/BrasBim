@@ -266,6 +266,7 @@ a.cartao:hover h3 { color: var(--jabuticaba); }
 .sistema small { font-size: .9rem; font-weight: 600; letter-spacing: 0; color: var(--pitanga); vertical-align: middle; }
 .sistema em { font-style: normal; align-self: flex-start; margin-top: .6rem; }
 a.sistema:hover em { background: var(--jabuticaba-2); }
+.sistema > .botao { align-self: flex-start; margin-top: .3rem; }
 .sistema-inativo { background: #f7f5f7; box-shadow: none; border: 1px dashed #d6d0d6; }
 .codigo { max-width: 52rem; margin: 1.6rem auto 0; text-align: left; }
 .codigo summary { cursor: pointer; color: var(--texto-2); font-weight: 600; }
