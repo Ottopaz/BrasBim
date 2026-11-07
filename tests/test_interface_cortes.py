@@ -95,3 +95,16 @@ def test_fachada_e_simbolos(window):
     window.plan.grab()
     tab = window.open_view(view.GlobalId)
     assert not tab.drawing.cuts() and tab.drawing.items
+
+
+def test_corte_com_shift_trava_a_direcao(window):
+    """Revisão de 2026-11-07: o Shift não travava a linha do corte (nem norte, círculo e
+    arco): a ferramenta não passava o primeiro ponto como origem."""
+    window.activate_tool("section")
+    tool = window.toolbox.active
+    tool.move((3, -1), Mods())
+    tool.press((3, -1), Mods())
+    tool.move((3.7, 5), Mods(shift=True))  # quase vertical: prende a 90°
+    x, y = tool.snapped.point
+    assert x == pytest.approx(3.0)
+    assert y > 4

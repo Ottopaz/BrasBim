@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Recortes por prioridade entre pilar, viga, laje e parede (spec/ui 12 §2).
 
-Ordem: pilar > viga > laje > parede. Onde dois elementos de classes diferentes ocupam o
+Ordem: pilar > viga > (piso) > laje > parede. Onde dois elementos de classes diferentes ocupam o
 mesmo espaço, o de prioridade mais alta (C) corta o outro (E). Os dois são prismas na
 vertical (a viga é uma caixa), então o recorte é sempre um semiespaço horizontal limitado,
 em planta, pelo contorno de C (``IfcPolygonalBoundedHalfSpace``), nas coordenadas de E:
@@ -29,7 +29,10 @@ from brasbim.core.document import Document, OpError
 
 log = logging.getLogger(__name__)
 
-PRIORITY = {"IfcColumn": 4, "IfcBeam": 3, "IfcSlab": 2, "IfcWall": 1}
+PRIORITY = {"IfcColumn": 4, "IfcBeam": 3, "IfcCovering": 2.5, "IfcSlab": 2, "IfcWall": 1}
+# O piso (``IfcCovering`` FLOORING) só rebaixa a laje (spec/ui 46 §8 (c), revisão de
+# 2026-11-07): nunca é cortado (o corpo é do revestimento) e não corta parede.
+ONLY_CUTS = {"IfcCovering": ("IfcSlab",)}
 TOL = 0.001  # m: sobreposição menor que isto não é recorte
 _MIN_AREA = 1e-6  # m²
 INTERFERENCE = "Recorte"
@@ -82,6 +85,8 @@ def piece(doc: Document, element) -> Piece | None:
             ring = [band.frame.to_global(p) for p in geom2d.polygon(segments)]
             z0 = z + state["base_offset"]
             return Piece(element, ring, z0, z0 + wall_rebuild.height(doc, state))
+        if element.is_a("IfcCovering"):
+            return _covering_piece(doc, element, z)
         module = {"IfcColumn": columns, "IfcBeam": beams, "IfcSlab": slabs}[element.is_a()]
         state = module.read_state(doc, element)
         if state["foreign"] is not None:
@@ -100,6 +105,33 @@ def piece(doc: Document, element) -> Piece | None:
     except (OpError, ValueError, KeyError, TypeError) as e:
         log.debug("%s %s sem recortes: %s", element.is_a(), element.GlobalId, e)
         return None
+
+
+def _covering_piece(doc: Document, element, z: float) -> Piece | None:
+    """Piso do BrasBim: contorno e cotas (o forro não corta nada)."""
+    from brasbim.core.structure import coverings
+
+    if not coverings.is_covering(element):
+        return None
+    state = coverings.read_state(element)
+    if coverings.kind_of(doc, state) != "FLOORING":
+        return None
+    z0, z1 = coverings.z_range(doc, state)
+    return Piece(element, [tuple(p) for p in state["outline"]], z + z0, z + z1)
+
+
+def _cutters_of(element_class: str) -> list[str]:
+    """Classes que cortam ``element_class``."""
+    own = PRIORITY[element_class]
+    return [c for c, p in PRIORITY.items()
+            if p > own and element_class in ONLY_CUTS.get(c, PRIORITY)]
+
+
+def _victims_of(element_class: str) -> list[str]:
+    """Classes que ``element_class`` corta."""
+    own = PRIORITY[element_class]
+    return [c for c, p in PRIORITY.items()
+            if p < own and c not in ONLY_CUTS and c in ONLY_CUTS.get(element_class, PRIORITY)]
 
 
 def _foreign_piece(element) -> Piece | None:
@@ -181,7 +213,7 @@ def cuts_of(doc: Document, element, own: Piece | None = None) -> list[Cut]:
     own = own or piece(doc, element)
     if own is None or own.foreign:
         return []
-    higher = [c for c, p in PRIORITY.items() if p > own.priority]
+    higher = _cutters_of(element.is_a())
     box = _bbox(own.ring)
     out = []
     for other in nearby(doc, element, higher):
@@ -204,7 +236,7 @@ def cuts_of(doc: Document, element, own: Piece | None = None) -> list[Cut]:
 
 def _noun(element) -> str:
     return {"IfcColumn": "pilar", "IfcBeam": "viga", "IfcSlab": "laje",
-            "IfcWall": "parede"}[element.is_a()]
+            "IfcWall": "parede", "IfcCovering": "piso"}[element.is_a()]
 
 
 def cut_by(doc: Document, element) -> list:
@@ -214,7 +246,7 @@ def cut_by(doc: Document, element) -> list:
              if r.is_a("IfcRelInterferesElements")}
     own = piece(doc, element)
     if own is not None:
-        lower = [c for c, p in PRIORITY.items() if p < own.priority]
+        lower = _victims_of(element.is_a())
         box = _bbox(own.ring)
         for other in nearby(doc, element, lower):
             e = piece(doc, other)

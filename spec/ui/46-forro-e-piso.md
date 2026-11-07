@@ -56,11 +56,21 @@ Pontos para o revisor no §8.
   contorno (aviso no balão).
 - Vários revestimentos no mesmo ambiente são aceitos (forro rebaixado parcial por
   contorno, dois pisos); dois do mesmo tipo presos ao mesmo ambiente, não.
+- **O piso rebaixa a laje** (revisão de 2026‑11‑07): a laje que fica sob o piso perde, no
+  contorno do piso, a parte acima da base dele. O nível do pavimento continua sendo o piso
+  acabado; a laje bruta fica abaixo do piso de cada ambiente, com a espessura de cada um.
+  Entra nos recortes por prioridade (spec/ui 12 §2) entre a viga e a laje, mas o piso só
+  corta laje: não corta parede nem é cortado (o corpo dele já desconta os pilares). O
+  forro não corta nada. Acompanha o piso (criar, mudar o tipo ou o contorno, excluir,
+  Desfazer). O `NetVolume` da laje desconta o rebaixo; a `NetArea`, não.
 
 ## 5. Planta, 3D, cortes e tabelas
 - **Planta:** o **piso** aparece com a hachura de desenho do material de cima, abaixo das
   paredes e dos móveis, ligada por padrão (ponto (e)); o **forro** fica acima do plano de
-  corte: não aparece na planta baixa (a planta de forro fica para depois).
+  corte: aparece como **projeção tracejada** do contorno (revisão de 2026‑11‑07),
+  categoria de pena própria "Projeção do forro" (pena 1, 0,13 mm); escolhe‑se o forro
+  clicando na linha, para não tampar o piso e o ambiente. A planta de forro (vista de
+  baixo, com paginação e luminárias) fica para depois.
 - **3D e cortes:** os dois aparecem, com a cor e a hachura de corte das camadas.
 - **Tabelas:** nova lista "Revestimentos" (tipo, ambiente, pavimento, área, espessura) e
   as colunas "Forro" e "Piso" (tipo e área) na tabela de ambientes.
@@ -76,6 +86,10 @@ Pontos para o revisor no §8.
   (desconta furos). `Pset_CoveringCommon` com `Reference` = nome do tipo.
 - Pset `BrasBim_Revestimento`: `Ambiente` (GlobalId ou vazio), `Altura` (forro),
   `Deslocamento` (piso).
+- Rebaixo da laje: o `Body` da laje vira `Clipping` (`IfcBooleanClippingResult` com
+  `IfcPolygonalBoundedHalfSpace` no contorno do piso) e uma `IfcRelInterferesElements`
+  `Recorte` liga a laje (`RelatingElement`) ao piso (`RelatedElement`), como nos outros
+  recortes (spec/ui 12 §2.3). No IFC 2x3 os recortes saem (spec/ui 47).
 
 ## 7. Testes
 - **FP01** forro num ambiente de 4 × 3: `IfcCovering` `CEILING`, tipo com camadas,
@@ -118,6 +132,13 @@ desligar, troca‑se a hachura do material; (f) rodapé e revestimento de parede
   espessura) e o modelo pronto "Forro e piso por tipo"; na de ambientes, as colunas
   Forro, Área de forro, Piso, Área de piso.
 - A planta de forro e o balão ao excluir o ambiente ficam para depois.
+
+**Revisão do teste de uso (2026‑11‑07):** (1) o piso e a laje tinham o topo na mesma cota
+e o 3D piscava (faces coincidentes) e o volume contava duas vezes. O revisor escolheu
+**a laje rebaixa sozinha** (em vez de o piso por cima da laje): ver §4 e §6. Testes em
+`tests/test_piso_rebaixa_laje.py`. (2) O forro passa a aparecer na planta como projeção
+tracejada (§5). (3) O revisor pediu escolher o tipo de linha (contínua, tracejada,
+traço‑ponto…) em cada elemento: spec própria.
 - Atalhos: FR (forro) e PS (piso).
 
 - (a) A biblioteca inicial de tipos do §2 serve? Falta algum comum (forro de gesso

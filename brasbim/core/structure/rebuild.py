@@ -179,7 +179,9 @@ def derive(doc: Document, dirty: set[str]) -> None:
     for element in changed:
         _REBUILD[element.is_a()](doc, element)
     victims = {}
-    for element in changed:
+    cutters = list(changed) + [e for g in sorted(dirty) if (e := doc.find(g)) is not None
+                               and e.is_a("IfcCovering")]  # piso rebaixa a laje
+    for element in cutters:
         for other in cuts.cut_by(doc, element):
             victims[other.GlobalId] = other
     # Quem um elemento excluído cortava (guardado por ``common.remove``).
@@ -203,3 +205,16 @@ def derive(doc: Document, dirty: set[str]) -> None:
 
 
 register_derive(derive)
+
+
+def refresh_slabs_under(doc: Document, floorings) -> None:
+    """Refaz as lajes rebaixadas pelos pisos (antes e agora): chamado por
+    ``coverings.sync`` quando o piso acompanha o ambiente, depois desta derivação."""
+    found = {}
+    for covering in floorings:
+        for other in cuts.cut_by(doc, covering):
+            if other.is_a("IfcSlab"):
+                found[other.GlobalId] = other
+    for slab in sorted(found.values(), key=lambda e: e.GlobalId):
+        rebuild_slab(doc, slab)
+

@@ -1172,13 +1172,38 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     return plan
 
 
+CEILING_MM = 0.13  # projeção do forro (revisão de 2026-11-07)
+
+
+def _ceiling(doc: Document, e, plan: Plan) -> None:
+    """Forro acima do plano de corte: o contorno tracejado (projeção, spec/ui 46 §5); só a
+    linha escolhe, para não tampar o piso e o ambiente embaixo."""
+    from brasbim.core.annotations.prims import Prims, Stroke
+    from brasbim.core.structure import coverings
+
+    try:
+        rings = coverings.net_rings(doc, coverings.read_state(e))
+    except (OpError, ValueError, KeyError) as error:
+        log.warning("forro %s fora da planta: %s", e.GlobalId, error)
+        return
+    rings = [tuple(tuple(p) for p in r) for r in rings]
+    plan.annotations.append((e.GlobalId, Prims([Stroke(r, True, CEILING_MM, "dashed")
+                                                for r in rings])))
+    plan.shapes += [Shape(e.GlobalId, "covering", (*r, r[0]), False) for r in rings]
+
+
 def _floor_finishes(doc: Document, storey, plan: Plan) -> None:
     """Pisos do pavimento: a paginação (o corte do material de cima) sob as paredes e o
-    contorno para escolher (spec/ui 46 §5)."""
+    contorno para escolher; forros: a projeção tracejada (spec/ui 46 §5)."""
     from brasbim.core.structure import coverings
 
     for e in _contained(storey, "IfcCovering", doc):
-        if not coverings.is_covering(e) or coverings.predefined(e) != "FLOORING":
+        if not coverings.is_covering(e):
+            continue
+        if coverings.predefined(e) == "CEILING":
+            _ceiling(doc, e, plan)
+            continue
+        if coverings.predefined(e) != "FLOORING":
             continue
         try:
             state = coverings.read_state(e)

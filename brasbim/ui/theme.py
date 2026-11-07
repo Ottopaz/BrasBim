@@ -218,6 +218,12 @@ class _NoElide(QObject):
     painel estreito fica sem título (só os botões), em vez de "Ferr…"."""
 
     def eventFilter(self, obj, event):
+        try:
+            return self._filter(obj, event)
+        except RuntimeError:  # objeto C++ já apagado (ficha refeita): ignora
+            return False
+
+    def _filter(self, obj, event):
         kind = event.type()
         if kind == QEvent.Polish:
             if isinstance(obj, QAbstractItemView):

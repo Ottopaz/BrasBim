@@ -2629,7 +2629,9 @@ class _PointTool(Tool):
 
     def move(self, p, mods):
         super().move(p, mods)
-        self.snapped = self.ctx.snap(p, mods, extra=self.ctx.vertices)
+        points = getattr(self, "points", None)  # ferramentas de dois ou mais cliques
+        origin = points[-1] if points else None  # Shift trava a partir do ponto dado
+        self.snapped = self.ctx.snap(p, mods, origin, extra=self.ctx.vertices)
 
     def _storey(self):
         storey = self.session.storey

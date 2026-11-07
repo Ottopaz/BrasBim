@@ -50,6 +50,7 @@ CATEGORIES = {
     "grid": ("Eixos de projeto", 0.13, 1),
     "symbol": ("Símbolos (norte, nível, corte e fachada)", 0.35, 4),
     "roof": ("Projeção da cobertura", 0.18, 2),
+    "ceiling": ("Projeção do forro", 0.13, 1),
     "terrain": ("Terreno", 0.13, 1),
     "imported": ("Desenho importado", 0.13, 8),
 }
@@ -166,6 +167,8 @@ def annotation_category(doc: Document, element) -> str:
         return "grid"
     if element.is_a("IfcRoof"):
         return "roof"
+    if element.is_a("IfcCovering"):
+        return "ceiling"
     if element.is_a("IfcGeographicElement"):
         return "terrain"
     return "view"  # escada, guarda-corpo

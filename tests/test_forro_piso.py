@@ -190,7 +190,14 @@ def test_fp07_planta_e_tabelas(model):
     (region,) = [r for r in p.regions if r.key == floor.GlobalId]
     assert region.fill["pattern"] == "cross" and region.fill["spacing"] == pytest.approx(0.60)
     assert any(sh.owner == floor.GlobalId and sh.role == "covering" for sh in p.shapes)
-    assert not any(sh.owner == ceiling.GlobalId for sh in p.shapes)  # acima do corte
+    # forro acima do corte: projeção tracejada, escolhido só pela linha (revisão de
+    # 2026-11-07)
+    (prims,) = [pr for owner, pr in p.annotations if owner == ceiling.GlobalId]
+    assert [st.dash for st in prims.strokes] == ["dashed"]
+    assert all(not sh.closed for sh in p.shapes if sh.owner == ceiling.GlobalId)
+    from brasbim.core import pens
+
+    assert p.pens[ceiling.GlobalId] == "ceiling" and "ceiling" in pens.CATEGORIES
     assert p.pick((2, 1.5), 0.05) == s.GlobalId  # dentro: o ambiente vem antes
     # tabela de revestimentos e colunas na de ambientes
     state = {"name": "Revestimentos", "category": "coverings",

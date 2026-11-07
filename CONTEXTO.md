@@ -4,8 +4,31 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑06 (M2, M3, I1 IFC 2x3/4, I2 glTF/OBJ e o instalador `.exe`
-commitados e juntados no `main`; CI verde nos três sistemas; instalador para macOS).*
+*Atualizado em 2026‑11‑07 (teste de uso do revisor: Setup, M2, M3, I1, I2; correções e
+specs 51 e 52 em rascunho).*
+
+> **Teste de uso (2026‑11‑07, outro PC):** pull do `main` (`9b6e8ed`), `.venv` atualizado,
+> 952 testes passando. Setup montado aqui (PyInstaller no `.venv`, Inno Setup 6.7.3 por
+> winget só do usuário) e testado pelo revisor: **Setup ok** (sem administrador, atalhos,
+> associar `.ifc`, abre); **M2 ok** (prende, acompanha a inclinação, Soltar, apagar a
+> cobertura solta); **M3 ok** com ressalvas; **I1 ok** (abriu no Archicad); **I2 ok** (GLB
+> e OBJ no Blender). **Corrigido:** (1) queda `libshiboken ... already deleted` em
+> `theme._NoElide.eventFilter` (dica de uma ficha já refeita, ao desfazer "Soltar da
+> cobertura"); (2) Shift não travava a direção no Corte/Fachada, Norte, Círculo e Arco
+> (`_PointTool.move` sem origem); (3) **piso piscava com a laje** (topos na mesma cota): o
+> revisor escolheu "a laje rebaixa sozinha" — o piso entra nos recortes por prioridade
+> (`cuts.PRIORITY` 2,5, `ONLY_CUTS`: só corta laje, nunca é cortado), a laje vira
+> `Clipping` com `IfcRelInterferesElements` `Recorte`, `NetVolume` desconta;
+> `coverings.sync` → `rebuild.refresh_slabs_under` quando o piso acompanha o ambiente
+> (spec 46 §4/§6/§8); (4) **forro na planta** como projeção tracejada, pena nova
+> "Projeção do forro" (`pens` `ceiling`), escolhido pela linha (spec 46 §5). Testes
+> `tests/test_piso_rebaixa_laje.py`, FP07 e corte com Shift; 958 passando, ruff limpo.
+> **Specs novas em rascunho (pontos para o revisor):** `spec/ui/51` tipo de linha em
+> cada elemento (contínua, tracejada, traço‑ponto… na ficha; pontos (a)–(e)) e
+> `spec/ui/52` juntar IFC arrastando para a janela (pavimentos por cota, elementos de
+> outra origem, GlobalId repetido; pontos (a)–(f); falta a pesquisa pública de
+> Archicad/Revit). **Depois:** perfil complexo (o revisor pediu "por fim o perfil").
+> **Não commitado ainda.** O Setup instalado neste PC é anterior às correções.
 
 > **CI e macOS (2026‑11‑06):** o CI estava vermelho desde 10‑14 (instalava só `.[dev]`,
 > sem PySide6). Agora instala `.[ui,dev]` (Linux com Xvfb) e publica falhas e quedas como

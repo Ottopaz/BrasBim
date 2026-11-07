@@ -650,6 +650,7 @@ def sync(doc: Document, touched: set[str]) -> None:
     seen = set(touched) | set(doc.changed)
     entities = [doc.find(g) for g in sorted(touched)]
     others = any(e is None or any(e.is_a(c) for c in _COLUMN_LIKE) for e in entities)
+    rewritten = []
     for covering in sorted(coverings, key=lambda c: c.GlobalId):
         try:
             state = read_state(covering)
@@ -667,3 +668,8 @@ def sync(doc: Document, touched: set[str]) -> None:
             write_state(doc, covering, state)
         except OpError:
             continue
+        rewritten.append(covering)
+    if rewritten:  # a laje sob o piso acompanha o rebaixo (spec/ui 46 §8 (c))
+        from brasbim.core.structure import rebuild
+
+        rebuild.refresh_slabs_under(doc, rewritten)
