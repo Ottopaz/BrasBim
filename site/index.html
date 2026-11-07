@@ -3,233 +3,333 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BrasBim: BIM aberto, em português</title>
+  <title>BrasBim: BIM aberto, gratuito, brasileiro</title>
   <meta name="description" content="Software BIM de arquitetura gratuito e de código aberto, feito no Brasil. O arquivo do projeto é IFC 4.3.">
   <link rel="icon" href="imagens/simbolo-32.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
   <link rel="stylesheet" href="estilo.css">
+  <script type="importmap">
+    { "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    } }
+  </script>
 </head>
 <body>
   <a class="pular" href="#conteudo">Pular para o conteúdo</a>
 
   <header class="topo">
-    <a class="marca" href="#">
-      <img src="imagens/simbolo-128.png" alt="" width="28" height="28">
-      <span>BrasBim</span>
-    </a>
-    <nav aria-label="Principal">
-      <a href="#recursos">Recursos</a>
-      <a href="#ifc">IFC nativo</a>
-      <a href="#participe">Participe</a>
-      <a href="https://github.com/Ottopaz/BrasBim">Código</a>
-      <a class="botao botao-pequeno" href="#baixar">Baixar</a>
-    </nav>
+    <div class="topo-dentro">
+      <a class="marca" href="./">
+        <img src="imagens/simbolo-128.png" alt="" width="30" height="30">
+        <span>BrasBim</span>
+      </a>
+      <nav aria-label="Principal">
+        <a href="#recursos">Recursos</a>
+        <a href="#equipe">Equipe</a>
+        <a href="#assistente">Assistente</a>
+        <a href="#roteiro">Roteiro</a>
+        <a href="#baixar">Baixar</a>
+        <a href="#participe">Participe</a>
+        <a href="https://github.com/Ottopaz/BrasBim">Código</a>
+        <a class="botao" href="#baixar">Baixar</a>
+      </nav>
+    </div>
   </header>
 
   <main id="conteudo">
-    <!-- Abertura: a planta da casa de exemplo, desenhada como no programa -->
+    <!-- Abertura: a torre em 3D, modelada no BrasBim e exportada em glTF -->
     <section class="abertura">
+      <img class="torre-poster" src="imagens/torre-abertura.jpg" alt="" width="1800" height="920">
+      <canvas id="torre" data-modelo="modelos/torre.glb" aria-label="Torre paramétrica de 30 pavimentos em 3D. Arraste para girar."></canvas>
       <div class="abertura-texto">
-        <h1 class="nome">BrasBim</h1>
-        <p class="lema">BIM aberto, em português, do jeito que o Brasil projeta.</p>
-        <p class="apoio">Modele paredes, portas, lajes e coberturas em 3D e tire dali plantas,
-          cortes, pranchas e o quadro de áreas da prefeitura. Gratuito, de código aberto,
-          e o arquivo do projeto é IFC 4.3.</p>
+        <h1>BIM aberto, gratuito, brasileiro.</h1>
+        <p>Gratuito, de código aberto, em português, e com o IFC 4.3 como arquivo do
+          projeto. Versão 0.0.1, em desenvolvimento.</p>
         <div class="acoes">
-          <a class="botao" href="#baixar">Baixar o BrasBim</a>
-          <a class="botao botao-contorno" href="https://github.com/Ottopaz/BrasBim">Ver o código no GitHub</a>
+          <a class="botao botao-grande" href="https://github.com/Ottopaz/BrasBim/releases/latest">Baixar para Windows</a>
+          <a class="botao botao-grande botao-vidro" href="https://github.com/Ottopaz/BrasBim/releases/latest">Baixar para macOS</a>
         </div>
-        <p class="versao">Versão 0.0.1, em desenvolvimento. Testado no Windows.</p>
       </div>
-
-      <figure class="abertura-planta">
-        <svg id="planta" role="group" aria-label="Planta da casa de exemplo. Cada ambiente pode receber foco para mostrar sua área."></svg>
-        <figcaption class="leitura" aria-live="polite">
-          <span id="leitura-classe" class="ifc">IfcSpace</span>
-          <strong id="leitura-nome">Casa de exemplo</strong>
-          <span id="leitura-dados">Passe o mouse ou use Tab nos ambientes.</span>
-        </figcaption>
-      </figure>
+      <p class="credito">Torre de 30 pavimentos modelada no BrasBim. Arraste para girar.</p>
     </section>
 
-    <!-- Recursos em destaque, no ritmo de vitrine -->
-    <section id="recursos" class="vitrine">
-      <div class="vitrine-item">
-        <img src="imagens/modelo-3d.png" alt="Casa térrea em 3D com telhado de quatro águas e árvores" width="1186" height="880" loading="lazy">
-        <div class="vitrine-texto">
-          <h2>Modele em 3D, com elementos de verdade</h2>
-          <p>Paredes retas e em arco com camadas e junções automáticas. Portas e janelas
-            que abrem o vão sozinhas. Lajes, pilares, vigas, escadas e coberturas de uma,
-            duas ou quatro águas. Ambientes detectados pelas paredes em volta, já com área.</p>
-          <p>Edite na planta ou direto no 3D, com as mesmas ferramentas, medidas digitadas
-            junto ao cursor e desfazer sem limite.</p>
+    <!-- Equipe: o ponto forte -->
+    <section id="equipe" class="equipe">
+      <div class="equipe-dentro">
+        <div class="equipe-cabeca">
+          <h2>Projete em equipe, ao mesmo tempo</h2>
+          <p>Duas ou mais pessoas editam o mesmo projeto, cada uma no seu computador. Cada
+            alteração chega a todos na hora, pela rede do escritório, sem servidor para
+            instalar e sem nuvem.</p>
         </div>
-      </div>
-
-      <div class="vitrine-item vitrine-invertida">
-        <img src="imagens/janela-planta.png" alt="Janela do BrasBim com a planta da casa de exemplo, os painéis Pavimentos e Navegador e a barra de ferramentas" width="1920" height="1061" loading="lazy">
-        <div class="vitrine-texto">
-          <h2>Em português, do menu à linha de comando</h2>
-          <p>Pavimentos, camadas, tabela de penas e vistas salvas, com nomes que o projetista
-            brasileiro já usa. A linha de comando aceita comandos e apelidos em português e
-            coordenadas no formato x;y. Metro, vírgula decimal e as escalas de sempre:
-            1:50, 1:100, 1:200.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Documentação: seção clara, como uma folha de desenho -->
-    <section class="folha">
-      <div class="folha-cabeca">
-        <h2>Do modelo à prancha da prefeitura</h2>
-        <p>Plantas, cortes e fachadas saem do modelo e acompanham cada mudança. A
-          documentação segue a NBR 6492 e a NBR 16752: pranchas de A0 a A4 com folhas
-          mestras, PDF vetorial e exportação para DWG e DXF.</p>
-      </div>
-
-      <div class="folha-grade">
-        <figure>
-          <img src="imagens/planta-detalhe.png" alt="Planta com paredes em camadas, portas, janelas e ambientes com área" width="1186" height="879" loading="lazy">
-          <figcaption>Planta por camadas de material, em 1:50.</figcaption>
+        <figure class="equipe-imagem">
+          <picture>
+            <source srcset="imagens/equipe.jpg" media="(prefers-reduced-motion: reduce)">
+            <img src="imagens/equipe.gif" alt="Gravação de duas janelas do BrasBim com o Pavimento 15 da mesma torre. Ana gira os brises da fachada, que ficam selecionados na tela dela e aparecem em laranja na tela do Bruno. Bruno engrossa os pilares, que aparecem com contorno azul na tela da Ana. No fim, Bruno pede a liberação de um brise e o pedido chega ao painel Equipe da Ana, com os botões Liberar e Recusar." width="1600" height="600" loading="lazy">
+          </picture>
+          <figcaption>Gravação real: Ana gira os brises enquanto Bruno engrossa os pilares do
+            mesmo pavimento. O que um reservou aparece para o outro na cor de quem reservou, e
+            o pedido de liberação chega ao painel Equipe.</figcaption>
         </figure>
-        <figure>
-          <img src="imagens/quadro-de-areas.png" alt="Quadro de áreas com taxa de ocupação, coeficiente de aproveitamento e permeabilidade" width="1920" height="1061" loading="lazy">
-          <figcaption>Quadro de áreas com TO, CA e permeabilidade, cada número com a sua memória de cálculo.</figcaption>
+        <ul class="grade-4 equipe-pontos">
+          <li>
+            <h3>Sem servidor nem nuvem</h3>
+            <p>Um computador compartilha o projeto pelo menu Equipe. Os outros acham o
+              projeto na rede e entram. O arquivo fica no escritório.</p>
+          </li>
+          <li>
+            <h3>Tudo chega na hora</h3>
+            <p>Quem edita vê a mudança na mesma hora, e ela segue para todos, na mesma ordem
+              para todo mundo.</p>
+          </li>
+          <li>
+            <h3>Reserva automática</h3>
+            <p>Quem começa a editar um elemento fica com ele. Ninguém esbarra no trabalho
+              do colega.</p>
+          </li>
+          <li>
+            <h3>Pedir a liberação</h3>
+            <p>Precisa de algo reservado? Peça a liberação e o colega responde com um
+              clique no painel Equipe.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Assistente de IA -->
+    <section id="assistente" class="assistente">
+      <div class="assistente-dentro">
+        <div class="assistente-texto">
+          <p class="selo-teste">Em teste, chega na próxima versão</p>
+          <h2>Peça em português. A sua IA desenha no modelo.</h2>
+          <p>Escreva o que precisa no painel Assistente e veja a planta e o 3D se formarem.
+            O resultado é um estudo feito com paredes, portas e ambientes de verdade, que
+            você edita como qualquer outro desenho e desfaz num passo só.</p>
+          <p>A IA é a sua, instalada no seu computador e conectada por um protocolo aberto
+            (MCP). O BrasBim não embute nem revende IA.</p>
+        </div>
+        <figure class="assistente-video">
+          <picture>
+            <source srcset="imagens/assistente.jpg" media="(prefers-reduced-motion: reduce)">
+            <img src="imagens/assistente.gif" alt="Gravação do BrasBim: no painel Assistente, o pedido de uma casa de campo com 3 quartos, suíte, banheiro, sala, cozinha, lavanderia, varanda e piscina; a planta se forma aos poucos." width="1280" height="720" loading="lazy">
+          </picture>
+          <figcaption>“Faça uma casa de campo 3 quartos, 1 suíte, 1 banheiro, sala, cozinha,
+            lavanderia, varanda e piscina.” Gravação real, com o Claude Code conectado ao
+            BrasBim: 77 segundos do pedido à casa pronta, acelerados no vídeo.</figcaption>
         </figure>
       </div>
-
-      <div class="folha-legal">
-        <h3>Projeto legal</h3>
-        <p>Marque a situação de cada elemento (a construir, existente, a demolir, a
-          regularizar) e a planta assume as cores e hachuras da sua prefeitura. Já vêm
-          prontos os perfis Genérico, Araras/SP, Jacareí/SP, São Paulo/SP e Curitiba/PR. O
-          perfil é um arquivo aberto: dá para criar o da sua cidade.</p>
-      </div>
     </section>
 
-    <!-- IFC nativo: o próprio arquivo como imagem -->
-    <section id="ifc" class="ifc-secao">
-      <div class="ifc-texto">
-        <h2>Seu projeto é seu</h2>
-        <p>O arquivo que você salva <em>é</em> um <code>.ifc</code>, o formato aberto da
-          buildingSMART (ISO 16739). Não existe formato próprio escondido nem uma
-          exportação com perdas no fim do projeto.</p>
-        <p>Qualquer programa que lê IFC abre o seu trabalho, hoje ou daqui a vinte anos.
-          Paredes, portas e ambientes usam as classes e propriedades do próprio IFC, e
-          cada elemento guarda a mesma identidade ao salvar, reabrir e trocar arquivos.</p>
+    <!-- Novidades -->
+    <section class="bloco">
+      <h2 class="titulo-bloco">Novidades</h2>
+      <div class="destaques">
+        <a class="cartao cartao-grande" href="https://github.com/Ottopaz/BrasBim/blob/main/exemplos/torre_parametrica.py">
+          <img src="imagens/torre-aerea.jpg" alt="Torre de 30 pavimentos vista do alto, com as lajes girando a cada andar" width="1200" height="760">
+          <h3>Uma torre de 30 pavimentos em pouco mais de 100 linhas de Python</h3>
+          <p>Lajes, pele de vidro, brises, pilares e núcleo, gerados pelos mesmos comandos que
+            a interface usa. O resultado é um IFC 4.3 que abre em qualquer programa BIM.</p>
+        </a>
+        <a class="cartao cartao-grande" href="https://github.com/Ottopaz/BrasBim/tree/main/spec">
+          <img src="imagens/torre-baixo.jpg" alt="Fachada da torre vista de baixo, com os brises verticais de cada pavimento" width="1200" height="760">
+          <h3>Exportar para apresentação</h3>
+          <p>O modelo sai em glTF e OBJ, com as cores dos materiais, pronto para
+            renderizar ou mostrar na web, como a torre desta página. Em teste.</p>
+        </a>
       </div>
-      <pre class="arquivo" aria-label="Trecho de um arquivo IFC salvo pelo BrasBim"><span class="c">casa-exemplo.ifc</span>
-<span class="c">FILE_SCHEMA(('IFC4X3_ADD2'));</span>
-#118=<b>IFCWALL</b>('3vB2YO$MX4xv5uCqZZG05x',#5,'Parede 14',$,$,#140,#152,$,.STANDARD.);
-#201=<b>IFCDOOR</b>('1hqIFTRjfV6AWq_bMtnZwI',#5,'P1',$,$,#208,#215,$,2.10,0.80,.DOOR.,.SINGLE_SWING_LEFT.,$);
-#260=<b>IFCSPACE</b>('0KvG_vSPv3HP_n2Hd6pKqc',#5,'1',$,$,#266,#271,'Quarto 1',.ELEMENT.,.INTERNAL.,$);
-#301=<b>IFCPROPERTYSET</b>('2Rl$ff1Q19qOAP3KPLa8Pd',#5,'Pset_WallCommon',$,(#302,#303));
-#302=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
-#303=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.F.),$);</pre>
-    </section>
-
-    <!-- Lista completa, por área -->
-    <section class="tudo">
-      <h2>O que já faz</h2>
-      <dl class="areas">
-        <div><dt>Modelagem</dt><dd>Paredes, portas, janelas, lajes, pilares, vigas, coberturas, escadas, guarda‑corpos, terreno por curvas de nível, eixos e ambientes com área.</dd></div>
-        <div><dt>Objetos</dt><dd>Objetos paramétricos com tipos e fórmulas, editor com prévia e biblioteca de mobiliário, louças, eletrodomésticos e vegetação.</dd></div>
-        <div><dt>Precisão</dt><dd>Atração a pontos, linhas guia, medidas digitadas junto ao cursor e linha de comando em português.</dd></div>
-        <div><dt>Vistas</dt><dd>Planta simplificada ou por camadas, 3D com edição direta, lado a lado, vistas salvas, camadas e tabela de penas.</dd></div>
-        <div><dt>Documentação</dt><dd>Cotas que acompanham as paredes, cortes e fachadas do modelo, pranchas A0–A4 e PDF vetorial.</dd></div>
-        <div><dt>Tabelas</dt><dd>Quantitativos de esquadrias, áreas, paredes e estrutura, com exportação para CSV e XLSX.</dd></div>
-        <div><dt>Interoperabilidade</dt><dd>IFC 4.3 nativo. Importa DWG e DXF como referência e exporta DWG e DXF com as camadas do projeto.</dd></div>
-        <div><dt>Equipe</dt><dd>Projeto compartilhado na rede do escritório, sem servidor, com reserva de elementos.</dd></div>
-        <div><dt>Assistente</dt><dd>Protótipo: uma IA instalada por você desenha no modelo por um protocolo aberto (MCP). O BrasBim não embute nem revende IA.</dd></div>
-      </dl>
-    </section>
-
-    <!-- Baixar -->
-    <section id="baixar" class="baixar">
-      <div class="baixar-estado">
-        <h2>Baixar o BrasBim</h2>
-        <p>O BrasBim está na versão 0.0.1. Já modela e documenta uma casa inteira, mas
-          ainda não tem versão estável. É uma boa hora para testar e contar o que achou.</p>
-        <p>Hoje ele é testado no Windows. Linux e macOS são o objetivo, mas ainda não
-          foram validados.</p>
-      </div>
-      <div class="baixar-passos">
-        <h3>Instalar a partir do código</h3>
-        <ol>
-          <li>Instale o Python 3.12 ou mais novo.</li>
-          <li>Baixe o código e entre na pasta:
-            <pre><code>git clone https://github.com/Ottopaz/BrasBim.git
-cd BrasBim</code></pre></li>
-          <li>Crie o ambiente e instale:
-            <pre><code>python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev,ui]"</code></pre></li>
-          <li>Abra o programa:
-            <pre><code>brasbim</code></pre></li>
-        </ol>
+      <div class="grade-4">
+        <article class="cartao">
+          <div class="miniatura miniatura-1"><span>Objetos com fórmulas</span></div>
+          <h3>Objetos que se ajustam sozinhos</h3>
+          <p>Descreva a peça uma vez, com parâmetros, fórmulas e listas de escolha. A cama,
+            a bancada ou a árvore se ajustam a cada medida.</p>
+        </article>
+        <article class="cartao">
+          <div class="miniatura miniatura-2"><span>Recortes e uniões</span></div>
+          <h3>Um elemento recorta o outro</h3>
+          <p>Recorte, una ou fique só com a parte comum entre dois elementos. O resultado
+            acompanha as mudanças de cada um.</p>
+        </article>
+        <article class="cartao">
+          <div class="miniatura miniatura-3"><span>Linha de comando</span></div>
+          <h3>Desenhe pelo teclado</h3>
+          <p>Comandos e apelidos em português, coordenadas x;y e histórico, para quem
+            prefere digitar a clicar.</p>
+        </article>
+        <article class="cartao">
+          <div class="miniatura miniatura-4"><span>IFC 2x3 e IFC 4</span></div>
+          <h3>Entrega nas versões antigas do IFC</h3>
+          <p>Exporta IFC 2x3 e IFC 4 para quem ainda não lê o 4.3. Em teste.</p>
+        </article>
       </div>
     </section>
 
     <!-- Livre -->
-    <section class="livre">
-      <h2>Livre, sem licença para renovar</h2>
-      <p>Sem assinatura e sem limite de instalações. O código pode ser lido, auditado e
-        melhorado por qualquer pessoa.</p>
-      <table class="licencas">
-        <caption class="visualmente-oculto">Licenças de cada parte do BrasBim</caption>
-        <tbody>
-          <tr><th scope="row">Núcleo BIM, sem interface</th><td>LGPL‑3.0‑or‑later</td></tr>
-          <tr><th scope="row">Aplicativo</th><td>GPL‑3.0‑or‑later</td></tr>
-          <tr><th scope="row">Biblioteca de objetos</th><td>CC BY 4.0</td></tr>
-        </tbody>
-      </table>
+    <section class="painel painel-escuro">
+      <div class="painel-texto">
+        <h2>Livre e aberto, para sempre</h2>
+        <p>O BrasBim é um projeto público, com código no GitHub e licenças GPL e LGPL. Não
+          tem assinatura, não tem limite de instalações e ninguém pode fechá‑lo.</p>
+        <p>O código pode ser lido, auditado e melhorado por qualquer pessoa.
+          <a href="https://github.com/Ottopaz/BrasBim/blob/main/README.md#licen%C3%A7a">Ver as licenças</a></p>
+      </div>
+      <dl class="licencas">
+        <div><dt>Núcleo BIM</dt><dd>LGPL‑3.0</dd></div>
+        <div><dt>Aplicativo</dt><dd>GPL‑3.0</dd></div>
+        <div><dt>Biblioteca</dt><dd>CC BY 4.0</dd></div>
+      </dl>
+    </section>
+
+    <!-- IFC -->
+    <section class="painel painel-ifc">
+      <h2>O arquivo é IFC</h2>
+      <p>O projeto é salvo direto em IFC 4.3, o padrão aberto da buildingSMART (ISO 16739).
+        Não existe formato próprio escondido: qualquer programa BIM abre o seu trabalho,
+        hoje ou daqui a vinte anos.</p>
+      <ul class="selos">
+        <li><strong>IFC 4.3</strong><span>ISO 16739‑1</span></li>
+        <li><strong>DWG e DXF</strong><span>importa e exporta</span></li>
+        <li><strong>PDF vetorial</strong><span>pranchas A0 a A4</span></li>
+        <li><strong>CSV e XLSX</strong><span>tabelas e quantitativos</span></li>
+      </ul>
+    </section>
+
+    <!-- Brasil -->
+    <section class="painel painel-claro">
+      <h2>Feito para o Brasil</h2>
+      <p>Interface em português, metro e vírgula decimal, e documentação orientada pelas
+        normas brasileiras. Do modelo sai o projeto legal, com as cores da prefeitura e o
+        quadro de áreas calculado.</p>
+      <div class="grade-4 grade-normas">
+        <div class="norma"><strong>NBR 6492</strong><span>Representação de projetos de arquitetura</span></div>
+        <div class="norma"><strong>NBR 16752</strong><span>Folhas de desenho, margens, dobra e legenda</span></div>
+        <div class="norma"><strong>TO, CA e TP</strong><span>Quadro de áreas com memória de cálculo</span></div>
+        <div class="norma"><strong>5 prefeituras</strong><span>Genérico, Araras, Jacareí, São Paulo e Curitiba</span></div>
+      </div>
+    </section>
+
+    <!-- Recursos -->
+    <section id="recursos" class="bloco recursos">
+      <h2 class="titulo-grande">Tudo o que o projeto pede</h2>
+
+      <article class="recurso">
+        <img src="imagens/torre-frente.jpg" alt="Torre de vidro com lajes brancas girando ao subir" width="1280" height="800" loading="lazy">
+        <div>
+          <h3>Modelagem</h3>
+          <p>Elementos de verdade, com tipos e camadas, que se ligam sozinhos.</p>
+          <ul>
+            <li>Paredes retas e em arco, com junções automáticas</li>
+            <li>Lajes, pilares, vigas, escadas e coberturas</li>
+            <li>Portas e janelas que abrem o vão sozinhas</li>
+            <li>Ambientes detectados pelas paredes, já com área</li>
+            <li>Terreno pelas curvas de nível de um DWG</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="recurso">
+        <img class="folha-a3" src="imagens/prancha.jpg" alt="Prancha A3 exportada em PDF pelo BrasBim: planta baixa da casa de campo em 1:100, com cotas em cadeia, ambientes com nome e área, portas e janelas numeradas, corte A com níveis e o carimbo preenchido." width="1600" height="1131" loading="lazy">
+        <div>
+          <h3>Documentação</h3>
+          <p>Plantas, cortes e fachadas saem do modelo e acompanham cada mudança. A prancha
+            ao lado é a casa feita pelo Assistente, cotada e exportada em PDF.</p>
+          <ul>
+            <li>Cotas que seguem as paredes</li>
+            <li>Pranchas A0 a A4 com folhas mestras</li>
+            <li>Tabela de penas e camadas</li>
+            <li>PDF vetorial, DWG e DXF</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="recurso">
+        <img src="imagens/torre-noite.jpg" alt="Torre de 30 pavimentos ao entardecer" width="1280" height="800" loading="lazy">
+        <div>
+          <h3>Do seu jeito</h3>
+          <p>Objetos paramétricos, scripts em Python e trabalho em equipe.</p>
+          <ul>
+            <li>Objetos com tipos, fórmulas e editor com prévia</li>
+            <li>Núcleo em Python, sem interface, para scripts</li>
+            <li>Projeto compartilhado na rede do escritório</li>
+            <li>Assistente com a sua IA, por protocolo aberto (protótipo)</li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <!-- Roteiro -->
+    <section id="roteiro" class="painel painel-claro">
+      <h2>O que vem por aí</h2>
+      <div class="grade-3">
+        <div>
+          <h3>Em desenvolvimento</h3>
+          <p>Assistente com IA, peças do projeto legal na prancha, memorial descritivo,
+            elevação interna, perspectiva na prancha e testes do macOS em Macs de verdade.</p>
+        </div>
+        <div>
+          <h3>No roteiro</h3>
+          <p>Acessibilidade pela NBR 9050, orçamento com SINAPI, BCF, IDS,
+            georreferenciamento e API para plugins.</p>
+        </div>
+        <div>
+          <h3>Fora do escopo</h3>
+          <p>Abrir formatos fechados de outros programas BIM. A troca é sempre por IFC.</p>
+        </div>
+      </div>
     </section>
 
     <!-- Participe -->
-    <section id="participe" class="participe">
-      <div class="participe-cabeca">
-        <h2>Participe</h2>
-        <p>Cada recurso nasce de uma especificação escrita e revisada antes do código, e
-          tem teste automático que confere o IFC gerado. São mais de 900 testes hoje. Tudo
-          isso é público, e há lugar para quem quiser ajudar.</p>
-      </div>
-      <ul class="formas">
-        <li>
-          <h3><a href="https://github.com/Ottopaz/BrasBim/issues">Teste e relate problemas</a></h3>
-          <p>Use num projeto de verdade e conte o que faltou ou deu errado.</p>
-        </li>
-        <li>
-          <h3><a href="https://github.com/Ottopaz/BrasBim/tree/main/spec">Escreva especificações</a></h3>
-          <p>Descreva como um recurso deve funcionar, com base em normas e fontes públicas.</p>
-        </li>
-        <li>
-          <h3><a href="https://github.com/Ottopaz/BrasBim/blob/main/CONTRIBUTING.md">Contribua com código</a></h3>
-          <p>Python, IfcOpenShell e Qt. Spec aprovada antes, commits assinados com <code>git commit -s</code>.</p>
-        </li>
-        <li>
-          <h3><a href="https://github.com/Ottopaz/BrasBim/tree/main/brasbim/library">Desenhe objetos</a></h3>
-          <p>Mobiliário, louças e vegetação para a biblioteca aberta, em CC BY 4.0.</p>
-        </li>
+    <section id="participe" class="painel painel-marca">
+      <h2>Feito por quem projeta</h2>
+      <p>Arquitetos, engenheiros, estudantes e programadores. Cada recurso nasce de uma
+        especificação revisada e tem teste que confere o IFC gerado.</p>
+      <ul class="grade-4 formas">
+        <li><a href="https://github.com/Ottopaz/BrasBim/issues/new/choose"><strong>Teste e relate</strong><span>Use num projeto real e conte o que faltou.</span></a></li>
+        <li><a href="https://github.com/Ottopaz/BrasBim/tree/main/spec"><strong>Especifique</strong><span>Descreva como um recurso deve funcionar.</span></a></li>
+        <li><a href="https://github.com/Ottopaz/BrasBim/blob/main/CONTRIBUTING.md"><strong>Programe</strong><span>Python, IfcOpenShell e Qt.</span></a></li>
+        <li><a href="https://github.com/Ottopaz/BrasBim/tree/main/brasbim/library"><strong>Desenhe objetos</strong><span>Para a biblioteca aberta.</span></a></li>
       </ul>
-      <p class="cleanroom">O BrasBim é desenvolvido em <a href="https://github.com/Ottopaz/BrasBim/tree/main/cleanroom">clean‑room</a>:
-        nada é copiado nem obtido por engenharia reversa de software proprietário. Ícones,
-        nomes de comandos e telas são próprios.</p>
+    </section>
+
+    <!-- Baixar -->
+    <section id="baixar" class="bloco baixar">
+      <h2 class="titulo-grande">A liberdade de projetar.</h2>
+      <p>BrasBim 0.0.1, em desenvolvimento. Gratuito, sem cadastro e sem licença.</p>
+      <div class="sistemas">
+        <a class="sistema" href="https://github.com/Ottopaz/BrasBim/releases/latest">
+          <strong>Windows</strong>
+          <span>Instalador para Windows 10 e 11, 64 bits.</span>
+          <em class="botao botao-grande">Baixar para Windows</em>
+        </a>
+        <a class="sistema" href="https://github.com/Ottopaz/BrasBim/releases/latest">
+          <strong>macOS <small>versão de teste</small></strong>
+          <span>Para Mac com Apple Silicon ou Intel. Montada e testada no GitHub, ainda à
+            espera de testes em Macs de verdade: conte como foi.</span>
+          <em class="botao botao-grande">Baixar para macOS</em>
+        </a>
+      </div>
+      <details class="codigo">
+        <summary>Instalar a partir do código (Windows, Linux ou macOS)</summary>
+        <pre><code>git clone https://github.com/Ottopaz/BrasBim.git
+cd BrasBim
+python -m venv .venv
+.venv\Scripts\activate        # Linux e macOS: source .venv/bin/activate
+pip install -e ".[dev,ui]"
+brasbim</code></pre>
+      </details>
     </section>
   </main>
 
   <footer class="rodape">
-    <div class="rodape-marca">
-      <a class="marca" href="#"><img src="imagens/simbolo-128.png" alt="" width="40" height="40" loading="lazy"><span>BrasBim</span></a>
-      <p>Criado e mantido por Otávio Paz, com a colaboração dos contribuidores do projeto.</p>
-    </div>
-    <nav aria-label="Rodapé" class="rodape-links">
+    <div class="rodape-dentro">
       <div>
         <h2>Programa</h2>
         <a href="#recursos">Recursos</a>
+        <a href="#roteiro">Roteiro</a>
         <a href="#baixar">Baixar</a>
-        <a href="#ifc">IFC nativo</a>
       </div>
       <div>
         <h2>Comunidade</h2>
@@ -243,9 +343,19 @@ pip install -e ".[dev,ui]"</code></pre></li>
         <a href="https://github.com/Ottopaz/BrasBim/tree/main/cleanroom">Processo clean‑room</a>
         <a href="https://github.com/Ottopaz/BrasBim/blob/main/THIRD_PARTY_NOTICES.md">Componentes de terceiros</a>
       </div>
-    </nav>
+      <div>
+        <h2>Licenças</h2>
+        <a href="https://github.com/Ottopaz/BrasBim/blob/main/COPYING.LESSER">LGPL‑3.0, núcleo</a>
+        <a href="https://github.com/Ottopaz/BrasBim/blob/main/COPYING">GPL‑3.0, aplicativo</a>
+        <span>CC BY 4.0, biblioteca</span>
+      </div>
+    </div>
+    <div class="rodape-fim">
+      <a class="marca" href="./"><img src="imagens/simbolo-128.png" alt="" width="26" height="26"><span>BrasBim</span></a>
+      <p>Criado e mantido por Otávio Paz e pelos contribuidores do projeto.</p>
+    </div>
   </footer>
 
-  <script src="planta.js"></script>
+  <script type="module" src="torre.js"></script>
 </body>
 </html>

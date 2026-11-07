@@ -1,0 +1,22 @@
+name: Sugerir um recurso
+description: Uma ideia para o BrasBim fazer melhor o seu trabalho.
+title: "[Sugestão] "
+labels: ["sugestão"]
+body:
+  - type: textarea
+    id: necessidade
+    attributes:
+      label: O que você precisa fazer
+      description: Conte a tarefa do dia a dia que hoje é difícil ou impossível no BrasBim.
+    validations:
+      required: true
+  - type: textarea
+    id: ideia
+    attributes:
+      label: Como imagina que funcione
+      description: Opcional. Normas, exigências da prefeitura ou exemplos ajudam muito.
+  - type: textarea
+    id: anexos
+    attributes:
+      label: Imagens ou arquivos
+      description: Arraste para cá desenhos, capturas de tela ou modelos.

@@ -1,0 +1,37 @@
+name: Relatar um problema
+description: Algo não funcionou como esperado no BrasBim.
+title: "[Problema] "
+labels: ["problema"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por testar o BrasBim. Quanto mais detalhes, mais rápido dá para corrigir.
+        Se puder, anexe o diário da sessão (Ajuda > Registrar observação grava uma nota nele)
+        e o arquivo IFC.
+  - type: textarea
+    id: o-que-aconteceu
+    attributes:
+      label: O que aconteceu
+      description: Descreva o problema e o que você esperava que acontecesse.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como repetir
+      description: Os passos para o problema acontecer de novo.
+      placeholder: |
+        1. Abri o projeto...
+        2. Usei a ferramenta Parede...
+        3. Apareceu...
+  - type: input
+    id: versao
+    attributes:
+      label: Versão e sistema
+      placeholder: "BrasBim 0.0.1, Windows 11"
+  - type: textarea
+    id: anexos
+    attributes:
+      label: Imagens, diário ou arquivo
+      description: Arraste para cá capturas de tela, o diário da sessão ou o IFC.

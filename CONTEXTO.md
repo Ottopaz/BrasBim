@@ -30,6 +30,22 @@ specs 51 e 52 em rascunho).*
 > Archicad/Revit). **Depois:** perfil complexo (o revisor pediu "por fim o perfil").
 > **Não commitado ainda.** O Setup instalado neste PC é anterior às correções.
 
+> **Site (2026‑11‑06):** `site/` refeito no estilo do blender.org (tema claro, painéis
+> coloridos), estático, sem compilação. Abertura com a torre de 30 pavimentos em 3D
+> (`site/torre.js`, three.js por CDN; imagem fixa quando o 3D não carrega, como ao abrir o
+> arquivo direto). Seções: Projete em equipe (GIF real de duas janelas em projeto
+> compartilhado), Assistente (GIF real do Claude Code fazendo uma casa de campo; "em
+> teste"), Novidades, Livre, IFC, Brasil, Recursos (prancha A3 exportada em PDF), Roteiro,
+> Participe, Baixar (Windows e macOS "versão de teste", ambos para `releases/latest`).
+> Novos: `exemplos/torre_parametrica.py`, `scripts/compactar_glb.py` (glb leve para a web,
+> também direto do IFC), `scripts/site/` (capturas e GIFs, ver `LEIAME.md`) e modelos de
+> issue em `.github/ISSUE_TEMPLATE/`. **Pendências:** publicar uma versão (etiqueta `v*`
+> + `.exe` anexado) para os botões de download funcionarem; ativar Issues no GitHub.
+> **Achados no programa:** exportar glTF da torre (~3.600 elementos) passou de 50 min sem
+> terminar (o iterador do IfcOpenShell em várias threads fez em 17 min); o 3D leva mais de
+> 9 min para abrir a torre e, na torre pequena, travou recalculando a geometria depois de
+> editar pilares; o Assistente marcou todas as paredes da casa como não externas.
+>
 > **CI e macOS (2026‑11‑06):** o CI estava vermelho desde 10‑14 (instalava só `.[dev]`,
 > sem PySide6). Agora instala `.[ui,dev]` (Linux com Xvfb) e publica falhas e quedas como
 > anotações públicas (`.github/anotar_falhas.py`, o log completo pede login). Achados e
