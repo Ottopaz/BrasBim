@@ -7,6 +7,15 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 *Atualizado em 2026‑11‑07 (teste de uso do revisor: Setup, M2, M3, I1, I2; correções e
 specs 51 e 52 em rascunho).*
 
+> **Site no ar e v0.0.1 (2026‑11‑07):** o ramo `site-torre-equipe-assistente` entrou no
+> `main` (o ramo ainda existe no GitHub e pode ser apagado). O site é publicado pelo
+> GitHub Pages (`.github/workflows/site.yml`: a cada push no `main` que mexe em `site/`,
+> ou à mão) em https://ottopaz.github.io/BrasBim/. Lançamento **v0.0.1** (normal, título
+> "versão de teste", para o `releases/latest` dos botões Baixar funcionar) com o
+> `BrasBim-0.0.1-Setup.exe` montado aqui; a etiqueta dispara o `instalador-mac.yml`, que
+> anexa os `.dmg`. **Falta:** domínio próprio (o revisor quer; arquivo `site/CNAME` + DNS
+> + `gh api repos/Ottopaz/BrasBim/pages -X PUT -f cname=…`).
+>
 > **Teste de uso (2026‑11‑07, outro PC):** pull do `main` (`9b6e8ed`), `.venv` atualizado,
 > 952 testes passando. Setup montado aqui (PyInstaller no `.venv`, Inno Setup 6.7.3 por
 > winget só do usuário) e testado pelo revisor: **Setup ok** (sem administrador, atalhos,
