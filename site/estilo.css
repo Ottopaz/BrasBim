@@ -305,3 +305,10 @@ a.sistema:hover em { background: var(--jabuticaba-2); }
   .topo nav a:not(.botao) { display: none; }
   .grade-4, .selos { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Perguntas frequentes */
+.perguntas { text-align: center; padding-bottom: clamp(3rem, 7vw, 5rem); }
+.lista-perguntas { max-width: 52rem; margin: 2rem auto 0; display: grid; gap: .8rem; text-align: left; }
+.lista-perguntas details { background: var(--branco); border-radius: var(--raio-painel); box-shadow: var(--sombra); padding: 1.1rem 1.4rem; }
+.lista-perguntas summary { cursor: pointer; font-weight: 700; font-size: 1.1rem; }
+.lista-perguntas p { margin-top: .7rem; color: var(--texto-2); }

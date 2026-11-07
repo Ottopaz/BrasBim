@@ -3,9 +3,129 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BrasBim: BIM aberto, gratuito, brasileiro</title>
-  <meta name="description" content="Software BIM de arquitetura gratuito e de código aberto, feito no Brasil. O arquivo do projeto é IFC 4.3.">
+  <title>BrasBim: software BIM gratuito, brasileiro e de código aberto</title>
+  <meta name="description" content="BrasBim é um software BIM de arquitetura gratuito, de código aberto e feito no Brasil: modelagem, plantas, cortes, pranchas e quadro de áreas pelas normas ABNT, com o IFC 4.3 como arquivo do projeto. Para Windows e macOS.">
+  <link rel="canonical" href="https://brasbim.org/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="BrasBim">
+  <meta property="og:url" content="https://brasbim.org/">
+  <meta property="og:title" content="BrasBim: BIM aberto, gratuito, brasileiro">
+  <meta property="og:description" content="Software BIM de arquitetura gratuito e de código aberto, feito no Brasil. O arquivo do projeto é IFC 4.3.">
+  <meta property="og:image" content="https://brasbim.org/imagens/torre-abertura.jpg">
+  <meta property="og:image:width" content="1800">
+  <meta property="og:image:height" content="920">
+  <meta property="og:image:alt" content="Torre de 30 pavimentos modelada no BrasBim">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="imagens/simbolo-32.png">
+  <link rel="apple-touch-icon" href="imagens/simbolo-128.png">
+  <script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "BrasBim",
+    "alternateName": "BrasBIM",
+    "description": "Software BIM de arquitetura gratuito, de código aberto e brasileiro, com o IFC 4.3 como arquivo do projeto.",
+    "url": "https://brasbim.org/",
+    "applicationCategory": "DesignApplication",
+    "applicationSubCategory": "BIM (Building Information Modeling)",
+    "operatingSystem": "Windows 10, Windows 11, macOS",
+    "softwareVersion": "0.0.1",
+    "inLanguage": "pt-BR",
+    "isAccessibleForFree": true,
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "BRL"
+    },
+    "downloadUrl": [
+      "https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-Windows-Setup.exe",
+      "https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-AppleSilicon.dmg",
+      "https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-Intel.dmg"
+    ],
+    "screenshot": "https://brasbim.org/imagens/prancha.jpg",
+    "image": "https://brasbim.org/imagens/torre-abertura.jpg",
+    "author": {
+      "@type": "Person",
+      "name": "Otávio Paz"
+    },
+    "codeRepository": "https://github.com/Ottopaz/BrasBim",
+    "keywords": "BIM, BIM gratuito, BIM brasileiro, software BIM, BIM open source, IFC, IFC 4.3, OpenBIM, projeto de arquitetura, NBR 6492"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "BrasBim",
+    "url": "https://brasbim.org/",
+    "inLanguage": "pt-BR"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "O que é o BrasBim?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "É um software BIM de arquitetura gratuito, de código aberto e feito no Brasil. Modela paredes, pilares, vigas, lajes, coberturas, escadas, portas e janelas, e tira do modelo plantas, cortes, fachadas, pranchas em PDF e quadro de áreas. O arquivo do projeto é IFC 4.3."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "O BrasBim é gratuito?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sim. Não tem assinatura, cadastro, limite de instalações nem versão paga. O código é aberto (GPL‑3.0 no aplicativo e LGPL‑3.0 no núcleo) e pode ser usado em projetos comerciais."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "O que é BIM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BIM (Building Information Modeling, ou Modelagem da Informação da Construção) é projetar com um modelo 3D feito de elementos da construção — paredes, lajes, portas — que carregam informação: material, camadas, áreas e quantidades. Plantas, cortes, tabelas e quantitativos saem do mesmo modelo e se atualizam juntos."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "O BrasBim abre arquivos de outros programas BIM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Pelo IFC, o formato aberto da buildingSMART (ISO 16739). O BrasBim grava IFC 4.3 e exporta IFC 2x3 e IFC 4 para os programas que leem as versões antigas; o arquivo exportado abre em outros programas BIM de arquitetura, estrutura e instalações. Também importa e exporta DWG e DXF, e exporta glTF e OBJ para apresentação."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "O BrasBim segue as normas brasileiras?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "A interface é em português, com metro e vírgula decimal, e a documentação segue a NBR 6492 (representação de projetos de arquitetura) e a NBR 16752 (folhas de desenho). O quadro de áreas calcula taxa de ocupação, coeficiente de aproveitamento e taxa de permeabilidade, com modelos de prefeituras."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Em quais sistemas o BrasBim funciona?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Windows 10 e 11 (64 bits), com instalador que não pede administrador, e macOS em versão de teste, para Apple Silicon e Intel. No Linux, roda a partir do código."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "O BrasBim já está pronto para uso profissional?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Ainda não: a versão 0.0.1 é de teste e está em desenvolvimento aberto. Vale experimentar e relatar o que falta no GitHub, onde estão o código, as especificações e o roteiro."
+        }
+      }
+    ]
+  }
+]
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
@@ -324,6 +444,41 @@ python -m venv .venv
 pip install -e ".[dev,ui]"
 brasbim</code></pre>
       </details>
+    </section>
+
+    <!-- Perguntas frequentes -->
+    <section id="perguntas" class="bloco perguntas">
+      <h2 class="titulo-grande">Perguntas frequentes</h2>
+      <div class="lista-perguntas">
+        <details>
+          <summary>O que é o BrasBim?</summary>
+          <p>É um software BIM de arquitetura gratuito, de código aberto e feito no Brasil. Modela paredes, pilares, vigas, lajes, coberturas, escadas, portas e janelas, e tira do modelo plantas, cortes, fachadas, pranchas em PDF e quadro de áreas. O arquivo do projeto é IFC 4.3.</p>
+        </details>
+        <details>
+          <summary>O BrasBim é gratuito?</summary>
+          <p>Sim. Não tem assinatura, cadastro, limite de instalações nem versão paga. O código é aberto (GPL‑3.0 no aplicativo e LGPL‑3.0 no núcleo) e pode ser usado em projetos comerciais.</p>
+        </details>
+        <details>
+          <summary>O que é BIM?</summary>
+          <p>BIM (Building Information Modeling, ou Modelagem da Informação da Construção) é projetar com um modelo 3D feito de elementos da construção — paredes, lajes, portas — que carregam informação: material, camadas, áreas e quantidades. Plantas, cortes, tabelas e quantitativos saem do mesmo modelo e se atualizam juntos.</p>
+        </details>
+        <details>
+          <summary>O BrasBim abre arquivos de outros programas BIM?</summary>
+          <p>Pelo IFC, o formato aberto da buildingSMART (ISO 16739). O BrasBim grava IFC 4.3 e exporta IFC 2x3 e IFC 4 para os programas que leem as versões antigas; o arquivo exportado abre em outros programas BIM de arquitetura, estrutura e instalações. Também importa e exporta DWG e DXF, e exporta glTF e OBJ para apresentação.</p>
+        </details>
+        <details>
+          <summary>O BrasBim segue as normas brasileiras?</summary>
+          <p>A interface é em português, com metro e vírgula decimal, e a documentação segue a NBR 6492 (representação de projetos de arquitetura) e a NBR 16752 (folhas de desenho). O quadro de áreas calcula taxa de ocupação, coeficiente de aproveitamento e taxa de permeabilidade, com modelos de prefeituras.</p>
+        </details>
+        <details>
+          <summary>Em quais sistemas o BrasBim funciona?</summary>
+          <p>Windows 10 e 11 (64 bits), com instalador que não pede administrador, e macOS em versão de teste, para Apple Silicon e Intel. No Linux, roda a partir do código.</p>
+        </details>
+        <details>
+          <summary>O BrasBim já está pronto para uso profissional?</summary>
+          <p>Ainda não: a versão 0.0.1 é de teste e está em desenvolvimento aberto. Vale experimentar e relatar o que falta no GitHub, onde estão o código, as especificações e o roteiro.</p>
+        </details>
+      </div>
     </section>
   </main>
 

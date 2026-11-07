@@ -1,0 +1,44 @@
+# BrasBim
+
+> Software BIM de arquitetura gratuito, de código aberto e brasileiro (pt-BR), com o IFC 4.3 como arquivo do projeto. Para Windows e macOS. Versão 0.0.1, de teste.
+
+BrasBim modela paredes, pilares, vigas, lajes, coberturas, escadas, portas, janelas, forro e piso, e gera plantas, cortes, fachadas, pranchas em PDF, tabelas e quadro de áreas pelas normas ABNT (NBR 6492, NBR 16752). Exporta IFC 2x3, IFC 4, IFC 4.3, DWG/DXF, glTF e OBJ. Licenças: GPL-3.0 (aplicativo), LGPL-3.0 (núcleo), CC BY 4.0 (biblioteca). Criado por Otávio Paz.
+
+## Perguntas frequentes
+
+### O que é o BrasBim?
+
+É um software BIM de arquitetura gratuito, de código aberto e feito no Brasil. Modela paredes, pilares, vigas, lajes, coberturas, escadas, portas e janelas, e tira do modelo plantas, cortes, fachadas, pranchas em PDF e quadro de áreas. O arquivo do projeto é IFC 4.3.
+
+### O BrasBim é gratuito?
+
+Sim. Não tem assinatura, cadastro, limite de instalações nem versão paga. O código é aberto (GPL‑3.0 no aplicativo e LGPL‑3.0 no núcleo) e pode ser usado em projetos comerciais.
+
+### O que é BIM?
+
+BIM (Building Information Modeling, ou Modelagem da Informação da Construção) é projetar com um modelo 3D feito de elementos da construção — paredes, lajes, portas — que carregam informação: material, camadas, áreas e quantidades. Plantas, cortes, tabelas e quantitativos saem do mesmo modelo e se atualizam juntos.
+
+### O BrasBim abre arquivos de outros programas BIM?
+
+Pelo IFC, o formato aberto da buildingSMART (ISO 16739). O BrasBim grava IFC 4.3 e exporta IFC 2x3 e IFC 4 para os programas que leem as versões antigas; o arquivo exportado abre em outros programas BIM de arquitetura, estrutura e instalações. Também importa e exporta DWG e DXF, e exporta glTF e OBJ para apresentação.
+
+### O BrasBim segue as normas brasileiras?
+
+A interface é em português, com metro e vírgula decimal, e a documentação segue a NBR 6492 (representação de projetos de arquitetura) e a NBR 16752 (folhas de desenho). O quadro de áreas calcula taxa de ocupação, coeficiente de aproveitamento e taxa de permeabilidade, com modelos de prefeituras.
+
+### Em quais sistemas o BrasBim funciona?
+
+Windows 10 e 11 (64 bits), com instalador que não pede administrador, e macOS em versão de teste, para Apple Silicon e Intel. No Linux, roda a partir do código.
+
+### O BrasBim já está pronto para uso profissional?
+
+Ainda não: a versão 0.0.1 é de teste e está em desenvolvimento aberto. Vale experimentar e relatar o que falta no GitHub, onde estão o código, as especificações e o roteiro.
+
+## Links
+
+- [Site](https://brasbim.org/)
+- [Baixar para Windows](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-Windows-Setup.exe)
+- [Baixar para macOS Apple Silicon](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-AppleSilicon.dmg)
+- [Baixar para macOS Intel](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-Intel.dmg)
+- [Código no GitHub](https://github.com/Ottopaz/BrasBim)
+- [Especificações](https://github.com/Ottopaz/BrasBim/tree/main/spec)
