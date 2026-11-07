@@ -384,6 +384,55 @@ def _slab(a: float, b: float, y0: float = -_FAR, y1: float = _FAR) -> list[Point
     return [(a, y0), (b, y0), (b, y1), (a, y1)]
 
 
+def _strip(path, lo: float, hi: float) -> Rings:
+    """Faixa da parede entre os afastamentos ``lo`` e ``hi`` do eixo, no sistema local:
+    retângulo sem fim na reta, coroa circular inteira no arco (as pontas ficam com o
+    contorno da parede, que corta junto)."""
+    if isinstance(path, geom2d.LinePath):
+        return [_slab(-_FAR, _FAR, lo, hi)]
+    cx, cy = path.local_center()
+    r_lo, r_hi = sorted((path._radius_at(lo), path._radius_at(hi)))
+
+    def circle(r):
+        n = 256
+        return [(cx + r * math.cos(2 * math.pi * k / n), cy + r * math.sin(2 * math.pi * k / n))
+                for k in range(n)]
+
+    ring = [circle(r_hi)]
+    return clip.difference(ring, [circle(r_lo)]) if r_lo > 1e-9 else ring
+
+
+def _profile_parts(doc: Document, state: dict) -> list[dict] | None:
+    """Partes do perfil da parede, já esticadas e espelhadas; ``None`` se é de camadas."""
+    try:
+        if wall_types.profile_of(doc.get(state["type"], "IfcWallType")) is None:
+            return None
+        return rebuild.profile_parts(doc, state, rebuild.height(doc, state))
+    except (OpError, KeyError, ValueError):
+        return None
+
+
+def _profile_spans(parts, c: float):
+    """Parede de perfil diante do plano ``c`` (a partir da base): trechos do afastamento
+    cortados pelo plano, e a largura do que fica acima e abaixo dele (``None`` se nada)."""
+    from shapely.geometry import Polygon, box
+
+    from brasbim.core import profile_defs
+
+    x0, y0, x1, y1 = profile_defs.bounds(parts)
+    cut = [(ly.ymin, ly.ymax) for ly in layers.profile_cut(parts, c)] if y0 < c < y1 else []
+
+    def width(lo, hi):
+        found = [Polygon(p["outline"], p.get("holes") or []).intersection(
+            box(x0 - 1.0, lo, x1 + 1.0, hi)) for p in parts]
+        found = [f for f in found if not f.is_empty and f.area > 1e-12]
+        if not found:
+            return None
+        return min(f.bounds[0] for f in found), max(f.bounds[2] for f in found)
+
+    return cut, width(c, y1 + 1.0), width(y0 - 1.0, c)
+
+
 def _over(profile, c: float, length: float) -> list[tuple[float, float]]:
     """Trechos ``x`` em que o topo do perfil fica acima de ``c`` (pontas ao infinito)."""
     xs = sorted({-_MARGIN, length + _MARGIN, *(x for x, _ in profile)})
@@ -447,6 +496,19 @@ def _cut_wall(doc: Document, wall, cut: float, show_above: bool) -> _Cut | None:
     slabs = [_slab(a, b) for a, b in over]
     emit("wall_view", clip.difference(local, slabs))  # trechos com o topo abaixo do plano
     pieces = clip.intersection(local, slabs)
+    parts = _profile_parts(doc, state)
+    if parts is not None and pieces:
+        # Parede de perfil: cortado só o que o plano atravessa; o que passa para fora
+        # dele acima (capa, pingadeira) fica tracejado e abaixo (sapata), em vista
+        # (revisão de 2026-11-07).
+        spans, above, below = _profile_spans(parts, c)
+        cut_area = clip.union([r for lo, hi in spans for r in _strip(band.path, lo, hi)])
+        pieces = clip.intersection(pieces, cut_area) if cut_area else []
+        for role, span, wanted in (("wall_above", above, show_above), ("wall_view", below, True)):
+            if span is None or not wanted:
+                continue
+            extra = clip.intersection(local, _strip(band.path, *span))
+            emit(role, clip.difference(extra, cut_area) if cut_area else extra)
     if straight and pieces:
         holes = []
         for opening in openings.of_wall(wall, objects=True):

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import ifcopenshell.geom
 import ifcopenshell.util.element
+import ifcopenshell.util.placement
 import numpy as np
 
 from brasbim.core import clip, display_layers, intervention, materials, props, units
@@ -271,6 +272,67 @@ def _wall_layers(doc: Document, wall, a, d) -> list[tuple[str | None, float, flo
     return found
 
 
+def _profile_pieces(doc: Document, wall, rings: list, a, d) -> list | None:
+    """Parede de perfil (spec/ui 41 §4): a seção cortada dividida pelas partes do perfil.
+    Cada parte, desenhada em (afastamento do eixo, altura), é levada ao plano da vista
+    pela relação entre ``u`` e o afastamento ao longo da linha do corte (reta ou arco).
+    ``None`` se a parede é de camadas ou se o corte corre ao longo dela (aí valem as
+    faixas)."""
+    from shapely.geometry import Polygon
+
+    from brasbim.core import geom2d
+    from brasbim.core.walls import rebuild
+    from brasbim.core.walls import types as wall_types
+    from brasbim.core.walls.wall import read_state
+
+    try:
+        state = read_state(doc, wall)
+        if wall_types.profile_of(doc.get(state["type"], "IfcWallType")) is None:
+            return None
+        parts = rebuild.profile_parts(doc, state, rebuild.height(doc, state))
+    except (OpError, KeyError, ValueError):
+        return None
+    if wall.ObjectPlacement is None or not rings:
+        return None
+    m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(wall.ObjectPlacement))
+    us = [p[0] for r in rings for p in r]
+    u = np.linspace(min(us) - 0.05, max(us) + 0.05, 400)
+    world = np.c_[a[0] + u * d[0], a[1] + u * d[1], np.zeros_like(u), np.ones_like(u)]
+    local = world @ m.T
+    path = geom2d.path_from_dict(state["path"])
+    if isinstance(path, geom2d.LinePath):
+        offset = local[:, 1]
+    else:  # arco: raio da paralela = R − y (anti-horário) ou R + y (horário)
+        r = np.hypot(local[:, 0], local[:, 1] - path.local_center()[1])
+        offset = path.radius - r if path.ccw else r - path.radius
+    step = np.diff(offset)
+    if np.ptp(offset) < 1e-6 or not (np.all(step > 0) or np.all(step < 0)):
+        return None  # corte ao longo da parede (ou cruzando o arco duas vezes)
+    if step[0] < 0:
+        offset, u = offset[::-1], u[::-1]
+    z0 = -float(m[2, 3])  # cota da base da parede (a peça não gira em x, y)
+
+    def to_view(ring):
+        pts = []
+        for p, q in zip(ring, [*ring[1:], ring[0]]):  # arestas densas: o arco curva
+            for t in np.linspace(0.0, 1.0, 16, endpoint=False):
+                x, y = p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])
+                pts.append((float(np.interp(x, offset, u)), z0 + y))
+        return pts
+
+    out = []
+    for part in parts:
+        shape = Polygon(part["outline"], part.get("holes") or [])
+        region = [to_view(list(shape.exterior.coords)[:-1])]
+        holes = [to_view(list(h.coords)[:-1]) for h in shape.interiors]
+        if holes:
+            region = clip.difference(region, holes)
+        found = clip.intersection(rings, region)
+        if found:
+            out.append((part["material"], found))
+    return out
+
+
 def _covering_layers(doc: Document, covering) -> list[tuple[str | None, float, float]]:
     """(material, cota de baixo, cota de cima) das camadas do forro ou do piso."""
     from brasbim.core.structure import coverings
@@ -334,7 +396,10 @@ def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
         return [Item("cut", rings=rings, owner=gid, fill={"pattern": "none", "source": "type"},
                      weight=OPENING_WEIGHT)]
     pieces: list[tuple[str | None, list]] = []
-    if element.is_a("IfcWall"):
+    profile = _profile_pieces(doc, element, rings, a, d) if element.is_a("IfcWall") else None
+    if profile is not None:
+        pieces = profile
+    elif element.is_a("IfcWall"):
         for name, u0, u1 in _wall_layers(doc, element, a, d):
             part = clip.intersection(rings, [_strip(u0, u1)])
             if part:

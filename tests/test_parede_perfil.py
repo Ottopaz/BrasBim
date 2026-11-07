@@ -222,3 +222,74 @@ def test_pc14_mesmo_material_sem_linha_entre_partes(model):
     assert [(ly.material, ly.ymin, ly.ymax) for ly in found] == [
         ("Bloco cerâmico", pytest.approx(-0.07), pytest.approx(0.07)),
         ("Reboco", pytest.approx(0.07), pytest.approx(0.09))]
+
+
+# --- revisão de 2026-11-07: planta e corte da parede de perfil ----------------------------
+
+
+def _widths(shapes, owner, role):
+    out = []
+    for s in shapes:
+        if s.owner == owner and s.role == role:
+            ys = [p[1] for p in s.points]
+            out.append((round(min(ys), 4), round(max(ys), 4)))
+    return sorted(out)
+
+
+def test_pc05_planta_corta_so_o_bloco_e_tracejada_a_capa(model):
+    from brasbim.core import plan
+
+    _, t = profile_type(model)
+    w = wall_of(model, t)
+    p = plan.storey_plan(model.doc, model.terreo)
+    # cortado no plano (1,50): só o bloco de 0,14; a capa (0,20, a 2,75) passa por fora
+    # dele acima do plano: tracejada dos dois lados
+    assert _widths(p.shapes, w.GlobalId, "wall") == [(-0.07, 0.07)]
+    assert _widths(p.shapes, w.GlobalId, "wall_above") == [(-0.10, -0.07), (0.07, 0.10)]
+    (edge,) = [e for e in p.edges if e.pen == "cut"]
+    assert {round(q[1], 4) for r in edge.rings for q in r} == {-0.07, 0.07}
+
+
+def test_pc05_muro_baixo_todo_em_vista(model):
+    from brasbim.core import plan
+
+    _, t = profile_type(model, stretch_y=None)  # sem esticar: 1,05 m, abaixo do plano
+    w = wall_of(model, t)
+    p = plan.storey_plan(model.doc, model.terreo)
+    assert _widths(p.shapes, w.GlobalId, "wall") == []
+    assert _widths(p.shapes, w.GlobalId, "wall_view") == [(-0.10, 0.10)]
+
+
+def _section_cuts(model, owner, a, b):
+    from brasbim.core.annotations import commands as ac
+    from brasbim.core.drawings import section, views
+
+    model.commit(ac.create_view(model.doc, "section", a, b, "left"))
+    view = views.all_views(model.doc)[-1]
+    out = []
+    for it in section.draw(model.doc, view).items:
+        if it.kind == "cut" and it.owner == owner and it.fill.get("source") == "material":
+            for r in it.rings:
+                us, zs = [q[0] for q in r], [q[1] for q in r]
+                out.append((round(max(us) - min(us), 3), round(min(zs), 3),
+                            round(max(zs), 3)))
+    return sorted(out, key=lambda t: t[1])
+
+
+def test_pc16_corte_divide_pelas_partes(model):
+    """O corte usava as faixas do plano da planta: a capa, mais larga e acima do plano,
+    saía com o material errado."""
+    _, t = profile_type(model)
+    w = wall_of(model, t)
+    assert _section_cuts(model, w.GlobalId, (2.5, -3), (2.5, 3)) == [
+        (0.14, 0.0, 2.75), (0.20, 2.75, 2.8)]
+
+
+def test_pc16_corte_da_parede_em_arco(model):
+    _, t = profile_type(model)
+    tx = model.commit(wc.create_arc_wall(model.doc, t, model.terreo, (10, 0), (12, 2), (14, 0)))
+    arc = model.doc.get(tx.ops[0].id)
+    found = _section_cuts(model, arc.GlobalId, (12, 5), (12, 0.5))
+    assert [f[1:] for f in found] == [(0.0, 2.75), (2.75, 2.8)]
+    assert found[0][0] == pytest.approx(0.14, abs=2e-3)
+    assert found[1][0] == pytest.approx(0.20, abs=2e-3)

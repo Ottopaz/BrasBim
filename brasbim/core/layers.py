@@ -60,16 +60,25 @@ _PART_PRIORITY = {"core": 50, "finish": 10}
 def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
     """Parede de perfil (spec/ui 41 §4): as "camadas" são o corte do perfil no plano de
     corte da planta, um trecho por parte cruzada. ``None`` se o plano não corta a parede."""
-    from shapely.geometry import LineString, Polygon
-
-    from brasbim.core import profile_defs, storeys
+    from brasbim.core import storeys
 
     h = rebuild.height(doc, state)
     parts = rebuild.profile_parts(doc, state, h)
     z = storeys.cut_height(doc.get(state["storey"], "IfcBuildingStorey")) - state["base_offset"]
+    return profile_cut(parts, z) or None
+
+
+def profile_cut(parts: list[dict], z: float) -> list[Layer]:
+    """Trechos do perfil cortados pela horizontal ``z`` (a partir da base), da esquerda
+    para a direita; vazio se a linha não corta. Trechos encostados do mesmo material viram
+    um só: sem linha entre eles (ponto (o))."""
+    from shapely.geometry import LineString, Polygon
+
+    from brasbim.core import profile_defs
+
     x0, y0, x1, y1 = profile_defs.bounds(parts)
     if not y0 < z < y1:
-        return None
+        return []
     line = LineString([(x0 - 1.0, z), (x1 + 1.0, z)])
     found_ = []
     for part in parts:
@@ -80,7 +89,6 @@ def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
                 continue
             xs = [c[0] for c in piece.coords]
             found_.append([part["material"], _PART_PRIORITY[part["role"]], min(xs), max(xs)])
-    # Trechos encostados do mesmo material viram um só: sem linha entre eles (ponto (o)).
     merged = []
     for item in sorted(found_, key=lambda t: t[2]):
         last = merged[-1] if merged else None
@@ -88,9 +96,8 @@ def _profile_layers(doc: Document, state: dict) -> list[Layer] | None:
             last[1], last[3] = max(last[1], item[1]), item[3]
         else:
             merged.append(item)
-    out = [Layer(i, material, priority, a, b)
-           for i, (material, priority, a, b) in enumerate(merged)]
-    return out or None
+    return [Layer(i, material, priority, a, b)
+            for i, (material, priority, a, b) in enumerate(merged)]
 
 
 def wall_layers(doc: Document, state: dict) -> list[Layer] | None:

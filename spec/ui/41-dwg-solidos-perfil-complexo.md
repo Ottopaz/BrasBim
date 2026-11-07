@@ -175,6 +175,15 @@ combinação é um tipo, e as partes gravadas nele já saem espelhadas e giradas
 (as partes cortadas com a hachura do material) e o que está abaixo, em projeção.
 Portas e janelas cortam o perfil inteiro (ponto (i)). Junções em L e T entre paredes de
 perfil: esquadria pela bissetriz; entre perfil e camadas, a de camadas para na face.
+**Ajuste de 2026‑11‑07:** o contorno cortado é só a largura que o plano atravessa (antes
+era a largura total do perfil); o que passa para fora dela **acima** do plano (capa,
+pingadeira, rufo) sai **tracejado**, e **abaixo** (sapata, rodapé saliente), em vista.
+
+**Corte e fachada:** a seção cortada da parede de perfil é dividida pelas **partes do
+perfil**, cada uma com a hachura do seu material, levadas ao plano do corte pela posição
+de cada ponto em relação ao eixo da parede (reta ou arco). Antes, o corte usava as faixas
+verticais do plano da planta e a capa mais larga saía com o material errado. Corte que
+corre ao longo da parede continua com as faixas. Teste PC16.
 
 **Teste:** PC01 perfil com duas partes → `IfcMaterialProfileSet` no tipo e formas no
 elemento, reabre igual; PC02 esticar (altura 3,00 → 3,50 move só o que está acima da

@@ -7,6 +7,18 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 *Atualizado em 2026‑11‑07 (teste de uso do revisor: Setup, M2, M3, I1, I2; correções e
 specs 51 e 52 em rascunho).*
 
+> **Perfil complexo: planta e corte (2026‑11‑07, escolha do revisor):** fechadas as
+> duas lacunas da etapa 2. **Planta** (`plan._cut_wall`): na parede de perfil, o cortado é
+> só a largura que o plano atravessa (`layers.profile_cut`, extraída de
+> `_profile_layers`; faixa por afastamento `plan._strip`, retângulo na reta e coroa no
+> arco); o que passa para fora acima do plano sai `wall_above` (tracejado), abaixo,
+> `wall_view` (`plan._profile_spans`). **Corte** (`section._profile_pieces`): a seção é
+> dividida pelas partes do perfil, levadas ao plano da vista pelo afastamento ao longo da
+> linha do corte (reta ou arco; corte ao longo da parede fica com as faixas). Testes PC05
+> (capa tracejada, muro baixo em vista) e PC16 (reta e arco). **Fica do perfil:** borda
+> de laje/cobertura e caminho livre, deslocamentos nomeados (j), pena de
+> contorno/separador e linha por aresta.
+>
 > **Site no ar e v0.0.1 (2026‑11‑07):** o ramo `site-torre-equipe-assistente` entrou no
 > `main` (o ramo ainda existe no GitHub e pode ser apagado). O site é publicado pelo
 > GitHub Pages (`.github/workflows/site.yml`: a cada push no `main` que mexe em `site/`,
