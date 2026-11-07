@@ -18,9 +18,14 @@ specs 51 e 52 em rascunho).*
 > `BrasBim-macOS-Intel.dmg`), e o site baixa de `releases/latest/download/<nome>`; o
 > `instalador-mac.yml` já anexa com esses nomes; o `.exe` (montado à mão) precisa ser
 > anexado como `BrasBim-Windows-Setup.exe` em cada versão nova. Domínio `brasbim.org`
-> (Spaceship): `site/CNAME` e Pages configurados; **falta** o revisor cadastrar o DNS e,
-> depois, ligar o HTTPS obrigatório. **Antes:** domínio próprio (o revisor quer; arquivo `site/CNAME` + DNS
-> + `gh api repos/Ottopaz/BrasBim/pages -X PUT -f cname=…`).
+> (Spaceship) no ar com HTTPS obrigatório (certificado do GitHub até 2027‑02‑05, renovação
+> automática; `www` e `ottopaz.github.io/BrasBim` redirecionam). **SEO:** título,
+> descrição, Open Graph, JSON‑LD (`SoftwareApplication`, `WebSite`, `FAQPage`), seção
+> Perguntas frequentes, `robots.txt`, `sitemap.xml`, `llms.txt`; tópicos e endereço no
+> repositório; Google Search Console verificado por TXT; IndexNow (chave
+> `site/49719120c3921545c72c9fa96d6f690b.txt`) avisado em 2026‑11‑07 (202). **Para
+> crescer na busca:** páginas de tutorial e notas de versão (cada uma no sitemap e no
+> IndexNow), links de fora (OSArch, AlternativeTo, LinkedIn).
 >
 > **Teste de uso (2026‑11‑07, outro PC):** pull do `main` (`9b6e8ed`), `.venv` atualizado,
 > 952 testes passando. Setup montado aqui (PyInstaller no `.venv`, Inno Setup 6.7.3 por
