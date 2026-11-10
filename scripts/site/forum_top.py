@@ -27,7 +27,8 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
-DONO, REPO = "Ottopaz", "BrasBim"
+# No Actions vem de GITHUB_REPOSITORY, que acompanha uma troca de nome da conta.
+DONO, REPO = os.environ.get("GITHUB_REPOSITORY", "ootaviopaz/BrasBim").split("/", 1)
 QUANTOS = 30  # o site mostra 30; as 10 primeiras entram no desenvolvimento
 CATEGORIAS = {"ideias", "ideas"}  # nome ou slug da categoria, sem diferenciar maiúsculas
 
