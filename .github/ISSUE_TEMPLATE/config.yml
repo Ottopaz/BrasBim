@@ -1,5 +1,11 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Propor uma ideia no fórum
+    url: https://github.com/Ottopaz/BrasBim/discussions/new/choose
+    about: As 10 ideias mais votadas no fórum entram em cada ciclo de desenvolvimento.
+  - name: Tirar uma dúvida no fórum
+    url: https://github.com/Ottopaz/BrasBim/discussions
+    about: Perguntas sobre como usar o BrasBim.
   - name: Como contribuir
     url: https://github.com/Ottopaz/BrasBim/blob/main/CONTRIBUTING.md
     about: Especificações, código e objetos para a biblioteca.

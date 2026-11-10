@@ -151,6 +151,7 @@
         <a href="#equipe">Equipe</a>
         <a href="#assistente">Assistente</a>
         <a href="#roteiro">Roteiro</a>
+        <a href="#forum">Fórum</a>
         <a href="#baixar">Baixar</a>
         <a href="#participe">Participe</a>
         <a href="https://github.com/Ottopaz/BrasBim">Código</a>
@@ -401,6 +402,29 @@
       </div>
     </section>
 
+    <!-- Fórum: GitHub Discussions; a lista vem de forum.json (forum.js) -->
+    <section id="forum" class="painel painel-claro forum">
+      <div class="forum-cabeca">
+        <div>
+          <h2>Fórum: você decide o que vem</h2>
+          <p>Proponha melhorias, tire dúvidas e vote nas ideias dos outros. A cada ciclo, as
+            10 postagens mais votadas entram no desenvolvimento.</p>
+        </div>
+        <div class="forum-acoes">
+          <a class="botao botao-grande" href="https://github.com/Ottopaz/BrasBim/discussions">Entrar no fórum</a>
+          <a class="botao botao-grande botao-claro" href="https://github.com/Ottopaz/BrasBim/discussions/new/choose">Nova postagem</a>
+          <p>Ler é livre. Para postar, responder e votar, use uma conta gratuita do GitHub:
+            <a href="https://github.com/signup">criar conta</a> (só e‑mail, senha e nome de
+            usuário).</p>
+        </div>
+      </div>
+      <h3>As 30 ideias mais votadas agora</h3>
+      <p class="forum-legenda"><span></span> As 10 primeiras entram no próximo ciclo de desenvolvimento.</p>
+      <ol id="forum-lista" class="forum-lista">
+        <li class="forum-vazio">Ainda não há postagens. <a href="https://github.com/Ottopaz/BrasBim/discussions/new/choose">Seja o primeiro a sugerir algo</a>.</li>
+      </ol>
+    </section>
+
     <!-- Participe -->
     <section id="participe" class="painel painel-marca">
       <h2>Feito por quem projeta</h2>
@@ -492,6 +516,7 @@ brasbim</code></pre>
       </div>
       <div>
         <h2>Comunidade</h2>
+        <a href="https://github.com/Ottopaz/BrasBim/discussions">Fórum</a>
         <a href="https://github.com/Ottopaz/BrasBim">GitHub</a>
         <a href="https://github.com/Ottopaz/BrasBim/issues">Relatar um problema</a>
         <a href="https://github.com/Ottopaz/BrasBim/blob/main/CONTRIBUTING.md">Como contribuir</a>
@@ -516,5 +541,6 @@ brasbim</code></pre>
   </footer>
 
   <script type="module" src="torre.js"></script>
+  <script type="module" src="forum.js"></script>
 </body>
 </html>

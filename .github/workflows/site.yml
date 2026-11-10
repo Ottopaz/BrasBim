@@ -1,14 +1,23 @@
-# Publica site/ no GitHub Pages a cada push no main que mexer no site.
+# Publica site/ no GitHub Pages a cada push no main que mexer no site, e atualiza a
+# lista do fórum (forum.json): a cada 3 horas (votos não disparam evento) e quando uma
+# discussão é criada, editada, fechada ou respondida.
 name: Site
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/site.yml"]
+    paths: ["site/**", ".github/workflows/site.yml", "scripts/site/forum_top.py"]
   workflow_dispatch:
+  schedule:
+    - cron: "17 */3 * * *"
+  discussion:
+    types: [created, edited, deleted, closed, reopened, category_changed]
+  discussion_comment:
+    types: [created, deleted]
 
 permissions:
   contents: read
+  discussions: read
   pages: write
   id-token: write
 
@@ -24,6 +33,10 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Ranking do fórum
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/site/forum_top.py site/forum.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

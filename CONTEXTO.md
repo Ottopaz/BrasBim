@@ -7,6 +7,18 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 *Atualizado em 2026‑11‑07 (teste de uso do revisor: Setup, M2, M3, I1, I2; correções e
 specs 51 e 52 em rascunho).*
 
+> **Fórum (2026‑11‑10):** o fórum é o **GitHub Discussions** do repositório (ligado em
+> 2026‑11‑10; categorias renomeadas à mão para Avisos, Ideias, Dúvidas, Geral, Mostre
+> seu projeto e Enquetes). A página inicial ganhou a seção `#forum`: botões para entrar,
+> postar e criar conta, e as **30 ideias mais votadas** numa lista com rolagem, com as
+> **10 primeiras em destaque** (entram no ciclo de desenvolvimento). A lista vem de
+> `site/forum.json`, gerado por `scripts/site/forum_top.py` no `site.yml` (a cada 3 h,
+> porque voto não dispara evento, e a cada discussão criada/editada/fechada/respondida).
+> Ranking: só a categoria Ideias (nome "Ideias" ou "Ideas"), só abertas, por votos,
+> depois respostas, depois a mais nova. **Ideia implementada → fechar a discussão** (sai
+> da lista). Ver o ranking no terminal: `GITHUB_TOKEN=… python scripts/site/forum_top.py`.
+> Votar exige conta do GitHub (ler é livre); voto anônimo foi descartado (fraude).
+>
 > **Perfil complexo: planta e corte (2026‑11‑07, escolha do revisor):** fechadas as
 > duas lacunas da etapa 2. **Planta** (`plan._cut_wall`): na parede de perfil, o cortado é
 > só a largura que o plano atravessa (`layers.profile_cut`, extraída de
