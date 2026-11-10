@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 DONO, REPO = os.environ.get("GITHUB_REPOSITORY", "ootaviopaz/BrasBim").split("/", 1)
 QUANTOS = 30  # o site mostra 30; as 10 primeiras entram no desenvolvimento
 CATEGORIAS = {"ideias", "ideas"}  # nome ou slug da categoria, sem diferenciar maiúsculas
+LIMITE_DESCRICAO = 1200  # caracteres; o resto fica no fórum ("continuar no fórum")
 
 CONSULTA = """
 query($dono: String!, $repo: String!, $depois: String) {
@@ -38,7 +39,7 @@ query($dono: String!, $repo: String!, $depois: String) {
     discussions(first: 100, after: $depois, orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        title url createdAt closed upvoteCount
+        title url createdAt closed upvoteCount bodyText
         comments { totalCount }
         category { name slug }
         author { login }
@@ -73,6 +74,16 @@ def buscar(token: str) -> list[dict]:
     return discussoes
 
 
+def resumir(texto: str) -> tuple[str, bool]:
+    """Texto puro da postagem, sem linhas em branco repetidas e cortado numa palavra."""
+    linhas = [linha.rstrip() for linha in (texto or "").strip().splitlines()]
+    limpo = "\n".join(l for i, l in enumerate(linhas) if l or (i and linhas[i - 1]))
+    if len(limpo) <= LIMITE_DESCRICAO:
+        return limpo, False
+    corte = limpo.rfind(" ", 0, LIMITE_DESCRICAO)
+    return limpo[: corte if corte > 0 else LIMITE_DESCRICAO].rstrip() + "…", True
+
+
 def ranquear(discussoes: list[dict]) -> list[dict]:
     def e_ideia(d: dict) -> bool:
         cat = d.get("category") or {}
@@ -81,18 +92,21 @@ def ranquear(discussoes: list[dict]) -> list[dict]:
     abertas = [d for d in discussoes if not d["closed"] and e_ideia(d)]
     abertas.sort(key=lambda d: d["createdAt"], reverse=True)
     abertas.sort(key=lambda d: (d["upvoteCount"], d["comments"]["totalCount"]), reverse=True)
-    return [
-        {
+    top = []
+    for d in abertas[:QUANTOS]:
+        descricao, cortada = resumir(d.get("bodyText", ""))
+        top.append({
             "titulo": d["title"],
             "url": d["url"],
+            "descricao": descricao,
+            "cortada": cortada,
             "votos": d["upvoteCount"],
             "respostas": d["comments"]["totalCount"],
             "categoria": d["category"]["name"] if d.get("category") else "",
             "autor": (d.get("author") or {}).get("login", ""),
             "criada": d["createdAt"],
-        }
-        for d in abertas[:QUANTOS]
-    ]
+        })
+    return top
 
 
 def main() -> int:

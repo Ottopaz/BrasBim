@@ -263,13 +263,25 @@ a.cartao:hover h3 { color: var(--jabuticaba); }
 }
 .forum-lista::-webkit-scrollbar { width: 8px; }
 .forum-lista::-webkit-scrollbar-thumb { background: #8c5f80; border-radius: 4px; }
-.forum-lista a {
+.forum-lista details { background: rgb(255 255 255 / .06); border-radius: var(--raio); transition: background .15s; }
+.forum-lista details:hover, .forum-lista details[open] { background: rgb(255 255 255 / .1); }
+.forum-lista .forum-top details { box-shadow: inset 4px 0 0 var(--pitanga); }
+.forum-lista summary {
   display: flex; align-items: center; gap: 1.1rem; padding: .9rem 1.1rem;
-  background: rgb(255 255 255 / .06); border-radius: var(--raio);
-  text-decoration: none; color: inherit; transition: background .15s;
+  cursor: pointer; list-style: none;
 }
-.forum-lista a:hover { background: rgb(255 255 255 / .11); }
-.forum-lista .forum-top a { box-shadow: inset 4px 0 0 var(--pitanga); }
+.forum-lista summary::-webkit-details-marker { display: none; }
+.forum-lista summary:focus-visible { outline: 2px solid #ff9cc0; outline-offset: -2px; border-radius: var(--raio); }
+.forum-seta {
+  flex: none; margin-left: auto; width: .6rem; height: .6rem;
+  border-right: 2px solid #b9b0bd; border-bottom: 2px solid #b9b0bd;
+  transform: rotate(45deg); transition: transform .15s;
+}
+.forum-lista details[open] .forum-seta { transform: rotate(225deg); }
+.forum-corpo { padding: 0 1.1rem 1.1rem calc(1.1rem + 3.4rem + 1.1rem); }
+.forum-descricao { white-space: pre-line; overflow-wrap: anywhere; color: #d9d1db; font-size: .98rem; line-height: 1.6; }
+.forum-link { display: inline-block; margin-top: .9rem; color: #ff9cc0; font-weight: 600; text-decoration: none; }
+.forum-link:hover { text-decoration: underline; }
 .forum-votos {
   flex: none; display: flex; flex-direction: column; align-items: center; min-width: 3.4rem;
   font-size: .78rem; color: #b9b0bd;
@@ -347,8 +359,9 @@ a.sistema:hover em { background: var(--jabuticaba-2); }
   .topo nav a:not(.botao) { display: none; }
   .grade-4, .selos { grid-template-columns: minmax(0, 1fr); }
   .forum-lista { max-height: 30rem; padding-right: .5rem; }
-  .forum-lista a { gap: .7rem; padding: .8rem .9rem; }
+  .forum-lista summary { gap: .7rem; padding: .8rem .9rem; }
   .forum-votos { min-width: 2.6rem; }
+  .forum-corpo { padding: 0 .9rem 1rem; }
 }
 
 /* Perguntas frequentes */

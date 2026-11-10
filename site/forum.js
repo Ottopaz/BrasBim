@@ -1,32 +1,38 @@
-// Seção Fórum: mostra as postagens mais votadas do GitHub Discussions.
+// Seção Fórum: mostra as ideias mais votadas do GitHub Discussions.
 // A lista vem de forum.json, gerado por scripts/site/forum_top.py no site.yml.
+// Clicar no título abre a descrição (texto puro, sem HTML de terceiros).
 const lista = document.getElementById("forum-lista");
 
+function el(tag, classe, texto) {
+  const e = document.createElement(tag);
+  if (classe) e.className = classe;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+}
+
 function item(p, posicao) {
-  const li = document.createElement("li");
-  if (posicao <= 10) li.className = "forum-top";
-  const a = document.createElement("a");
-  a.href = p.url;
+  const li = el("li", posicao <= 10 ? "forum-top" : "");
+  const detalhes = el("details");
+  const resumo = el("summary");
 
-  const votos = document.createElement("span");
-  votos.className = "forum-votos";
-  const n = document.createElement("strong");
-  n.textContent = p.votos;
-  votos.append(n, p.votos === 1 ? "voto" : "votos");
+  const votos = el("span", "forum-votos");
+  votos.append(el("strong", "", p.votos), p.votos === 1 ? "voto" : "votos");
 
-  const texto = document.createElement("span");
-  texto.className = "forum-texto";
-  const titulo = document.createElement("strong");
-  titulo.textContent = `${posicao}. ${p.titulo}`;
-  const meta = document.createElement("small");
-  const partes = [];
-  partes.push(p.respostas === 1 ? "1 resposta" : `${p.respostas} respostas`);
+  const texto = el("span", "forum-texto");
+  const partes = [p.respostas === 1 ? "1 resposta" : `${p.respostas} respostas`];
   if (p.autor) partes.push(`por ${p.autor}`);
-  meta.textContent = partes.join(" · ");
-  texto.append(titulo, meta);
+  texto.append(el("strong", "", `${posicao}. ${p.titulo}`), el("small", "", partes.join(" · ")));
 
-  a.append(votos, texto);
-  li.append(a);
+  resumo.append(votos, texto, el("span", "forum-seta"));
+
+  const corpo = el("div", "forum-corpo");
+  if (p.descricao) corpo.append(el("p", "forum-descricao", p.descricao));
+  const link = el("a", "forum-link", p.cortada ? "Continuar no fórum, votar e responder →" : "Votar e responder no fórum →");
+  link.href = p.url;
+  corpo.append(link);
+
+  detalhes.append(resumo, corpo);
+  li.append(detalhes);
   return li;
 }
 
