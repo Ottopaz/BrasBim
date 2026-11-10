@@ -4,20 +4,47 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑07 (teste de uso do revisor: Setup, M2, M3, I1, I2; correções e
-specs 51 e 52 em rascunho).*
+*Atualizado em 2026‑11‑10 (fórum no GitHub Discussions e no site; conta do GitHub
+renomeada para `ootaviopaz`).*
 
-> **Fórum (2026‑11‑10):** o fórum é o **GitHub Discussions** do repositório (ligado em
-> 2026‑11‑10; categorias renomeadas à mão para Avisos, Ideias, Dúvidas, Geral, Mostre
-> seu projeto e Enquetes). A página inicial ganhou a seção `#forum`: botões para entrar,
-> postar e criar conta, e as **30 ideias mais votadas** numa lista com rolagem, com as
-> **10 primeiras em destaque** (entram no ciclo de desenvolvimento). A lista vem de
-> `site/forum.json`, gerado por `scripts/site/forum_top.py` no `site.yml` (a cada 3 h,
-> porque voto não dispara evento, e a cada discussão criada/editada/fechada/respondida).
-> Ranking: só a categoria Ideias (nome "Ideias" ou "Ideas"), só abertas, por votos,
-> depois respostas, depois a mais nova. **Ideia implementada → fechar a discussão** (sai
-> da lista). Ver o ranking no terminal: `GITHUB_TOKEN=… python scripts/site/forum_top.py`.
-> Votar exige conta do GitHub (ler é livre); voto anônimo foi descartado (fraude).
+> **Fórum (2026‑11‑10), no ar em https://brasbim.org/#forum:** o fórum é o **GitHub
+> Discussions** do repositório. Categorias renomeadas à mão: Avisos, **Ideias**, Dúvidas,
+> Geral, Mostre seu projeto e Enquetes (formatos originais mantidos: Dúvidas aceita
+> "resposta", Avisos só o dono posta). Postadas até 2026‑11‑10: #2 "📣 AVISOS"
+> (boas‑vindas) e a ideia #3 "Acessibilidade pela NBR 9050". **Pendente:** postar as
+> outras 5 ideias‑semente do roteiro (SINAPI, BCF, IDS, georreferenciamento, API de
+> plugins; textos prontos na conversa de 2026‑11‑10), uma discussão por ideia, e
+> conferir se as boas‑vindas estão fixadas (Pin discussion).
+> - **Seção no site** (`site/index.html` `#forum`, `site/forum.js`, `estilo.css`
+>   "Fórum"): faixa escura igual à do Assistente; botões Entrar no fórum, Nova postagem
+>   e criar conta; as **30 ideias mais votadas** numa lista com rolagem própria, as
+>   **10 primeiras com faixa rosa** (entram no ciclo de desenvolvimento). Clicar no
+>   título abre a descrição (`<details>`), em **texto puro** (`bodyText` do GitHub,
+>   nunca HTML de terceiros), cortada em 1200 caracteres com "Continuar no fórum".
+> - **Ranking** (`scripts/site/forum_top.py` → `site/forum.json`, rodado no
+>   `site.yml`): só a categoria Ideias (nome ou slug "ideias"/"ideas"), só abertas, por
+>   votos, depois respostas, depois a mais nova. O dono/repo vem de `GITHUB_REPOSITORY`.
+>   Roda a cada 3 h (voto não dispara evento) e a cada discussão criada, editada,
+>   fechada ou respondida; se a API falhar grava lista vazia e o site publica mesmo
+>   assim. **Ideia implementada → fechar a discussão** (sai da lista). No terminal:
+>   `GITHUB_TOKEN=… python scripts/site/forum_top.py` (marca o corte das 10).
+> - **Decisões:** votar exige conta do GitHub (ler é livre); voto anônimo descartado
+>   (fraude). **Votar pelo próprio site** (login com GitHub numa janelinha + função
+>   gratuita, Cloudflare Workers, ~1 dia) ficou **para depois**: esperar algumas semanas
+>   e só fazer se houver visitas sem votos. A interface do próprio GitHub segue em inglês
+>   (não dá para mudar); o que é do BrasBim está em pt‑BR.
+> - **Modelos de issue** (`.github/ISSUE_TEMPLATE/config.yml`): atalhos "Propor uma
+>   ideia no fórum" e "Tirar uma dúvida no fórum".
+>
+> **Conta renomeada (2026‑11‑10):** o GitHub agora é **`ootaviopaz`** (nome Otávio Paz);
+> o antigo `Ottopaz` só redireciona. Todos os links trocados (site, `llms.txt`,
+> instaladores, README, divulgação, modelos de issue), `origin` apontando para
+> `github.com/ootaviopaz/BrasBim`, e os commits saem como `Otávio Paz
+> <otavio.cesarferr@gmail.com>` (config local do repositório). **Fica de propósito:** o
+> identificador do app de Mac `io.github.ottopaz.brasbim` (trocar faria o macOS tratar a
+> próxima versão como outro aplicativo). O GitHub Pages responde também em
+> `ootaviopaz.github.io/BrasBim` (redireciona para o domínio). O CLI `gh` não está
+> instalado nesta máquina.
 >
 > **Perfil complexo: planta e corte (2026‑11‑07, escolha do revisor):** fechadas as
 > duas lacunas da etapa 2. **Planta** (`plan._cut_wall`): na parede de perfil, o cortado é
