@@ -50,7 +50,7 @@ O que muda em relação ao Windows
 
 Licença: GPL-3.0-or-later (aplicativo) e LGPL-3.0-or-later (núcleo); ver COPYING,
 COPYING.LESSER e THIRD_PARTY_NOTICES.md.
-Código, problemas e sugestões: https://github.com/Ottopaz/BrasBim
+Código, problemas e sugestões: https://github.com/ootaviopaz/BrasBim
 """
 
 

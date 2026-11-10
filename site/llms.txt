@@ -37,8 +37,8 @@ Ainda não: a versão 0.0.1 é de teste e está em desenvolvimento aberto. Vale 
 ## Links
 
 - [Site](https://brasbim.org/)
-- [Baixar para Windows](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-Windows-Setup.exe)
-- [Baixar para macOS Apple Silicon](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-AppleSilicon.dmg)
-- [Baixar para macOS Intel](https://github.com/Ottopaz/BrasBim/releases/latest/download/BrasBim-macOS-Intel.dmg)
-- [Código no GitHub](https://github.com/Ottopaz/BrasBim)
-- [Especificações](https://github.com/Ottopaz/BrasBim/tree/main/spec)
+- [Baixar para Windows](https://github.com/ootaviopaz/BrasBim/releases/latest/download/BrasBim-Windows-Setup.exe)
+- [Baixar para macOS Apple Silicon](https://github.com/ootaviopaz/BrasBim/releases/latest/download/BrasBim-macOS-AppleSilicon.dmg)
+- [Baixar para macOS Intel](https://github.com/ootaviopaz/BrasBim/releases/latest/download/BrasBim-macOS-Intel.dmg)
+- [Código no GitHub](https://github.com/ootaviopaz/BrasBim)
+- [Especificações](https://github.com/ootaviopaz/BrasBim/tree/main/spec)

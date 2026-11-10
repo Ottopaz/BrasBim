@@ -78,7 +78,7 @@ Uma boa hora para experimentar e dar retorno.
 Requer Python 3.12 ou superior.
 
 ```sh
-git clone https://github.com/Ottopaz/BrasBim.git
+git clone https://github.com/ootaviopaz/BrasBim.git
 cd BrasBim
 python -m venv .venv
 # Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate

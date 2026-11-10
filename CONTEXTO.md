@@ -34,7 +34,7 @@ specs 51 e 52 em rascunho).*
 > **Site no ar e v0.0.1 (2026‑11‑07):** o ramo `site-torre-equipe-assistente` entrou no
 > `main` (o ramo ainda existe no GitHub e pode ser apagado). O site é publicado pelo
 > GitHub Pages (`.github/workflows/site.yml`: a cada push no `main` que mexe em `site/`,
-> ou à mão) em https://ottopaz.github.io/BrasBim/. Lançamento **v0.0.1** (normal, título
+> ou à mão) em https://ootaviopaz.github.io/BrasBim/. Lançamento **v0.0.1** (normal, título
 > "versão de teste", para o `releases/latest` dos botões Baixar funcionar) com o
 > `BrasBim-0.0.1-Setup.exe` montado aqui; a etiqueta dispara o `instalador-mac.yml`, que
 > anexa os `.dmg`. **Download direto:** os arquivos do lançamento têm nome fixo, sem a
@@ -43,7 +43,7 @@ specs 51 e 52 em rascunho).*
 > `instalador-mac.yml` já anexa com esses nomes; o `.exe` (montado à mão) precisa ser
 > anexado como `BrasBim-Windows-Setup.exe` em cada versão nova. Domínio `brasbim.org`
 > (Spaceship) no ar com HTTPS obrigatório (certificado do GitHub até 2027‑02‑05, renovação
-> automática; `www` e `ottopaz.github.io/BrasBim` redirecionam). **SEO:** título,
+> automática; `www` e `ootaviopaz.github.io/BrasBim` redirecionam). **SEO:** título,
 > descrição, Open Graph, JSON‑LD (`SoftwareApplication`, `WebSite`, `FAQPage`), seção
 > Perguntas frequentes, `robots.txt`, `sitemap.xml`, `llms.txt`; tópicos e endereço no
 > repositório; Google Search Console verificado por TXT; IndexNow (chave
@@ -111,7 +111,7 @@ specs 51 e 52 em rascunho).*
 > do GitHub por avanço direto (`6137c84`); a nota "retomar em outro PC" do ramo
 > `worktree-perfil-complexo` veio para cá. Os três ramos antigos foram apagados. Conferido
 > num clone novo (Python 3.12.10): 949 testes passando, 4 pulados, ruff limpo. Não há
-> trabalho fora do git. **Num PC novo:** `git clone https://github.com/Ottopaz/BrasBim.git`
+> trabalho fora do git. **Num PC novo:** `git clone https://github.com/ootaviopaz/BrasBim.git`
 > (ou `git pull --ff-only`), criar o `.venv` (linha "Ambiente" em Comandos; se faltar o
 > Python 3.12, `py install 3.12`) e rodar os testes. **Para o lançamento falta:** o
 > revisor testar o Setup e M2, M3, I1, I2; abrir o IFC exportado no Revit, Archicad,

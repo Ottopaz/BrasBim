@@ -73,7 +73,7 @@ pensado para as normas e a prática brasileiras, incluindo o projeto legal para 
   biblioteca de objetos sob **CC BY 4.0**.
 - Sem licença, sem assinatura, sem limite de instalações. O código pode ser lido,
   estudado, auditado e melhorado por qualquer pessoa.
-- Código no GitHub: <https://github.com/Ottopaz/BrasBim>.
+- Código no GitHub: <https://github.com/ootaviopaz/BrasBim>.
 
 ### 4.3 Feito para o Brasil
 - Interface, documentação e biblioteca em **português do Brasil**.
