@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -420,6 +420,8 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Salvar como", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
         self._action(file_menu, "Importar desenho (DXF, DWG)", lambda: self.import_drawing())
+        self._action(file_menu, "Importar forma livre (OBJ, STL, GLB)",  # forma-livre.md §4.2
+                     lambda: self.import_freeform())
         self._action(file_menu, "Exportar PDF", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela", lambda: self.export_table())
         self._action(file_menu, "Exportar IFC (2x3, 4)", lambda: self.export_ifc_dialog())
@@ -454,6 +456,8 @@ class MainWindow(QMainWindow):
                           ("mirror", "Espelhar"), ("split", "Dividir")):
             self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
+        self._action(edit_menu, "Converter em forma livre",  # forma-livre.md §4.3
+                     lambda: self.convert_to_freeform())
         edit_menu.addSeparator()  # pacote de precisão (spec/ui 23)
         self._action(edit_menu, "Girar 90° à esquerda", lambda: self.rotate_quarter(1), "Ctrl+R")
         self._action(edit_menu, "Girar 90° à direita", lambda: self.rotate_quarter(-1),
@@ -2623,6 +2627,76 @@ class MainWindow(QMainWindow):
             session.select(kept)
         self._bring(self.plan)
         return self.plan.frame_selection()
+
+    # --- forma livre (spec/elementos/forma-livre.md §4.2 e §4.3) ----------------------------
+
+    def import_freeform(self, path: str | None = None, choose=None) -> str | None:
+        """Arquivo > Importar forma livre: lê OBJ, STL ou GLB e põe a peça no meio da
+        planta, selecionada (para mover ao lugar). ``choose``: substitui o diálogo
+        (testes); devolve o GlobalId da peça criada."""
+        from brasbim.core.freeform import commands as fc
+        from brasbim.core.freeform import importer, shapes
+        from brasbim.ui.freeform_dialog import FreeformImportDialog
+
+        session = self.session
+        if session.storey is None:
+            session.message("não há pavimento ativo", "recusa")
+            return None
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Importar forma livre", "",
+                "Malhas (*.obj *.stl *.glb);;OBJ (*.obj);;STL (*.stl);;GLB (*.glb)")
+            if not path:
+                return None
+        if choose is None:
+            dialog = FreeformImportDialog(path, self)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            choice = dialog.choice()
+        else:
+            choice = choose
+        try:
+            parts, info = importer.read(path, choice.get("unit", "m"), choice.get("up"),
+                                        shapes.MAX_TRIANGLES)
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return None
+        at = self.plan.to_world(QPointF(self.plan.width() / 2, self.plan.height() / 2))
+        doc = session.doc
+        tx = fc.create(doc, session.storey, parts, at,
+                       name=choice.get("name") or Path(path).stem,
+                       category=choice.get("category", "proxy"),
+                       source=f"arquivo {Path(path).name}")
+        if not session.run(tx):
+            return None
+        gid = tx.ops[-1].id
+        session.select([gid])
+        text = f"forma livre importada com {info['kept']} triângulos"
+        if info["kept"] < info["triangles"]:
+            text += f" (o arquivo tinha {info['triangles']}: a malha foi simplificada)"
+        session.message(text + "; mova para o lugar")
+        return gid
+
+    def convert_to_freeform(self) -> str | None:
+        """Editar > Converter em forma livre: os objetos e formas livres selecionados viram
+        uma forma livre só."""
+        from brasbim.core.freeform import commands as fc
+
+        session = self.session
+        if not session.selection:
+            session.message("selecione objetos ou formas livres para converter", "recusa")
+            return None
+        doc = session.doc
+        try:
+            tx = fc.convert(doc, sorted(session.selection))
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return None
+        if not session.run(tx):
+            return None
+        gid = tx.ops[-1].id
+        session.select([gid])
+        return gid
 
     def find_in_navigator(self) -> None:
         """Ctrl+F (spec/ui 53 §2): mostra o Navegador e põe o cursor no campo de busca."""

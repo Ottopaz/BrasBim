@@ -32,6 +32,8 @@ from brasbim.core import (
     terrain,
 )
 from brasbim.core.document import OpError
+from brasbim.core.freeform import elements as freeform
+from brasbim.core.freeform import mesh as freeform_mesh
 from brasbim.core.objects import elements as objects
 from brasbim.core.structure import roofs, stairs
 from brasbim.core.structure import types as st_types
@@ -369,7 +371,7 @@ class Scene:
             return entity.Representation is not None
         if any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
             # objeto paramétrico: os aninhados vão na malha do objeto de fora (§6.4)
-            return objects.is_object(entity)
+            return objects.is_object(entity) or freeform.is_freeform(entity)
         return (any(entity.is_a(c) for c in self.CLASSES) and entity.Representation is not None
                 and not roofs.is_part(entity))
 
@@ -414,8 +416,27 @@ class Scene:
             return self._object_mesh(entity)
         return self._single(entity)
 
+    def _freeform_mesh(self, entity) -> Mesh | None:
+        """Forma livre: a malha gravada, com a cor do material de cada parte e só as
+        quinas e bordas como arestas (forma-livre.md §6)."""
+        color = material_color(entity)
+        names = {m.Name: m for m in entity.file.by_type("IfcMaterial")}
+        tris, colors, edges = [], [], []
+        for vertices, faces, material in freeform.world_parts(entity):
+            tri = vertices[faces].astype(np.float32).reshape(-1, 3)
+            rgb = color_of(names[material]) if material in names else color
+            tris.append(tri)
+            colors.append(_shaded(tri, rgb))
+            edges.append(vertices[freeform_mesh.crease_edges(vertices, faces)]
+                         .astype(np.float32).reshape(-1, 3))
+        if not tris:
+            return None
+        return Mesh(np.concatenate(tris), np.concatenate(colors), np.concatenate(edges), color)
+
     def _single(self, entity) -> Mesh | None:
         self._tessellations += 1
+        if freeform.is_freeform(entity):
+            return self._freeform_mesh(entity)
         try:
             shape = props.body_shape(self._settings, entity)
         except RuntimeError as e:
@@ -432,8 +453,9 @@ class Scene:
             return Mesh(verts[faces], _shaded(verts[faces], _style_color(entity, color)),
                         _outline_edges(verts, faces), color)
         tri = verts[faces]
+        edge_points = verts[edges]
         if _styled_class(entity):
-            styled = _styled_mesh(entity, g, tri, verts[edges], color)
+            styled = _styled_mesh(entity, g, tri, edge_points, color)
             if styled is not None:
                 return styled
         layered = ((_wall_profile_layers(self.doc, entity, tri) or self._split(entity, tri))
@@ -443,7 +465,7 @@ class Scene:
                    else _profile_layers(entity, tri)
                    if entity.is_a("IfcColumn") or entity.is_a("IfcBeam") else None)
         if layered is None:
-            return Mesh(tri, _shaded(tri, color), verts[edges], color)
+            return Mesh(tri, _shaded(tri, color), edge_points, color)
         names = {m.Name: m for m in self.doc.ifc.by_type("IfcMaterial")}
         parts_tri, parts_color = [], []
         for key, part in layered.items():

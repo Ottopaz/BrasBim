@@ -308,6 +308,7 @@ def describe_model(ctx: Context, args: dict) -> dict:
                   "cobertura": names("IfcSlabType", _roof_type)},
         "paredes": walls, "esquadrias": fillings, "ambientes": rooms, "lajes": slab_list,
         "coberturas": roof_list, "objetos": object_list,
+        "formas_livres": _freeforms_of(doc, storey),
     }
 
 
@@ -467,6 +468,294 @@ def edit_object(ctx: Context, args: dict) -> dict:
     if changes:
         ctx.commit(oc.edit_object(doc, element, **changes))
     return {"id": element.GlobalId, "estado": objects.read_state(doc, element)}
+
+
+# --- objeto novo, a partir de uma descrição (spec/ui 54 §3) ---------------------------------
+
+MAX_PIECES = 60  # peças por objeto criado pela IA (as repetições contam uma vez)
+_AI_PIECES = ("box", "cylinder", "extrusion", "revolution")
+_PARAM_EXTRA = ("label", "formula", "min", "max", "options", "group")
+_FIELD_LABELS = {"width": "largura", "depth": "profundidade", "height": "altura",
+                 "radius": "raio", "thickness": "espessura", "rotation": "rotação",
+                 "angle": "ângulo", "offset": "afastamento", "points": "pontos",
+                 "visible": "visível", "repeat": "repetição", "name": "nome",
+                 "category": "categoria", "predefined_type": "tipo predefinido",
+                 "hosting": "hospedagem"}
+
+
+def _where_text(defn: dict, where: tuple) -> str:
+    """Lugar de um problema da definição, em palavras, para a IA achar o que corrigir."""
+    kind = where[0]
+    index = where[1] if len(where) > 1 and isinstance(where[1], int) else None
+    field_name = where[-1] if isinstance(where[-1], str) and len(where) > 1 else None
+    label = _FIELD_LABELS.get(field_name, field_name) if field_name else None
+    if kind == "param" and index is not None and index < len(defn["params"]):
+        text = f"parâmetro {defn['params'][index].get('name')!r}"
+    elif kind == "piece" and index is not None and index < len(defn["pieces"]):
+        text = f"peça {index + 1} {defn['pieces'][index].get('name') or ''!r}"
+    elif kind == "symbol" and index is not None:
+        text = f"item {index + 1} do símbolo"
+    else:
+        return f"objeto, {label}" if label else "objeto"
+    return f"{text}, campo {label}" if label and kind != "param" else text
+
+
+def _ai_definition(args: dict) -> dict:
+    """Definição de objeto montada dos argumentos da IA, já conferida: a mesma validação
+    do editor de objetos, mais o cálculo das peças com os valores padrão."""
+    from brasbim.core.objects import definition as od
+
+    name = str(args.get("name") or "").strip()
+    category = str(args.get("category") or "furniture")
+    if category not in od.CATEGORIES:
+        raise OpError(f"categoria inválida: {category!r} (use {', '.join(od.CATEGORIES)})")
+    pieces = args.get("pieces")
+    if not isinstance(pieces, list) or not pieces:
+        raise OpError("o objeto precisa de pelo menos uma peça em 'pieces'")
+    if len(pieces) > MAX_PIECES:
+        raise OpError(f"{len(pieces)} peças: o limite é {MAX_PIECES}. Simplifique (use "
+                      "'repeat' para peças iguais em fila e deixe os detalhes miúdos de fora)")
+    for i, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or piece.get("kind") not in _AI_PIECES:
+            kind = piece.get("kind") if isinstance(piece, dict) else piece
+            raise OpError(f"peça {i + 1}: tipo {kind!r} não aceito (use "
+                          f"{', '.join(_AI_PIECES)})")
+    params = []
+    for i, raw in enumerate(args.get("params") or []):
+        if not isinstance(raw, dict) or not raw.get("name"):
+            raise OpError(f"parâmetro {i + 1}: falta o nome")
+        kind = raw.get("kind") or "length"
+        level = raw.get("level") or "type"
+        if kind not in od.KINDS or level not in od.LEVELS:
+            raise OpError(f"parâmetro {raw['name']!r}: tipo de valor ou nível inválido (kind: "
+                          f"{', '.join(od.KINDS)}; level: {', '.join(od.LEVELS)})")
+        extra = {k: raw[k] for k in _PARAM_EXTRA if raw.get(k) is not None}
+        params.append(od.new_param(str(raw["name"]), kind, level, raw.get("value"), **extra))
+    predefined = args.get("predefined_type") or (
+        "USERDEFINED" if "USERDEFINED" in od.PREDEFINED[category]
+        else od.PREDEFINED[category][-1])
+    symbol = args.get("symbol")
+    if isinstance(symbol, list):
+        symbol = {"mode": "drawn", "items": symbol} if symbol else None
+    defn = od.new_definition(
+        name, category, predefined_type=str(predefined),
+        hosting=str(args.get("hosting") or "free"),
+        elevation=float(args.get("elevation") or 0.0),
+        description=str(args.get("description") or ""),
+        params=params, pieces=[dict(piece) for piece in pieces],
+        symbol=symbol or {"mode": "auto", "items": []})
+    found = od.problems(defn)
+    if found:
+        lines = [f"{_where_text(defn, f.where)}: {f.message}" for f in found[:8]]
+        more = f" (e mais {len(found) - 8})" if len(found) > 8 else ""
+        raise OpError("definição recusada" + more + ":\n- " + "\n- ".join(lines))
+    _box_of(defn)  # medida ≤ 0 ou fórmula que não se calcula recusa aqui
+    return defn
+
+
+def _box_of(defn: dict, type_values: dict | None = None,
+            occurrence_values: dict | None = None) -> dict:
+    """Caixa que envolve o objeto com os valores dados (em metros)."""
+    from brasbim.core.objects import definition as od
+
+    values = od.evaluate(defn, type_values, occurrence_values)
+    box = od.bounds(od.solids(defn, values))
+    if box is None:
+        raise OpError("o objeto ficou sem nenhuma peça sólida visível")
+    return {"largura": _r(box[1] - box[0]), "profundidade": _r(box[3] - box[2]),
+            "altura": _r(box[5] - box[4]), "x": [_r(box[0]), _r(box[1])],
+            "y": [_r(box[2]), _r(box[3])], "z": [_r(box[4]), _r(box[5])]}
+
+
+def _definition_names(doc: Document, skip: str | None = None) -> set[str]:
+    from brasbim.core.objects import types as ot
+
+    return {ot.definition_of(t)["name"].casefold() for t in ot.all_types(doc)
+            if ot.definition_of(t)["object_id"] != skip}
+
+
+def find_object_type(doc: Document, name: str):
+    """Tipo de objeto do projeto pelo nome do tipo ou do objeto (a definição)."""
+    from brasbim.core.objects import types as ot
+
+    name = str(name or "").strip()
+    found = ot.by_name(doc, name) if name else None
+    if found is None and name:
+        found = next((t for t in ot.all_types(doc)
+                      if ot.definition_of(t)["name"].casefold() == name.casefold()), None)
+    if found is None:
+        raise OpError(f"objeto {name!r} não está no projeto (veja list_objects)")
+    return found
+
+
+def create_object(ctx: Context, args: dict) -> dict:
+    """Cria a definição e um tipo dela; com ``at``, insere uma ocorrência (spec/ui 54
+    §3.1)."""
+    from brasbim.core.objects import commands as oc
+
+    doc = ctx.doc
+    defn = _ai_definition(args)
+    taken = _definition_names(doc)
+    if defn["name"].casefold() in taken:
+        n = 2
+        while f"{defn['name']} ({n})".casefold() in taken:
+            n += 1
+        defn["name"] = f"{defn['name']} ({n})"
+    type_name = str(args.get("type_name") or "").strip() or defn["name"]
+    tx = oc.create_type(doc, defn, type_name)
+    ctx.commit(tx)
+    t = doc.get(tx.ops[-1].id)
+    out = {"objeto": defn["name"], "tipo": t.Name, "object_id": defn["object_id"],
+           "pecas": len(defn["pieces"]), "caixa": _box_of(defn)}
+    if args.get("at") is not None:
+        placed = insert_object(ctx, {"type": t.Name, **{
+            k: args[k] for k in ("at", "rotation", "storey", "wall", "side", "distance")
+            if k in args}})
+        out["id"] = placed["id"]
+    return out
+
+
+def edit_object_definition(ctx: Context, args: dict) -> dict:
+    """Troca a definição de um objeto do projeto (spec/ui 54 §3.2); o que não vem nos
+    argumentos fica como está."""
+    from brasbim.core.objects import commands as oc
+    from brasbim.core.objects import definition as od
+    from brasbim.core.objects import elements as objects
+    from brasbim.core.objects import types as ot
+
+    doc = ctx.doc
+    current = ot.definition_of(find_object_type(doc, args.get("object")))
+    object_id = current["object_id"]
+    merged = {"name": current["name"], "category": current["category"],
+              "predefined_type": current["predefined_type"], "hosting": current["hosting"],
+              "elevation": current["elevation"], "description": current["description"],
+              "params": [p for p in current["params"] if not od.is_builtin(p)],
+              "pieces": current["pieces"],
+              "symbol": current["symbol"] if current["symbol"]["mode"] == "drawn" else None}
+    merged.update({k: v for k, v in args.items() if k in merged and v is not None})
+    if merged["category"] != current["category"]:
+        raise OpError("a categoria de um objeto não muda (a classe IFC é outra): crie um "
+                      "objeto novo com create_object")
+    new = _ai_definition(merged)
+    new["object_id"] = object_id
+    if new["name"].casefold() in _definition_names(doc, skip=object_id):
+        raise OpError(f"já existe outro objeto chamado {new['name']!r}")
+    count, refused = 0, []
+    for t in ot.types_of_definition(doc, object_id):
+        state = ot.read(t)
+        values = oc._kept(state["definition"], new, state["values"], "type")
+        defaults = oc._kept(state["definition"], new, state["defaults"], "occurrence")
+        new_state = {**state, "definition": od.normalized(new), "values": values,
+                     "defaults": defaults}
+        try:
+            _box_of(new, values, defaults)
+        except OpError as e:
+            refused.append(f"tipo {t.Name}: {e}")
+            continue
+        for e in oc.occurrences(doc, t):
+            count += 1
+            occ = objects.read_state(doc, e)
+            kept = oc._kept(state["definition"], new, occ["values"], "occurrence")
+            try:
+                objects.build(doc, new_state, ot.stored_values(
+                    new_state["definition"], {**defaults, **kept}, "occurrence"),
+                    bool(occ["mirror"]))
+            except OpError as err:
+                refused.append(f"ocorrência {e.GlobalId} do tipo {t.Name}: {err}")
+    if refused:
+        raise OpError("a definição nova não serve para o que já existe:\n- "
+                      + "\n- ".join(refused[:8]))
+    ctx.commit(oc.edit_definition(doc, object_id, new))
+    types = ot.types_of_definition(doc, object_id)
+    state = ot.read(types[0])
+    return {"objeto": new["name"], "tipos": [t.Name for t in types],
+            "pecas": len(new["pieces"]), "ocorrencias_refeitas": count,
+            "caixa": _box_of(state["definition"], state["values"], state["defaults"])}
+
+
+# --- forma livre (forma-livre.md §4.1) ------------------------------------------------------
+
+_FREEFORM_KEYS = ("name", "category", "object_type", "description")
+
+
+def _freeform(doc: Document, gid):
+    from brasbim.core.freeform import elements as ff
+
+    element = doc.get(str(gid or ""))
+    if not ff.is_freeform(element):
+        raise OpError(f"{gid} não é forma livre")
+    return element
+
+
+def _freeform_out(doc: Document, element) -> dict:
+    from brasbim.core.freeform import elements as ff
+    from brasbim.core.freeform import mesh as fm
+
+    state = ff.read_state(doc, element)
+    return {"id": element.GlobalId, "nome": state["name"], "ponto": _pt(state["point"]),
+            "rotacao": _r(state["angle"]), "elevacao": _r(state["elevation"]),
+            "triangulos": fm.triangle_count(state["parts"]),
+            "partes": [p["name"] for p in state["parts"]], "caixa": ff.box_of(state),
+            "tem_receita": state["recipe"] is not None}
+
+
+def create_freeform(ctx: Context, args: dict) -> dict:
+    """Forma livre feita de formas simples reunidas numa malha (forma-livre.md §4.1)."""
+    from brasbim.core.freeform import commands as fc
+
+    doc = ctx.doc
+    storey = _storey(ctx, args)
+    tx = fc.from_recipe(
+        doc, storey, args.get("shapes"), _point(args.get("at") or [0, 0], "at"),
+        name=str(args.get("name") or ""), category=str(args.get("category") or "proxy"),
+        object_type=str(args.get("object_type") or ""),
+        angle=float(args.get("rotation") or 0.0), elevation=float(args.get("elevation") or 0.0),
+        source="assistente", description=str(args.get("description") or ""))
+    ctx.commit(tx)
+    return _freeform_out(doc, doc.get(tx.ops[-1].id))
+
+
+def edit_freeform(ctx: Context, args: dict) -> dict:
+    """Muda uma forma livre: lugar, nome, categoria e, se ela tem receita, as formas."""
+    from brasbim.core.freeform import commands as fc
+    from brasbim.core.freeform import elements as ff
+    from brasbim.core.freeform import shapes as fs
+
+    doc = ctx.doc
+    element = _freeform(doc, args.get("id"))
+    changes = {k: str(args[k]) for k in _FREEFORM_KEYS if args.get(k) is not None}
+    if args.get("at") is not None:
+        changes["point"] = list(_point(args["at"], "at"))
+    if args.get("rotation") is not None:
+        changes["angle"] = float(args["rotation"])
+    if args.get("elevation") is not None:
+        changes["elevation"] = float(args["elevation"])
+    if args.get("shapes") is not None:
+        if ff.read_state(doc, element)["recipe"] is None:
+            raise OpError("esta forma livre não foi feita de formas (veio de arquivo, de "
+                          "conversão ou foi esticada): não dá para trocar as formas dela")
+        changes["parts"] = fs.build(args["shapes"])
+        changes["recipe"] = args["shapes"]
+    tx = fc.edit(doc, element, **changes)
+    if tx.ops:
+        ctx.commit(tx)
+    return _freeform_out(doc, doc.get(element.GlobalId))
+
+
+def _freeforms_of(doc: Document, storey) -> list[dict]:
+    from brasbim.core.freeform import elements as ff
+
+    out = []
+    for e in ff.all_freeforms(doc):
+        if ifcopenshell.util.element.get_container(e) != storey \
+                or display_layers.is_hidden(doc, e):
+            continue
+        state = ff.read_state(doc, e)
+        box = ff.box_of(state)
+        out.append({"id": e.GlobalId, "nome": state["name"], "ponto": _pt(state["point"]),
+                    "rotacao": _r(state["angle"]),
+                    "medidas": [box["largura"], box["profundidade"], box["altura"]]})
+    return out
 
 
 # --- criação ------------------------------------------------------------------------------
@@ -1032,6 +1321,130 @@ def default_registry() -> Registry:
               "type": {"type": "string"}, "values": {"type": "object"},
               "elevation": {"type": "number"}}, ["id"]),
         edit_object))
+    _piece = {"type": "object", "description": (
+        "Peça no sistema local do objeto (origem no ponto de inserção, x para a direita, "
+        "y para trás, z para cima; metros). Toda medida é número ou fórmula em texto com "
+        "os parâmetros ('largura - 0,10'; vírgula decimal e ';' entre argumentos nas "
+        "fórmulas). kind=box: x, y, z (canto de menor x, y, z), width (em x), depth (em "
+        "y), height (em z), rotation (graus em z). kind=cylinder: x, y, z (centro da "
+        "base), radius, height, axis ('z', 'x' ou 'y': para onde o cilindro cresce). "
+        "kind=extrusion (sem x, y, z): points = perfil fechado [[a, b], ...] no plano "
+        "'plane': 'xy' (a=x, b=y, cresce em z), 'xz' (a=x, b=z, cresce em y) ou 'yz' "
+        "(a=y, b=z, cresce em x); offset = onde começa no eixo em que cresce; thickness. "
+        "kind=revolution: x, y, z (centro), points [[raio, z], ...] com raio ≥ 0, girado "
+        "em torno do eixo z; angle (360 = volta inteira). "
+        "Opcionais: name; material (dá a cor: Inox, Vidro, Madeira, Madeira MDF branca, "
+        "Eletrodoméstico, Louça, Granito, Alumínio, Tecido, PVC, Cerâmica, Concreto; ou "
+        "outro nome); role (papel do material no IFC: Body ou Finish; no mobiliário, "
+        "Frame, Finish, Hardware, Padding ou Panel); visible (fórmula sim/não); repeat "
+        "({\"count\": n, \"dx\": .., \"dy\": .., \"dz\": ..}: cópias em fila com esse passo). "
+        "As peças podem se sobrepor."),
+        "properties": {"kind": {"type": "string", "enum": list(_AI_PIECES)}},
+        "required": ["kind"]}
+    _param = {"type": "object", "properties": {
+        "name": {"type": "string", "description": "identificador sem espaço nem acento "
+                                                  "(largura, altura_pes)"},
+        "label": {"type": "string"},
+        "kind": {"type": "string", "enum": ["length", "angle", "number", "integer", "bool",
+                                            "text", "choice", "material"]},
+        "level": {"type": "string", "enum": ["type", "occurrence"]},
+        "value": {}, "formula": {"type": "string"}, "min": {"type": "number"},
+        "max": {"type": "number"}, "options": {"type": "array", "items": {"type": "string"}}},
+        "required": ["name"]}
+    _definition = {
+        "name": {"type": "string", "description": "nome do objeto, sem marca"},
+        "category": {"type": "string",
+                     "enum": ["furniture", "sanitary", "appliance", "vegetation", "proxy"]},
+        "predefined_type": {"type": "string", "description": (
+            "valor do IFC para a categoria (ex.: ELECTRICCOOKER, REFRIGERATOR, TABLE, "
+            "SOFA, SINK); sem ele, USERDEFINED")},
+        "params": {"type": "array", "items": _param},
+        "pieces": {"type": "array", "items": _piece},
+        "symbol": {"type": "array", "items": {"type": "object"}, "description": (
+            "opcional: símbolo 2D desenhado (kind line, polyline, rect, circle, arc); sem "
+            "ele, o contorno das peças")},
+        "description": {"type": "string", "description": (
+            "de onde vieram as medidas; marca e modelo, se o usuário informou")},
+        "hosting": {"type": "string", "enum": ["free", "wall"]},
+        "elevation": {"type": "number"}}
+    reg.add(Tool(
+        "create_object", "Criando objeto",
+        "Cria um objeto paramétrico NOVO no projeto (definição + um tipo), feito de peças "
+        "simples. Use quando list_objects não tem nada que sirva, por exemplo para "
+        "reproduzir a peça de uma foto. Largura, profundidade e altura devem ser "
+        "parâmetros de tipo, com as peças em fórmulas deles. Com 'at', já insere uma "
+        "ocorrência (como insert_object). Devolve a caixa que envolve o objeto: confira "
+        "com as medidas pedidas e olhe o resultado com view_object.",
+        _obj({**_definition, "type_name": {"type": "string"}, "at": _XY,
+              "rotation": {"type": "number"}, "storey": _STOREY},
+             ["name", "category", "pieces"]),
+        create_object))
+    reg.add(Tool(
+        "edit_object_definition", "Corrigindo objeto",
+        "Troca a definição de um objeto do projeto ('object' = nome do objeto ou de um "
+        "tipo dele): mande só o que muda (em geral 'pieces' e 'params' inteiros). As "
+        "ocorrências são refeitas. Use para corrigir o que create_object fez, em vez de "
+        "criar outro objeto.",
+        _obj({"object": {"type": "string"},
+              **{k: v for k, v in _definition.items() if k != "category"}}, ["object"]),
+        edit_object_definition))
+    _shape = {"type": "object", "description": (
+        "Forma simples, no sistema local da peça (origem no ponto de inserção, no piso; x "
+        "para a direita, y para trás, a frente olha para -y; z para cima; metros). Toda "
+        "forma aceita position [x, y, z], rotation [rx, ry, rz] (graus; gira em x, depois "
+        "y, depois z, em torno da origem da própria forma, antes de ir para position), "
+        "material (dá a cor: Madeira, Tecido, Inox, Vidro, Louça, Granito, Concreto, "
+        "Alumínio, Madeira MDF branca, Folhagem, Barro; ou outro nome) e name. "
+        "kind=box: size [x, y, z] e radius (canto arredondado; almofadas, estofados); "
+        "centrada em x e y, com a base em z = 0. "
+        "kind=ellipsoid: radii [rx, ry, rz], centrado na origem (cabeça, almofada, copa). "
+        "kind=cone: radius (base), top_radius (igual = cilindro; 0 = ponta; menor = "
+        "afunila), height; base em z = 0, sobe em z (pés, troncos, braços, pescoço). "
+        "kind=tube: path [[x, y, z], ...] e radius, ou section [largura, altura] para "
+        "seção retangular; smooth=true arredonda o caminho (braços curvos, percintas, "
+        "estruturas de tubo, molduras). "
+        "kind=sections: sections [{z, center [x, y], radii [rx, ry] ou points [[x, y], "
+        "...], twist (graus)}, ...] com z crescente: contornos ligados de baixo para cima; "
+        "smooth=true suaviza (corpos, torsos, vasos, encostos que mudam de largura). "
+        "kind=revolution: profile [[raio, z], ...] de baixo para cima, girado em z; "
+        "smooth; angle (pés torneados, vasos, cúpulas). "
+        "kind=extrusion: profile [[x, y], ...] fechado e height (sobe em z); smooth "
+        "(placas recortadas, laterais de poltrona: desenhe o perfil e gire com rotation)."),
+        "properties": {"kind": {"type": "string", "enum": [
+            "box", "ellipsoid", "cone", "tube", "sections", "revolution", "extrusion"]}},
+        "required": ["kind"]}
+    _category = {"type": "string",
+                 "enum": ["furniture", "sanitary", "appliance", "vegetation", "proxy"],
+                 "description": "proxy = genérico (esculturas, peças de decoração)"}
+    reg.add(Tool(
+        "create_freeform", "Modelando forma livre",
+        "Cria uma FORMA LIVRE: peça única, sem parâmetros, feita de até 80 formas simples "
+        "reunidas numa malha. Use para o que é inclinado, curvo ou esculpido (poltrona de "
+        "desenho autoral, escultura, luminária orgânica), que o objeto paramétrico "
+        "(create_object) deixaria irreconhecível. As formas podem se sobrepor. 'at' é o "
+        "ponto de inserção no pavimento. Devolve a caixa que envolve a peça: confira com "
+        "as medidas pedidas e olhe com view_object (com o id).",
+        _obj({"name": {"type": "string"}, "category": _category,
+              "object_type": {"type": "string",
+                              "description": "o que é: Poltrona, Escultura, Luminária"},
+              "shapes": {"type": "array", "items": _shape},
+              "description": {"type": "string", "description": (
+                  "de onde vieram as medidas; autor e modelo, se o usuário informou")},
+              "at": _XY, "rotation": {"type": "number"}, "elevation": {"type": "number"},
+              "storey": _STOREY}, ["name", "shapes", "at"]),
+        create_freeform))
+    reg.add(Tool(
+        "edit_freeform", "Corrigindo forma livre",
+        "Muda uma forma livre pelo id: 'shapes' troca todas as formas (mande a lista "
+        "inteira, corrigida; só vale para as que foram criadas com create_freeform), 'at', "
+        "'rotation', 'elevation', 'name', 'category'. Use para corrigir depois de olhar "
+        "com view_object, em vez de criar outra.",
+        _obj({"id": {"type": "string"}, "shapes": {"type": "array", "items": _shape},
+              "name": {"type": "string"}, "category": _category,
+              "object_type": {"type": "string"}, "description": {"type": "string"},
+              "at": _XY, "rotation": {"type": "number"}, "elevation": {"type": "number"}},
+             ["id"]),
+        edit_freeform))
     reg.add(Tool(
         "table", "Calculando quantitativos",
         "Tabela de quantitativos lida do modelo (as quantidades do IFC): contagens, "

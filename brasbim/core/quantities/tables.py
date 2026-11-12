@@ -269,7 +269,24 @@ class Field:
         return f"{self.title} ({self.unit})" if self.unit else self.title
 
 
+def _freeform_value(r: _Reader, e, what: str):
+    """Forma livre nas tabelas de objetos (forma-livre.md §8): "Forma livre" na coluna do
+    objeto, o nome da peça na do tipo (``_type_name``) e a caixa nas medidas."""
+    from brasbim.core.freeform import elements as freeform
+
+    if what == "object":
+        return "Forma livre"
+    if what in ("length", "depth", "height"):
+        box = freeform.box_of(freeform.read_state(r.doc, e))
+        return box[{"length": "largura", "depth": "profundidade", "height": "altura"}[what]]
+    return None
+
+
 def _object_value(r: _Reader, e, what: str):
+    from brasbim.core.freeform import elements as freeform
+
+    if freeform.is_freeform(e):
+        return _freeform_value(r, e, what)
     built = r.built(e)
     if built is None:
         return None
@@ -350,6 +367,10 @@ def _storey_order(r: _Reader, e):
 
 
 def _type_name(r: _Reader, e):
+    from brasbim.core.freeform import elements as freeform
+
+    if freeform.is_freeform(e):  # peça única: o nome dela faz as vezes do tipo
+        return e.Name
     t = r.element_type(e)
     return t.Name if t is not None else None
 
@@ -489,12 +510,14 @@ def elements_of(doc: Document, state: dict, reader: _Reader | None = None) -> li
     out = []
     objects_only = state["category"] in OBJECT_CATEGORIES
     if objects_only:
+        from brasbim.core.freeform import elements as freeform
         from brasbim.core.objects import elements as objects
     for e in found.values():
         if state["category"] == "slabs" and roofs.is_part(e):
             continue  # as águas entram pela cobertura
-        if objects_only and not (objects.is_object(e) or objects.is_part(e)):
-            continue  # só os objetos do BrasBim (e os aninhados, que contam por si)
+        if objects_only and not (objects.is_object(e) or objects.is_part(e)
+                                 or freeform.is_freeform(e)):
+            continue  # só os objetos do BrasBim (os aninhados contam por si) e formas livres
         if state["storeys"]:
             storey = reader.storey(e)
             if storey is None or storey.GlobalId not in state["storeys"]:

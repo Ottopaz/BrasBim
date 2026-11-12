@@ -14,6 +14,37 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > `BrasBim-Windows-Setup.exe`), atualizar "versão 0.0.1" no `README.md`, em
 > `divulgacao/BRASBIM.md` e no exemplo de `.github/ISSUE_TEMPLATE/problema.yml`.
 >
+> **Forma livre (2026‑11‑12, `spec/elementos/forma-livre.md`, fase 1 implementada):**
+> elemento novo de geometria em malha, sem tipo nem parâmetros, para peças únicas e
+> orgânicas (o objeto paramétrico fica para o que se repete). Nome "Forma livre" e fase 1
+> sem edição de faces: decididos pelo revisor. Núcleo em `core/freeform/` (`shapes`,
+> `mesh`, `elements`, `commands`, `importer`, `plan`); operações `freeform.create/
+> delete/edit`; corpo `Tessellation` + `FootPrint` com a silhueta; Pset
+> `BrasBim_FormaLivre` (com a receita das formas quando vem do Assistente). Entradas:
+> Assistente (`create_freeform`, `edit_freeform`, `view_object` com `id`), Arquivo >
+> Importar forma livre (OBJ, STL, GLB), Editar > Converter em forma livre. Ligado a
+> planta, corte, 3D, transformações, excluir, camadas, tabelas e Propriedades. **O 3D e
+> os cortes leem a malha direto** (`elements.world_parts`): pelo `ifcopenshell.geom`
+> uma peça de 19 mil triângulos levava 5 s. Prévia da IA com profundidade em
+> `ui/mesh_render.py`. Testes FL01–FL12 (`test_forma_livre.py`,
+> `test_interface_forma_livre.py`). Teste real: poltrona de almofadões em 119 s (spec
+> §11). **Falta:** revisão dos seis pontos do §12; clique para posicionar a peça
+> importada; exportar 3D pelo caminho rápido; fase 2 (editar vértices, arestas e faces;
+> gerador de 3D a partir de foto).
+>
+> **Assistente com foto → objeto novo (2026‑11‑12, spec/ui 54, etapa 1 implementada):**
+> anexar imagem no painel (botão `image.svg`, colar, arrastar; até 4; reduzidas a 1568 px;
+> `PromptEdit`, `Attachment`, `prepare_image` em `ui/assistant.py`); o pedido vai como
+> linha `stream-json` (`request_message`, `--input-format stream-json`, ainda
+> `--tools ""`). Ferramentas novas: `create_object` e `edit_object_definition`
+> (`core/assistant/tools.py`, validação do editor + cálculo das peças; até 60 peças; sem
+> aninhados) e `view_object` (`ui/assistant.py`: 4 vistas com contorno das peças, vê
+> também os da biblioteca sem carregar). Instruções da IA em `mcp.INSTRUCTIONS`. Testes
+> AF01–AF08 (`test_assistente_objeto_novo.py`, `test_interface_assistente_foto.py`).
+> Teste real em 36 s (criado‑mudo desenhado; ver spec §8). **Falta:** teste com foto de
+> verdade pelo revisor; **etapa 2** (pesquisa na web, mexe no `--tools ""`, spec
+> própria); "desenhar a planta a partir de uma imagem" (spec própria).
+>
 > **Busca no Navegador (2026‑11‑12, spec/ui 53, em revisão):** campo sob o nome da seção
 > (ícone próprio `search.svg`), filtra a seção aberta enquanto se digita, sem acento nem
 > maiúscula, todas as palavras; árvores mostram o que casa com o que há dentro e abrem os

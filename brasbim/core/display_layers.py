@@ -198,6 +198,10 @@ def kind_of(element) -> str | None:
 
     if objects.is_object(element) or objects.is_part(element):
         return objects.kind_of(element)
+    from brasbim.core.freeform import elements as freeform
+
+    if freeform.is_freeform(element):
+        return freeform.kind_of(element)
     if element.is_a("IfcGrid"):
         return "grid"
     from brasbim.core import terrain

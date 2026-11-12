@@ -64,7 +64,9 @@ def _normal(tri):
 
 
 def paint_3d(painter: QPainter, rect: QRectF, tris, azimuth: float = -35.0,
-             elevation: float = 30.0, zoom: float = 1.0) -> None:
+             elevation: float = 30.0, zoom: float = 1.0, edges: bool = False) -> None:
+    """``edges``: contorno escuro em cada peça (as do mesmo material não se fundem numa
+    vista de frente; spec/ui 54 §3.3)."""
     if not tris:
         return
     projected = []
@@ -101,6 +103,34 @@ def paint_3d(painter: QPainter, rect: QRectF, tris, azimuth: float = -35.0,
             painter.setPen(QPen(color, 0.8))
             painter.setBrush(QBrush(color))
             painter.drawPolygon(QPolygonF([screen(p) for p in pts]))
+        if edges:
+            faces = []
+            for pts, tri, _material, _part in items:
+                n = _normal(tri)
+                if sum(n[i] * eye[i] for i in range(3)) >= -1e-9:
+                    faces.append(([screen(p) for p in pts], n))
+            _paint_outline(painter, faces)
+
+
+def _paint_outline(painter: QPainter, faces: list) -> None:
+    """Arestas de uma peça, das faces viradas para o olho: ficam o contorno e as quinas;
+    somem as diagonais de uma face plana e as divisões de uma superfície curva."""
+    def key(a, b):
+        ka, kb = (round(a.x(), 1), round(a.y(), 1)), (round(b.x(), 1), round(b.y(), 1))
+        return (ka, kb) if ka <= kb else (kb, ka)
+
+    seen: dict = {}
+    for points, normal in faces:
+        for i in range(3):
+            a, b = points[i], points[(i + 1) % 3]
+            if key(a, b)[0] != key(a, b)[1]:
+                seen.setdefault(key(a, b), []).append((a, b, normal))
+    painter.setPen(QPen(QColor(theme.INK), 1.0))
+    for found in seen.values():
+        smooth = len(found) > 1 and all(
+            sum(found[0][2][i] * other[2][i] for i in range(3)) > 0.9 for other in found[1:])
+        if not smooth:
+            painter.drawLine(found[0][0], found[0][1])
 
 
 def paint_plan(painter: QPainter, rect: QRectF, symbol, zoom: float = 1.0) -> None:

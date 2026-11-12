@@ -68,6 +68,7 @@ LIBRARY = {
     "Argamassa": {"color": "#CFCAC0", "cut": _cut("none")},
     # Objetos paramétricos (objeto-parametrico.md §4.5)
     "Tecido": {"color": "#8E949E", "cut": _cut("none")},
+    "Couro": {"color": "#7A4E32", "cut": _cut("none")},
     "Madeira MDF branca": {"color": "#ECEAE4", "cut": _cut("none")},
     "Louça": {"color": "#F4F4F1", "cut": _cut("none")},
     "Inox": {"color": "#BCC2C7", "cut": _cut("none")},

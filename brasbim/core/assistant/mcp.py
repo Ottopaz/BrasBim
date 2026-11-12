@@ -58,6 +58,36 @@ Convenções:
 - Mobiliário, louças, eletrodomésticos e vegetação: list_objects mostra o que há no
   projeto e na biblioteca; insert_object põe pelo nome do tipo (a frente do objeto
   olha para -y local: gire para a frente dar para o cômodo). Para mudar, edit_object.
+- Imagem anexada de uma peça (móvel, aparelho, louça) com pedido de criar o objeto:
+  1. list_objects primeiro; se a biblioteca tem um que serve mudando parâmetros, use-o
+     (view_object mostra o da biblioteca sem inserir nada no projeto).
+  2. Senão, create_object. Medidas: as que o usuário escreveu; na falta, medidas
+     típicas da peça. A foto não tem escala: não tire medidas dela. Largura,
+     profundidade e altura são parâmetros de tipo e as peças usam fórmulas deles.
+     Sistema do objeto: origem no canto da frente-esquerda, no piso; x para a direita,
+     y para trás (a frente olha para -y), z para cima.
+  3. Comece pelo volume principal e acrescente o que identifica a peça (tampo, bocas,
+     porta do forno, puxador, pés). Não modele parafuso, logotipo nem textura; nada de
+     marca na geometria (marca e modelo, se informados, só em description).
+  4. Olhe com view_object, compare com a foto e corrija com edit_object_definition
+     (no máximo três rodadas). Só então insira (insert_object), perto da seleção ou
+     num lugar livre do pavimento, com a frente para o cômodo.
+  5. Na resposta, diga de onde veio cada medida e quais o usuário deve conferir.
+  Não copie blocos, famílias nem desenhos de fabricantes ou de outros programas.
+- Objeto ou forma livre? Peça regular, de linhas retas, que se repete ou muda de medida
+  (fogão, armário, mesa, cama): objeto paramétrico (create_object). Peça única,
+  inclinada, curva ou esculpida (poltrona de desenho autoral, escultura, luminária
+  orgânica, vaso): FORMA LIVRE (create_freeform), que não tem parâmetros mas aceita
+  formas giradas nos três eixos, arredondadas, tubos por caminho e seções ligadas.
+  Diga na resposta qual escolheu e por quê.
+- Forma livre: pense na peça como o marceneiro ou o escultor a monta. Estrutura (pés,
+  travessas, braços) com cone, tube e box girados; estofados e almofadas com box de
+  radius grande ou ellipsoid, levemente girados; corpos e volumes orgânicos com
+  sections (contornos em alturas sucessivas, smooth=true). Use de 15 a 60 formas; as
+  proporções valem mais que os detalhes. Olhe com view_object (id), compare com a foto
+  vista por vista e corrija com edit_freeform mandando a lista inteira de formas (no
+  máximo três rodadas). Medidas como no objeto: as do usuário ou as típicas, ditas na
+  resposta.
 - Se uma ferramenta recusar, leia a mensagem e corrija; não repita igual.
 - Confira o resultado com describe_model (e view_plan, se houver) antes de terminar.
 - A resposta final aparece num painel pequeno, em texto simples: sem Markdown (nada de

@@ -7,6 +7,8 @@ from brasbim.core.annotations import commands as ac
 from brasbim.core.document import Document
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import doors
+from brasbim.core.freeform import commands as freeform_commands
+from brasbim.core.freeform import elements as freeform
 from brasbim.core.objects import commands as oc
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops import Transaction
@@ -45,6 +47,8 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
     for element in entities:  # objetos antes das paredes (o vão do objeto fica na parede)
         if objects.is_object(element):
             add(oc.delete_ops(doc, element))
+        elif freeform.is_freeform(element):
+            add(freeform_commands.delete_ops(doc, element))
     for door in door_list:
         add(fc.delete_door(doc, door).ops)
     for wall in wall_list:
@@ -108,6 +112,8 @@ def delete_elements(doc: Document, gids) -> tuple[Transaction, dict[str, int]]:
         label = f"Excluir {sc.ELEMENTS[entities[0].is_a()][2]}"
     elif len(entities) == 1 and objects.is_object(entities[0]):
         label = "Excluir objeto"
+    elif len(entities) == 1 and freeform.is_freeform(entities[0]):
+        label = "Excluir forma livre"
     elif len(entities) == 1 and entities[0].is_a() in _LABELS:
         label = f"Excluir {_LABELS[entities[0].is_a()]}"
     return Transaction(label, ops), cascade

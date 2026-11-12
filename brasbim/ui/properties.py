@@ -49,6 +49,7 @@ from brasbim.core.document import OpError
 from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
+from brasbim.core.freeform import elements as freeform
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops import Transaction
 from brasbim.core.ops.history import combine
@@ -240,6 +241,7 @@ class PropertiesPanel(QScrollArea):
         self.edit_project_info = None  # dados do projeto para o carimbo (idem)
         self.edit_object_type = None  # editar tipo de objeto paramétrico (idem)
         self.edit_object = None  # editor do objeto paramétrico (idem)
+        self.freeform_proportional = True  # forma livre: esticar mantendo a proporção
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
@@ -304,6 +306,8 @@ class PropertiesPanel(QScrollArea):
             getattr(self, _misc_kind(selection[0]))(selection[0])
         elif len(selection) == 1 and objects.is_object(selection[0]):
             self._object(selection[0])
+        elif len(selection) == 1 and freeform.is_freeform(selection[0]):
+            self._freeform(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
             {"IfcColumn": self._column, "IfcBeam": self._beam, "IfcSlab": self._slab,
              "IfcRoof": self._roof}[selection[0].is_a()](selection[0])
@@ -2078,6 +2082,63 @@ class PropertiesPanel(QScrollArea):
                     shown.setStyleSheet(f"color: {theme.INK_SOFT}")
                     shown.setToolTip(f"Calculado: = {p['formula']}")
                     self._add(ow.label(p), shown)
+
+    def _freeform(self, element) -> None:
+        """Forma livre (forma-livre.md §3 e §5): nome, categoria, lugar, medidas (esticam a
+        malha) e o material de cada parte."""
+        from brasbim.core import materials
+        from brasbim.core.freeform import commands as fc
+        from brasbim.core.freeform import mesh as fm
+        from brasbim.core.objects import definition as od
+
+        doc = self.session.doc
+        state = freeform.read_state(doc, element)
+
+        def edit(**changes):
+            self._run(lambda: fc.edit(doc, element, **changes))
+
+        self._title("Forma livre")
+        self._text("Nome", state["name"], lambda v: edit(name=v.strip() or state["name"]))
+        self._combo("Categoria", [(v[3], k) for k, v in od.CATEGORIES.items()],
+                    state["category"], lambda v: edit(category=v))
+        self._text("O que é", state["object_type"], lambda v: edit(object_type=v.strip()),
+                   "Poltrona, Escultura…")
+        self._section("Posição")
+        self._number("Rotação (°)", state["angle"], lambda v: edit(angle=v))
+        self._number("Elevação (m)", state["elevation"], lambda v: edit(elevation=v))
+        self._section("Medidas")
+        width, depth, height = fm.size(state["parts"])
+        keep = QCheckBox()
+        keep.setChecked(self.freeform_proportional)
+        keep.setToolTip("Ligado: mudar uma medida estica as outras na mesma proporção")
+        keep.toggled.connect(lambda v: setattr(self, "freeform_proportional", bool(v)))
+        self._add("Manter proporção", keep)
+
+        def resize(**measure):
+            self._run(lambda: fc.resize(doc, element, proportional=self.freeform_proportional,
+                                        **measure))
+
+        self._number("Largura (m)", width, lambda v: resize(width=v))
+        self._number("Profundidade (m)", depth, lambda v: resize(depth=v))
+        self._number("Altura (m)", height, lambda v: resize(height=v))
+        self._section("Partes")
+        names = sorted({*materials.LIBRARY, *(m.Name for m in doc.ifc.by_type("IfcMaterial")
+                                             if m.Name)})
+        for i, part in enumerate(state["parts"]):
+            self._combo(part["name"], [("(sem material)", None), *((n, n) for n in names)],
+                        part.get("material"),
+                        lambda v, i=i: self._run(
+                            lambda: fc.set_part_material(doc, element, i, v)))
+        self._section("Identificação")
+        self._read("Triângulos", str(fm.triangle_count(state["parts"])))
+        if state["source"]:
+            self._read("Origem", state["source"])
+        if state["description"]:
+            note = QLabel(state["description"])
+            note.setWordWrap(True)
+            note.setStyleSheet(f"color: {theme.INK_SOFT}")
+            self._add(note)
+        self._read("GlobalId", element.GlobalId)
 
     def _object(self, element) -> None:
         from brasbim.core.objects import commands as oc

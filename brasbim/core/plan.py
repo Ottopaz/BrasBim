@@ -1379,6 +1379,12 @@ def _objects(doc: Document, storey, plan: Plan, cut: float) -> None:
             label = None
         if label is not None:
             plan.labels.append(label)
+    from brasbim.core.freeform import elements as freeform
+    from brasbim.core.freeform import plan as freeform_plan
+
+    for element in sorted((e for cls in freeform.CLASSES for e in _contained(storey, cls, doc)
+                           if freeform.is_freeform(e)), key=lambda e: e.GlobalId):
+        plan.shapes += freeform_plan.shapes(doc, element, storey, cut)
 
 
 # --- cobertura (cobertura.md §7) -----------------------------------------------------------

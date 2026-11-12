@@ -98,6 +98,18 @@ def _inside(ring, p) -> bool:
 
 
 def _mesh(element, settings):
+    from brasbim.core.freeform import elements as freeform
+
+    if freeform.is_freeform(element):  # malha pronta: sem a triangulação do IFC
+        from brasbim.core.freeform import mesh as freeform_mesh
+
+        parts = freeform.world_parts(element)
+        if not parts:
+            return None
+        offsets = np.cumsum([0, *(len(v) for v, _, _ in parts)])
+        verts = np.vstack([v for v, _, _ in parts])
+        faces = np.vstack([f + offsets[i] for i, (_, f, _) in enumerate(parts)])
+        return verts, faces, freeform_mesh.crease_edges(verts, faces)
     try:
         shape = props.body_shape(settings, element)
     except RuntimeError:
@@ -385,9 +397,11 @@ def _owner(element) -> str:
 
 
 def _is_object(element) -> bool:
+    from brasbim.core.freeform import elements as freeform
     from brasbim.core.objects import elements as objects
 
-    return objects.is_object(element) or objects.is_part(element)
+    return objects.is_object(element) or objects.is_part(element) \
+        or freeform.is_freeform(element)
 
 
 def _cut_items(doc: Document, element, rings: list, a, d) -> list[Item]:
