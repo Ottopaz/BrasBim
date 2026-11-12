@@ -4,8 +4,23 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑10 (fórum no GitHub Discussions e no site; conta do GitHub
-renomeada para `ootaviopaz`).*
+*Atualizado em 2026‑11‑12 (versão 0.0.2 aberta com `CHANGELOG.md`; busca no Navegador).*
+
+> **Versão 0.0.2 em desenvolvimento (2026‑11‑12, pedido do revisor):** a partir desta
+> data toda mudança entra na 0.0.2 (`pyproject.toml` e `brasbim/__init__.py` já dizem
+> 0.0.2) e ganha uma linha em **`CHANGELOG.md`** no mesmo commit; o texto da versão vira a
+> nota do lançamento no GitHub. Regra gravada no `CLAUDE.md` (Fluxo de trabalho, item 5).
+> **Ao publicar a 0.0.2:** datar a seção, montar o `.exe` (anexar como
+> `BrasBim-Windows-Setup.exe`), atualizar "versão 0.0.1" no `README.md`, em
+> `divulgacao/BRASBIM.md` e no exemplo de `.github/ISSUE_TEMPLATE/problema.yml`.
+>
+> **Busca no Navegador (2026‑11‑12, spec/ui 53, em revisão):** campo sob o nome da seção
+> (ícone próprio `search.svg`), filtra a seção aberta enquanto se digita, sem acento nem
+> maiúscula, todas as palavras; árvores mostram o que casa com o que há dentro e abrem os
+> grupos com achados (fecham ao limpar só os que a busca abriu); título "x de n"; aviso
+> "Nada encontrado"; Ctrl+F (Exibir > Buscar no Navegador), Enter abre o primeiro, Esc
+> limpa; projeto novo limpa a busca. Código em `ProjectPanel.apply_filter`
+> (`brasbim/ui/project_panel.py`); testes BN00–BN04 em `tests/test_busca_navegador.py`.
 
 > **Fórum (2026‑11‑10), no ar em https://brasbim.org/#forum:** o fórum é o **GitHub
 > Discussions** do repositório. Categorias renomeadas à mão: Avisos, **Ideias**, Dúvidas,

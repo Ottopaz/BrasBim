@@ -530,6 +530,8 @@ class MainWindow(QMainWindow):
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
                                               "Ctrl+Shift+3")
+        self._action(view_menu, "Buscar no Navegador", self.find_in_navigator,  # spec/ui 53
+                     "Ctrl+F")
         self._action(view_menu, "Fechar aba", lambda: self.close_tab(),  # spec/ui 32 §3
                      ["Ctrl+W", "Ctrl+F4"])
         self._action(view_menu, "Fechar todas as abas", lambda: self.close_tabs())
@@ -2621,6 +2623,12 @@ class MainWindow(QMainWindow):
             session.select(kept)
         self._bring(self.plan)
         return self.plan.frame_selection()
+
+    def find_in_navigator(self) -> None:
+        """Ctrl+F (spec/ui 53 §2): mostra o Navegador e põe o cursor no campo de busca."""
+        self.project_dock.show()
+        self.project_dock.raise_()
+        self.project.focus_search()
 
     def show_in_3d(self) -> bool:
         """3D à frente, com a órbita na seleção e a mesma direção da câmera."""

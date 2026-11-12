@@ -7,14 +7,15 @@ torna o pavimento ativo; clique duplo numa célula edita o nome, a cota ou o pla
 (``storey.edit``; spec/ui 06 §3.1, vazio = padrão); os botões criam e excluem pavimentos.
 
 Navegador: cortes e fachadas, vistas salvas, pranchas, folhas mestras, tabelas (spec/ui 17
-§5) e objetos, cada um numa seção escolhida pela fileira de ícones do alto.
+§5) e objetos, cada um numa seção escolhida pela fileira de ícones do alto, com um campo
+que filtra a seção pelo nome (``spec/ui/53-busca-no-navegador.md``).
 """
 
 from __future__ import annotations
 
 from functools import cache
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -40,6 +42,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import storeys as storeys_
 from brasbim.core.quantities import tables as tables_
 from brasbim.core.walls import commands as cmd
+from brasbim.ui.command_search import normalize
 from brasbim.ui.icons import icon
 from brasbim.ui.saved_views_ui import SavedViewList
 from brasbim.ui.tools import fmt, parse_number
@@ -59,6 +62,8 @@ SECTIONS = {
     "objects": ("Objetos", "object"),
 }
 
+SEARCH_HINT = "Filtrar pelo nome"  # spec/ui 53 §2
+
 NEW_STOREY_HEIGHT = 2.80  # cota do pavimento novo: a maior + 2,80 m (§7)
 
 
@@ -72,6 +77,43 @@ def tree_icon(name: str) -> QIcon:
         out.addPixmap(pixmap, QIcon.Normal, QIcon.Off)
         out.addPixmap(pixmap, QIcon.Normal, QIcon.On)
     return out
+
+
+def search_terms(text: str) -> list[str]:
+    """Palavras da busca, sem acento e em minúsculas (spec/ui 53 §3)."""
+    return normalize(text).split()
+
+
+def matches(text: str, terms: list[str]) -> bool:
+    """O texto tem todas as palavras, em qualquer ordem."""
+    target = normalize(text)
+    return all(term in target for term in terms)
+
+
+def _tree_key(item: QTreeWidgetItem):
+    """Chave estável de um item de árvore, que sobrevive a ``refresh()``."""
+    for role in (Qt.UserRole, Qt.UserRole + 1):
+        data = item.data(0, role)
+        if data is not None:
+            return role, data
+    return "text", item.text(0)
+
+
+def _children(item: QTreeWidgetItem):
+    return (item.child(i) for i in range(item.childCount()))
+
+
+def _top_items(tree: QTreeWidget):
+    return (tree.topLevelItem(i) for i in range(tree.topLevelItemCount()))
+
+
+def _shown(item: QTreeWidgetItem) -> bool:
+    """Visível com todos os de cima (o filtro esconde item por item)."""
+    while item is not None:
+        if item.isHidden():
+            return False
+        item = item.parent()
+    return True
 
 
 def new_storey_name(doc) -> str:
@@ -351,6 +393,24 @@ class ProjectPanel(QWidget):
         row.addStretch(1)
         self.title = QLabel()
         self.title.setProperty("role", "group")
+        # Campo de busca (spec/ui 53 §2): filtra a seção aberta enquanto se digita
+        self.search = QLineEdit()
+        self.search.setObjectName("busca_navegador")
+        self.search.setPlaceholderText(SEARCH_HINT)
+        self.search.setClearButtonEnabled(True)
+        self.search.addAction(icon("search"), QLineEdit.LeadingPosition)
+        self.search.setToolTip("Filtra a seção pelo nome, sem diferenciar maiúsculas nem "
+                               "acentos (Ctrl+F). Enter abre o primeiro; Esc limpa")
+        self.search.textChanged.connect(lambda _text: self.apply_filter())
+        self.search.returnPressed.connect(self.open_first_match)
+        self.search.installEventFilter(self)
+        self.no_match = QLabel()
+        self.no_match.setWordWrap(True)
+        self.no_match.setEnabled(False)  # texto esmaecido do tema
+        self.no_match.hide()
+        self._auto_expanded: set = set()  # abertos pela busca, fecham ao limpar
+        self.shown_counts: dict[str, int] = dict.fromkeys(SECTIONS, 0)
+        self._doc_id = id(session.doc)
         self.stack = QStackedWidget()
         self.pages: dict[str, QWidget] = {}
         for key, listing, actions in (
@@ -380,6 +440,8 @@ class ProjectPanel(QWidget):
         layout.setSpacing(3)
         layout.addLayout(row)
         layout.addWidget(self.title)
+        layout.addWidget(self.search)
+        layout.addWidget(self.no_match)
         layout.addWidget(self.stack, 1)
         self.counts: dict[str, int] = dict.fromkeys(SECTIONS, 0)
         self.section = "views"
@@ -391,16 +453,142 @@ class ProjectPanel(QWidget):
         self.section = key
         self.section_buttons[key].setChecked(True)
         self.stack.setCurrentWidget(self.pages[key])
-        self._update_title()
+        self.apply_filter()
+
+    def _count_text(self, key: str) -> str:
+        """Quantidade da seção: "5" sem filtro, "2 de 5" com filtro (spec/ui 53 §3)."""
+        if self.search_text():
+            return f"{self.shown_counts[key]} de {self.counts[key]}"
+        return str(self.counts[key])
 
     def _update_title(self) -> None:
-        self.title.setText(f"{SECTIONS[self.section][0]} ({self.counts[self.section]})")
+        self.title.setText(f"{SECTIONS[self.section][0]} ({self._count_text(self.section)})")
         for key, button in self.section_buttons.items():
-            button.setToolTip(f"{SECTIONS[key][0]} ({self.counts[key]})")
+            button.setToolTip(f"{SECTIONS[key][0]} ({self._count_text(key)})")
+
+    # --- busca (spec/ui 53) -----------------------------------------------------------------
+
+    def search_text(self) -> str:
+        return self.search.text().strip()
+
+    def focus_search(self) -> None:
+        """Ctrl+F: cursor no campo, com o texto que houver selecionado."""
+        self.search.setFocus(Qt.ShortcutFocusReason)
+        self.search.selectAll()
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.search and event.type() == QEvent.KeyPress \
+                and event.key() == Qt.Key_Escape:
+            if self.search.text():
+                self.search.clear()
+            else:
+                self.search.clearFocus()
+                tabs = getattr(self.window(), "tabs", None)
+                if tabs is not None and tabs.currentWidget() is not None:
+                    tabs.currentWidget().setFocus()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _filter_tree(self, tree: QTreeWidget, terms: list[str]) -> None:
+        def show_all(item):
+            item.setHidden(False)
+            for child in _children(item):
+                show_all(child)
+
+        def visit(item) -> bool:
+            if matches(item.text(0), terms):
+                show_all(item)
+                return True
+            found = False
+            for child in _children(item):
+                found = visit(child) or found
+            item.setHidden(not found)
+            if found and not item.isExpanded():
+                item.setExpanded(True)
+                self._auto_expanded.add((id(tree), _tree_key(item)))
+            return found
+
+        for item in _top_items(tree):
+            if terms:
+                visit(item)
+            else:
+                show_all(item)
+
+    def _collapse_auto(self, tree: QTreeWidget) -> None:
+        """Ao limpar a busca, fecha o que ela abriu (spec/ui 53 §3)."""
+        def visit(item):
+            if (id(tree), _tree_key(item)) in self._auto_expanded:
+                item.setExpanded(False)
+            for child in _children(item):
+                visit(child)
+
+        for item in _top_items(tree):
+            visit(item)
+
+    @staticmethod
+    def _filter_list(listing: QListWidget, terms: list[str]) -> None:
+        for i in range(listing.count()):
+            item = listing.item(i)
+            item.setHidden(bool(terms) and not matches(item.text(), terms))
+
+    def _matches_of(self, key: str) -> list:
+        """Itens visíveis da seção que contam como achado, na ordem mostrada."""
+        if key == "views":
+            return [child for group in _top_items(self.views) if not group.isHidden()
+                    for child in _children(group) if not child.isHidden()]
+        if key == "sheets":
+            return [item for item in _top_items(self.sheets) if not item.isHidden()]
+        if key == "objects":
+            return [item for item in self._type_items() if _shown(item)]
+        listing = {"saved": self.saved, "masters": self.masters, "tables": self.tables}[key]
+        return [listing.item(i) for i in range(listing.count())
+                if not listing.item(i).isHidden()]
+
+    def apply_filter(self) -> None:
+        """Aplica o texto do campo às seis seções e atualiza títulos e aviso."""
+        terms = search_terms(self.search.text())
+        for tree in (self.views, self.sheets, self.objects):
+            self._filter_tree(tree, terms)
+            if not terms:
+                self._collapse_auto(tree)
+        if not terms:
+            self._auto_expanded.clear()
+        for listing in (self.saved, self.masters, self.tables):
+            self._filter_list(listing, terms)
+        self.shown_counts = {key: len(self._matches_of(key)) for key in SECTIONS}
+        empty = bool(terms) and self.shown_counts[self.section] == 0
+        self.no_match.setText(f"Nada encontrado com «{self.search_text()}»."
+                              if empty else "")
+        self.no_match.setVisible(empty)
+        self._update_title()
+
+    def open_first_match(self) -> None:
+        """Enter no campo: abre o primeiro achado, como o clique duplo nele."""
+        found = self._matches_of(self.section)
+        if not found:
+            return
+        first = found[0]
+        if self.section == "views":
+            self._open_view_item(first)
+        elif self.section == "sheets":
+            self._open_sheet_item(first)
+        elif self.section == "objects":
+            self._object_double(first)
+        else:
+            opener = {"saved": self.open_saved_view, "masters": self.open_master,
+                      "tables": self.open_table}[self.section]
+            if opener:
+                opener(first.data(Qt.UserRole))
 
     def refresh(self) -> None:
         from brasbim.core.drawings import views as views_
 
+        if id(self.session.doc) != self._doc_id:  # outro projeto: a busca some (§2)
+            self._doc_id = id(self.session.doc)
+            self._auto_expanded.clear()
+            self.search.blockSignals(True)
+            self.search.clear()
+            self.search.blockSignals(False)
         closed = {self.views.topLevelItem(i).data(0, Qt.UserRole + 1)
                   for i in range(self.views.topLevelItemCount())
                   if not self.views.topLevelItem(i).isExpanded()}
@@ -477,7 +665,7 @@ class ProjectPanel(QWidget):
             "views": len(self.view_ids()), "saved": self.saved.count(),
             "sheets": self.sheets.topLevelItemCount(), "masters": self.masters.count(),
             "tables": self.tables.count(), "objects": sum(1 for _ in self._type_items())}
-        self._update_title()
+        self.apply_filter()
 
     def _placed(self, placed: dict) -> tuple[str, str, str, str] | None:
         """(tipo, GlobalId da origem, nome, ícone) do desenho posto na prancha; ``None`` se
