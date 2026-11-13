@@ -14,6 +14,24 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > `BrasBim-Windows-Setup.exe`), atualizar "versão 0.0.1" no `README.md`, em
 > `divulgacao/BRASBIM.md` e no exemplo de `.github/ISSUE_TEMPLATE/problema.yml`.
 >
+> **RETOMAR AQUI — teste do revisor na forma livre (2026‑11‑12, fim do dia):** o revisor
+> testou no aplicativo e achou dois problemas, ainda **sem diagnóstico nem correção**:
+> 1. **Escultura pelo Assistente ficou muito longe do ideal.** A poltrona (peça de
+>    marcenaria) sai bem; a forma esculpida, não. Era o limite previsto: a IA descrevendo
+>    formas simples dá escultura estilizada. Caminhos a avaliar: (a) melhorar as formas e
+>    as instruções para corpos orgânicos (mais `sections` suaves, exemplos na descrição
+>    da ferramenta); (b) plugar um gerador de 3D a partir de foto como conector (fase 2
+>    da spec); (c) orientar o usuário a importar a malha de arquivo (OBJ, STL, GLB), que
+>    já funciona. Pedir ao revisor a foto e o pedido que usou, para reproduzir.
+> 2. **A forma livre não aparece bem no corte e na elevação.** A conferir primeiro:
+>    em vista, `section.py` desenha uma face por triângulo (18 mil itens `face` na
+>    poltrona) e só as quinas como linha (`mesh.crease_edges`, 30°): numa peça
+>    arredondada quase não há quina, então **falta o contorno (silhueta) na direção da
+>    vista**; no corte a seção sai só como contorno, sem hachura. Pedir um print ao
+>    revisor para ver qual é o defeito visível.
+> Nada disso foi mexido. O commit `0fece33` (ramo `assistente-foto-objeto`) tem a fase 1
+> como estava; nada foi enviado ao GitHub (o revisor quer testar antes do push).
+>
 > **Forma livre (2026‑11‑12, `spec/elementos/forma-livre.md`, fase 1 implementada):**
 > elemento novo de geometria em malha, sem tipo nem parâmetros, para peças únicas e
 > orgânicas (o objeto paramétrico fica para o que se repete). Nome "Forma livre" e fase 1
